@@ -1,5 +1,5 @@
 //! Generated from: css-parser-api.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const CSSParserFunctionImpl = @import("impls").CSSParserFunction;
 const CSSParserValue = @import("interfaces").CSSParserValue;
-const FrozenArray<FrozenArray<CSSParserValue>> = @import("interfaces").FrozenArray<FrozenArray<CSSParserValue>>;
+const DOMString = @import("typedefs").DOMString;
 
 pub const CSSParserFunction = struct {
     pub const Meta = struct {
@@ -26,7 +26,7 @@ pub const CSSParserFunction = struct {
     pub const State = runtime.FlattenedState(
         struct {
             name: runtime.DOMString = undefined,
-            args: FrozenArray<FrozenArray<CSSParserValue>> = undefined,
+            args: runtime.FrozenArray(runtime.FrozenArray(CSSParserValue)) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -41,17 +41,7 @@ pub const CSSParserFunction = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        CSSParserFunctionImpl.init(instance);
-        
-        return instance;
+        return CSSParserFunctionImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

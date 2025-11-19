@@ -1,5 +1,5 @@
 //! Generated from: resource-timing.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,9 +7,11 @@ const std = @import("std");
 const runtime = @import("runtime");
 const PerformanceResourceTimingImpl = @import("impls").PerformanceResourceTiming;
 const PerformanceEntry = @import("interfaces").PerformanceEntry;
-const FrozenArray<PerformanceServerTiming> = @import("interfaces").FrozenArray<PerformanceServerTiming>;
-const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const ByteString = @import("interfaces").ByteString;
 const RenderBlockingStatusType = @import("enums").RenderBlockingStatusType;
+const PerformanceServerTiming = @import("interfaces").PerformanceServerTiming;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const DOMString = @import("typedefs").DOMString;
 
 pub const PerformanceResourceTiming = struct {
     pub const Meta = struct {
@@ -54,7 +56,7 @@ pub const PerformanceResourceTiming = struct {
             renderBlockingStatus: RenderBlockingStatusType = undefined,
             contentType: runtime.DOMString = undefined,
             contentEncoding: runtime.DOMString = undefined,
-            serverTiming: FrozenArray<PerformanceServerTiming> = undefined,
+            serverTiming: runtime.FrozenArray(PerformanceServerTiming) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -100,17 +102,7 @@ pub const PerformanceResourceTiming = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PerformanceResourceTimingImpl.init(instance);
-        
-        return instance;
+        return PerformanceResourceTimingImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -247,19 +239,9 @@ pub const PerformanceResourceTiming = struct {
         return try PerformanceResourceTimingImpl.get_serverTiming(instance);
     }
 
-    /// Arguments for toJSON (WebIDL overloading)
-    pub const ToJSONArgs = union(enum) {
-        /// toJSON()
-        no_params: void,
-        /// toJSON()
-        no_params: void,
-    };
-
-    pub fn call_toJSON(instance: *runtime.Instance, args: ToJSONArgs) anyerror!anyopaque {
-        switch (args) {
-            .no_params => return try PerformanceResourceTimingImpl.no_params(instance),
-            .no_params => return try PerformanceResourceTimingImpl.no_params(instance),
-        }
+    /// Extended attributes: [Default]
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!anyopaque {
+        return try PerformanceResourceTimingImpl.call_toJSON(instance);
     }
 
 };

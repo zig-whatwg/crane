@@ -1,12 +1,12 @@
 //! Generated from: presentation-api.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const PresentationReceiverImpl = @import("impls").PresentationReceiver;
-const Promise<PresentationConnectionList> = @import("interfaces").Promise<PresentationConnectionList>;
+const PresentationConnectionList = @import("interfaces").PresentationConnectionList;
 
 pub const PresentationReceiver = struct {
     pub const Meta = struct {
@@ -25,7 +25,7 @@ pub const PresentationReceiver = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            connectionList: Promise<PresentationConnectionList> = undefined,
+            connectionList: runtime.Promise(PresentationConnectionList) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -39,17 +39,7 @@ pub const PresentationReceiver = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PresentationReceiverImpl.init(instance);
-        
-        return instance;
+        return PresentationReceiverImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

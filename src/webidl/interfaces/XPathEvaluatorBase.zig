@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -10,6 +10,7 @@ const XPathNSResolver = @import("interfaces").XPathNSResolver;
 const XPathExpression = @import("interfaces").XPathExpression;
 const Node = @import("interfaces").Node;
 const XPathResult = @import("interfaces").XPathResult;
+const DOMString = @import("typedefs").DOMString;
 
 pub const XPathEvaluatorBase = struct {
     pub const Meta = struct {
@@ -36,17 +37,7 @@ pub const XPathEvaluatorBase = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        XPathEvaluatorBaseImpl.init(instance);
-        
-        return instance;
+        return XPathEvaluatorBaseImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -64,13 +55,13 @@ pub const XPathEvaluatorBase = struct {
         return try XPathEvaluatorBaseImpl.call_createNSResolver(instance, nodeResolver);
     }
 
-    pub fn call_evaluate(instance: *runtime.Instance, expression: DOMString, contextNode: Node, resolver: anyopaque, type_: u16, result: anyopaque) anyerror!XPathResult {
+    pub fn call_evaluate(instance: *runtime.Instance, expression: DOMString, contextNode: Node, resolver: XPathNSResolver, @"type": u16, result: XPathResult) anyerror!XPathResult {
         
-        return try XPathEvaluatorBaseImpl.call_evaluate(instance, expression, contextNode, resolver, type_, result);
+        return try XPathEvaluatorBaseImpl.call_evaluate(instance, expression, contextNode, resolver, @"type", result);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createExpression(instance: *runtime.Instance, expression: DOMString, resolver: anyopaque) anyerror!XPathExpression {
+    pub fn call_createExpression(instance: *runtime.Instance, expression: DOMString, resolver: XPathNSResolver) anyerror!XPathExpression {
         // [NewObject] - Caller owns the returned object
         
         return try XPathEvaluatorBaseImpl.call_createExpression(instance, expression, resolver);

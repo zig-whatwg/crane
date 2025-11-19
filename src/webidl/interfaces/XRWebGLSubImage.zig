@@ -1,5 +1,5 @@
 //! Generated from: webxrlayers.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const XRWebGLSubImageImpl = @import("impls").XRWebGLSubImage;
 const XRSubImage = @import("interfaces").XRSubImage;
-const unsigned long = @import("interfaces").unsigned long;
+const XRViewport = @import("interfaces").XRViewport;
 const WebGLTexture = @import("interfaces").WebGLTexture;
 
 pub const XRWebGLSubImage = struct {
@@ -59,17 +59,7 @@ pub const XRWebGLSubImage = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        XRWebGLSubImageImpl.init(instance);
-        
-        return instance;
+        return XRWebGLSubImageImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -107,7 +97,7 @@ pub const XRWebGLSubImage = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_depthStencilTexture(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_depthStencilTexture(instance: *runtime.Instance) anyerror!WebGLTexture {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.cached_depthStencilTexture) |cached| {
@@ -119,7 +109,7 @@ pub const XRWebGLSubImage = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_motionVectorTexture(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_motionVectorTexture(instance: *runtime.Instance) anyerror!WebGLTexture {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.cached_motionVectorTexture) |cached| {
@@ -130,7 +120,7 @@ pub const XRWebGLSubImage = struct {
         return value;
     }
 
-    pub fn get_imageIndex(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_imageIndex(instance: *runtime.Instance) anyerror!u32 {
         return try XRWebGLSubImageImpl.get_imageIndex(instance);
     }
 
@@ -142,19 +132,19 @@ pub const XRWebGLSubImage = struct {
         return try XRWebGLSubImageImpl.get_colorTextureHeight(instance);
     }
 
-    pub fn get_depthStencilTextureWidth(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_depthStencilTextureWidth(instance: *runtime.Instance) anyerror!u32 {
         return try XRWebGLSubImageImpl.get_depthStencilTextureWidth(instance);
     }
 
-    pub fn get_depthStencilTextureHeight(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_depthStencilTextureHeight(instance: *runtime.Instance) anyerror!u32 {
         return try XRWebGLSubImageImpl.get_depthStencilTextureHeight(instance);
     }
 
-    pub fn get_motionVectorTextureWidth(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_motionVectorTextureWidth(instance: *runtime.Instance) anyerror!u32 {
         return try XRWebGLSubImageImpl.get_motionVectorTextureWidth(instance);
     }
 
-    pub fn get_motionVectorTextureHeight(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_motionVectorTextureHeight(instance: *runtime.Instance) anyerror!u32 {
         return try XRWebGLSubImageImpl.get_motionVectorTextureHeight(instance);
     }
 

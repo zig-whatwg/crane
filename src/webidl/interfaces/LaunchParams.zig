@@ -1,13 +1,13 @@
 //! Generated from: web-app-launch.idl
-//! Generated at: 2025-11-18T18:28:13Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const LaunchParamsImpl = @import("impls").LaunchParams;
-const FrozenArray<FileSystemHandle> = @import("interfaces").FrozenArray<FileSystemHandle>;
 const DOMString = @import("typedefs").DOMString;
+const FileSystemHandle = @import("interfaces").FileSystemHandle;
 
 pub const LaunchParams = struct {
     pub const Meta = struct {
@@ -26,7 +26,7 @@ pub const LaunchParams = struct {
     pub const State = runtime.FlattenedState(
         struct {
             targetURL: ?runtime.DOMString = null,
-            files: FrozenArray<FileSystemHandle> = undefined,
+            files: runtime.FrozenArray(FileSystemHandle) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -41,17 +41,7 @@ pub const LaunchParams = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        LaunchParamsImpl.init(instance);
-        
-        return instance;
+        return LaunchParamsImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -64,7 +54,7 @@ pub const LaunchParams = struct {
         deinit(instance);
     }
 
-    pub fn get_targetURL(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_targetURL(instance: *runtime.Instance) anyerror!DOMString {
         return try LaunchParamsImpl.get_targetURL(instance);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: mediacapture-streams.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,8 +7,12 @@ const std = @import("std");
 const runtime = @import("runtime");
 const MediaStreamTrackEventImpl = @import("impls").MediaStreamTrackEvent;
 const Event = @import("interfaces").Event;
+const EventTarget = @import("interfaces").EventTarget;
 const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
 const MediaStreamTrackEventInit = @import("dictionaries").MediaStreamTrackEventInit;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
+const DOMString = @import("typedefs").DOMString;
 
 pub const MediaStreamTrackEvent = struct {
     pub const Meta = struct {
@@ -71,17 +75,7 @@ pub const MediaStreamTrackEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        MediaStreamTrackEventImpl.init(instance);
-        
-        return instance;
+        return MediaStreamTrackEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -95,11 +89,11 @@ pub const MediaStreamTrackEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, eventInitDict: MediaStreamTrackEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, eventInitDict: MediaStreamTrackEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try MediaStreamTrackEventImpl.constructor(instance, type_, eventInitDict);
+        try MediaStreamTrackEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -108,15 +102,15 @@ pub const MediaStreamTrackEvent = struct {
         return try MediaStreamTrackEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try MediaStreamTrackEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try MediaStreamTrackEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try MediaStreamTrackEventImpl.get_currentTarget(instance);
     }
 
@@ -181,9 +175,9 @@ pub const MediaStreamTrackEvent = struct {
         return try MediaStreamTrackEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try MediaStreamTrackEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try MediaStreamTrackEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_composedPath(instance: *runtime.Instance) anyerror!anyopaque {

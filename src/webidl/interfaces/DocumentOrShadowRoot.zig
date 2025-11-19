@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,7 +9,8 @@ const DocumentOrShadowRootImpl = @import("impls").DocumentOrShadowRoot;
 const Element = @import("interfaces").Element;
 const StyleSheetList = @import("interfaces").StyleSheetList;
 const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
-const ObservableArray<CSSStyleSheet> = @import("interfaces").ObservableArray<CSSStyleSheet>;
+const Animation = @import("interfaces").Animation;
+const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 
 pub const DocumentOrShadowRoot = struct {
     pub const Meta = struct {
@@ -27,7 +28,7 @@ pub const DocumentOrShadowRoot = struct {
             pictureInPictureElement: ?Element = null,
             pointerLockElement: ?Element = null,
             styleSheets: StyleSheetList = undefined,
-            adoptedStyleSheets: ObservableArray<CSSStyleSheet> = undefined,
+            adoptedStyleSheets: runtime.ObservableArray(CSSStyleSheet) = undefined,
             activeElement: ?Element = null,
         },
         Meta.BaseType,
@@ -52,17 +53,7 @@ pub const DocumentOrShadowRoot = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        DocumentOrShadowRootImpl.init(instance);
-        
-        return instance;
+        return DocumentOrShadowRootImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -75,20 +66,20 @@ pub const DocumentOrShadowRoot = struct {
         deinit(instance);
     }
 
-    pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!CustomElementRegistry {
         return try DocumentOrShadowRootImpl.get_customElementRegistry(instance);
     }
 
     /// Extended attributes: [LegacyLenientSetter]
-    pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!Element {
         return try DocumentOrShadowRootImpl.get_fullscreenElement(instance);
     }
 
-    pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!Element {
         return try DocumentOrShadowRootImpl.get_pictureInPictureElement(instance);
     }
 
-    pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!Element {
         return try DocumentOrShadowRootImpl.get_pointerLockElement(instance);
     }
 
@@ -112,7 +103,7 @@ pub const DocumentOrShadowRoot = struct {
         try DocumentOrShadowRootImpl.set_adoptedStyleSheets(instance, value);
     }
 
-    pub fn get_activeElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_activeElement(instance: *runtime.Instance) anyerror!Element {
         return try DocumentOrShadowRootImpl.get_activeElement(instance);
     }
 

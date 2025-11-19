@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,8 +9,18 @@ const CharacterDataImpl = @import("impls").CharacterData;
 const Node = @import("interfaces").Node;
 const NonDocumentTypeChildNode = @import("interfaces").NonDocumentTypeChildNode;
 const ChildNode = @import("interfaces").ChildNode;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const Document = @import("interfaces").Document;
+const NodeList = @import("interfaces").NodeList;
+const USVString = @import("interfaces").USVString;
+const Event = @import("interfaces").Event;
+const Observable = @import("interfaces").Observable;
 const Element = @import("interfaces").Element;
-const (Node or DOMString) = @import("interfaces").(Node or DOMString);
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
+const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
+const DOMString = @import("typedefs").DOMString;
 
 pub const CharacterData = struct {
     pub const Meta = struct {
@@ -116,17 +126,7 @@ pub const CharacterData = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        CharacterDataImpl.init(instance);
-        
-        return instance;
+        return CharacterDataImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -155,15 +155,15 @@ pub const CharacterData = struct {
         return try CharacterDataImpl.get_isConnected(instance);
     }
 
-    pub fn get_ownerDocument(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ownerDocument(instance: *runtime.Instance) anyerror!Document {
         return try CharacterDataImpl.get_ownerDocument(instance);
     }
 
-    pub fn get_parentNode(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_parentNode(instance: *runtime.Instance) anyerror!Node {
         return try CharacterDataImpl.get_parentNode(instance);
     }
 
-    pub fn get_parentElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_parentElement(instance: *runtime.Instance) anyerror!Element {
         return try CharacterDataImpl.get_parentElement(instance);
     }
 
@@ -179,29 +179,29 @@ pub const CharacterData = struct {
         return value;
     }
 
-    pub fn get_firstChild(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_firstChild(instance: *runtime.Instance) anyerror!Node {
         return try CharacterDataImpl.get_firstChild(instance);
     }
 
-    pub fn get_lastChild(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_lastChild(instance: *runtime.Instance) anyerror!Node {
         return try CharacterDataImpl.get_lastChild(instance);
     }
 
-    pub fn get_previousSibling(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_previousSibling(instance: *runtime.Instance) anyerror!Node {
         return try CharacterDataImpl.get_previousSibling(instance);
     }
 
-    pub fn get_nextSibling(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_nextSibling(instance: *runtime.Instance) anyerror!Node {
         return try CharacterDataImpl.get_nextSibling(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_nodeValue(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_nodeValue(instance: *runtime.Instance) anyerror!DOMString {
         return try CharacterDataImpl.get_nodeValue(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_nodeValue(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_nodeValue(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -210,12 +210,12 @@ pub const CharacterData = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_textContent(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_textContent(instance: *runtime.Instance) anyerror!DOMString {
         return try CharacterDataImpl.get_textContent(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_textContent(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_textContent(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -237,15 +237,15 @@ pub const CharacterData = struct {
         return try CharacterDataImpl.get_length(instance);
     }
 
-    pub fn get_previousElementSibling(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_previousElementSibling(instance: *runtime.Instance) anyerror!Element {
         return try CharacterDataImpl.get_previousElementSibling(instance);
     }
 
-    pub fn get_nextElementSibling(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_nextElementSibling(instance: *runtime.Instance) anyerror!Element {
         return try CharacterDataImpl.get_nextElementSibling(instance);
     }
 
-    pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: anyopaque) anyerror!bool {
+    pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: DOMString) anyerror!bool {
         
         return try CharacterDataImpl.call_isDefaultNamespace(instance, namespace);
     }
@@ -255,7 +255,7 @@ pub const CharacterData = struct {
         return try CharacterDataImpl.call_compareDocumentPosition(instance, other);
     }
 
-    pub fn call_contains(instance: *runtime.Instance, other: anyopaque) anyerror!bool {
+    pub fn call_contains(instance: *runtime.Instance, other: Node) anyerror!bool {
         
         return try CharacterDataImpl.call_contains(instance, other);
     }
@@ -274,9 +274,9 @@ pub const CharacterData = struct {
         return try CharacterDataImpl.call_replaceData(instance, offset, count, data);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try CharacterDataImpl.call_removeEventListener(instance, type_, callback, options);
+        return try CharacterDataImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
@@ -315,23 +315,23 @@ pub const CharacterData = struct {
         return try CharacterDataImpl.call_replaceWith(instance, nodes);
     }
 
-    pub fn call_isSameNode(instance: *runtime.Instance, otherNode: anyopaque) anyerror!bool {
+    pub fn call_isSameNode(instance: *runtime.Instance, otherNode: Node) anyerror!bool {
         
         return try CharacterDataImpl.call_isSameNode(instance, otherNode);
     }
 
-    pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: anyopaque) anyerror!anyopaque {
+    pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: DOMString) anyerror!DOMString {
         
         return try CharacterDataImpl.call_lookupPrefix(instance, namespace);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try CharacterDataImpl.call_when(instance, type_, options);
+        return try CharacterDataImpl.call_when(instance, @"type", options);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_insertBefore(instance: *runtime.Instance, node: Node, child: anyopaque) anyerror!Node {
+    pub fn call_insertBefore(instance: *runtime.Instance, node: Node, child: Node) anyerror!Node {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -365,14 +365,14 @@ pub const CharacterData = struct {
         return try CharacterDataImpl.call_appendData(instance, data);
     }
 
-    pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: anyopaque) anyerror!anyopaque {
+    pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: DOMString) anyerror!DOMString {
         
         return try CharacterDataImpl.call_lookupNamespaceURI(instance, prefix);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try CharacterDataImpl.call_addEventListener(instance, type_, callback, options);
+        return try CharacterDataImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
     /// Extended attributes: [CEReactions]
@@ -413,7 +413,7 @@ pub const CharacterData = struct {
         return try CharacterDataImpl.call_normalize(instance);
     }
 
-    pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: anyopaque) anyerror!bool {
+    pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: Node) anyerror!bool {
         
         return try CharacterDataImpl.call_isEqualNode(instance, otherNode);
     }

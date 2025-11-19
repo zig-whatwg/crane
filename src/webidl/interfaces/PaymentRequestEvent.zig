@@ -1,5 +1,5 @@
 //! Generated from: payment-handler.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,15 +7,20 @@ const std = @import("std");
 const runtime = @import("runtime");
 const PaymentRequestEventImpl = @import("impls").PaymentRequestEvent;
 const ExtendableEvent = @import("interfaces").ExtendableEvent;
-const Promise<PaymentRequestDetailsUpdate?> = @import("interfaces").Promise<PaymentRequestDetailsUpdate?>;
-const Promise<WindowClient?> = @import("interfaces").Promise<WindowClient?>;
-const Promise<PaymentHandlerResponse> = @import("interfaces").Promise<PaymentHandlerResponse>;
-const object = @import("interfaces").object;
+const PaymentMethodData = @import("dictionaries").PaymentMethodData;
+const WindowClient = @import("interfaces").WindowClient;
+const PaymentShippingOption = @import("dictionaries").PaymentShippingOption;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const PaymentRequestEventInit = @import("dictionaries").PaymentRequestEventInit;
-const FrozenArray<PaymentMethodData> = @import("interfaces").FrozenArray<PaymentMethodData>;
-const FrozenArray<PaymentDetailsModifier> = @import("interfaces").FrozenArray<PaymentDetailsModifier>;
 const AddressInit = @import("interfaces").AddressInit;
-const FrozenArray<PaymentShippingOption> = @import("interfaces").FrozenArray<PaymentShippingOption>;
+const USVString = @import("interfaces").USVString;
+const ExtendableEventInit = @import("dictionaries").ExtendableEventInit;
+const EventTarget = @import("interfaces").EventTarget;
+const PaymentDetailsModifier = @import("dictionaries").PaymentDetailsModifier;
+const EventInit = @import("dictionaries").EventInit;
+const PaymentRequestDetailsUpdate = @import("dictionaries").PaymentRequestDetailsUpdate;
+const PaymentHandlerResponse = @import("dictionaries").PaymentHandlerResponse;
+const DOMString = @import("typedefs").DOMString;
 
 pub const PaymentRequestEvent = struct {
     pub const Meta = struct {
@@ -41,11 +46,11 @@ pub const PaymentRequestEvent = struct {
             topOrigin: runtime.USVString = undefined,
             paymentRequestOrigin: runtime.USVString = undefined,
             paymentRequestId: runtime.DOMString = undefined,
-            methodData: FrozenArray<PaymentMethodData> = undefined,
+            methodData: runtime.FrozenArray(PaymentMethodData) = undefined,
             total: anyopaque = undefined,
-            modifiers: FrozenArray<PaymentDetailsModifier> = undefined,
+            modifiers: runtime.FrozenArray(PaymentDetailsModifier) = undefined,
             paymentOptions: ?anyopaque = null,
-            shippingOptions: ?FrozenArray<PaymentShippingOption> = null,
+            shippingOptions: ?runtime.FrozenArray(PaymentShippingOption) = null,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -98,17 +103,7 @@ pub const PaymentRequestEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PaymentRequestEventImpl.init(instance);
-        
-        return instance;
+        return PaymentRequestEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -122,11 +117,11 @@ pub const PaymentRequestEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, eventInitDict: PaymentRequestEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, eventInitDict: PaymentRequestEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try PaymentRequestEventImpl.constructor(instance, type_, eventInitDict);
+        try PaymentRequestEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -135,15 +130,15 @@ pub const PaymentRequestEvent = struct {
         return try PaymentRequestEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try PaymentRequestEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try PaymentRequestEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try PaymentRequestEventImpl.get_currentTarget(instance);
     }
 
@@ -228,9 +223,9 @@ pub const PaymentRequestEvent = struct {
         return try PaymentRequestEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try PaymentRequestEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try PaymentRequestEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_changePaymentMethod(instance: *runtime.Instance, methodName: DOMString, methodDetails: anyopaque) anyerror!anyopaque {

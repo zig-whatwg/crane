@@ -1,27 +1,26 @@
 //! Generated from: webtransport.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const WebTransportImpl = @import("impls").WebTransport;
-const Promise<WebTransportConnectionStats> = @import("interfaces").Promise<WebTransportConnectionStats>;
+const DOMString = @import("typedefs").DOMString;
+const WebTransportConnectionStats = @import("dictionaries").WebTransportConnectionStats;
+const WebTransportSendStream = @import("interfaces").WebTransportSendStream;
 const WebTransportDatagramDuplexStream = @import("interfaces").WebTransportDatagramDuplexStream;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
 const WebTransportReliabilityMode = @import("enums").WebTransportReliabilityMode;
+const USVString = @import("interfaces").USVString;
 const WebTransportOptions = @import("dictionaries").WebTransportOptions;
-const Promise<ArrayBuffer> = @import("interfaces").Promise<ArrayBuffer>;
-const unsigned short = @import("interfaces").unsigned short;
+const ArrayBuffer = @import("interfaces").ArrayBuffer;
+const WebTransportBidirectionalStream = @import("interfaces").WebTransportBidirectionalStream;
 const ReadableStream = @import("interfaces").ReadableStream;
 const BufferSource = @import("typedefs").BufferSource;
 const WebTransportSendStreamOptions = @import("dictionaries").WebTransportSendStreamOptions;
-const Promise<WebTransportCloseInfo> = @import("interfaces").Promise<WebTransportCloseInfo>;
-const Promise<WebTransportSendStream> = @import("interfaces").Promise<WebTransportSendStream>;
 const WebTransportCloseInfo = @import("dictionaries").WebTransportCloseInfo;
-const Promise<WebTransportBidirectionalStream> = @import("interfaces").Promise<WebTransportBidirectionalStream>;
-const WebTransportCongestionControl = @import("enums").WebTransportCongestionControl;
 const WebTransportSendGroup = @import("interfaces").WebTransportSendGroup;
+const WebTransportCongestionControl = @import("enums").WebTransportCongestionControl;
 
 pub const WebTransport = struct {
     pub const Meta = struct {
@@ -43,14 +42,14 @@ pub const WebTransport = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            ready: Promise<undefined> = undefined,
+            ready: runtime.Promise(undefined) = undefined,
             reliability: WebTransportReliabilityMode = undefined,
             congestionControl: WebTransportCongestionControl = undefined,
             anticipatedConcurrentIncomingUnidirectionalStreams: ?u16 = null,
             anticipatedConcurrentIncomingBidirectionalStreams: ?u16 = null,
             protocol: runtime.DOMString = undefined,
-            closed: Promise<WebTransportCloseInfo> = undefined,
-            draining: Promise<undefined> = undefined,
+            closed: runtime.Promise(WebTransportCloseInfo) = undefined,
+            draining: runtime.Promise(undefined) = undefined,
             datagrams: WebTransportDatagramDuplexStream = undefined,
             incomingBidirectionalStreams: ReadableStream = undefined,
             incomingUnidirectionalStreams: ReadableStream = undefined,
@@ -88,17 +87,7 @@ pub const WebTransport = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        WebTransportImpl.init(instance);
-        
-        return instance;
+        return WebTransportImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -134,22 +123,22 @@ pub const WebTransport = struct {
     }
 
     /// Extended attributes: [EnforceRange]
-    pub fn get_anticipatedConcurrentIncomingUnidirectionalStreams(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_anticipatedConcurrentIncomingUnidirectionalStreams(instance: *runtime.Instance) anyerror!u16 {
         return try WebTransportImpl.get_anticipatedConcurrentIncomingUnidirectionalStreams(instance);
     }
 
     /// Extended attributes: [EnforceRange]
-    pub fn set_anticipatedConcurrentIncomingUnidirectionalStreams(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_anticipatedConcurrentIncomingUnidirectionalStreams(instance: *runtime.Instance, value: u16) anyerror!void {
         try WebTransportImpl.set_anticipatedConcurrentIncomingUnidirectionalStreams(instance, value);
     }
 
     /// Extended attributes: [EnforceRange]
-    pub fn get_anticipatedConcurrentIncomingBidirectionalStreams(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_anticipatedConcurrentIncomingBidirectionalStreams(instance: *runtime.Instance) anyerror!u16 {
         return try WebTransportImpl.get_anticipatedConcurrentIncomingBidirectionalStreams(instance);
     }
 
     /// Extended attributes: [EnforceRange]
-    pub fn set_anticipatedConcurrentIncomingBidirectionalStreams(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_anticipatedConcurrentIncomingBidirectionalStreams(instance: *runtime.Instance, value: u16) anyerror!void {
         try WebTransportImpl.set_anticipatedConcurrentIncomingBidirectionalStreams(instance, value);
     }
 

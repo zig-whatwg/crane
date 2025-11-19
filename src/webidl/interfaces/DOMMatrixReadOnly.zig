@@ -1,5 +1,5 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,10 +9,11 @@ const DOMMatrixReadOnlyImpl = @import("impls").DOMMatrixReadOnly;
 const DOMPoint = @import("interfaces").DOMPoint;
 const DOMMatrixInit = @import("dictionaries").DOMMatrixInit;
 const Float32Array = @import("interfaces").Float32Array;
-const (DOMString or sequence) = @import("interfaces").(DOMString or sequence);
 const DOMMatrix = @import("interfaces").DOMMatrix;
 const Float64Array = @import("interfaces").Float64Array;
+const sequence = @import("interfaces").sequence;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
+const DOMString = @import("typedefs").DOMString;
 
 pub const DOMMatrixReadOnly = struct {
     pub const Meta = struct {
@@ -115,17 +116,7 @@ pub const DOMMatrixReadOnly = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        DOMMatrixReadOnlyImpl.init(instance);
-        
-        return instance;
+        return DOMMatrixReadOnlyImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -139,11 +130,11 @@ pub const DOMMatrixReadOnly = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, init: anyopaque) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, init_data: anyopaque) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try DOMMatrixReadOnlyImpl.constructor(instance, init);
+        try DOMMatrixReadOnlyImpl.constructor(instance, init_data);
         
         return instance;
     }

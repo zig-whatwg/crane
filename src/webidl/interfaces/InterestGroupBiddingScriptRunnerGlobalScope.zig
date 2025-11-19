@@ -1,5 +1,5 @@
 //! Generated from: turtledove.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,8 +7,13 @@ const std = @import("std");
 const runtime = @import("runtime");
 const InterestGroupBiddingScriptRunnerGlobalScopeImpl = @import("impls").InterestGroupBiddingScriptRunnerGlobalScope;
 const InterestGroupBiddingAndScoringScriptRunnerGlobalScope = @import("interfaces").InterestGroupBiddingAndScoringScriptRunnerGlobalScope;
-const (GenerateBidOutput or sequence) = @import("interfaces").(GenerateBidOutput or sequence);
-const double = @import("interfaces").double;
+const ProtectedAudienceUtilities = @import("interfaces").ProtectedAudienceUtilities;
+const sequence = @import("interfaces").sequence;
+const RealTimeReporting = @import("interfaces").RealTimeReporting;
+const GenerateBidOutput = @import("dictionaries").GenerateBidOutput;
+const ForDebuggingOnly = @import("interfaces").ForDebuggingOnly;
+const DOMString = @import("typedefs").DOMString;
+const PrivateAggregation = @import("interfaces").PrivateAggregation;
 
 pub const InterestGroupBiddingScriptRunnerGlobalScope = struct {
     pub const Meta = struct {
@@ -46,17 +51,7 @@ pub const InterestGroupBiddingScriptRunnerGlobalScope = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        InterestGroupBiddingScriptRunnerGlobalScopeImpl.init(instance);
-        
-        return instance;
+        return InterestGroupBiddingScriptRunnerGlobalScopeImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -69,7 +64,7 @@ pub const InterestGroupBiddingScriptRunnerGlobalScope = struct {
         deinit(instance);
     }
 
-    pub fn get_privateAggregation(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_privateAggregation(instance: *runtime.Instance) anyerror!PrivateAggregation {
         return try InterestGroupBiddingScriptRunnerGlobalScopeImpl.get_privateAggregation(instance);
     }
 
@@ -95,7 +90,7 @@ pub const InterestGroupBiddingScriptRunnerGlobalScope = struct {
         return try InterestGroupBiddingScriptRunnerGlobalScopeImpl.call_setPriority(instance, priority);
     }
 
-    pub fn call_setPrioritySignalsOverride(instance: *runtime.Instance, key: DOMString, priority: anyopaque) anyerror!void {
+    pub fn call_setPrioritySignalsOverride(instance: *runtime.Instance, key: DOMString, priority: f64) anyerror!void {
         
         return try InterestGroupBiddingScriptRunnerGlobalScopeImpl.call_setPrioritySignalsOverride(instance, key, priority);
     }

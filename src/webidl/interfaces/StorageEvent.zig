@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,9 +7,13 @@ const std = @import("std");
 const runtime = @import("runtime");
 const StorageEventImpl = @import("impls").StorageEvent;
 const Event = @import("interfaces").Event;
-const DOMString = @import("typedefs").DOMString;
 const Storage = @import("interfaces").Storage;
+const EventTarget = @import("interfaces").EventTarget;
 const StorageEventInit = @import("dictionaries").StorageEventInit;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
+const USVString = @import("interfaces").USVString;
+const DOMString = @import("typedefs").DOMString;
 
 pub const StorageEvent = struct {
     pub const Meta = struct {
@@ -81,17 +85,7 @@ pub const StorageEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        StorageEventImpl.init(instance);
-        
-        return instance;
+        return StorageEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -105,11 +99,11 @@ pub const StorageEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, eventInitDict: StorageEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, eventInitDict: StorageEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try StorageEventImpl.constructor(instance, type_, eventInitDict);
+        try StorageEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -118,15 +112,15 @@ pub const StorageEvent = struct {
         return try StorageEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try StorageEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try StorageEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try StorageEventImpl.get_currentTarget(instance);
     }
 
@@ -175,15 +169,15 @@ pub const StorageEvent = struct {
         return try StorageEventImpl.get_timeStamp(instance);
     }
 
-    pub fn get_key(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_key(instance: *runtime.Instance) anyerror!DOMString {
         return try StorageEventImpl.get_key(instance);
     }
 
-    pub fn get_oldValue(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_oldValue(instance: *runtime.Instance) anyerror!DOMString {
         return try StorageEventImpl.get_oldValue(instance);
     }
 
-    pub fn get_newValue(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_newValue(instance: *runtime.Instance) anyerror!DOMString {
         return try StorageEventImpl.get_newValue(instance);
     }
 
@@ -191,7 +185,7 @@ pub const StorageEvent = struct {
         return try StorageEventImpl.get_url(instance);
     }
 
-    pub fn get_storageArea(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_storageArea(instance: *runtime.Instance) anyerror!Storage {
         return try StorageEventImpl.get_storageArea(instance);
     }
 
@@ -199,14 +193,14 @@ pub const StorageEvent = struct {
         return try StorageEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try StorageEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try StorageEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
-    pub fn call_initStorageEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool, key: anyopaque, oldValue: anyopaque, newValue: anyopaque, url: runtime.USVString, storageArea: anyopaque) anyerror!void {
+    pub fn call_initStorageEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool, key: DOMString, oldValue: DOMString, newValue: DOMString, url: runtime.USVString, storageArea: Storage) anyerror!void {
         
-        return try StorageEventImpl.call_initStorageEvent(instance, type_, bubbles, cancelable, key, oldValue, newValue, url, storageArea);
+        return try StorageEventImpl.call_initStorageEvent(instance, @"type", bubbles, cancelable, key, oldValue, newValue, url, storageArea);
     }
 
     pub fn call_composedPath(instance: *runtime.Instance) anyerror!anyopaque {

@@ -1,5 +1,5 @@
 //! Generated from: uievents.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,13 @@ const std = @import("std");
 const runtime = @import("runtime");
 const FocusEventImpl = @import("impls").FocusEvent;
 const UIEvent = @import("interfaces").UIEvent;
+const UIEventInit = @import("dictionaries").UIEventInit;
+const Window = @import("interfaces").Window;
 const EventTarget = @import("interfaces").EventTarget;
+const InputDeviceCapabilities = @import("interfaces").InputDeviceCapabilities;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
+const DOMString = @import("typedefs").DOMString;
 const FocusEventInit = @import("dictionaries").FocusEventInit;
 
 pub const FocusEvent = struct {
@@ -76,17 +82,7 @@ pub const FocusEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        FocusEventImpl.init(instance);
-        
-        return instance;
+        return FocusEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -100,11 +96,11 @@ pub const FocusEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, eventInitDict: FocusEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, eventInitDict: FocusEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try FocusEventImpl.constructor(instance, type_, eventInitDict);
+        try FocusEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -113,15 +109,15 @@ pub const FocusEvent = struct {
         return try FocusEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try FocusEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try FocusEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try FocusEventImpl.get_currentTarget(instance);
     }
 
@@ -170,7 +166,7 @@ pub const FocusEvent = struct {
         return try FocusEventImpl.get_timeStamp(instance);
     }
 
-    pub fn get_view(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_view(instance: *runtime.Instance) anyerror!Window {
         return try FocusEventImpl.get_view(instance);
     }
 
@@ -182,11 +178,11 @@ pub const FocusEvent = struct {
         return try FocusEventImpl.get_which(instance);
     }
 
-    pub fn get_sourceCapabilities(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_sourceCapabilities(instance: *runtime.Instance) anyerror!InputDeviceCapabilities {
         return try FocusEventImpl.get_sourceCapabilities(instance);
     }
 
-    pub fn get_relatedTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_relatedTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try FocusEventImpl.get_relatedTarget(instance);
     }
 
@@ -194,9 +190,9 @@ pub const FocusEvent = struct {
         return try FocusEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try FocusEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try FocusEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_composedPath(instance: *runtime.Instance) anyerror!anyopaque {
@@ -207,7 +203,7 @@ pub const FocusEvent = struct {
         return try FocusEventImpl.call_stopPropagation(instance);
     }
 
-    pub fn call_initUIEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: anyopaque, detailArg: i32) anyerror!void {
+    pub fn call_initUIEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: Window, detailArg: i32) anyerror!void {
         
         return try FocusEventImpl.call_initUIEvent(instance, typeArg, bubblesArg, cancelableArg, viewArg, detailArg);
     }

@@ -1,5 +1,5 @@
 //! Generated from: webtransport.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,13 @@ const std = @import("std");
 const runtime = @import("runtime");
 const WebTransportReceiveStreamImpl = @import("impls").WebTransportReceiveStream;
 const ReadableStream = @import("interfaces").ReadableStream;
-const Promise<WebTransportReceiveStreamStats> = @import("interfaces").Promise<WebTransportReceiveStreamStats>;
+const ReadableWritablePair = @import("dictionaries").ReadableWritablePair;
+const ReadableStreamGetReaderOptions = @import("dictionaries").ReadableStreamGetReaderOptions;
+const StreamPipeOptions = @import("dictionaries").StreamPipeOptions;
+const QueuingStrategy = @import("dictionaries").QueuingStrategy;
+const ReadableStreamReader = @import("typedefs").ReadableStreamReader;
+const WebTransportReceiveStreamStats = @import("dictionaries").WebTransportReceiveStreamStats;
+const WritableStream = @import("interfaces").WritableStream;
 
 pub const WebTransportReceiveStream = struct {
     pub const Meta = struct {
@@ -50,17 +56,7 @@ pub const WebTransportReceiveStream = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        WebTransportReceiveStreamImpl.init(instance);
-        
-        return instance;
+        return WebTransportReceiveStreamImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

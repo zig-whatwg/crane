@@ -1,5 +1,5 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,6 @@ const runtime = @import("runtime");
 const EncodedAudioChunkImpl = @import("impls").EncodedAudioChunk;
 const AllowSharedBufferSource = @import("typedefs").AllowSharedBufferSource;
 const EncodedAudioChunkType = @import("enums").EncodedAudioChunkType;
-const unsigned long long = @import("interfaces").unsigned long long;
 const EncodedAudioChunkInit = @import("dictionaries").EncodedAudioChunkInit;
 
 pub const EncodedAudioChunk = struct {
@@ -31,7 +30,7 @@ pub const EncodedAudioChunk = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            type: EncodedAudioChunkType = undefined,
+            @"type": EncodedAudioChunkType = undefined,
             timestamp: i64 = undefined,
             duration: ?u64 = null,
             byteLength: u32 = undefined,
@@ -53,17 +52,7 @@ pub const EncodedAudioChunk = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        EncodedAudioChunkImpl.init(instance);
-        
-        return instance;
+        return EncodedAudioChunkImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -77,11 +66,11 @@ pub const EncodedAudioChunk = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, init: EncodedAudioChunkInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, init_data: EncodedAudioChunkInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try EncodedAudioChunkImpl.constructor(instance, init);
+        try EncodedAudioChunkImpl.constructor(instance, init_data);
         
         return instance;
     }
@@ -94,7 +83,7 @@ pub const EncodedAudioChunk = struct {
         return try EncodedAudioChunkImpl.get_timestamp(instance);
     }
 
-    pub fn get_duration(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_duration(instance: *runtime.Instance) anyerror!u64 {
         return try EncodedAudioChunkImpl.get_duration(instance);
     }
 

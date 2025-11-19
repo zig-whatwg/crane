@@ -1,12 +1,12 @@
 //! Generated from: webusb.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const USBConfigurationImpl = @import("impls").USBConfiguration;
-const FrozenArray<USBInterface> = @import("interfaces").FrozenArray<USBInterface>;
+const USBInterface = @import("interfaces").USBInterface;
 const USBDevice = @import("interfaces").USBDevice;
 const DOMString = @import("typedefs").DOMString;
 
@@ -32,7 +32,7 @@ pub const USBConfiguration = struct {
         struct {
             configurationValue: u8 = undefined,
             configurationName: ?runtime.DOMString = null,
-            interfaces: FrozenArray<USBInterface> = undefined,
+            interfaces: runtime.FrozenArray(USBInterface) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -48,17 +48,7 @@ pub const USBConfiguration = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        USBConfigurationImpl.init(instance);
-        
-        return instance;
+        return USBConfigurationImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -85,7 +75,7 @@ pub const USBConfiguration = struct {
         return try USBConfigurationImpl.get_configurationValue(instance);
     }
 
-    pub fn get_configurationName(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_configurationName(instance: *runtime.Instance) anyerror!DOMString {
         return try USBConfigurationImpl.get_configurationName(instance);
     }
 

@@ -13,16 +13,25 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Initialize instance
-pub fn init(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Initialize your instance state here
+/// Initialize instance (delegates to runtime.Instance.init)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable);
+    // TODO: Add custom initialization here if needed
+    // const state = instance.getState(StateType);
+    // state.* = .{}; // Initialize fields
+    return instance;
 }
 
-/// Deinitialize instance
+/// Deinitialize instance (delegates to runtime.Instance.deinit)
 pub fn deinit(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Clean up your instance resources here
+    // TODO: Add custom cleanup here if needed
+    // const state = instance.getState(State);
+    // Clean up fields...
+    runtime.Instance.deinit(instance);
 }
 
 /// Constructor implementation
@@ -62,35 +71,35 @@ pub fn get_errorDetail(instance: *runtime.Instance) ImplError!anyopaque {
 }
 
 /// Getter for sdpLineNumber
-pub fn get_sdpLineNumber(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_sdpLineNumber(instance: *runtime.Instance) ImplError!i32 {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for sctpCauseCode
-pub fn get_sctpCauseCode(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_sctpCauseCode(instance: *runtime.Instance) ImplError!i32 {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for receivedAlert
-pub fn get_receivedAlert(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_receivedAlert(instance: *runtime.Instance) ImplError!u32 {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for sentAlert
-pub fn get_sentAlert(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_sentAlert(instance: *runtime.Instance) ImplError!u32 {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for httpRequestStatusCode
-pub fn get_httpRequestStatusCode(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_httpRequestStatusCode(instance: *runtime.Instance) ImplError!i32 {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;

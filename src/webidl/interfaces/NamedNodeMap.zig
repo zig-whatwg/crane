@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -48,17 +48,7 @@ pub const NamedNodeMap = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        NamedNodeMapImpl.init(instance);
-        
-        return instance;
+        return NamedNodeMapImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -75,23 +65,23 @@ pub const NamedNodeMap = struct {
         return try NamedNodeMapImpl.get_length(instance);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!anyopaque {
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!Attr {
         
         return try NamedNodeMapImpl.call_item(instance, index);
     }
 
-    pub fn call_getNamedItemNS(instance: *runtime.Instance, namespace: anyopaque, localName: DOMString) anyerror!anyopaque {
+    pub fn call_getNamedItemNS(instance: *runtime.Instance, namespace: DOMString, localName: DOMString) anyerror!Attr {
         
         return try NamedNodeMapImpl.call_getNamedItemNS(instance, namespace, localName);
     }
 
-    pub fn call_getNamedItem(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!anyopaque {
+    pub fn call_getNamedItem(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!Attr {
         
         return try NamedNodeMapImpl.call_getNamedItem(instance, qualifiedName);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_setNamedItemNS(instance: *runtime.Instance, attr: Attr) anyerror!anyopaque {
+    pub fn call_setNamedItemNS(instance: *runtime.Instance, attr: Attr) anyerror!Attr {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -111,7 +101,7 @@ pub const NamedNodeMap = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_removeNamedItemNS(instance: *runtime.Instance, namespace: anyopaque, localName: DOMString) anyerror!Attr {
+    pub fn call_removeNamedItemNS(instance: *runtime.Instance, namespace: DOMString, localName: DOMString) anyerror!Attr {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -121,7 +111,7 @@ pub const NamedNodeMap = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_setNamedItem(instance: *runtime.Instance, attr: Attr) anyerror!anyopaque {
+    pub fn call_setNamedItem(instance: *runtime.Instance, attr: Attr) anyerror!Attr {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

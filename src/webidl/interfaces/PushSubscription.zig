@@ -1,5 +1,5 @@
 //! Generated from: push-api.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,9 +8,9 @@ const runtime = @import("runtime");
 const PushSubscriptionImpl = @import("impls").PushSubscription;
 const EpochTimeStamp = @import("typedefs").EpochTimeStamp;
 const ArrayBuffer = @import("interfaces").ArrayBuffer;
-const Promise<boolean> = @import("interfaces").Promise<boolean>;
-const PushSubscriptionJSON = @import("dictionaries").PushSubscriptionJSON;
 const PushSubscriptionOptions = @import("interfaces").PushSubscriptionOptions;
+const PushSubscriptionJSON = @import("dictionaries").PushSubscriptionJSON;
+const USVString = @import("interfaces").USVString;
 const PushEncryptionKeyName = @import("enums").PushEncryptionKeyName;
 
 pub const PushSubscription = struct {
@@ -55,17 +55,7 @@ pub const PushSubscription = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PushSubscriptionImpl.init(instance);
-        
-        return instance;
+        return PushSubscriptionImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -82,7 +72,7 @@ pub const PushSubscription = struct {
         return try PushSubscriptionImpl.get_endpoint(instance);
     }
 
-    pub fn get_expirationTime(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_expirationTime(instance: *runtime.Instance) anyerror!EpochTimeStamp {
         return try PushSubscriptionImpl.get_expirationTime(instance);
     }
 

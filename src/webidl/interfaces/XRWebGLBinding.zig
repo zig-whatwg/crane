@@ -1,5 +1,5 @@
 //! Generated from: webxrlayers.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -73,17 +73,7 @@ pub const XRWebGLBinding = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        XRWebGLBindingImpl.init(instance);
-        
-        return instance;
+        return XRWebGLBindingImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -114,24 +104,24 @@ pub const XRWebGLBinding = struct {
         return try XRWebGLBindingImpl.get_usesDepthValues(instance);
     }
 
-    pub fn call_getCameraImage(instance: *runtime.Instance, camera: XRCamera) anyerror!anyopaque {
+    pub fn call_getCameraImage(instance: *runtime.Instance, camera: XRCamera) anyerror!WebGLTexture {
         
         return try XRWebGLBindingImpl.call_getCameraImage(instance, camera);
     }
 
-    pub fn call_createCylinderLayer(instance: *runtime.Instance, init: XRCylinderLayerInit) anyerror!XRCylinderLayer {
+    pub fn call_createCylinderLayer(instance: *runtime.Instance, init_data: XRCylinderLayerInit) anyerror!XRCylinderLayer {
         
-        return try XRWebGLBindingImpl.call_createCylinderLayer(instance, init);
+        return try XRWebGLBindingImpl.call_createCylinderLayer(instance, init_data);
     }
 
-    pub fn call_createCubeLayer(instance: *runtime.Instance, init: XRCubeLayerInit) anyerror!XRCubeLayer {
+    pub fn call_createCubeLayer(instance: *runtime.Instance, init_data: XRCubeLayerInit) anyerror!XRCubeLayer {
         
-        return try XRWebGLBindingImpl.call_createCubeLayer(instance, init);
+        return try XRWebGLBindingImpl.call_createCubeLayer(instance, init_data);
     }
 
-    pub fn call_createQuadLayer(instance: *runtime.Instance, init: XRQuadLayerInit) anyerror!XRQuadLayer {
+    pub fn call_createQuadLayer(instance: *runtime.Instance, init_data: XRQuadLayerInit) anyerror!XRQuadLayer {
         
-        return try XRWebGLBindingImpl.call_createQuadLayer(instance, init);
+        return try XRWebGLBindingImpl.call_createQuadLayer(instance, init_data);
     }
 
     pub fn call_getSubImage(instance: *runtime.Instance, layer: XRCompositionLayer, frame: XRFrame, eye: XREye) anyerror!XRWebGLSubImage {
@@ -144,19 +134,19 @@ pub const XRWebGLBinding = struct {
         return try XRWebGLBindingImpl.call_getViewSubImage(instance, layer, view);
     }
 
-    pub fn call_getReflectionCubeMap(instance: *runtime.Instance, lightProbe: XRLightProbe) anyerror!anyopaque {
+    pub fn call_getReflectionCubeMap(instance: *runtime.Instance, lightProbe: XRLightProbe) anyerror!WebGLTexture {
         
         return try XRWebGLBindingImpl.call_getReflectionCubeMap(instance, lightProbe);
     }
 
-    pub fn call_createProjectionLayer(instance: *runtime.Instance, init: XRProjectionLayerInit) anyerror!XRProjectionLayer {
+    pub fn call_createProjectionLayer(instance: *runtime.Instance, init_data: XRProjectionLayerInit) anyerror!XRProjectionLayer {
         
-        return try XRWebGLBindingImpl.call_createProjectionLayer(instance, init);
+        return try XRWebGLBindingImpl.call_createProjectionLayer(instance, init_data);
     }
 
-    pub fn call_createEquirectLayer(instance: *runtime.Instance, init: XREquirectLayerInit) anyerror!XREquirectLayer {
+    pub fn call_createEquirectLayer(instance: *runtime.Instance, init_data: XREquirectLayerInit) anyerror!XREquirectLayer {
         
-        return try XRWebGLBindingImpl.call_createEquirectLayer(instance, init);
+        return try XRWebGLBindingImpl.call_createEquirectLayer(instance, init_data);
     }
 
     pub fn call_foveateBoundTexture(instance: *runtime.Instance, target: GLenum, fixed_foveation: f32) anyerror!void {
@@ -164,7 +154,7 @@ pub const XRWebGLBinding = struct {
         return try XRWebGLBindingImpl.call_foveateBoundTexture(instance, target, fixed_foveation);
     }
 
-    pub fn call_getDepthInformation(instance: *runtime.Instance, view: XRView) anyerror!anyopaque {
+    pub fn call_getDepthInformation(instance: *runtime.Instance, view: XRView) anyerror!XRWebGLDepthInformation {
         
         return try XRWebGLBindingImpl.call_getDepthInformation(instance, view);
     }

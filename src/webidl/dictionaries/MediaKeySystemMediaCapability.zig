@@ -6,6 +6,6 @@ const runtime = @import("runtime");
 
 pub const MediaKeySystemMediaCapability = struct {
     contentType: ?runtime.DOMString = null,
-    encryptionScheme: ?anyopaque = null,
+    encryptionScheme: ?runtime.DOMString = null,
     robustness: ?runtime.DOMString = null,
 };

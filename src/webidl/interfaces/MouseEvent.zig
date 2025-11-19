@@ -1,5 +1,5 @@
 //! Generated from: uievents.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,8 +8,13 @@ const runtime = @import("runtime");
 const MouseEventImpl = @import("impls").MouseEvent;
 const UIEvent = @import("interfaces").UIEvent;
 const Window = @import("interfaces").Window;
-const MouseEventInit = @import("dictionaries").MouseEventInit;
+const UIEventInit = @import("dictionaries").UIEventInit;
 const EventTarget = @import("interfaces").EventTarget;
+const InputDeviceCapabilities = @import("interfaces").InputDeviceCapabilities;
+const MouseEventInit = @import("dictionaries").MouseEventInit;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
+const DOMString = @import("typedefs").DOMString;
 
 pub const MouseEvent = struct {
     pub const Meta = struct {
@@ -47,12 +52,8 @@ pub const MouseEvent = struct {
             relatedTarget: ?EventTarget = null,
             movementX: f64 = undefined,
             movementY: f64 = undefined,
-            screenX: f64 = undefined,
-            screenY: f64 = undefined,
             pageX: f64 = undefined,
             pageY: f64 = undefined,
-            clientX: f64 = undefined,
-            clientY: f64 = undefined,
             x: f64 = undefined,
             y: f64 = undefined,
             offsetX: f64 = undefined,
@@ -76,8 +77,6 @@ pub const MouseEvent = struct {
         .get_cancelBubble = &get_cancelBubble,
         .get_cancelable = &get_cancelable,
         .get_clientX = &get_clientX,
-        .get_clientX = &get_clientX,
-        .get_clientY = &get_clientY,
         .get_clientY = &get_clientY,
         .get_composed = &get_composed,
         .get_ctrlKey = &get_ctrlKey,
@@ -98,8 +97,6 @@ pub const MouseEvent = struct {
         .get_relatedTarget = &get_relatedTarget,
         .get_returnValue = &get_returnValue,
         .get_screenX = &get_screenX,
-        .get_screenX = &get_screenX,
-        .get_screenY = &get_screenY,
         .get_screenY = &get_screenY,
         .get_shiftKey = &get_shiftKey,
         .get_sourceCapabilities = &get_sourceCapabilities,
@@ -127,17 +124,7 @@ pub const MouseEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        MouseEventImpl.init(instance);
-        
-        return instance;
+        return MouseEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -151,11 +138,11 @@ pub const MouseEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, eventInitDict: MouseEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, eventInitDict: MouseEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try MouseEventImpl.constructor(instance, type_, eventInitDict);
+        try MouseEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -164,15 +151,15 @@ pub const MouseEvent = struct {
         return try MouseEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try MouseEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try MouseEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try MouseEventImpl.get_currentTarget(instance);
     }
 
@@ -221,7 +208,7 @@ pub const MouseEvent = struct {
         return try MouseEventImpl.get_timeStamp(instance);
     }
 
-    pub fn get_view(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_view(instance: *runtime.Instance) anyerror!Window {
         return try MouseEventImpl.get_view(instance);
     }
 
@@ -233,7 +220,7 @@ pub const MouseEvent = struct {
         return try MouseEventImpl.get_which(instance);
     }
 
-    pub fn get_sourceCapabilities(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_sourceCapabilities(instance: *runtime.Instance) anyerror!InputDeviceCapabilities {
         return try MouseEventImpl.get_sourceCapabilities(instance);
     }
 
@@ -285,7 +272,7 @@ pub const MouseEvent = struct {
         return try MouseEventImpl.get_buttons(instance);
     }
 
-    pub fn get_relatedTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_relatedTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try MouseEventImpl.get_relatedTarget(instance);
     }
 
@@ -297,28 +284,12 @@ pub const MouseEvent = struct {
         return try MouseEventImpl.get_movementY(instance);
     }
 
-    pub fn get_screenX(instance: *runtime.Instance) anyerror!f64 {
-        return try MouseEventImpl.get_screenX(instance);
-    }
-
-    pub fn get_screenY(instance: *runtime.Instance) anyerror!f64 {
-        return try MouseEventImpl.get_screenY(instance);
-    }
-
     pub fn get_pageX(instance: *runtime.Instance) anyerror!f64 {
         return try MouseEventImpl.get_pageX(instance);
     }
 
     pub fn get_pageY(instance: *runtime.Instance) anyerror!f64 {
         return try MouseEventImpl.get_pageY(instance);
-    }
-
-    pub fn get_clientX(instance: *runtime.Instance) anyerror!f64 {
-        return try MouseEventImpl.get_clientX(instance);
-    }
-
-    pub fn get_clientY(instance: *runtime.Instance) anyerror!f64 {
-        return try MouseEventImpl.get_clientY(instance);
     }
 
     pub fn get_x(instance: *runtime.Instance) anyerror!f64 {
@@ -341,12 +312,12 @@ pub const MouseEvent = struct {
         return try MouseEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try MouseEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try MouseEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
-    pub fn call_initMouseEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: anyopaque, detailArg: i32, screenXArg: i32, screenYArg: i32, clientXArg: i32, clientYArg: i32, ctrlKeyArg: bool, altKeyArg: bool, shiftKeyArg: bool, metaKeyArg: bool, buttonArg: i16, relatedTargetArg: anyopaque) anyerror!void {
+    pub fn call_initMouseEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: Window, detailArg: i32, screenXArg: i32, screenYArg: i32, clientXArg: i32, clientYArg: i32, ctrlKeyArg: bool, altKeyArg: bool, shiftKeyArg: bool, metaKeyArg: bool, buttonArg: i16, relatedTargetArg: EventTarget) anyerror!void {
         
         return try MouseEventImpl.call_initMouseEvent(instance, typeArg, bubblesArg, cancelableArg, viewArg, detailArg, screenXArg, screenYArg, clientXArg, clientYArg, ctrlKeyArg, altKeyArg, shiftKeyArg, metaKeyArg, buttonArg, relatedTargetArg);
     }
@@ -356,7 +327,7 @@ pub const MouseEvent = struct {
         return try MouseEventImpl.call_getModifierState(instance, keyArg);
     }
 
-    pub fn call_initUIEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: anyopaque, detailArg: i32) anyerror!void {
+    pub fn call_initUIEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: Window, detailArg: i32) anyerror!void {
         
         return try MouseEventImpl.call_initUIEvent(instance, typeArg, bubblesArg, cancelableArg, viewArg, detailArg);
     }

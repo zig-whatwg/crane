@@ -1,5 +1,5 @@
 //! Generated from: mediasession.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,11 +7,10 @@ const std = @import("std");
 const runtime = @import("runtime");
 const MediaSessionImpl = @import("impls").MediaSession;
 const MediaSessionPlaybackState = @import("enums").MediaSessionPlaybackState;
+const MediaPositionState = @import("dictionaries").MediaPositionState;
 const MediaSessionActionHandler = @import("callbacks").MediaSessionActionHandler;
 const MediaSessionAction = @import("enums").MediaSessionAction;
 const MediaMetadata = @import("interfaces").MediaMetadata;
-const MediaPositionState = @import("dictionaries").MediaPositionState;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
 
 pub const MediaSession = struct {
     pub const Meta = struct {
@@ -54,17 +53,7 @@ pub const MediaSession = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        MediaSessionImpl.init(instance);
-        
-        return instance;
+        return MediaSessionImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -77,11 +66,11 @@ pub const MediaSession = struct {
         deinit(instance);
     }
 
-    pub fn get_metadata(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_metadata(instance: *runtime.Instance) anyerror!MediaMetadata {
         return try MediaSessionImpl.get_metadata(instance);
     }
 
-    pub fn set_metadata(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_metadata(instance: *runtime.Instance, value: MediaMetadata) anyerror!void {
         try MediaSessionImpl.set_metadata(instance, value);
     }
 
@@ -113,7 +102,7 @@ pub const MediaSession = struct {
         return try MediaSessionImpl.call_setScreenshareActive(instance, active);
     }
 
-    pub fn call_setActionHandler(instance: *runtime.Instance, action: MediaSessionAction, handler: anyopaque) anyerror!void {
+    pub fn call_setActionHandler(instance: *runtime.Instance, action: MediaSessionAction, handler: MediaSessionActionHandler) anyerror!void {
         
         return try MediaSessionImpl.call_setActionHandler(instance, action, handler);
     }

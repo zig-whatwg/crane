@@ -9,8 +9,8 @@ pub const WebTransportOptions = struct {
     requireUnreliable: ?bool = null,
     serverCertificateHashes: ?anyopaque = null,
     congestionControl: ?anyopaque = null,
-    anticipatedConcurrentIncomingUnidirectionalStreams: ?anyopaque = null,
-    anticipatedConcurrentIncomingBidirectionalStreams: ?anyopaque = null,
+    anticipatedConcurrentIncomingUnidirectionalStreams: ?u16 = null,
+    anticipatedConcurrentIncomingBidirectionalStreams: ?u16 = null,
     protocols: ?anyopaque = null,
     datagramsReadableMode: ?anyopaque = null,
 };

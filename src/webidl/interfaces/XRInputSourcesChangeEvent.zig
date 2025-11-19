@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,9 +7,13 @@ const std = @import("std");
 const runtime = @import("runtime");
 const XRInputSourcesChangeEventImpl = @import("impls").XRInputSourcesChangeEvent;
 const Event = @import("interfaces").Event;
+const XRInputSource = @import("interfaces").XRInputSource;
+const EventTarget = @import("interfaces").EventTarget;
 const XRInputSourcesChangeEventInit = @import("dictionaries").XRInputSourcesChangeEventInit;
 const XRSession = @import("interfaces").XRSession;
-const FrozenArray<XRInputSource> = @import("interfaces").FrozenArray<XRInputSource>;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
+const DOMString = @import("typedefs").DOMString;
 
 pub const XRInputSourcesChangeEvent = struct {
     pub const Meta = struct {
@@ -34,8 +38,8 @@ pub const XRInputSourcesChangeEvent = struct {
     pub const State = runtime.FlattenedState(
         struct {
             session: XRSession = undefined,
-            added: FrozenArray<XRInputSource> = undefined,
-            removed: FrozenArray<XRInputSource> = undefined,
+            added: runtime.FrozenArray(XRInputSource) = undefined,
+            removed: runtime.FrozenArray(XRInputSource) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -77,17 +81,7 @@ pub const XRInputSourcesChangeEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        XRInputSourcesChangeEventImpl.init(instance);
-        
-        return instance;
+        return XRInputSourcesChangeEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -101,11 +95,11 @@ pub const XRInputSourcesChangeEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, eventInitDict: XRInputSourcesChangeEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, eventInitDict: XRInputSourcesChangeEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try XRInputSourcesChangeEventImpl.constructor(instance, type_, eventInitDict);
+        try XRInputSourcesChangeEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -114,15 +108,15 @@ pub const XRInputSourcesChangeEvent = struct {
         return try XRInputSourcesChangeEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try XRInputSourcesChangeEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try XRInputSourcesChangeEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try XRInputSourcesChangeEventImpl.get_currentTarget(instance);
     }
 
@@ -211,9 +205,9 @@ pub const XRInputSourcesChangeEvent = struct {
         return try XRInputSourcesChangeEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try XRInputSourcesChangeEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try XRInputSourcesChangeEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_composedPath(instance: *runtime.Instance) anyerror!anyopaque {

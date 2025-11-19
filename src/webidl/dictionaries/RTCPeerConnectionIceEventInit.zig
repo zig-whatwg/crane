@@ -10,5 +10,5 @@ pub const RTCPeerConnectionIceEventInit = struct {
     base: EventInit,
 
     candidate: ?anyopaque = null,
-    url: ?anyopaque = null,
+    url: ?runtime.DOMString = null,
 };

@@ -5,7 +5,7 @@
 const runtime = @import("runtime");
 
 pub const DeviceMotionEventRotationRateInit = struct {
-    alpha: ?anyopaque = null,
-    beta: ?anyopaque = null,
-    gamma: ?anyopaque = null,
+    alpha: ?f64 = null,
+    beta: ?f64 = null,
+    gamma: ?f64 = null,
 };

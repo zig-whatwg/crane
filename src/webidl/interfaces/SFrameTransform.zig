@@ -1,5 +1,5 @@
 //! Generated from: webrtc-encoded-transform.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,11 +8,17 @@ const runtime = @import("runtime");
 const SFrameTransformImpl = @import("impls").SFrameTransform;
 const EventTarget = @import("interfaces").EventTarget;
 const SFrameKeyManagement = @import("interfaces").SFrameKeyManagement;
-const SFrameTransformOptions = @import("dictionaries").SFrameTransformOptions;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
-const CryptoKeyID = @import("typedefs").CryptoKeyID;
-const EventHandler = @import("typedefs").EventHandler;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const CryptoKey = @import("interfaces").CryptoKey;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const SFrameTransformOptions = @import("dictionaries").SFrameTransformOptions;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
+const CryptoKeyID = @import("typedefs").CryptoKeyID;
+const DOMString = @import("typedefs").DOMString;
+const EventHandler = @import("typedefs").EventHandler;
 
 pub const SFrameTransform = struct {
     pub const Meta = struct {
@@ -54,17 +60,7 @@ pub const SFrameTransform = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        SFrameTransformImpl.init(instance);
-        
-        return instance;
+        return SFrameTransformImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -105,19 +101,19 @@ pub const SFrameTransform = struct {
         return try SFrameTransformImpl.call_setEncryptionKey(instance, key, keyID);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try SFrameTransformImpl.call_when(instance, type_, options);
+        return try SFrameTransformImpl.call_when(instance, @"type", options);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try SFrameTransformImpl.call_addEventListener(instance, type_, callback, options);
+        return try SFrameTransformImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try SFrameTransformImpl.call_removeEventListener(instance, type_, callback, options);
+        return try SFrameTransformImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

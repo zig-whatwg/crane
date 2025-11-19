@@ -1,11 +1,12 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const CSSVariableReferenceValueImpl = @import("impls").CSSVariableReferenceValue;
+const USVString = @import("interfaces").USVString;
 const CSSUnparsedValue = @import("interfaces").CSSUnparsedValue;
 
 pub const CSSVariableReferenceValue = struct {
@@ -47,17 +48,7 @@ pub const CSSVariableReferenceValue = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        CSSVariableReferenceValueImpl.init(instance);
-        
-        return instance;
+        return CSSVariableReferenceValueImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -71,7 +62,7 @@ pub const CSSVariableReferenceValue = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, variable: runtime.USVString, fallback: anyopaque) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, variable: runtime.USVString, fallback: CSSUnparsedValue) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
@@ -88,7 +79,7 @@ pub const CSSVariableReferenceValue = struct {
         try CSSVariableReferenceValueImpl.set_variable(instance, value);
     }
 
-    pub fn get_fallback(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_fallback(instance: *runtime.Instance) anyerror!CSSUnparsedValue {
         return try CSSVariableReferenceValueImpl.get_fallback(instance);
     }
 

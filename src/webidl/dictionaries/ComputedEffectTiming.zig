@@ -11,7 +11,7 @@ pub const ComputedEffectTiming = struct {
 
     endTime: ?f64 = null,
     activeDuration: ?f64 = null,
-    localTime: ?anyopaque = null,
-    progress: ?anyopaque = null,
-    currentIteration: ?anyopaque = null,
+    localTime: ?f64 = null,
+    progress: ?f64 = null,
+    currentIteration: ?f64 = null,
 };

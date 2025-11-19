@@ -1,5 +1,5 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,8 +8,7 @@ const runtime = @import("runtime");
 const ReadableStreamDefaultReaderImpl = @import("impls").ReadableStreamDefaultReader;
 const ReadableStreamGenericReader = @import("interfaces").ReadableStreamGenericReader;
 const ReadableStream = @import("interfaces").ReadableStream;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
-const Promise<ReadableStreamReadResult> = @import("interfaces").Promise<ReadableStreamReadResult>;
+const ReadableStreamReadResult = @import("dictionaries").ReadableStreamReadResult;
 
 pub const ReadableStreamDefaultReader = struct {
     pub const Meta = struct {
@@ -29,7 +28,7 @@ pub const ReadableStreamDefaultReader = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            closed: Promise<undefined> = undefined,
+            closed: runtime.Promise(undefined) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -47,17 +46,7 @@ pub const ReadableStreamDefaultReader = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ReadableStreamDefaultReaderImpl.init(instance);
-        
-        return instance;
+        return ReadableStreamDefaultReaderImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

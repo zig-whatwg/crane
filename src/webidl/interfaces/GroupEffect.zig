@@ -1,15 +1,14 @@
 //! Generated from: web-animations-2.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const GroupEffectImpl = @import("impls").GroupEffect;
-const sequence = @import("interfaces").sequence;
 const AnimationNodeList = @import("interfaces").AnimationNodeList;
 const AnimationEffect = @import("interfaces").AnimationEffect;
-const (unrestricted double or EffectTiming) = @import("interfaces").(unrestricted double or EffectTiming);
+const EffectTiming = @import("dictionaries").EffectTiming;
 
 pub const GroupEffect = struct {
     pub const Meta = struct {
@@ -49,17 +48,7 @@ pub const GroupEffect = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        GroupEffectImpl.init(instance);
-        
-        return instance;
+        return GroupEffectImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -86,11 +75,11 @@ pub const GroupEffect = struct {
         return try GroupEffectImpl.get_children(instance);
     }
 
-    pub fn get_firstChild(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_firstChild(instance: *runtime.Instance) anyerror!AnimationEffect {
         return try GroupEffectImpl.get_firstChild(instance);
     }
 
-    pub fn get_lastChild(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_lastChild(instance: *runtime.Instance) anyerror!AnimationEffect {
         return try GroupEffectImpl.get_lastChild(instance);
     }
 

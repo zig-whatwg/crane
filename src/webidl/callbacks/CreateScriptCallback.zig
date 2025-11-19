@@ -4,4 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const CreateScriptCallback = *const fn (input: runtime.DOMString, arguments: anyopaque) anyopaque;
+pub const CreateScriptCallback = *const fn (input: runtime.DOMString, arguments: anyopaque) runtime.DOMString;

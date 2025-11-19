@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,6 +9,7 @@ const GPUPipelineErrorImpl = @import("impls").GPUPipelineError;
 const DOMException = @import("interfaces").DOMException;
 const GPUPipelineErrorReason = @import("enums").GPUPipelineErrorReason;
 const GPUPipelineErrorInit = @import("dictionaries").GPUPipelineErrorInit;
+const DOMString = @import("typedefs").DOMString;
 
 pub const GPUPipelineError = struct {
     pub const Meta = struct {
@@ -73,17 +74,7 @@ pub const GPUPipelineError = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        GPUPipelineErrorImpl.init(instance);
-        
-        return instance;
+        return GPUPipelineErrorImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

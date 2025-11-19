@@ -5,6 +5,6 @@
 const runtime = @import("runtime");
 
 pub const RTCLocalSessionDescriptionInit = struct {
-    type: ?anyopaque = null,
+    @"type": ?anyopaque = null,
     sdp: ?runtime.DOMString = null,
 };

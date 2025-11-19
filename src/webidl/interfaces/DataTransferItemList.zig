@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,6 +8,7 @@ const runtime = @import("runtime");
 const DataTransferItemListImpl = @import("impls").DataTransferItemList;
 const DataTransferItem = @import("interfaces").DataTransferItem;
 const File = @import("interfaces").File;
+const DOMString = @import("typedefs").DOMString;
 
 pub const DataTransferItemList = struct {
     pub const Meta = struct {
@@ -43,17 +44,7 @@ pub const DataTransferItemList = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        DataTransferItemListImpl.init(instance);
-        
-        return instance;
+        return DataTransferItemListImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -70,22 +61,9 @@ pub const DataTransferItemList = struct {
         return try DataTransferItemListImpl.get_length(instance);
     }
 
-    /// Arguments for add (WebIDL overloading)
-    pub const AddArgs = union(enum) {
-        /// add(data, type)
-        string_string: struct {
-            data: DOMString,
-            type_: DOMString,
-        },
-        /// add(data)
-        File: File,
-    };
-
-    pub fn call_add(instance: *runtime.Instance, args: AddArgs) anyerror!anyopaque {
-        switch (args) {
-            .string_string => |a| return try DataTransferItemListImpl.string_string(instance, a.data, a.type_),
-            .File => |arg| return try DataTransferItemListImpl.File(instance, arg),
-        }
+    pub fn call_add(instance: *runtime.Instance, data: DOMString, @"type": DOMString) anyerror!DataTransferItem {
+        
+        return try DataTransferItemListImpl.call_add(instance, data, @"type");
     }
 
     pub fn call_remove(instance: *runtime.Instance, index: u32) anyerror!void {

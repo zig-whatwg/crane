@@ -1,5 +1,5 @@
 //! Generated from: csp-next.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,6 +8,7 @@ const runtime = @import("runtime");
 const ScriptingPolicyReportBodyImpl = @import("impls").ScriptingPolicyReportBody;
 const ReportBody = @import("dictionaries").ReportBody;
 const USVString = @import("interfaces").USVString;
+const DOMString = @import("typedefs").DOMString;
 
 pub const ScriptingPolicyReportBody = struct {
     pub const Meta = struct {
@@ -53,17 +54,7 @@ pub const ScriptingPolicyReportBody = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ScriptingPolicyReportBodyImpl.init(instance);
-        
-        return instance;
+        return ScriptingPolicyReportBodyImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -80,11 +71,11 @@ pub const ScriptingPolicyReportBody = struct {
         return try ScriptingPolicyReportBodyImpl.get_violationType(instance);
     }
 
-    pub fn get_violationURL(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_violationURL(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try ScriptingPolicyReportBodyImpl.get_violationURL(instance);
     }
 
-    pub fn get_violationSample(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_violationSample(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try ScriptingPolicyReportBodyImpl.get_violationSample(instance);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: intersection-observer.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -55,17 +55,7 @@ pub const IntersectionObserverEntry = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        IntersectionObserverEntryImpl.init(instance);
-        
-        return instance;
+        return IntersectionObserverEntryImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -92,7 +82,7 @@ pub const IntersectionObserverEntry = struct {
         return try IntersectionObserverEntryImpl.get_time(instance);
     }
 
-    pub fn get_rootBounds(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_rootBounds(instance: *runtime.Instance) anyerror!DOMRectReadOnly {
         return try IntersectionObserverEntryImpl.get_rootBounds(instance);
     }
 

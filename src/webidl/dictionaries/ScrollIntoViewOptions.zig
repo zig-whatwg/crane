@@ -10,6 +10,6 @@ pub const ScrollIntoViewOptions = struct {
     base: ScrollOptions,
 
     block: ?anyopaque = null,
-    inline: ?anyopaque = null,
+    @"inline": ?anyopaque = null,
     container: ?anyopaque = null,
 };

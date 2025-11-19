@@ -1,5 +1,5 @@
 //! Generated from: layout-instability.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,8 @@ const runtime = @import("runtime");
 const LayoutShiftImpl = @import("impls").LayoutShift;
 const PerformanceEntry = @import("interfaces").PerformanceEntry;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
-const FrozenArray<LayoutShiftAttribution> = @import("interfaces").FrozenArray<LayoutShiftAttribution>;
+const LayoutShiftAttribution = @import("interfaces").LayoutShiftAttribution;
+const DOMString = @import("typedefs").DOMString;
 
 pub const LayoutShift = struct {
     pub const Meta = struct {
@@ -29,7 +30,7 @@ pub const LayoutShift = struct {
             value: f64 = undefined,
             hadRecentInput: bool = undefined,
             lastInputTime: DOMHighResTimeStamp = undefined,
-            sources: FrozenArray<LayoutShiftAttribution> = undefined,
+            sources: runtime.FrozenArray(LayoutShiftAttribution) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -54,17 +55,7 @@ pub const LayoutShift = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        LayoutShiftImpl.init(instance);
-        
-        return instance;
+        return LayoutShiftImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -117,19 +108,9 @@ pub const LayoutShift = struct {
         return try LayoutShiftImpl.get_sources(instance);
     }
 
-    /// Arguments for toJSON (WebIDL overloading)
-    pub const ToJSONArgs = union(enum) {
-        /// toJSON()
-        no_params: void,
-        /// toJSON()
-        no_params: void,
-    };
-
-    pub fn call_toJSON(instance: *runtime.Instance, args: ToJSONArgs) anyerror!anyopaque {
-        switch (args) {
-            .no_params => return try LayoutShiftImpl.no_params(instance),
-            .no_params => return try LayoutShiftImpl.no_params(instance),
-        }
+    /// Extended attributes: [Default]
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!anyopaque {
+        return try LayoutShiftImpl.call_toJSON(instance);
     }
 
 };

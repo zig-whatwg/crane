@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,9 +7,20 @@ const std = @import("std");
 const runtime = @import("runtime");
 const ConstantSourceNodeImpl = @import("impls").ConstantSourceNode;
 const AudioScheduledSourceNode = @import("interfaces").AudioScheduledSourceNode;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const BaseAudioContext = @import("interfaces").BaseAudioContext;
-const AudioParam = @import("interfaces").AudioParam;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const ChannelCountMode = @import("enums").ChannelCountMode;
 const ConstantSourceOptions = @import("dictionaries").ConstantSourceOptions;
+const Event = @import("interfaces").Event;
+const Observable = @import("interfaces").Observable;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const AudioParam = @import("interfaces").AudioParam;
+const EventListener = @import("interfaces").EventListener;
+const ChannelInterpretation = @import("enums").ChannelInterpretation;
+const AudioNode = @import("interfaces").AudioNode;
+const DOMString = @import("typedefs").DOMString;
+const EventHandler = @import("typedefs").EventHandler;
 
 pub const ConstantSourceNode = struct {
     pub const Meta = struct {
@@ -62,17 +73,7 @@ pub const ConstantSourceNode = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ConstantSourceNodeImpl.init(instance);
-        
-        return instance;
+        return ConstantSourceNodeImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -143,9 +144,9 @@ pub const ConstantSourceNode = struct {
         return try ConstantSourceNodeImpl.get_offset(instance);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try ConstantSourceNodeImpl.call_removeEventListener(instance, type_, callback, options);
+        return try ConstantSourceNodeImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
     pub fn call_stop(instance: *runtime.Instance, when: f64) anyerror!void {
@@ -153,9 +154,9 @@ pub const ConstantSourceNode = struct {
         return try ConstantSourceNodeImpl.call_stop(instance, when);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try ConstantSourceNodeImpl.call_when(instance, type_, options);
+        return try ConstantSourceNodeImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_dispatchEvent(instance: *runtime.Instance, event: Event) anyerror!bool {
@@ -163,44 +164,8 @@ pub const ConstantSourceNode = struct {
         return try ConstantSourceNodeImpl.call_dispatchEvent(instance, event);
     }
 
-    /// Arguments for disconnect (WebIDL overloading)
-    pub const DisconnectArgs = union(enum) {
-        /// disconnect()
-        no_params: void,
-        /// disconnect(output)
-        long: u32,
-        /// disconnect(destinationNode)
-        AudioNode: AudioNode,
-        /// disconnect(destinationNode, output)
-        AudioNode_long: struct {
-            destinationNode: AudioNode,
-            output: u32,
-        },
-        /// disconnect(destinationNode, output, input)
-        AudioNode_long_long: struct {
-            destinationNode: AudioNode,
-            output: u32,
-            input: u32,
-        },
-        /// disconnect(destinationParam)
-        AudioParam: AudioParam,
-        /// disconnect(destinationParam, output)
-        AudioParam_long: struct {
-            destinationParam: AudioParam,
-            output: u32,
-        },
-    };
-
-    pub fn call_disconnect(instance: *runtime.Instance, args: DisconnectArgs) anyerror!void {
-        switch (args) {
-            .no_params => return try ConstantSourceNodeImpl.no_params(instance),
-            .long => |arg| return try ConstantSourceNodeImpl.long(instance, arg),
-            .AudioNode => |arg| return try ConstantSourceNodeImpl.AudioNode(instance, arg),
-            .AudioNode_long => |a| return try ConstantSourceNodeImpl.AudioNode_long(instance, a.destinationNode, a.output),
-            .AudioNode_long_long => |a| return try ConstantSourceNodeImpl.AudioNode_long_long(instance, a.destinationNode, a.output, a.input),
-            .AudioParam => |arg| return try ConstantSourceNodeImpl.AudioParam(instance, arg),
-            .AudioParam_long => |a| return try ConstantSourceNodeImpl.AudioParam_long(instance, a.destinationParam, a.output),
-        }
+    pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
+        return try ConstantSourceNodeImpl.call_disconnect(instance);
     }
 
     pub fn call_start(instance: *runtime.Instance, when: f64) anyerror!void {
@@ -208,31 +173,14 @@ pub const ConstantSourceNode = struct {
         return try ConstantSourceNodeImpl.call_start(instance, when);
     }
 
-    /// Arguments for connect (WebIDL overloading)
-    pub const ConnectArgs = union(enum) {
-        /// connect(destinationNode, output, input)
-        AudioNode_long_long: struct {
-            destinationNode: AudioNode,
-            output: u32,
-            input: u32,
-        },
-        /// connect(destinationParam, output)
-        AudioParam_long: struct {
-            destinationParam: AudioParam,
-            output: u32,
-        },
-    };
-
-    pub fn call_connect(instance: *runtime.Instance, args: ConnectArgs) anyerror!AudioNode {
-        switch (args) {
-            .AudioNode_long_long => |a| return try ConstantSourceNodeImpl.AudioNode_long_long(instance, a.destinationNode, a.output, a.input),
-            .AudioParam_long => |a| return try ConstantSourceNodeImpl.AudioParam_long(instance, a.destinationParam, a.output),
-        }
+    pub fn call_connect(instance: *runtime.Instance, destinationNode: AudioNode, output: u32, input: u32) anyerror!AudioNode {
+        
+        return try ConstantSourceNodeImpl.call_connect(instance, destinationNode, output, input);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try ConstantSourceNodeImpl.call_addEventListener(instance, type_, callback, options);
+        return try ConstantSourceNodeImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
 };

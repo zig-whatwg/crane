@@ -1,5 +1,5 @@
 //! Generated from: orientation-event.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,9 +7,12 @@ const std = @import("std");
 const runtime = @import("runtime");
 const DeviceOrientationEventImpl = @import("impls").DeviceOrientationEvent;
 const Event = @import("interfaces").Event;
+const PermissionState = @import("enums").PermissionState;
 const DeviceOrientationEventInit = @import("dictionaries").DeviceOrientationEventInit;
-const Promise<PermissionState> = @import("interfaces").Promise<PermissionState>;
-const double = @import("interfaces").double;
+const EventTarget = @import("interfaces").EventTarget;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
+const DOMString = @import("typedefs").DOMString;
 
 pub const DeviceOrientationEvent = struct {
     pub const Meta = struct {
@@ -80,17 +83,7 @@ pub const DeviceOrientationEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        DeviceOrientationEventImpl.init(instance);
-        
-        return instance;
+        return DeviceOrientationEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -104,11 +97,11 @@ pub const DeviceOrientationEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, eventInitDict: DeviceOrientationEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, eventInitDict: DeviceOrientationEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try DeviceOrientationEventImpl.constructor(instance, type_, eventInitDict);
+        try DeviceOrientationEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -117,15 +110,15 @@ pub const DeviceOrientationEvent = struct {
         return try DeviceOrientationEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try DeviceOrientationEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try DeviceOrientationEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try DeviceOrientationEventImpl.get_currentTarget(instance);
     }
 
@@ -174,15 +167,15 @@ pub const DeviceOrientationEvent = struct {
         return try DeviceOrientationEventImpl.get_timeStamp(instance);
     }
 
-    pub fn get_alpha(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_alpha(instance: *runtime.Instance) anyerror!f64 {
         return try DeviceOrientationEventImpl.get_alpha(instance);
     }
 
-    pub fn get_beta(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_beta(instance: *runtime.Instance) anyerror!f64 {
         return try DeviceOrientationEventImpl.get_beta(instance);
     }
 
-    pub fn get_gamma(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_gamma(instance: *runtime.Instance) anyerror!f64 {
         return try DeviceOrientationEventImpl.get_gamma(instance);
     }
 
@@ -194,9 +187,9 @@ pub const DeviceOrientationEvent = struct {
         return try DeviceOrientationEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try DeviceOrientationEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try DeviceOrientationEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_requestPermission(instance: *runtime.Instance, absolute: bool) anyerror!anyopaque {

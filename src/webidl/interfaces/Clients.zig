@@ -1,16 +1,15 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const ClientsImpl = @import("impls").Clients;
-const Promise<(Clientorundefined)> = @import("interfaces").Promise<(Clientorundefined)>;
-const Promise<FrozenArray<Client>> = @import("interfaces").Promise<FrozenArray<Client>>;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
+const WindowClient = @import("interfaces").WindowClient;
 const ClientQueryOptions = @import("dictionaries").ClientQueryOptions;
-const Promise<WindowClient?> = @import("interfaces").Promise<WindowClient?>;
+const USVString = @import("interfaces").USVString;
+const DOMString = @import("typedefs").DOMString;
 
 pub const Clients = struct {
     pub const Meta = struct {
@@ -43,17 +42,7 @@ pub const Clients = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ClientsImpl.init(instance);
-        
-        return instance;
+        return ClientsImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

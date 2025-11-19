@@ -1,5 +1,5 @@
 //! Generated from: orientation-sensor.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,8 +7,16 @@ const std = @import("std");
 const runtime = @import("runtime");
 const OrientationSensorImpl = @import("impls").OrientationSensor;
 const Sensor = @import("interfaces").Sensor;
-const FrozenArray<double> = @import("interfaces").FrozenArray<double>;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const DOMString = @import("typedefs").DOMString;
+const Event = @import("interfaces").Event;
 const RotationMatrixType = @import("typedefs").RotationMatrixType;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventHandler = @import("typedefs").EventHandler;
+const Observable = @import("interfaces").Observable;
 
 pub const OrientationSensor = struct {
     pub const Meta = struct {
@@ -27,7 +35,7 @@ pub const OrientationSensor = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            quaternion: ?FrozenArray<double> = null,
+            quaternion: ?runtime.FrozenArray(f64) = null,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -59,17 +67,7 @@ pub const OrientationSensor = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        OrientationSensorImpl.init(instance);
-        
-        return instance;
+        return OrientationSensorImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -90,7 +88,7 @@ pub const OrientationSensor = struct {
         return try OrientationSensorImpl.get_hasReading(instance);
     }
 
-    pub fn get_timestamp(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_timestamp(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
         return try OrientationSensorImpl.get_timestamp(instance);
     }
 
@@ -131,9 +129,9 @@ pub const OrientationSensor = struct {
         return try OrientationSensorImpl.call_stop(instance);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try OrientationSensorImpl.call_when(instance, type_, options);
+        return try OrientationSensorImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_dispatchEvent(instance: *runtime.Instance, event: Event) anyerror!bool {
@@ -145,14 +143,14 @@ pub const OrientationSensor = struct {
         return try OrientationSensorImpl.call_start(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try OrientationSensorImpl.call_addEventListener(instance, type_, callback, options);
+        return try OrientationSensorImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try OrientationSensorImpl.call_removeEventListener(instance, type_, callback, options);
+        return try OrientationSensorImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

@@ -13,22 +13,31 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Initialize instance
-pub fn init(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Initialize your instance state here
+/// Initialize instance (delegates to runtime.Instance.init)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable);
+    // TODO: Add custom initialization here if needed
+    // const state = instance.getState(StateType);
+    // state.* = .{}; // Initialize fields
+    return instance;
 }
 
-/// Deinitialize instance
+/// Deinitialize instance (delegates to runtime.Instance.deinit)
 pub fn deinit(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Clean up your instance resources here
+    // TODO: Add custom cleanup here if needed
+    // const state = instance.getState(State);
+    // Clean up fields...
+    runtime.Instance.deinit(instance);
 }
 
 /// Constructor implementation
-pub fn constructor(instance: *runtime.Instance, type: runtime.DOMString, eventInitDict: anyopaque) !void {
+pub fn constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: anyopaque) !void {
     _ = instance;
-    _ = type;
+    _ = @"type";
     _ = eventInitDict;
     // TODO: Implement constructor logic
 }
@@ -124,13 +133,6 @@ pub fn get_timeStamp(instance: *runtime.Instance) ImplError!anyopaque {
     return error.NotImplemented;
 }
 
-/// Getter for returnValue
-pub fn get_returnValue(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
 /// Setter for cancelBubble
 pub fn set_cancelBubble(instance: *runtime.Instance, value: bool) ImplError!void {
     _ = instance;
@@ -141,14 +143,6 @@ pub fn set_cancelBubble(instance: *runtime.Instance, value: bool) ImplError!void
 
 /// Setter for returnValue
 pub fn set_returnValue(instance: *runtime.Instance, value: bool) ImplError!void {
-    _ = instance;
-    _ = value;
-    // TODO: Implement setter
-    return error.NotImplemented;
-}
-
-/// Setter for returnValue
-pub fn set_returnValue(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -184,9 +178,9 @@ pub fn call_preventDefault(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: initEvent
-pub fn call_initEvent(instance: *runtime.Instance, type: runtime.DOMString, bubbles: bool, cancelable: bool) ImplError!void {
+pub fn call_initEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: bool, cancelable: bool) ImplError!void {
     _ = instance;
-    _ = type;
+    _ = @"type";
     _ = bubbles;
     _ = cancelable;
     // TODO: Implement operation

@@ -13,16 +13,25 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Initialize instance
-pub fn init(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Initialize your instance state here
+/// Initialize instance (delegates to runtime.Instance.init)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable);
+    // TODO: Add custom initialization here if needed
+    // const state = instance.getState(StateType);
+    // state.* = .{}; // Initialize fields
+    return instance;
 }
 
-/// Deinitialize instance
+/// Deinitialize instance (delegates to runtime.Instance.deinit)
 pub fn deinit(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Clean up your instance resources here
+    // TODO: Add custom cleanup here if needed
+    // const state = instance.getState(State);
+    // Clean up fields...
+    runtime.Instance.deinit(instance);
 }
 
 /// Constructor implementation
@@ -102,7 +111,7 @@ pub fn get_connectionState(instance: *runtime.Instance) ImplError!anyopaque {
 }
 
 /// Getter for canTrickleIceCandidates
-pub fn get_canTrickleIceCandidates(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_canTrickleIceCandidates(instance: *runtime.Instance) ImplError!bool {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -186,14 +195,14 @@ pub fn get_peerIdentity(instance: *runtime.Instance) ImplError!anyopaque {
 }
 
 /// Getter for idpLoginUrl
-pub fn get_idpLoginUrl(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_idpLoginUrl(instance: *runtime.Instance) ImplError!runtime.DOMString {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for idpErrorInfo
-pub fn get_idpErrorInfo(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_idpErrorInfo(instance: *runtime.Instance) ImplError!runtime.DOMString {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -272,9 +281,9 @@ pub fn set_ondatachannel(instance: *runtime.Instance, value: anyopaque) ImplErro
 }
 
 /// Operation: addEventListener
-pub fn call_addEventListener(instance: *runtime.Instance, type: runtime.DOMString, callback: anyopaque, options: anyopaque) ImplError!void {
+pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: anyopaque, options: anyopaque) ImplError!void {
     _ = instance;
-    _ = type;
+    _ = @"type";
     _ = callback;
     _ = options;
     // TODO: Implement operation
@@ -282,9 +291,9 @@ pub fn call_addEventListener(instance: *runtime.Instance, type: runtime.DOMStrin
 }
 
 /// Operation: removeEventListener
-pub fn call_removeEventListener(instance: *runtime.Instance, type: runtime.DOMString, callback: anyopaque, options: anyopaque) ImplError!void {
+pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: anyopaque, options: anyopaque) ImplError!void {
     _ = instance;
-    _ = type;
+    _ = @"type";
     _ = callback;
     _ = options;
     // TODO: Implement operation
@@ -300,9 +309,9 @@ pub fn call_dispatchEvent(instance: *runtime.Instance, event: anyopaque) ImplErr
 }
 
 /// Operation: when
-pub fn call_when(instance: *runtime.Instance, type: runtime.DOMString, options: anyopaque) ImplError!anyopaque {
+pub fn call_when(instance: *runtime.Instance, @"type": runtime.DOMString, options: anyopaque) ImplError!anyopaque {
     _ = instance;
-    _ = type;
+    _ = @"type";
     _ = options;
     // TODO: Implement operation
     return error.NotImplemented;
@@ -377,55 +386,6 @@ pub fn call_close(instance: *runtime.Instance) ImplError!void {
     return error.NotImplemented;
 }
 
-/// Operation: createOffer
-pub fn call_createOffer(instance: *runtime.Instance, successCallback: anyopaque, failureCallback: anyopaque, options: anyopaque) ImplError!anyopaque {
-    _ = instance;
-    _ = successCallback;
-    _ = failureCallback;
-    _ = options;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: setLocalDescription
-pub fn call_setLocalDescription(instance: *runtime.Instance, description: anyopaque, successCallback: anyopaque, failureCallback: anyopaque) ImplError!anyopaque {
-    _ = instance;
-    _ = description;
-    _ = successCallback;
-    _ = failureCallback;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: createAnswer
-pub fn call_createAnswer(instance: *runtime.Instance, successCallback: anyopaque, failureCallback: anyopaque) ImplError!anyopaque {
-    _ = instance;
-    _ = successCallback;
-    _ = failureCallback;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: setRemoteDescription
-pub fn call_setRemoteDescription(instance: *runtime.Instance, description: anyopaque, successCallback: anyopaque, failureCallback: anyopaque) ImplError!anyopaque {
-    _ = instance;
-    _ = description;
-    _ = successCallback;
-    _ = failureCallback;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: addIceCandidate
-pub fn call_addIceCandidate(instance: *runtime.Instance, candidate: anyopaque, successCallback: anyopaque, failureCallback: anyopaque) ImplError!anyopaque {
-    _ = instance;
-    _ = candidate;
-    _ = successCallback;
-    _ = failureCallback;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
 /// Operation: generateCertificate
 pub fn call_generateCertificate(instance: *runtime.Instance, keygenAlgorithm: anyopaque) ImplError!anyopaque {
     _ = instance;
@@ -473,10 +433,10 @@ pub fn call_removeTrack(instance: *runtime.Instance, sender: anyopaque) ImplErro
 }
 
 /// Operation: addTransceiver
-pub fn call_addTransceiver(instance: *runtime.Instance, trackOrKind: anyopaque, init: anyopaque) ImplError!anyopaque {
+pub fn call_addTransceiver(instance: *runtime.Instance, trackOrKind: anyopaque, init_data: anyopaque) ImplError!anyopaque {
     _ = instance;
     _ = trackOrKind;
-    _ = init;
+    _ = init_data;
     // TODO: Implement operation
     return error.NotImplemented;
 }

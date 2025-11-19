@@ -13,5 +13,5 @@ pub const ErrorEventInit = struct {
     filename: ?runtime.DOMString = null,
     lineno: ?u32 = null,
     colno: ?u32 = null,
-    error: ?anyopaque = null,
+    @"error": ?anyopaque = null,
 };

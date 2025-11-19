@@ -1,5 +1,5 @@
 //! Generated from: picture-in-picture.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,8 +7,12 @@ const std = @import("std");
 const runtime = @import("runtime");
 const PictureInPictureEventImpl = @import("impls").PictureInPictureEvent;
 const Event = @import("interfaces").Event;
-const PictureInPictureWindow = @import("interfaces").PictureInPictureWindow;
 const PictureInPictureEventInit = @import("dictionaries").PictureInPictureEventInit;
+const PictureInPictureWindow = @import("interfaces").PictureInPictureWindow;
+const EventTarget = @import("interfaces").EventTarget;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
+const DOMString = @import("typedefs").DOMString;
 
 pub const PictureInPictureEvent = struct {
     pub const Meta = struct {
@@ -71,17 +75,7 @@ pub const PictureInPictureEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PictureInPictureEventImpl.init(instance);
-        
-        return instance;
+        return PictureInPictureEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -95,11 +89,11 @@ pub const PictureInPictureEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, eventInitDict: PictureInPictureEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, eventInitDict: PictureInPictureEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try PictureInPictureEventImpl.constructor(instance, type_, eventInitDict);
+        try PictureInPictureEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -108,15 +102,15 @@ pub const PictureInPictureEvent = struct {
         return try PictureInPictureEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try PictureInPictureEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try PictureInPictureEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try PictureInPictureEventImpl.get_currentTarget(instance);
     }
 
@@ -181,9 +175,9 @@ pub const PictureInPictureEvent = struct {
         return try PictureInPictureEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try PictureInPictureEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try PictureInPictureEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_composedPath(instance: *runtime.Instance) anyerror!anyopaque {

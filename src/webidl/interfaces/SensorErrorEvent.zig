@@ -1,5 +1,5 @@
 //! Generated from: generic-sensor.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,8 +7,12 @@ const std = @import("std");
 const runtime = @import("runtime");
 const SensorErrorEventImpl = @import("impls").SensorErrorEvent;
 const Event = @import("interfaces").Event;
-const DOMException = @import("interfaces").DOMException;
+const EventTarget = @import("interfaces").EventTarget;
 const SensorErrorEventInit = @import("dictionaries").SensorErrorEventInit;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
+const DOMException = @import("interfaces").DOMException;
+const DOMString = @import("typedefs").DOMString;
 
 pub const SensorErrorEvent = struct {
     pub const Meta = struct {
@@ -35,7 +39,7 @@ pub const SensorErrorEvent = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            error: DOMException = undefined,
+            @"error": DOMException = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -75,17 +79,7 @@ pub const SensorErrorEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        SensorErrorEventImpl.init(instance);
-        
-        return instance;
+        return SensorErrorEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -99,11 +93,11 @@ pub const SensorErrorEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, errorEventInitDict: SensorErrorEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, errorEventInitDict: SensorErrorEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try SensorErrorEventImpl.constructor(instance, type_, errorEventInitDict);
+        try SensorErrorEventImpl.constructor(instance, @"type", errorEventInitDict);
         
         return instance;
     }
@@ -112,15 +106,15 @@ pub const SensorErrorEvent = struct {
         return try SensorErrorEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try SensorErrorEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try SensorErrorEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try SensorErrorEventImpl.get_currentTarget(instance);
     }
 
@@ -177,9 +171,9 @@ pub const SensorErrorEvent = struct {
         return try SensorErrorEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try SensorErrorEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try SensorErrorEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_composedPath(instance: *runtime.Instance) anyerror!anyopaque {

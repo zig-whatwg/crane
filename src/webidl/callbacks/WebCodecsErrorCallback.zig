@@ -4,4 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const WebCodecsErrorCallback = *const fn (error: anyopaque) void;
+pub const WebCodecsErrorCallback = *const fn (@"error": anyopaque) void;

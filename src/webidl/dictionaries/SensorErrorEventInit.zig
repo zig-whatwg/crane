@@ -9,5 +9,5 @@ pub const SensorErrorEventInit = struct {
     // Inherited from EventInit
     base: EventInit,
 
-    error: anyopaque,
+    @"error": anyopaque,
 };

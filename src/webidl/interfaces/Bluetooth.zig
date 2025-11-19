@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -10,12 +10,16 @@ const EventTarget = @import("interfaces").EventTarget;
 const BluetoothDeviceEventHandlers = @import("interfaces").BluetoothDeviceEventHandlers;
 const CharacteristicEventHandlers = @import("interfaces").CharacteristicEventHandlers;
 const ServiceEventHandlers = @import("interfaces").ServiceEventHandlers;
-const Promise<BluetoothLEScan> = @import("interfaces").Promise<BluetoothLEScan>;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const BluetoothDevice = @import("interfaces").BluetoothDevice;
-const Promise<sequence<BluetoothDevice>> = @import("interfaces").Promise<sequence<BluetoothDevice>>;
-const Promise<boolean> = @import("interfaces").Promise<boolean>;
-const Promise<BluetoothDevice> = @import("interfaces").Promise<BluetoothDevice>;
+const DOMString = @import("typedefs").DOMString;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const BluetoothLEScan = @import("interfaces").BluetoothLEScan;
 const RequestDeviceOptions = @import("dictionaries").RequestDeviceOptions;
+const EventListener = @import("interfaces").EventListener;
 const EventHandler = @import("typedefs").EventHandler;
 const BluetoothLEScanOptions = @import("dictionaries").BluetoothLEScanOptions;
 
@@ -85,17 +89,7 @@ pub const Bluetooth = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        BluetoothImpl.init(instance);
-        
-        return instance;
+        return BluetoothImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -117,7 +111,7 @@ pub const Bluetooth = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_referringDevice(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_referringDevice(instance: *runtime.Instance) anyerror!BluetoothDevice {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.cached_referringDevice) |cached| {
@@ -176,9 +170,9 @@ pub const Bluetooth = struct {
         try BluetoothImpl.set_onserviceremoved(instance, value);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try BluetoothImpl.call_when(instance, type_, options);
+        return try BluetoothImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_requestDevice(instance: *runtime.Instance, options: RequestDeviceOptions) anyerror!anyopaque {
@@ -205,14 +199,14 @@ pub const Bluetooth = struct {
         return try BluetoothImpl.call_getDevices(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try BluetoothImpl.call_addEventListener(instance, type_, callback, options);
+        return try BluetoothImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try BluetoothImpl.call_removeEventListener(instance, type_, callback, options);
+        return try BluetoothImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

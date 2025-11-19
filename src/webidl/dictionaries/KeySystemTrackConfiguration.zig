@@ -6,5 +6,5 @@ const runtime = @import("runtime");
 
 pub const KeySystemTrackConfiguration = struct {
     robustness: ?runtime.DOMString = null,
-    encryptionScheme: ?anyopaque = null,
+    encryptionScheme: ?runtime.DOMString = null,
 };

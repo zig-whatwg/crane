@@ -1,5 +1,5 @@
 //! Generated from: element-timing.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,8 +9,10 @@ const PerformanceElementTimingImpl = @import("impls").PerformanceElementTiming;
 const PerformanceEntry = @import("interfaces").PerformanceEntry;
 const PaintTimingMixin = @import("interfaces").PaintTimingMixin;
 const Element = @import("interfaces").Element;
-const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const USVString = @import("interfaces").USVString;
+const DOMString = @import("typedefs").DOMString;
 
 pub const PerformanceElementTiming = struct {
     pub const Meta = struct {
@@ -53,7 +55,6 @@ pub const PerformanceElementTiming = struct {
         .get_element = &get_element,
         .get_entryType = &get_entryType,
         .get_id = &get_id,
-        .get_id = &get_id,
         .get_identifier = &get_identifier,
         .get_intersectionRect = &get_intersectionRect,
         .get_loadTime = &get_loadTime,
@@ -72,17 +73,7 @@ pub const PerformanceElementTiming = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PerformanceElementTimingImpl.init(instance);
-        
-        return instance;
+        return PerformanceElementTimingImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -143,11 +134,7 @@ pub const PerformanceElementTiming = struct {
         return try PerformanceElementTimingImpl.get_naturalHeight(instance);
     }
 
-    pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
-        return try PerformanceElementTimingImpl.get_id(instance);
-    }
-
-    pub fn get_element(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_element(instance: *runtime.Instance) anyerror!Element {
         return try PerformanceElementTimingImpl.get_element(instance);
     }
 
@@ -159,23 +146,13 @@ pub const PerformanceElementTiming = struct {
         return try PerformanceElementTimingImpl.get_paintTime(instance);
     }
 
-    pub fn get_presentationTime(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_presentationTime(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
         return try PerformanceElementTimingImpl.get_presentationTime(instance);
     }
 
-    /// Arguments for toJSON (WebIDL overloading)
-    pub const ToJSONArgs = union(enum) {
-        /// toJSON()
-        no_params: void,
-        /// toJSON()
-        no_params: void,
-    };
-
-    pub fn call_toJSON(instance: *runtime.Instance, args: ToJSONArgs) anyerror!anyopaque {
-        switch (args) {
-            .no_params => return try PerformanceElementTimingImpl.no_params(instance),
-            .no_params => return try PerformanceElementTimingImpl.no_params(instance),
-        }
+    /// Extended attributes: [Default]
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!anyopaque {
+        return try PerformanceElementTimingImpl.call_toJSON(instance);
     }
 
 };

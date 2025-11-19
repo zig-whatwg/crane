@@ -13,16 +13,25 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Initialize instance
-pub fn init(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Initialize your instance state here
+/// Initialize instance (delegates to runtime.Instance.init)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable);
+    // TODO: Add custom initialization here if needed
+    // const state = instance.getState(StateType);
+    // state.* = .{}; // Initialize fields
+    return instance;
 }
 
-/// Deinitialize instance
+/// Deinitialize instance (delegates to runtime.Instance.deinit)
 pub fn deinit(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Clean up your instance resources here
+    // TODO: Add custom cleanup here if needed
+    // const state = instance.getState(State);
+    // Clean up fields...
+    runtime.Instance.deinit(instance);
 }
 
 /// Constructor implementation
@@ -40,21 +49,21 @@ pub fn get_candidate(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for sdpMid
-pub fn get_sdpMid(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_sdpMid(instance: *runtime.Instance) ImplError!runtime.DOMString {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for sdpMLineIndex
-pub fn get_sdpMLineIndex(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_sdpMLineIndex(instance: *runtime.Instance) ImplError!u16 {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for foundation
-pub fn get_foundation(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_foundation(instance: *runtime.Instance) ImplError!runtime.DOMString {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -68,14 +77,14 @@ pub fn get_component(instance: *runtime.Instance) ImplError!anyopaque {
 }
 
 /// Getter for priority
-pub fn get_priority(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_priority(instance: *runtime.Instance) ImplError!u32 {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for address
-pub fn get_address(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_address(instance: *runtime.Instance) ImplError!runtime.DOMString {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -89,7 +98,7 @@ pub fn get_protocol(instance: *runtime.Instance) ImplError!anyopaque {
 }
 
 /// Getter for port
-pub fn get_port(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_port(instance: *runtime.Instance) ImplError!u16 {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -110,21 +119,21 @@ pub fn get_tcpType(instance: *runtime.Instance) ImplError!anyopaque {
 }
 
 /// Getter for relatedAddress
-pub fn get_relatedAddress(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_relatedAddress(instance: *runtime.Instance) ImplError!runtime.DOMString {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for relatedPort
-pub fn get_relatedPort(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_relatedPort(instance: *runtime.Instance) ImplError!u16 {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for usernameFragment
-pub fn get_usernameFragment(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_usernameFragment(instance: *runtime.Instance) ImplError!runtime.DOMString {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -138,7 +147,7 @@ pub fn get_relayProtocol(instance: *runtime.Instance) ImplError!anyopaque {
 }
 
 /// Getter for url
-pub fn get_url(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_url(instance: *runtime.Instance) ImplError!runtime.DOMString {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;

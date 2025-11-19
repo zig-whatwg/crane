@@ -1,5 +1,5 @@
 //! Generated from: webauthn.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,6 +9,7 @@ const AuthenticatorAttestationResponseImpl = @import("impls").AuthenticatorAttes
 const AuthenticatorResponse = @import("interfaces").AuthenticatorResponse;
 const COSEAlgorithmIdentifier = @import("typedefs").COSEAlgorithmIdentifier;
 const ArrayBuffer = @import("interfaces").ArrayBuffer;
+const DOMString = @import("typedefs").DOMString;
 
 pub const AuthenticatorAttestationResponse = struct {
     pub const Meta = struct {
@@ -47,17 +48,7 @@ pub const AuthenticatorAttestationResponse = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        AuthenticatorAttestationResponseImpl.init(instance);
-        
-        return instance;
+        return AuthenticatorAttestationResponseImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

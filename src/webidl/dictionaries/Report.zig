@@ -5,7 +5,7 @@
 const runtime = @import("runtime");
 
 pub const Report = struct {
-    type: ?runtime.DOMString = null,
+    @"type": ?runtime.DOMString = null,
     url: ?runtime.DOMString = null,
     body: ?anyopaque = null,
 };

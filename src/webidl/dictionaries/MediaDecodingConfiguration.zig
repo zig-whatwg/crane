@@ -9,6 +9,6 @@ pub const MediaDecodingConfiguration = struct {
     // Inherited from MediaConfiguration
     base: MediaConfiguration,
 
-    type: anyopaque,
+    @"type": anyopaque,
     keySystemConfiguration: ?anyopaque = null,
 };

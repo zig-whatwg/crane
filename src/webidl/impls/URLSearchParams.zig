@@ -13,22 +13,31 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Initialize instance
-pub fn init(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Initialize your instance state here
+/// Initialize instance (delegates to runtime.Instance.init)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable);
+    // TODO: Add custom initialization here if needed
+    // const state = instance.getState(StateType);
+    // state.* = .{}; // Initialize fields
+    return instance;
 }
 
-/// Deinitialize instance
+/// Deinitialize instance (delegates to runtime.Instance.deinit)
 pub fn deinit(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Clean up your instance resources here
+    // TODO: Add custom cleanup here if needed
+    // const state = instance.getState(State);
+    // Clean up fields...
+    runtime.Instance.deinit(instance);
 }
 
 /// Constructor implementation
-pub fn constructor(instance: *runtime.Instance, init: anyopaque) !void {
+pub fn constructor(instance: *runtime.Instance, init_data: anyopaque) !void {
     _ = instance;
-    _ = init;
+    _ = init_data;
     // TODO: Implement constructor logic
 }
 
@@ -58,7 +67,7 @@ pub fn call_delete(instance: *runtime.Instance, name: runtime.DOMString, value: 
 }
 
 /// Operation: get
-pub fn call_get(instance: *runtime.Instance, name: runtime.DOMString) ImplError!anyopaque {
+pub fn call_get(instance: *runtime.Instance, name: runtime.DOMString) ImplError!runtime.DOMString {
     _ = instance;
     _ = name;
     // TODO: Implement operation
@@ -93,13 +102,6 @@ pub fn call_set(instance: *runtime.Instance, name: runtime.DOMString, value: run
 
 /// Operation: sort
 pub fn call_sort(instance: *runtime.Instance) ImplError!void {
-    _ = instance;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: unnamed
-pub fn call_unnamed(instance: *runtime.Instance) ImplError!runtime.DOMString {
     _ = instance;
     // TODO: Implement operation
     return error.NotImplemented;

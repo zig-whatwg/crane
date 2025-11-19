@@ -10,6 +10,6 @@ pub const XRMediaQuadLayerInit = struct {
     base: XRMediaLayerInit,
 
     transform: ?anyopaque = null,
-    width: ?anyopaque = null,
-    height: ?anyopaque = null,
+    width: ?f32 = null,
+    height: ?f32 = null,
 };

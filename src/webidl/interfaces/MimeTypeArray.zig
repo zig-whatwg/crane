@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,6 +7,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const MimeTypeArrayImpl = @import("impls").MimeTypeArray;
 const MimeType = @import("interfaces").MimeType;
+const DOMString = @import("typedefs").DOMString;
 
 pub const MimeTypeArray = struct {
     pub const Meta = struct {
@@ -42,17 +43,7 @@ pub const MimeTypeArray = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        MimeTypeArrayImpl.init(instance);
-        
-        return instance;
+        return MimeTypeArrayImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -69,12 +60,12 @@ pub const MimeTypeArray = struct {
         return try MimeTypeArrayImpl.get_length(instance);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!anyopaque {
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!MimeType {
         
         return try MimeTypeArrayImpl.call_item(instance, index);
     }
 
-    pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!anyopaque {
+    pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!MimeType {
         
         return try MimeTypeArrayImpl.call_namedItem(instance, name);
     }

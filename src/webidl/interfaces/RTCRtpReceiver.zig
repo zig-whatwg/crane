@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,11 +8,14 @@ const runtime = @import("runtime");
 const RTCRtpReceiverImpl = @import("impls").RTCRtpReceiver;
 const RTCRtpCapabilities = @import("dictionaries").RTCRtpCapabilities;
 const RTCRtpReceiveParameters = @import("dictionaries").RTCRtpReceiveParameters;
-const Promise<RTCStatsReport> = @import("interfaces").Promise<RTCStatsReport>;
+const RTCRtpSynchronizationSource = @import("dictionaries").RTCRtpSynchronizationSource;
+const RTCStatsReport = @import("interfaces").RTCStatsReport;
 const RTCRtpTransform = @import("typedefs").RTCRtpTransform;
 const RTCDtlsTransport = @import("interfaces").RTCDtlsTransport;
 const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const RTCRtpContributingSource = @import("dictionaries").RTCRtpContributingSource;
+const DOMString = @import("typedefs").DOMString;
 
 pub const RTCRtpReceiver = struct {
     pub const Meta = struct {
@@ -59,17 +62,7 @@ pub const RTCRtpReceiver = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        RTCRtpReceiverImpl.init(instance);
-        
-        return instance;
+        return RTCRtpReceiverImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -86,23 +79,23 @@ pub const RTCRtpReceiver = struct {
         return try RTCRtpReceiverImpl.get_track(instance);
     }
 
-    pub fn get_transport(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_transport(instance: *runtime.Instance) anyerror!RTCDtlsTransport {
         return try RTCRtpReceiverImpl.get_transport(instance);
     }
 
-    pub fn get_jitterBufferTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_jitterBufferTarget(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
         return try RTCRtpReceiverImpl.get_jitterBufferTarget(instance);
     }
 
-    pub fn set_jitterBufferTarget(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_jitterBufferTarget(instance: *runtime.Instance, value: DOMHighResTimeStamp) anyerror!void {
         try RTCRtpReceiverImpl.set_jitterBufferTarget(instance, value);
     }
 
-    pub fn get_transform(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_transform(instance: *runtime.Instance) anyerror!RTCRtpTransform {
         return try RTCRtpReceiverImpl.get_transform(instance);
     }
 
-    pub fn set_transform(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_transform(instance: *runtime.Instance, value: RTCRtpTransform) anyerror!void {
         try RTCRtpReceiverImpl.set_transform(instance, value);
     }
 
@@ -110,7 +103,7 @@ pub const RTCRtpReceiver = struct {
         return try RTCRtpReceiverImpl.call_getContributingSources(instance);
     }
 
-    pub fn call_getCapabilities(instance: *runtime.Instance, kind: DOMString) anyerror!anyopaque {
+    pub fn call_getCapabilities(instance: *runtime.Instance, kind: DOMString) anyerror!RTCRtpCapabilities {
         
         return try RTCRtpReceiverImpl.call_getCapabilities(instance, kind);
     }

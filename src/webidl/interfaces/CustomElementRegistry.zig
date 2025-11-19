@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,11 +7,9 @@ const std = @import("std");
 const runtime = @import("runtime");
 const CustomElementRegistryImpl = @import("impls").CustomElementRegistry;
 const ElementDefinitionOptions = @import("dictionaries").ElementDefinitionOptions;
-const (CustomElementConstructor or undefined) = @import("interfaces").(CustomElementConstructor or undefined);
-const Promise<CustomElementConstructor> = @import("interfaces").Promise<CustomElementConstructor>;
-const CustomElementConstructor = @import("callbacks").CustomElementConstructor;
 const Node = @import("interfaces").Node;
 const DOMString = @import("typedefs").DOMString;
+const CustomElementConstructor = @import("callbacks").CustomElementConstructor;
 
 pub const CustomElementRegistry = struct {
     pub const Meta = struct {
@@ -46,17 +44,7 @@ pub const CustomElementRegistry = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        CustomElementRegistryImpl.init(instance);
-        
-        return instance;
+        return CustomElementRegistryImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -94,7 +82,7 @@ pub const CustomElementRegistry = struct {
         return try CustomElementRegistryImpl.call_get(instance, name);
     }
 
-    pub fn call_getName(instance: *runtime.Instance, constructor: CustomElementConstructor) anyerror!anyopaque {
+    pub fn call_getName(instance: *runtime.Instance, constructor: CustomElementConstructor) anyerror!DOMString {
         
         return try CustomElementRegistryImpl.call_getName(instance, constructor);
     }

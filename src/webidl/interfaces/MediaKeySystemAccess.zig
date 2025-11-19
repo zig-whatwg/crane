@@ -1,5 +1,5 @@
 //! Generated from: encrypted-media.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,8 @@ const std = @import("std");
 const runtime = @import("runtime");
 const MediaKeySystemAccessImpl = @import("impls").MediaKeySystemAccess;
 const MediaKeySystemConfiguration = @import("dictionaries").MediaKeySystemConfiguration;
-const Promise<MediaKeys> = @import("interfaces").Promise<MediaKeys>;
+const DOMString = @import("typedefs").DOMString;
+const MediaKeys = @import("interfaces").MediaKeys;
 
 pub const MediaKeySystemAccess = struct {
     pub const Meta = struct {
@@ -43,17 +44,7 @@ pub const MediaKeySystemAccess = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        MediaKeySystemAccessImpl.init(instance);
-        
-        return instance;
+        return MediaKeySystemAccessImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

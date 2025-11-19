@@ -1,5 +1,5 @@
 //! Generated from: web-smart-card.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,6 +9,7 @@ const SmartCardErrorImpl = @import("impls").SmartCardError;
 const DOMException = @import("interfaces").DOMException;
 const SmartCardErrorOptions = @import("dictionaries").SmartCardErrorOptions;
 const SmartCardResponseCode = @import("enums").SmartCardResponseCode;
+const DOMString = @import("typedefs").DOMString;
 
 pub const SmartCardError = struct {
     pub const Meta = struct {
@@ -18,7 +19,8 @@ pub const SmartCardError = struct {
         pub const MixinTypes = .{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "DedicatedWorker", "SharedWorker", "Window" } } },
-            .{ .name = "Serializable" },
+            .{ .name = "SecureContext" },
+            .{ .name = "IsolatedContext" },
         };
         
         /// Global contexts where this interface is exposed
@@ -73,17 +75,7 @@ pub const SmartCardError = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        SmartCardErrorImpl.init(instance);
-        
-        return instance;
+        return SmartCardErrorImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

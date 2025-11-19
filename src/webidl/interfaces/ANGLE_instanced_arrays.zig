@@ -1,5 +1,5 @@
 //! Generated from: ANGLE_instanced_arrays.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -57,17 +57,7 @@ pub const ANGLE_instanced_arrays = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ANGLE_instanced_arraysImpl.init(instance);
-        
-        return instance;
+        return ANGLE_instanced_arraysImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -90,9 +80,9 @@ pub const ANGLE_instanced_arrays = struct {
         return try ANGLE_instanced_arraysImpl.call_vertexAttribDivisorANGLE(instance, index, divisor);
     }
 
-    pub fn call_drawElementsInstancedANGLE(instance: *runtime.Instance, mode: GLenum, count: GLsizei, type_: GLenum, offset: GLintptr, primcount: GLsizei) anyerror!void {
+    pub fn call_drawElementsInstancedANGLE(instance: *runtime.Instance, mode: GLenum, count: GLsizei, @"type": GLenum, offset: GLintptr, primcount: GLsizei) anyerror!void {
         
-        return try ANGLE_instanced_arraysImpl.call_drawElementsInstancedANGLE(instance, mode, count, type_, offset, primcount);
+        return try ANGLE_instanced_arraysImpl.call_drawElementsInstancedANGLE(instance, mode, count, @"type", offset, primcount);
     }
 
 };

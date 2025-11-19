@@ -1,5 +1,5 @@
 //! Generated from: css-fonts-5.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,6 +8,9 @@ const runtime = @import("runtime");
 const CSSFontFaceDescriptorsImpl = @import("impls").CSSFontFaceDescriptors;
 const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
 const CSSOMString = @import("interfaces").CSSOMString;
+const CSSRule = @import("interfaces").CSSRule;
+const DOMString = @import("typedefs").DOMString;
+const CSSValue = @import("interfaces").CSSValue;
 
 pub const CSSFontFaceDescriptors = struct {
     pub const Meta = struct {
@@ -27,45 +30,45 @@ pub const CSSFontFaceDescriptors = struct {
         struct {
             src: CSSOMString = undefined,
             fontFamily: CSSOMString = undefined,
-            font-family: CSSOMString = undefined,
+            @"font-family": CSSOMString = undefined,
             fontStyle: CSSOMString = undefined,
-            font-style: CSSOMString = undefined,
+            @"font-style": CSSOMString = undefined,
             fontWeight: CSSOMString = undefined,
-            font-weight: CSSOMString = undefined,
+            @"font-weight": CSSOMString = undefined,
             fontStretch: CSSOMString = undefined,
-            font-stretch: CSSOMString = undefined,
+            @"font-stretch": CSSOMString = undefined,
             fontWidth: CSSOMString = undefined,
-            font-width: CSSOMString = undefined,
+            @"font-width": CSSOMString = undefined,
             fontSize: CSSOMString = undefined,
-            font-size: CSSOMString = undefined,
+            @"font-size": CSSOMString = undefined,
             sizeAdjust: CSSOMString = undefined,
-            size-adjust: CSSOMString = undefined,
+            @"size-adjust": CSSOMString = undefined,
             unicodeRange: CSSOMString = undefined,
-            unicode-range: CSSOMString = undefined,
+            @"unicode-range": CSSOMString = undefined,
             fontFeatureSettings: CSSOMString = undefined,
-            font-feature-settings: CSSOMString = undefined,
+            @"font-feature-settings": CSSOMString = undefined,
             fontVariationSettings: CSSOMString = undefined,
-            font-variation-settings: CSSOMString = undefined,
+            @"font-variation-settings": CSSOMString = undefined,
             fontNamedInstance: CSSOMString = undefined,
-            font-named-instance: CSSOMString = undefined,
+            @"font-named-instance": CSSOMString = undefined,
             fontDisplay: CSSOMString = undefined,
-            font-display: CSSOMString = undefined,
+            @"font-display": CSSOMString = undefined,
             fontLanguageOverride: CSSOMString = undefined,
-            font-language-override: CSSOMString = undefined,
+            @"font-language-override": CSSOMString = undefined,
             ascentOverride: CSSOMString = undefined,
-            ascent-override: CSSOMString = undefined,
+            @"ascent-override": CSSOMString = undefined,
             descentOverride: CSSOMString = undefined,
-            descent-override: CSSOMString = undefined,
+            @"descent-override": CSSOMString = undefined,
             lineGapOverride: CSSOMString = undefined,
-            line-gap-override: CSSOMString = undefined,
+            @"line-gap-override": CSSOMString = undefined,
             superscriptPositionOverride: CSSOMString = undefined,
-            superscript-position-override: CSSOMString = undefined,
+            @"superscript-position-override": CSSOMString = undefined,
             subscriptPositionOverride: CSSOMString = undefined,
-            subscript-position-override: CSSOMString = undefined,
+            @"subscript-position-override": CSSOMString = undefined,
             superscriptSizeOverride: CSSOMString = undefined,
-            superscript-size-override: CSSOMString = undefined,
+            @"superscript-size-override": CSSOMString = undefined,
             subscriptSizeOverride: CSSOMString = undefined,
-            subscript-size-override: CSSOMString = undefined,
+            @"subscript-size-override": CSSOMString = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -74,23 +77,11 @@ pub const CSSFontFaceDescriptors = struct {
     pub const vtable = runtime.buildVTable(CSSFontFaceDescriptors, .{
         .deinit_fn = &deinit_wrapper,
 
-        .get_ascent-override = &get_ascent-override,
         .get_ascentOverride = &get_ascentOverride,
+        .get_ascent_override = &get_ascent_override,
         .get_cssText = &get_cssText,
-        .get_cssText = &get_cssText,
-        .get_descent-override = &get_descent-override,
         .get_descentOverride = &get_descentOverride,
-        .get_font-display = &get_font-display,
-        .get_font-family = &get_font-family,
-        .get_font-feature-settings = &get_font-feature-settings,
-        .get_font-language-override = &get_font-language-override,
-        .get_font-named-instance = &get_font-named-instance,
-        .get_font-size = &get_font-size,
-        .get_font-stretch = &get_font-stretch,
-        .get_font-style = &get_font-style,
-        .get_font-variation-settings = &get_font-variation-settings,
-        .get_font-weight = &get_font-weight,
-        .get_font-width = &get_font-width,
+        .get_descent_override = &get_descent_override,
         .get_fontDisplay = &get_fontDisplay,
         .get_fontFamily = &get_fontFamily,
         .get_fontFeatureSettings = &get_fontFeatureSettings,
@@ -102,43 +93,40 @@ pub const CSSFontFaceDescriptors = struct {
         .get_fontVariationSettings = &get_fontVariationSettings,
         .get_fontWeight = &get_fontWeight,
         .get_fontWidth = &get_fontWidth,
+        .get_font_display = &get_font_display,
+        .get_font_family = &get_font_family,
+        .get_font_feature_settings = &get_font_feature_settings,
+        .get_font_language_override = &get_font_language_override,
+        .get_font_named_instance = &get_font_named_instance,
+        .get_font_size = &get_font_size,
+        .get_font_stretch = &get_font_stretch,
+        .get_font_style = &get_font_style,
+        .get_font_variation_settings = &get_font_variation_settings,
+        .get_font_weight = &get_font_weight,
+        .get_font_width = &get_font_width,
         .get_length = &get_length,
-        .get_length = &get_length,
-        .get_line-gap-override = &get_line-gap-override,
         .get_lineGapOverride = &get_lineGapOverride,
+        .get_line_gap_override = &get_line_gap_override,
         .get_parentRule = &get_parentRule,
-        .get_parentRule = &get_parentRule,
-        .get_size-adjust = &get_size-adjust,
         .get_sizeAdjust = &get_sizeAdjust,
+        .get_size_adjust = &get_size_adjust,
         .get_src = &get_src,
-        .get_subscript-position-override = &get_subscript-position-override,
-        .get_subscript-size-override = &get_subscript-size-override,
         .get_subscriptPositionOverride = &get_subscriptPositionOverride,
         .get_subscriptSizeOverride = &get_subscriptSizeOverride,
-        .get_superscript-position-override = &get_superscript-position-override,
-        .get_superscript-size-override = &get_superscript-size-override,
+        .get_subscript_position_override = &get_subscript_position_override,
+        .get_subscript_size_override = &get_subscript_size_override,
         .get_superscriptPositionOverride = &get_superscriptPositionOverride,
         .get_superscriptSizeOverride = &get_superscriptSizeOverride,
-        .get_unicode-range = &get_unicode-range,
+        .get_superscript_position_override = &get_superscript_position_override,
+        .get_superscript_size_override = &get_superscript_size_override,
         .get_unicodeRange = &get_unicodeRange,
+        .get_unicode_range = &get_unicode_range,
 
-        .set_ascent-override = &set_ascent-override,
         .set_ascentOverride = &set_ascentOverride,
+        .set_ascent_override = &set_ascent_override,
         .set_cssText = &set_cssText,
-        .set_cssText = &set_cssText,
-        .set_descent-override = &set_descent-override,
         .set_descentOverride = &set_descentOverride,
-        .set_font-display = &set_font-display,
-        .set_font-family = &set_font-family,
-        .set_font-feature-settings = &set_font-feature-settings,
-        .set_font-language-override = &set_font-language-override,
-        .set_font-named-instance = &set_font-named-instance,
-        .set_font-size = &set_font-size,
-        .set_font-stretch = &set_font-stretch,
-        .set_font-style = &set_font-style,
-        .set_font-variation-settings = &set_font-variation-settings,
-        .set_font-weight = &set_font-weight,
-        .set_font-width = &set_font-width,
+        .set_descent_override = &set_descent_override,
         .set_fontDisplay = &set_fontDisplay,
         .set_fontFamily = &set_fontFamily,
         .set_fontFeatureSettings = &set_fontFeatureSettings,
@@ -150,21 +138,32 @@ pub const CSSFontFaceDescriptors = struct {
         .set_fontVariationSettings = &set_fontVariationSettings,
         .set_fontWeight = &set_fontWeight,
         .set_fontWidth = &set_fontWidth,
-        .set_line-gap-override = &set_line-gap-override,
+        .set_font_display = &set_font_display,
+        .set_font_family = &set_font_family,
+        .set_font_feature_settings = &set_font_feature_settings,
+        .set_font_language_override = &set_font_language_override,
+        .set_font_named_instance = &set_font_named_instance,
+        .set_font_size = &set_font_size,
+        .set_font_stretch = &set_font_stretch,
+        .set_font_style = &set_font_style,
+        .set_font_variation_settings = &set_font_variation_settings,
+        .set_font_weight = &set_font_weight,
+        .set_font_width = &set_font_width,
         .set_lineGapOverride = &set_lineGapOverride,
-        .set_size-adjust = &set_size-adjust,
+        .set_line_gap_override = &set_line_gap_override,
         .set_sizeAdjust = &set_sizeAdjust,
+        .set_size_adjust = &set_size_adjust,
         .set_src = &set_src,
-        .set_subscript-position-override = &set_subscript-position-override,
-        .set_subscript-size-override = &set_subscript-size-override,
         .set_subscriptPositionOverride = &set_subscriptPositionOverride,
         .set_subscriptSizeOverride = &set_subscriptSizeOverride,
-        .set_superscript-position-override = &set_superscript-position-override,
-        .set_superscript-size-override = &set_superscript-size-override,
+        .set_subscript_position_override = &set_subscript_position_override,
+        .set_subscript_size_override = &set_subscript_size_override,
         .set_superscriptPositionOverride = &set_superscriptPositionOverride,
         .set_superscriptSizeOverride = &set_superscriptSizeOverride,
-        .set_unicode-range = &set_unicode-range,
+        .set_superscript_position_override = &set_superscript_position_override,
+        .set_superscript_size_override = &set_superscript_size_override,
         .set_unicodeRange = &set_unicodeRange,
+        .set_unicode_range = &set_unicode_range,
 
         .call_getPropertyCSSValue = &call_getPropertyCSSValue,
         .call_getPropertyPriority = &call_getPropertyPriority,
@@ -176,17 +175,7 @@ pub const CSSFontFaceDescriptors = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        CSSFontFaceDescriptorsImpl.init(instance);
-        
-        return instance;
+        return CSSFontFaceDescriptorsImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -210,22 +199,6 @@ pub const CSSFontFaceDescriptors = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
         
-        try CSSFontFaceDescriptorsImpl.set_cssText(instance, value);
-    }
-
-    pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
-        return try CSSFontFaceDescriptorsImpl.get_length(instance);
-    }
-
-    pub fn get_parentRule(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSFontFaceDescriptorsImpl.get_parentRule(instance);
-    }
-
-    pub fn get_cssText(instance: *runtime.Instance) anyerror!DOMString {
-        return try CSSFontFaceDescriptorsImpl.get_cssText(instance);
-    }
-
-    pub fn set_cssText(instance: *runtime.Instance, value: DOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_cssText(instance, value);
     }
 
@@ -258,13 +231,13 @@ pub const CSSFontFaceDescriptors = struct {
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_font-family(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSFontFaceDescriptorsImpl.get_font-family(instance);
+    pub fn get_font_family(instance: *runtime.Instance) anyerror!anyopaque {
+        return try CSSFontFaceDescriptorsImpl.get_font_family(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_font-family(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try CSSFontFaceDescriptorsImpl.set_font-family(instance, value);
+    pub fn set_font_family(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+        try CSSFontFaceDescriptorsImpl.set_font_family(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
@@ -278,13 +251,13 @@ pub const CSSFontFaceDescriptors = struct {
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_font-style(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSFontFaceDescriptorsImpl.get_font-style(instance);
+    pub fn get_font_style(instance: *runtime.Instance) anyerror!anyopaque {
+        return try CSSFontFaceDescriptorsImpl.get_font_style(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_font-style(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try CSSFontFaceDescriptorsImpl.set_font-style(instance, value);
+    pub fn set_font_style(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+        try CSSFontFaceDescriptorsImpl.set_font_style(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
@@ -298,13 +271,13 @@ pub const CSSFontFaceDescriptors = struct {
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_font-weight(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSFontFaceDescriptorsImpl.get_font-weight(instance);
+    pub fn get_font_weight(instance: *runtime.Instance) anyerror!anyopaque {
+        return try CSSFontFaceDescriptorsImpl.get_font_weight(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_font-weight(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try CSSFontFaceDescriptorsImpl.set_font-weight(instance, value);
+    pub fn set_font_weight(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+        try CSSFontFaceDescriptorsImpl.set_font_weight(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
@@ -318,13 +291,13 @@ pub const CSSFontFaceDescriptors = struct {
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_font-stretch(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSFontFaceDescriptorsImpl.get_font-stretch(instance);
+    pub fn get_font_stretch(instance: *runtime.Instance) anyerror!anyopaque {
+        return try CSSFontFaceDescriptorsImpl.get_font_stretch(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_font-stretch(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try CSSFontFaceDescriptorsImpl.set_font-stretch(instance, value);
+    pub fn set_font_stretch(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+        try CSSFontFaceDescriptorsImpl.set_font_stretch(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
@@ -338,13 +311,13 @@ pub const CSSFontFaceDescriptors = struct {
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_font-width(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSFontFaceDescriptorsImpl.get_font-width(instance);
+    pub fn get_font_width(instance: *runtime.Instance) anyerror!anyopaque {
+        return try CSSFontFaceDescriptorsImpl.get_font_width(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_font-width(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try CSSFontFaceDescriptorsImpl.set_font-width(instance, value);
+    pub fn set_font_width(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+        try CSSFontFaceDescriptorsImpl.set_font_width(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
@@ -358,13 +331,13 @@ pub const CSSFontFaceDescriptors = struct {
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_font-size(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSFontFaceDescriptorsImpl.get_font-size(instance);
+    pub fn get_font_size(instance: *runtime.Instance) anyerror!anyopaque {
+        return try CSSFontFaceDescriptorsImpl.get_font_size(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_font-size(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try CSSFontFaceDescriptorsImpl.set_font-size(instance, value);
+    pub fn set_font_size(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+        try CSSFontFaceDescriptorsImpl.set_font_size(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
@@ -378,13 +351,13 @@ pub const CSSFontFaceDescriptors = struct {
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_size-adjust(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSFontFaceDescriptorsImpl.get_size-adjust(instance);
+    pub fn get_size_adjust(instance: *runtime.Instance) anyerror!anyopaque {
+        return try CSSFontFaceDescriptorsImpl.get_size_adjust(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_size-adjust(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try CSSFontFaceDescriptorsImpl.set_size-adjust(instance, value);
+    pub fn set_size_adjust(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+        try CSSFontFaceDescriptorsImpl.set_size_adjust(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
@@ -398,13 +371,13 @@ pub const CSSFontFaceDescriptors = struct {
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_unicode-range(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSFontFaceDescriptorsImpl.get_unicode-range(instance);
+    pub fn get_unicode_range(instance: *runtime.Instance) anyerror!anyopaque {
+        return try CSSFontFaceDescriptorsImpl.get_unicode_range(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_unicode-range(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try CSSFontFaceDescriptorsImpl.set_unicode-range(instance, value);
+    pub fn set_unicode_range(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+        try CSSFontFaceDescriptorsImpl.set_unicode_range(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
@@ -418,13 +391,13 @@ pub const CSSFontFaceDescriptors = struct {
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_font-feature-settings(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSFontFaceDescriptorsImpl.get_font-feature-settings(instance);
+    pub fn get_font_feature_settings(instance: *runtime.Instance) anyerror!anyopaque {
+        return try CSSFontFaceDescriptorsImpl.get_font_feature_settings(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_font-feature-settings(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try CSSFontFaceDescriptorsImpl.set_font-feature-settings(instance, value);
+    pub fn set_font_feature_settings(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+        try CSSFontFaceDescriptorsImpl.set_font_feature_settings(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
@@ -438,13 +411,13 @@ pub const CSSFontFaceDescriptors = struct {
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_font-variation-settings(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSFontFaceDescriptorsImpl.get_font-variation-settings(instance);
+    pub fn get_font_variation_settings(instance: *runtime.Instance) anyerror!anyopaque {
+        return try CSSFontFaceDescriptorsImpl.get_font_variation_settings(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_font-variation-settings(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try CSSFontFaceDescriptorsImpl.set_font-variation-settings(instance, value);
+    pub fn set_font_variation_settings(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+        try CSSFontFaceDescriptorsImpl.set_font_variation_settings(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
@@ -458,13 +431,13 @@ pub const CSSFontFaceDescriptors = struct {
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_font-named-instance(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSFontFaceDescriptorsImpl.get_font-named-instance(instance);
+    pub fn get_font_named_instance(instance: *runtime.Instance) anyerror!anyopaque {
+        return try CSSFontFaceDescriptorsImpl.get_font_named_instance(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_font-named-instance(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try CSSFontFaceDescriptorsImpl.set_font-named-instance(instance, value);
+    pub fn set_font_named_instance(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+        try CSSFontFaceDescriptorsImpl.set_font_named_instance(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
@@ -478,13 +451,13 @@ pub const CSSFontFaceDescriptors = struct {
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_font-display(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSFontFaceDescriptorsImpl.get_font-display(instance);
+    pub fn get_font_display(instance: *runtime.Instance) anyerror!anyopaque {
+        return try CSSFontFaceDescriptorsImpl.get_font_display(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_font-display(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try CSSFontFaceDescriptorsImpl.set_font-display(instance, value);
+    pub fn set_font_display(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+        try CSSFontFaceDescriptorsImpl.set_font_display(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
@@ -498,13 +471,13 @@ pub const CSSFontFaceDescriptors = struct {
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_font-language-override(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSFontFaceDescriptorsImpl.get_font-language-override(instance);
+    pub fn get_font_language_override(instance: *runtime.Instance) anyerror!anyopaque {
+        return try CSSFontFaceDescriptorsImpl.get_font_language_override(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_font-language-override(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try CSSFontFaceDescriptorsImpl.set_font-language-override(instance, value);
+    pub fn set_font_language_override(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+        try CSSFontFaceDescriptorsImpl.set_font_language_override(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
@@ -518,13 +491,13 @@ pub const CSSFontFaceDescriptors = struct {
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_ascent-override(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSFontFaceDescriptorsImpl.get_ascent-override(instance);
+    pub fn get_ascent_override(instance: *runtime.Instance) anyerror!anyopaque {
+        return try CSSFontFaceDescriptorsImpl.get_ascent_override(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_ascent-override(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try CSSFontFaceDescriptorsImpl.set_ascent-override(instance, value);
+    pub fn set_ascent_override(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+        try CSSFontFaceDescriptorsImpl.set_ascent_override(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
@@ -538,13 +511,13 @@ pub const CSSFontFaceDescriptors = struct {
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_descent-override(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSFontFaceDescriptorsImpl.get_descent-override(instance);
+    pub fn get_descent_override(instance: *runtime.Instance) anyerror!anyopaque {
+        return try CSSFontFaceDescriptorsImpl.get_descent_override(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_descent-override(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try CSSFontFaceDescriptorsImpl.set_descent-override(instance, value);
+    pub fn set_descent_override(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+        try CSSFontFaceDescriptorsImpl.set_descent_override(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
@@ -558,13 +531,13 @@ pub const CSSFontFaceDescriptors = struct {
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_line-gap-override(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSFontFaceDescriptorsImpl.get_line-gap-override(instance);
+    pub fn get_line_gap_override(instance: *runtime.Instance) anyerror!anyopaque {
+        return try CSSFontFaceDescriptorsImpl.get_line_gap_override(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_line-gap-override(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try CSSFontFaceDescriptorsImpl.set_line-gap-override(instance, value);
+    pub fn set_line_gap_override(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+        try CSSFontFaceDescriptorsImpl.set_line_gap_override(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
@@ -578,13 +551,13 @@ pub const CSSFontFaceDescriptors = struct {
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_superscript-position-override(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSFontFaceDescriptorsImpl.get_superscript-position-override(instance);
+    pub fn get_superscript_position_override(instance: *runtime.Instance) anyerror!anyopaque {
+        return try CSSFontFaceDescriptorsImpl.get_superscript_position_override(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_superscript-position-override(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try CSSFontFaceDescriptorsImpl.set_superscript-position-override(instance, value);
+    pub fn set_superscript_position_override(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+        try CSSFontFaceDescriptorsImpl.set_superscript_position_override(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
@@ -598,13 +571,13 @@ pub const CSSFontFaceDescriptors = struct {
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_subscript-position-override(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSFontFaceDescriptorsImpl.get_subscript-position-override(instance);
+    pub fn get_subscript_position_override(instance: *runtime.Instance) anyerror!anyopaque {
+        return try CSSFontFaceDescriptorsImpl.get_subscript_position_override(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_subscript-position-override(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try CSSFontFaceDescriptorsImpl.set_subscript-position-override(instance, value);
+    pub fn set_subscript_position_override(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+        try CSSFontFaceDescriptorsImpl.set_subscript_position_override(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
@@ -618,13 +591,13 @@ pub const CSSFontFaceDescriptors = struct {
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_superscript-size-override(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSFontFaceDescriptorsImpl.get_superscript-size-override(instance);
+    pub fn get_superscript_size_override(instance: *runtime.Instance) anyerror!anyopaque {
+        return try CSSFontFaceDescriptorsImpl.get_superscript_size_override(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_superscript-size-override(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try CSSFontFaceDescriptorsImpl.set_superscript-size-override(instance, value);
+    pub fn set_superscript_size_override(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+        try CSSFontFaceDescriptorsImpl.set_superscript_size_override(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
@@ -638,81 +611,28 @@ pub const CSSFontFaceDescriptors = struct {
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_subscript-size-override(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSFontFaceDescriptorsImpl.get_subscript-size-override(instance);
+    pub fn get_subscript_size_override(instance: *runtime.Instance) anyerror!anyopaque {
+        return try CSSFontFaceDescriptorsImpl.get_subscript_size_override(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_subscript-size-override(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try CSSFontFaceDescriptorsImpl.set_subscript-size-override(instance, value);
+    pub fn set_subscript_size_override(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+        try CSSFontFaceDescriptorsImpl.set_subscript_size_override(instance, value);
     }
 
-    /// Arguments for item (WebIDL overloading)
-    pub const ItemArgs = union(enum) {
-        /// item(index)
-        long: u32,
-        /// item(index)
-        long: u32,
-    };
-
-    pub fn call_item(instance: *runtime.Instance, args: ItemArgs) anyerror!anyopaque {
-        switch (args) {
-            .long => |arg| return try CSSFontFaceDescriptorsImpl.long(instance, arg),
-            .long => |arg| return try CSSFontFaceDescriptorsImpl.long(instance, arg),
-        }
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!anyopaque {
+        
+        return try CSSFontFaceDescriptorsImpl.call_item(instance, index);
     }
 
-    /// Arguments for removeProperty (WebIDL overloading)
-    pub const RemovePropertyArgs = union(enum) {
-        /// removeProperty(property)
-        CSSOMString: anyopaque,
-        /// removeProperty(propertyName)
-        string: DOMString,
-    };
-
-    pub fn call_removeProperty(instance: *runtime.Instance, args: RemovePropertyArgs) anyerror!anyopaque {
-        switch (args) {
-            .CSSOMString => |arg| return try CSSFontFaceDescriptorsImpl.CSSOMString(instance, arg),
-            .string => |arg| return try CSSFontFaceDescriptorsImpl.string(instance, arg),
-        }
-    }
-
-    /// Arguments for getPropertyPriority (WebIDL overloading)
-    pub const GetPropertyPriorityArgs = union(enum) {
-        /// getPropertyPriority(property)
-        CSSOMString: anyopaque,
-        /// getPropertyPriority(propertyName)
-        string: DOMString,
-    };
-
-    pub fn call_getPropertyPriority(instance: *runtime.Instance, args: GetPropertyPriorityArgs) anyerror!anyopaque {
-        switch (args) {
-            .CSSOMString => |arg| return try CSSFontFaceDescriptorsImpl.CSSOMString(instance, arg),
-            .string => |arg| return try CSSFontFaceDescriptorsImpl.string(instance, arg),
-        }
-    }
-
-    /// Arguments for setProperty (WebIDL overloading)
-    pub const SetPropertyArgs = union(enum) {
-        /// setProperty(property, value, priority)
-        CSSOMString_CSSOMString_CSSOMString: struct {
-            property: anyopaque,
-            value: anyopaque,
-            priority: anyopaque,
-        },
-        /// setProperty(propertyName, value, priority)
-        string_string_string: struct {
-            propertyName: DOMString,
-            value: DOMString,
-            priority: DOMString,
-        },
-    };
-
-    pub fn call_setProperty(instance: *runtime.Instance, args: SetPropertyArgs) anyerror!void {
-        switch (args) {
-            .CSSOMString_CSSOMString_CSSOMString => |a| return try CSSFontFaceDescriptorsImpl.CSSOMString_CSSOMString_CSSOMString(instance, a.property, a.value, a.priority),
-            .string_string_string => |a| return try CSSFontFaceDescriptorsImpl.string_string_string(instance, a.propertyName, a.value, a.priority),
-        }
+    /// Extended attributes: [CEReactions]
+    pub fn call_removeProperty(instance: *runtime.Instance, property: anyopaque) anyerror!anyopaque {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try CSSFontFaceDescriptorsImpl.call_removeProperty(instance, property);
     }
 
     pub fn call_getPropertyCSSValue(instance: *runtime.Instance, propertyName: DOMString) anyerror!CSSValue {
@@ -720,19 +640,24 @@ pub const CSSFontFaceDescriptors = struct {
         return try CSSFontFaceDescriptorsImpl.call_getPropertyCSSValue(instance, propertyName);
     }
 
-    /// Arguments for getPropertyValue (WebIDL overloading)
-    pub const GetPropertyValueArgs = union(enum) {
-        /// getPropertyValue(property)
-        CSSOMString: anyopaque,
-        /// getPropertyValue(propertyName)
-        string: DOMString,
-    };
+    pub fn call_getPropertyPriority(instance: *runtime.Instance, property: anyopaque) anyerror!anyopaque {
+        
+        return try CSSFontFaceDescriptorsImpl.call_getPropertyPriority(instance, property);
+    }
 
-    pub fn call_getPropertyValue(instance: *runtime.Instance, args: GetPropertyValueArgs) anyerror!anyopaque {
-        switch (args) {
-            .CSSOMString => |arg| return try CSSFontFaceDescriptorsImpl.CSSOMString(instance, arg),
-            .string => |arg| return try CSSFontFaceDescriptorsImpl.string(instance, arg),
-        }
+    /// Extended attributes: [CEReactions]
+    pub fn call_setProperty(instance: *runtime.Instance, property: anyopaque, value: anyopaque, priority: anyopaque) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try CSSFontFaceDescriptorsImpl.call_setProperty(instance, property, value, priority);
+    }
+
+    pub fn call_getPropertyValue(instance: *runtime.Instance, property: anyopaque) anyerror!anyopaque {
+        
+        return try CSSFontFaceDescriptorsImpl.call_getPropertyValue(instance, property);
     }
 
 };

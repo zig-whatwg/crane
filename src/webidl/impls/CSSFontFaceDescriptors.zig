@@ -13,41 +13,29 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Initialize instance
-pub fn init(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Initialize your instance state here
+/// Initialize instance (delegates to runtime.Instance.init)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable);
+    // TODO: Add custom initialization here if needed
+    // const state = instance.getState(StateType);
+    // state.* = .{}; // Initialize fields
+    return instance;
 }
 
-/// Deinitialize instance
+/// Deinitialize instance (delegates to runtime.Instance.deinit)
 pub fn deinit(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Clean up your instance resources here
+    // TODO: Add custom cleanup here if needed
+    // const state = instance.getState(State);
+    // Clean up fields...
+    runtime.Instance.deinit(instance);
 }
 
 /// Getter for cssText
 pub fn get_cssText(instance: *runtime.Instance) ImplError!anyopaque {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for length
-pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for parentRule
-pub fn get_parentRule(instance: *runtime.Instance) ImplError!anyopaque {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for cssText
-pub fn get_cssText(instance: *runtime.Instance) ImplError!runtime.DOMString {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -82,7 +70,7 @@ pub fn get_fontFamily(instance: *runtime.Instance) ImplError!anyopaque {
 }
 
 /// Getter for font-family
-pub fn get_font-family(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_font_family(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -96,7 +84,7 @@ pub fn get_fontStyle(instance: *runtime.Instance) ImplError!anyopaque {
 }
 
 /// Getter for font-style
-pub fn get_font-style(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_font_style(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -110,7 +98,7 @@ pub fn get_fontWeight(instance: *runtime.Instance) ImplError!anyopaque {
 }
 
 /// Getter for font-weight
-pub fn get_font-weight(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_font_weight(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -124,7 +112,7 @@ pub fn get_fontStretch(instance: *runtime.Instance) ImplError!anyopaque {
 }
 
 /// Getter for font-stretch
-pub fn get_font-stretch(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_font_stretch(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -138,7 +126,7 @@ pub fn get_fontWidth(instance: *runtime.Instance) ImplError!anyopaque {
 }
 
 /// Getter for font-width
-pub fn get_font-width(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_font_width(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -152,7 +140,7 @@ pub fn get_fontSize(instance: *runtime.Instance) ImplError!anyopaque {
 }
 
 /// Getter for font-size
-pub fn get_font-size(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_font_size(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -166,7 +154,7 @@ pub fn get_sizeAdjust(instance: *runtime.Instance) ImplError!anyopaque {
 }
 
 /// Getter for size-adjust
-pub fn get_size-adjust(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_size_adjust(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -180,7 +168,7 @@ pub fn get_unicodeRange(instance: *runtime.Instance) ImplError!anyopaque {
 }
 
 /// Getter for unicode-range
-pub fn get_unicode-range(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_unicode_range(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -194,7 +182,7 @@ pub fn get_fontFeatureSettings(instance: *runtime.Instance) ImplError!anyopaque 
 }
 
 /// Getter for font-feature-settings
-pub fn get_font-feature-settings(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_font_feature_settings(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -208,7 +196,7 @@ pub fn get_fontVariationSettings(instance: *runtime.Instance) ImplError!anyopaqu
 }
 
 /// Getter for font-variation-settings
-pub fn get_font-variation-settings(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_font_variation_settings(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -222,7 +210,7 @@ pub fn get_fontNamedInstance(instance: *runtime.Instance) ImplError!anyopaque {
 }
 
 /// Getter for font-named-instance
-pub fn get_font-named-instance(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_font_named_instance(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -236,7 +224,7 @@ pub fn get_fontDisplay(instance: *runtime.Instance) ImplError!anyopaque {
 }
 
 /// Getter for font-display
-pub fn get_font-display(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_font_display(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -250,7 +238,7 @@ pub fn get_fontLanguageOverride(instance: *runtime.Instance) ImplError!anyopaque
 }
 
 /// Getter for font-language-override
-pub fn get_font-language-override(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_font_language_override(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -264,7 +252,7 @@ pub fn get_ascentOverride(instance: *runtime.Instance) ImplError!anyopaque {
 }
 
 /// Getter for ascent-override
-pub fn get_ascent-override(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_ascent_override(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -278,7 +266,7 @@ pub fn get_descentOverride(instance: *runtime.Instance) ImplError!anyopaque {
 }
 
 /// Getter for descent-override
-pub fn get_descent-override(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_descent_override(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -292,7 +280,7 @@ pub fn get_lineGapOverride(instance: *runtime.Instance) ImplError!anyopaque {
 }
 
 /// Getter for line-gap-override
-pub fn get_line-gap-override(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_line_gap_override(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -306,7 +294,7 @@ pub fn get_superscriptPositionOverride(instance: *runtime.Instance) ImplError!an
 }
 
 /// Getter for superscript-position-override
-pub fn get_superscript-position-override(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_superscript_position_override(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -320,7 +308,7 @@ pub fn get_subscriptPositionOverride(instance: *runtime.Instance) ImplError!anyo
 }
 
 /// Getter for subscript-position-override
-pub fn get_subscript-position-override(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_subscript_position_override(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -334,7 +322,7 @@ pub fn get_superscriptSizeOverride(instance: *runtime.Instance) ImplError!anyopa
 }
 
 /// Getter for superscript-size-override
-pub fn get_superscript-size-override(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_superscript_size_override(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -348,7 +336,7 @@ pub fn get_subscriptSizeOverride(instance: *runtime.Instance) ImplError!anyopaqu
 }
 
 /// Getter for subscript-size-override
-pub fn get_subscript-size-override(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_subscript_size_override(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -356,14 +344,6 @@ pub fn get_subscript-size-override(instance: *runtime.Instance) ImplError!anyopa
 
 /// Setter for cssText
 pub fn set_cssText(instance: *runtime.Instance, value: anyopaque) ImplError!void {
-    _ = instance;
-    _ = value;
-    // TODO: Implement setter
-    return error.NotImplemented;
-}
-
-/// Setter for cssText
-pub fn set_cssText(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -387,7 +367,7 @@ pub fn set_fontFamily(instance: *runtime.Instance, value: anyopaque) ImplError!v
 }
 
 /// Setter for font-family
-pub fn set_font-family(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_font_family(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -403,7 +383,7 @@ pub fn set_fontStyle(instance: *runtime.Instance, value: anyopaque) ImplError!vo
 }
 
 /// Setter for font-style
-pub fn set_font-style(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_font_style(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -419,7 +399,7 @@ pub fn set_fontWeight(instance: *runtime.Instance, value: anyopaque) ImplError!v
 }
 
 /// Setter for font-weight
-pub fn set_font-weight(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_font_weight(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -435,7 +415,7 @@ pub fn set_fontStretch(instance: *runtime.Instance, value: anyopaque) ImplError!
 }
 
 /// Setter for font-stretch
-pub fn set_font-stretch(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_font_stretch(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -451,7 +431,7 @@ pub fn set_fontWidth(instance: *runtime.Instance, value: anyopaque) ImplError!vo
 }
 
 /// Setter for font-width
-pub fn set_font-width(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_font_width(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -467,7 +447,7 @@ pub fn set_fontSize(instance: *runtime.Instance, value: anyopaque) ImplError!voi
 }
 
 /// Setter for font-size
-pub fn set_font-size(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_font_size(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -483,7 +463,7 @@ pub fn set_sizeAdjust(instance: *runtime.Instance, value: anyopaque) ImplError!v
 }
 
 /// Setter for size-adjust
-pub fn set_size-adjust(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_size_adjust(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -499,7 +479,7 @@ pub fn set_unicodeRange(instance: *runtime.Instance, value: anyopaque) ImplError
 }
 
 /// Setter for unicode-range
-pub fn set_unicode-range(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_unicode_range(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -515,7 +495,7 @@ pub fn set_fontFeatureSettings(instance: *runtime.Instance, value: anyopaque) Im
 }
 
 /// Setter for font-feature-settings
-pub fn set_font-feature-settings(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_font_feature_settings(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -531,7 +511,7 @@ pub fn set_fontVariationSettings(instance: *runtime.Instance, value: anyopaque) 
 }
 
 /// Setter for font-variation-settings
-pub fn set_font-variation-settings(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_font_variation_settings(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -547,7 +527,7 @@ pub fn set_fontNamedInstance(instance: *runtime.Instance, value: anyopaque) Impl
 }
 
 /// Setter for font-named-instance
-pub fn set_font-named-instance(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_font_named_instance(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -563,7 +543,7 @@ pub fn set_fontDisplay(instance: *runtime.Instance, value: anyopaque) ImplError!
 }
 
 /// Setter for font-display
-pub fn set_font-display(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_font_display(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -579,7 +559,7 @@ pub fn set_fontLanguageOverride(instance: *runtime.Instance, value: anyopaque) I
 }
 
 /// Setter for font-language-override
-pub fn set_font-language-override(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_font_language_override(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -595,7 +575,7 @@ pub fn set_ascentOverride(instance: *runtime.Instance, value: anyopaque) ImplErr
 }
 
 /// Setter for ascent-override
-pub fn set_ascent-override(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_ascent_override(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -611,7 +591,7 @@ pub fn set_descentOverride(instance: *runtime.Instance, value: anyopaque) ImplEr
 }
 
 /// Setter for descent-override
-pub fn set_descent-override(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_descent_override(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -627,7 +607,7 @@ pub fn set_lineGapOverride(instance: *runtime.Instance, value: anyopaque) ImplEr
 }
 
 /// Setter for line-gap-override
-pub fn set_line-gap-override(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_line_gap_override(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -643,7 +623,7 @@ pub fn set_superscriptPositionOverride(instance: *runtime.Instance, value: anyop
 }
 
 /// Setter for superscript-position-override
-pub fn set_superscript-position-override(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_superscript_position_override(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -659,7 +639,7 @@ pub fn set_subscriptPositionOverride(instance: *runtime.Instance, value: anyopaq
 }
 
 /// Setter for subscript-position-override
-pub fn set_subscript-position-override(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_subscript_position_override(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -675,7 +655,7 @@ pub fn set_superscriptSizeOverride(instance: *runtime.Instance, value: anyopaque
 }
 
 /// Setter for superscript-size-override
-pub fn set_superscript-size-override(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_superscript_size_override(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -691,7 +671,7 @@ pub fn set_subscriptSizeOverride(instance: *runtime.Instance, value: anyopaque) 
 }
 
 /// Setter for subscript-size-override
-pub fn set_subscript-size-override(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_subscript_size_override(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -740,52 +720,10 @@ pub fn call_removeProperty(instance: *runtime.Instance, property: anyopaque) Imp
     return error.NotImplemented;
 }
 
-/// Operation: getPropertyValue
-pub fn call_getPropertyValue(instance: *runtime.Instance, propertyName: runtime.DOMString) ImplError!runtime.DOMString {
-    _ = instance;
-    _ = propertyName;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
 /// Operation: getPropertyCSSValue
 pub fn call_getPropertyCSSValue(instance: *runtime.Instance, propertyName: runtime.DOMString) ImplError!anyopaque {
     _ = instance;
     _ = propertyName;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: removeProperty
-pub fn call_removeProperty(instance: *runtime.Instance, propertyName: runtime.DOMString) ImplError!runtime.DOMString {
-    _ = instance;
-    _ = propertyName;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: getPropertyPriority
-pub fn call_getPropertyPriority(instance: *runtime.Instance, propertyName: runtime.DOMString) ImplError!runtime.DOMString {
-    _ = instance;
-    _ = propertyName;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: setProperty
-pub fn call_setProperty(instance: *runtime.Instance, propertyName: runtime.DOMString, value: runtime.DOMString, priority: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = propertyName;
-    _ = value;
-    _ = priority;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: item
-pub fn call_item(instance: *runtime.Instance, index: u32) ImplError!runtime.DOMString {
-    _ = instance;
-    _ = index;
     // TODO: Implement operation
     return error.NotImplemented;
 }

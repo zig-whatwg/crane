@@ -1,5 +1,5 @@
 //! Generated from: OES_texture_float_linear.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -37,17 +37,7 @@ pub const OES_texture_float_linear = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        OES_texture_float_linearImpl.init(instance);
-        
-        return instance;
+        return OES_texture_float_linearImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

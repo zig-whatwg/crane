@@ -9,6 +9,6 @@ pub const NDEFReadingEventInit = struct {
     // Inherited from EventInit
     base: EventInit,
 
-    serialNumber: ?anyopaque = null,
+    serialNumber: ?runtime.DOMString = null,
     message: anyopaque,
 };

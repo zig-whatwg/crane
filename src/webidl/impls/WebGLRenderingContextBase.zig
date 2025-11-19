@@ -13,16 +13,25 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Initialize instance
-pub fn init(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Initialize your instance state here
+/// Initialize instance (delegates to runtime.Instance.init)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable);
+    // TODO: Add custom initialization here if needed
+    // const state = instance.getState(StateType);
+    // state.* = .{}; // Initialize fields
+    return instance;
 }
 
-/// Deinitialize instance
+/// Deinitialize instance (delegates to runtime.Instance.deinit)
 pub fn deinit(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Clean up your instance resources here
+    // TODO: Add custom cleanup here if needed
+    // const state = instance.getState(State);
+    // Clean up fields...
+    runtime.Instance.deinit(instance);
 }
 
 /// Getter for canvas
@@ -354,9 +363,9 @@ pub fn call_createRenderbuffer(instance: *runtime.Instance) ImplError!anyopaque 
 }
 
 /// Operation: createShader
-pub fn call_createShader(instance: *runtime.Instance, type: anyopaque) ImplError!anyopaque {
+pub fn call_createShader(instance: *runtime.Instance, @"type": anyopaque) ImplError!anyopaque {
     _ = instance;
-    _ = type;
+    _ = @"type";
     // TODO: Implement operation
     return error.NotImplemented;
 }
@@ -485,11 +494,11 @@ pub fn call_drawArrays(instance: *runtime.Instance, mode: anyopaque, first: anyo
 }
 
 /// Operation: drawElements
-pub fn call_drawElements(instance: *runtime.Instance, mode: anyopaque, count: anyopaque, type: anyopaque, offset: anyopaque) ImplError!void {
+pub fn call_drawElements(instance: *runtime.Instance, mode: anyopaque, count: anyopaque, @"type": anyopaque, offset: anyopaque) ImplError!void {
     _ = instance;
     _ = mode;
     _ = count;
-    _ = type;
+    _ = @"type";
     _ = offset;
     // TODO: Implement operation
     return error.NotImplemented;
@@ -643,7 +652,7 @@ pub fn call_getProgramParameter(instance: *runtime.Instance, program: anyopaque,
 }
 
 /// Operation: getProgramInfoLog
-pub fn call_getProgramInfoLog(instance: *runtime.Instance, program: anyopaque) ImplError!anyopaque {
+pub fn call_getProgramInfoLog(instance: *runtime.Instance, program: anyopaque) ImplError!runtime.DOMString {
     _ = instance;
     _ = program;
     // TODO: Implement operation
@@ -678,7 +687,7 @@ pub fn call_getShaderPrecisionFormat(instance: *runtime.Instance, shadertype: an
 }
 
 /// Operation: getShaderInfoLog
-pub fn call_getShaderInfoLog(instance: *runtime.Instance, shader: anyopaque) ImplError!anyopaque {
+pub fn call_getShaderInfoLog(instance: *runtime.Instance, shader: anyopaque) ImplError!runtime.DOMString {
     _ = instance;
     _ = shader;
     // TODO: Implement operation
@@ -686,7 +695,7 @@ pub fn call_getShaderInfoLog(instance: *runtime.Instance, shader: anyopaque) Imp
 }
 
 /// Operation: getShaderSource
-pub fn call_getShaderSource(instance: *runtime.Instance, shader: anyopaque) ImplError!anyopaque {
+pub fn call_getShaderSource(instance: *runtime.Instance, shader: anyopaque) ImplError!runtime.DOMString {
     _ = instance;
     _ = shader;
     // TODO: Implement operation
@@ -1135,11 +1144,11 @@ pub fn call_vertexAttrib4fv(instance: *runtime.Instance, index: anyopaque, value
 }
 
 /// Operation: vertexAttribPointer
-pub fn call_vertexAttribPointer(instance: *runtime.Instance, index: anyopaque, size: anyopaque, type: anyopaque, normalized: anyopaque, stride: anyopaque, offset: anyopaque) ImplError!void {
+pub fn call_vertexAttribPointer(instance: *runtime.Instance, index: anyopaque, size: anyopaque, @"type": anyopaque, normalized: anyopaque, stride: anyopaque, offset: anyopaque) ImplError!void {
     _ = instance;
     _ = index;
     _ = size;
-    _ = type;
+    _ = @"type";
     _ = normalized;
     _ = stride;
     _ = offset;

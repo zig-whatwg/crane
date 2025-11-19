@@ -1,5 +1,5 @@
 //! Generated from: mediacapture-region.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,9 +7,22 @@ const std = @import("std");
 const runtime = @import("runtime");
 const BrowserCaptureMediaStreamTrackImpl = @import("impls").BrowserCaptureMediaStreamTrack;
 const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const CaptureHandle = @import("dictionaries").CaptureHandle;
 const CropTarget = @import("interfaces").CropTarget;
+const MediaTrackSettings = @import("dictionaries").MediaTrackSettings;
 const RestrictionTarget = @import("interfaces").RestrictionTarget;
+const MediaTrackConstraints = @import("dictionaries").MediaTrackConstraints;
+const MediaStreamTrackState = @import("enums").MediaStreamTrackState;
+const Event = @import("interfaces").Event;
+const Observable = @import("interfaces").Observable;
+const CaptureAction = @import("enums").CaptureAction;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const MediaTrackCapabilities = @import("dictionaries").MediaTrackCapabilities;
+const EventListener = @import("interfaces").EventListener;
+const EventHandler = @import("typedefs").EventHandler;
+const DOMString = @import("typedefs").DOMString;
 
 pub const BrowserCaptureMediaStreamTrack = struct {
     pub const Meta = struct {
@@ -75,17 +88,7 @@ pub const BrowserCaptureMediaStreamTrack = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        BrowserCaptureMediaStreamTrackImpl.init(instance);
-        
-        return instance;
+        return BrowserCaptureMediaStreamTrackImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -178,37 +181,26 @@ pub const BrowserCaptureMediaStreamTrack = struct {
         try BrowserCaptureMediaStreamTrackImpl.set_onisolationchange(instance, value);
     }
 
-    /// Arguments for clone (WebIDL overloading)
-    pub const CloneArgs = union(enum) {
-        /// clone()
-        no_params: void,
-        /// clone()
-        no_params: void,
-    };
-
-    pub fn call_clone(instance: *runtime.Instance, args: CloneArgs) anyerror!MediaStreamTrack {
-        switch (args) {
-            .no_params => return try BrowserCaptureMediaStreamTrackImpl.no_params(instance),
-            .no_params => return try BrowserCaptureMediaStreamTrackImpl.no_params(instance),
-        }
+    pub fn call_clone(instance: *runtime.Instance) anyerror!MediaStreamTrack {
+        return try BrowserCaptureMediaStreamTrackImpl.call_clone(instance);
     }
 
     pub fn call_stop(instance: *runtime.Instance) anyerror!void {
         return try BrowserCaptureMediaStreamTrackImpl.call_stop(instance);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try BrowserCaptureMediaStreamTrackImpl.call_when(instance, type_, options);
+        return try BrowserCaptureMediaStreamTrackImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_getCapabilities(instance: *runtime.Instance) anyerror!MediaTrackCapabilities {
         return try BrowserCaptureMediaStreamTrackImpl.call_getCapabilities(instance);
     }
 
-    pub fn call_restrictTo(instance: *runtime.Instance, RestrictionTarget: anyopaque) anyerror!anyopaque {
+    pub fn call_restrictTo(instance: *runtime.Instance, restrictiontarget_param: RestrictionTarget) anyerror!anyopaque {
         
-        return try BrowserCaptureMediaStreamTrackImpl.call_restrictTo(instance, RestrictionTarget);
+        return try BrowserCaptureMediaStreamTrackImpl.call_restrictTo(instance, restrictiontarget_param);
     }
 
     pub fn call_sendCaptureAction(instance: *runtime.Instance, action: CaptureAction) anyerror!anyopaque {
@@ -216,9 +208,9 @@ pub const BrowserCaptureMediaStreamTrack = struct {
         return try BrowserCaptureMediaStreamTrackImpl.call_sendCaptureAction(instance, action);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try BrowserCaptureMediaStreamTrackImpl.call_addEventListener(instance, type_, callback, options);
+        return try BrowserCaptureMediaStreamTrackImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
     pub fn call_applyConstraints(instance: *runtime.Instance, constraints: MediaTrackConstraints) anyerror!anyopaque {
@@ -226,12 +218,12 @@ pub const BrowserCaptureMediaStreamTrack = struct {
         return try BrowserCaptureMediaStreamTrackImpl.call_applyConstraints(instance, constraints);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try BrowserCaptureMediaStreamTrackImpl.call_removeEventListener(instance, type_, callback, options);
+        return try BrowserCaptureMediaStreamTrackImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_getCaptureHandle(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn call_getCaptureHandle(instance: *runtime.Instance) anyerror!CaptureHandle {
         return try BrowserCaptureMediaStreamTrackImpl.call_getCaptureHandle(instance);
     }
 
@@ -252,7 +244,7 @@ pub const BrowserCaptureMediaStreamTrack = struct {
         return try BrowserCaptureMediaStreamTrackImpl.call_getSupportedCaptureActions(instance);
     }
 
-    pub fn call_cropTo(instance: *runtime.Instance, cropTarget: anyopaque) anyerror!anyopaque {
+    pub fn call_cropTo(instance: *runtime.Instance, cropTarget: CropTarget) anyerror!anyopaque {
         
         return try BrowserCaptureMediaStreamTrackImpl.call_cropTo(instance, cropTarget);
     }

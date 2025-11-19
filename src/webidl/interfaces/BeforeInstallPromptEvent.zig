@@ -1,5 +1,5 @@
 //! Generated from: manifest-incubations.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,8 +7,11 @@ const std = @import("std");
 const runtime = @import("runtime");
 const BeforeInstallPromptEventImpl = @import("impls").BeforeInstallPromptEvent;
 const Event = @import("interfaces").Event;
+const EventTarget = @import("interfaces").EventTarget;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
-const Promise<PromptResponseObject> = @import("interfaces").Promise<PromptResponseObject>;
+const PromptResponseObject = @import("dictionaries").PromptResponseObject;
+const DOMString = @import("typedefs").DOMString;
 
 pub const BeforeInstallPromptEvent = struct {
     pub const Meta = struct {
@@ -69,17 +72,7 @@ pub const BeforeInstallPromptEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        BeforeInstallPromptEventImpl.init(instance);
-        
-        return instance;
+        return BeforeInstallPromptEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -93,11 +86,11 @@ pub const BeforeInstallPromptEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, eventInitDict: EventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, eventInitDict: EventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try BeforeInstallPromptEventImpl.constructor(instance, type_, eventInitDict);
+        try BeforeInstallPromptEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -106,15 +99,15 @@ pub const BeforeInstallPromptEvent = struct {
         return try BeforeInstallPromptEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try BeforeInstallPromptEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try BeforeInstallPromptEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try BeforeInstallPromptEventImpl.get_currentTarget(instance);
     }
 
@@ -167,9 +160,9 @@ pub const BeforeInstallPromptEvent = struct {
         return try BeforeInstallPromptEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try BeforeInstallPromptEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try BeforeInstallPromptEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_composedPath(instance: *runtime.Instance) anyerror!anyopaque {

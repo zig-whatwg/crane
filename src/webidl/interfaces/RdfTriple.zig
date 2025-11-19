@@ -1,12 +1,13 @@
 //! Generated from: json-ld-api.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const RdfTripleImpl = @import("impls").RdfTriple;
-const (USVString or RdfLiteral) = @import("interfaces").(USVString or RdfLiteral);
+const RdfLiteral = @import("interfaces").RdfLiteral;
+const USVString = @import("interfaces").USVString;
 
 pub const RdfTriple = struct {
     pub const Meta = struct {
@@ -26,7 +27,10 @@ pub const RdfTriple = struct {
         struct {
             subject: runtime.USVString = undefined,
             predicate: runtime.USVString = undefined,
-            _object: (USVString or RdfLiteral) = undefined,
+            _object: union(enum) {
+                USVString: runtime.USVString,
+                RdfLiteral: RdfLiteral,
+            } = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -42,17 +46,7 @@ pub const RdfTriple = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        RdfTripleImpl.init(instance);
-        
-        return instance;
+        return RdfTripleImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

@@ -1,19 +1,17 @@
 //! Generated from: storage-buckets.idl
-//! Generated at: 2025-11-18T18:28:13Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const StorageBucketImpl = @import("impls").StorageBucket;
-const Promise<StorageEstimate> = @import("interfaces").Promise<StorageEstimate>;
-const Promise<boolean> = @import("interfaces").Promise<boolean>;
-const Promise<FileSystemDirectoryHandle> = @import("interfaces").Promise<FileSystemDirectoryHandle>;
+const FileSystemDirectoryHandle = @import("interfaces").FileSystemDirectoryHandle;
 const CacheStorage = @import("interfaces").CacheStorage;
 const IDBFactory = @import("interfaces").IDBFactory;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
-const Promise<DOMHighResTimeStamp?> = @import("interfaces").Promise<DOMHighResTimeStamp?>;
+const StorageEstimate = @import("dictionaries").StorageEstimate;
+const DOMString = @import("typedefs").DOMString;
 
 pub const StorageBucket = struct {
     pub const Meta = struct {
@@ -60,17 +58,7 @@ pub const StorageBucket = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        StorageBucketImpl.init(instance);
-        
-        return instance;
+        return StorageBucketImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

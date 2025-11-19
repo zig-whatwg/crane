@@ -13,16 +13,25 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Initialize instance
-pub fn init(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Initialize your instance state here
+/// Initialize instance (delegates to runtime.Instance.init)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable);
+    // TODO: Add custom initialization here if needed
+    // const state = instance.getState(StateType);
+    // state.* = .{}; // Initialize fields
+    return instance;
 }
 
-/// Deinitialize instance
+/// Deinitialize instance (delegates to runtime.Instance.deinit)
 pub fn deinit(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Clean up your instance resources here
+    // TODO: Add custom cleanup here if needed
+    // const state = instance.getState(State);
+    // Clean up fields...
+    runtime.Instance.deinit(instance);
 }
 
 /// Getter for canvas
@@ -354,9 +363,9 @@ pub fn call_createRenderbuffer(instance: *runtime.Instance) ImplError!anyopaque 
 }
 
 /// Operation: createShader
-pub fn call_createShader(instance: *runtime.Instance, type: anyopaque) ImplError!anyopaque {
+pub fn call_createShader(instance: *runtime.Instance, @"type": anyopaque) ImplError!anyopaque {
     _ = instance;
-    _ = type;
+    _ = @"type";
     // TODO: Implement operation
     return error.NotImplemented;
 }
@@ -485,11 +494,11 @@ pub fn call_drawArrays(instance: *runtime.Instance, mode: anyopaque, first: anyo
 }
 
 /// Operation: drawElements
-pub fn call_drawElements(instance: *runtime.Instance, mode: anyopaque, count: anyopaque, type: anyopaque, offset: anyopaque) ImplError!void {
+pub fn call_drawElements(instance: *runtime.Instance, mode: anyopaque, count: anyopaque, @"type": anyopaque, offset: anyopaque) ImplError!void {
     _ = instance;
     _ = mode;
     _ = count;
-    _ = type;
+    _ = @"type";
     _ = offset;
     // TODO: Implement operation
     return error.NotImplemented;
@@ -643,7 +652,7 @@ pub fn call_getProgramParameter(instance: *runtime.Instance, program: anyopaque,
 }
 
 /// Operation: getProgramInfoLog
-pub fn call_getProgramInfoLog(instance: *runtime.Instance, program: anyopaque) ImplError!anyopaque {
+pub fn call_getProgramInfoLog(instance: *runtime.Instance, program: anyopaque) ImplError!runtime.DOMString {
     _ = instance;
     _ = program;
     // TODO: Implement operation
@@ -678,7 +687,7 @@ pub fn call_getShaderPrecisionFormat(instance: *runtime.Instance, shadertype: an
 }
 
 /// Operation: getShaderInfoLog
-pub fn call_getShaderInfoLog(instance: *runtime.Instance, shader: anyopaque) ImplError!anyopaque {
+pub fn call_getShaderInfoLog(instance: *runtime.Instance, shader: anyopaque) ImplError!runtime.DOMString {
     _ = instance;
     _ = shader;
     // TODO: Implement operation
@@ -686,7 +695,7 @@ pub fn call_getShaderInfoLog(instance: *runtime.Instance, shader: anyopaque) Imp
 }
 
 /// Operation: getShaderSource
-pub fn call_getShaderSource(instance: *runtime.Instance, shader: anyopaque) ImplError!anyopaque {
+pub fn call_getShaderSource(instance: *runtime.Instance, shader: anyopaque) ImplError!runtime.DOMString {
     _ = instance;
     _ = shader;
     // TODO: Implement operation
@@ -1135,11 +1144,11 @@ pub fn call_vertexAttrib4fv(instance: *runtime.Instance, index: anyopaque, value
 }
 
 /// Operation: vertexAttribPointer
-pub fn call_vertexAttribPointer(instance: *runtime.Instance, index: anyopaque, size: anyopaque, type: anyopaque, normalized: anyopaque, stride: anyopaque, offset: anyopaque) ImplError!void {
+pub fn call_vertexAttribPointer(instance: *runtime.Instance, index: anyopaque, size: anyopaque, @"type": anyopaque, normalized: anyopaque, stride: anyopaque, offset: anyopaque) ImplError!void {
     _ = instance;
     _ = index;
     _ = size;
-    _ = type;
+    _ = @"type";
     _ = normalized;
     _ = stride;
     _ = offset;
@@ -1296,7 +1305,7 @@ pub fn call_texStorage3D(instance: *runtime.Instance, target: anyopaque, levels:
 }
 
 /// Operation: texImage3D
-pub fn call_texImage3D(instance: *runtime.Instance, target: anyopaque, level: anyopaque, internalformat: anyopaque, width: anyopaque, height: anyopaque, depth: anyopaque, border: anyopaque, format: anyopaque, type: anyopaque, pboOffset: anyopaque) ImplError!void {
+pub fn call_texImage3D(instance: *runtime.Instance, target: anyopaque, level: anyopaque, internalformat: anyopaque, width: anyopaque, height: anyopaque, depth: anyopaque, border: anyopaque, format: anyopaque, @"type": anyopaque, pboOffset: anyopaque) ImplError!void {
     _ = instance;
     _ = target;
     _ = level;
@@ -1306,84 +1315,14 @@ pub fn call_texImage3D(instance: *runtime.Instance, target: anyopaque, level: an
     _ = depth;
     _ = border;
     _ = format;
-    _ = type;
-    _ = pboOffset;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: texImage3D
-pub fn call_texImage3D(instance: *runtime.Instance, target: anyopaque, level: anyopaque, internalformat: anyopaque, width: anyopaque, height: anyopaque, depth: anyopaque, border: anyopaque, format: anyopaque, type: anyopaque, source: anyopaque) ImplError!void {
-    _ = instance;
-    _ = target;
-    _ = level;
-    _ = internalformat;
-    _ = width;
-    _ = height;
-    _ = depth;
-    _ = border;
-    _ = format;
-    _ = type;
-    _ = source;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: texImage3D
-pub fn call_texImage3D(instance: *runtime.Instance, target: anyopaque, level: anyopaque, internalformat: anyopaque, width: anyopaque, height: anyopaque, depth: anyopaque, border: anyopaque, format: anyopaque, type: anyopaque, srcData: anyopaque) ImplError!void {
-    _ = instance;
-    _ = target;
-    _ = level;
-    _ = internalformat;
-    _ = width;
-    _ = height;
-    _ = depth;
-    _ = border;
-    _ = format;
-    _ = type;
-    _ = srcData;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: texImage3D
-pub fn call_texImage3D(instance: *runtime.Instance, target: anyopaque, level: anyopaque, internalformat: anyopaque, width: anyopaque, height: anyopaque, depth: anyopaque, border: anyopaque, format: anyopaque, type: anyopaque, srcData: anyopaque, srcOffset: u64) ImplError!void {
-    _ = instance;
-    _ = target;
-    _ = level;
-    _ = internalformat;
-    _ = width;
-    _ = height;
-    _ = depth;
-    _ = border;
-    _ = format;
-    _ = type;
-    _ = srcData;
-    _ = srcOffset;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: texSubImage3D
-pub fn call_texSubImage3D(instance: *runtime.Instance, target: anyopaque, level: anyopaque, xoffset: anyopaque, yoffset: anyopaque, zoffset: anyopaque, width: anyopaque, height: anyopaque, depth: anyopaque, format: anyopaque, type: anyopaque, pboOffset: anyopaque) ImplError!void {
-    _ = instance;
-    _ = target;
-    _ = level;
-    _ = xoffset;
-    _ = yoffset;
-    _ = zoffset;
-    _ = width;
-    _ = height;
-    _ = depth;
-    _ = format;
-    _ = type;
+    _ = @"type";
     _ = pboOffset;
     // TODO: Implement operation
     return error.NotImplemented;
 }
 
 /// Operation: texSubImage3D
-pub fn call_texSubImage3D(instance: *runtime.Instance, target: anyopaque, level: anyopaque, xoffset: anyopaque, yoffset: anyopaque, zoffset: anyopaque, width: anyopaque, height: anyopaque, depth: anyopaque, format: anyopaque, type: anyopaque, source: anyopaque) ImplError!void {
+pub fn call_texSubImage3D(instance: *runtime.Instance, target: anyopaque, level: anyopaque, xoffset: anyopaque, yoffset: anyopaque, zoffset: anyopaque, width: anyopaque, height: anyopaque, depth: anyopaque, format: anyopaque, @"type": anyopaque, pboOffset: anyopaque) ImplError!void {
     _ = instance;
     _ = target;
     _ = level;
@@ -1394,27 +1333,8 @@ pub fn call_texSubImage3D(instance: *runtime.Instance, target: anyopaque, level:
     _ = height;
     _ = depth;
     _ = format;
-    _ = type;
-    _ = source;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: texSubImage3D
-pub fn call_texSubImage3D(instance: *runtime.Instance, target: anyopaque, level: anyopaque, xoffset: anyopaque, yoffset: anyopaque, zoffset: anyopaque, width: anyopaque, height: anyopaque, depth: anyopaque, format: anyopaque, type: anyopaque, srcData: anyopaque, srcOffset: u64) ImplError!void {
-    _ = instance;
-    _ = target;
-    _ = level;
-    _ = xoffset;
-    _ = yoffset;
-    _ = zoffset;
-    _ = width;
-    _ = height;
-    _ = depth;
-    _ = format;
-    _ = type;
-    _ = srcData;
-    _ = srcOffset;
+    _ = @"type";
+    _ = pboOffset;
     // TODO: Implement operation
     return error.NotImplemented;
 }
@@ -1451,23 +1371,6 @@ pub fn call_compressedTexImage3D(instance: *runtime.Instance, target: anyopaque,
     return error.NotImplemented;
 }
 
-/// Operation: compressedTexImage3D
-pub fn call_compressedTexImage3D(instance: *runtime.Instance, target: anyopaque, level: anyopaque, internalformat: anyopaque, width: anyopaque, height: anyopaque, depth: anyopaque, border: anyopaque, srcData: anyopaque, srcOffset: u64, srcLengthOverride: anyopaque) ImplError!void {
-    _ = instance;
-    _ = target;
-    _ = level;
-    _ = internalformat;
-    _ = width;
-    _ = height;
-    _ = depth;
-    _ = border;
-    _ = srcData;
-    _ = srcOffset;
-    _ = srcLengthOverride;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
 /// Operation: compressedTexSubImage3D
 pub fn call_compressedTexSubImage3D(instance: *runtime.Instance, target: anyopaque, level: anyopaque, xoffset: anyopaque, yoffset: anyopaque, zoffset: anyopaque, width: anyopaque, height: anyopaque, depth: anyopaque, format: anyopaque, imageSize: anyopaque, offset: anyopaque) ImplError!void {
     _ = instance;
@@ -1482,25 +1385,6 @@ pub fn call_compressedTexSubImage3D(instance: *runtime.Instance, target: anyopaq
     _ = format;
     _ = imageSize;
     _ = offset;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: compressedTexSubImage3D
-pub fn call_compressedTexSubImage3D(instance: *runtime.Instance, target: anyopaque, level: anyopaque, xoffset: anyopaque, yoffset: anyopaque, zoffset: anyopaque, width: anyopaque, height: anyopaque, depth: anyopaque, format: anyopaque, srcData: anyopaque, srcOffset: u64, srcLengthOverride: anyopaque) ImplError!void {
-    _ = instance;
-    _ = target;
-    _ = level;
-    _ = xoffset;
-    _ = yoffset;
-    _ = zoffset;
-    _ = width;
-    _ = height;
-    _ = depth;
-    _ = format;
-    _ = srcData;
-    _ = srcOffset;
-    _ = srcLengthOverride;
     // TODO: Implement operation
     return error.NotImplemented;
 }
@@ -1715,11 +1599,11 @@ pub fn call_vertexAttribI4uiv(instance: *runtime.Instance, index: anyopaque, val
 }
 
 /// Operation: vertexAttribIPointer
-pub fn call_vertexAttribIPointer(instance: *runtime.Instance, index: anyopaque, size: anyopaque, type: anyopaque, stride: anyopaque, offset: anyopaque) ImplError!void {
+pub fn call_vertexAttribIPointer(instance: *runtime.Instance, index: anyopaque, size: anyopaque, @"type": anyopaque, stride: anyopaque, offset: anyopaque) ImplError!void {
     _ = instance;
     _ = index;
     _ = size;
-    _ = type;
+    _ = @"type";
     _ = stride;
     _ = offset;
     // TODO: Implement operation
@@ -1747,11 +1631,11 @@ pub fn call_drawArraysInstanced(instance: *runtime.Instance, mode: anyopaque, fi
 }
 
 /// Operation: drawElementsInstanced
-pub fn call_drawElementsInstanced(instance: *runtime.Instance, mode: anyopaque, count: anyopaque, type: anyopaque, offset: anyopaque, instanceCount: anyopaque) ImplError!void {
+pub fn call_drawElementsInstanced(instance: *runtime.Instance, mode: anyopaque, count: anyopaque, @"type": anyopaque, offset: anyopaque, instanceCount: anyopaque) ImplError!void {
     _ = instance;
     _ = mode;
     _ = count;
-    _ = type;
+    _ = @"type";
     _ = offset;
     _ = instanceCount;
     // TODO: Implement operation
@@ -1759,13 +1643,13 @@ pub fn call_drawElementsInstanced(instance: *runtime.Instance, mode: anyopaque, 
 }
 
 /// Operation: drawRangeElements
-pub fn call_drawRangeElements(instance: *runtime.Instance, mode: anyopaque, start: anyopaque, end: anyopaque, count: anyopaque, type: anyopaque, offset: anyopaque) ImplError!void {
+pub fn call_drawRangeElements(instance: *runtime.Instance, mode: anyopaque, start: anyopaque, end: anyopaque, count: anyopaque, @"type": anyopaque, offset: anyopaque) ImplError!void {
     _ = instance;
     _ = mode;
     _ = start;
     _ = end;
     _ = count;
-    _ = type;
+    _ = @"type";
     _ = offset;
     // TODO: Implement operation
     return error.NotImplemented;
@@ -2146,7 +2030,7 @@ pub fn call_getActiveUniformBlockParameter(instance: *runtime.Instance, program:
 }
 
 /// Operation: getActiveUniformBlockName
-pub fn call_getActiveUniformBlockName(instance: *runtime.Instance, program: anyopaque, uniformBlockIndex: anyopaque) ImplError!anyopaque {
+pub fn call_getActiveUniformBlockName(instance: *runtime.Instance, program: anyopaque, uniformBlockIndex: anyopaque) ImplError!runtime.DOMString {
     _ = instance;
     _ = program;
     _ = uniformBlockIndex;
@@ -2205,16 +2089,6 @@ pub fn call_bufferData(instance: *runtime.Instance, target: anyopaque, size: any
     return error.NotImplemented;
 }
 
-/// Operation: bufferData
-pub fn call_bufferData(instance: *runtime.Instance, target: anyopaque, srcData: anyopaque, usage: anyopaque) ImplError!void {
-    _ = instance;
-    _ = target;
-    _ = srcData;
-    _ = usage;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
 /// Operation: bufferSubData
 pub fn call_bufferSubData(instance: *runtime.Instance, target: anyopaque, dstByteOffset: anyopaque, srcData: anyopaque) ImplError!void {
     _ = instance;
@@ -2225,32 +2099,8 @@ pub fn call_bufferSubData(instance: *runtime.Instance, target: anyopaque, dstByt
     return error.NotImplemented;
 }
 
-/// Operation: bufferData
-pub fn call_bufferData(instance: *runtime.Instance, target: anyopaque, srcData: anyopaque, usage: anyopaque, srcOffset: u64, length: anyopaque) ImplError!void {
-    _ = instance;
-    _ = target;
-    _ = srcData;
-    _ = usage;
-    _ = srcOffset;
-    _ = length;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: bufferSubData
-pub fn call_bufferSubData(instance: *runtime.Instance, target: anyopaque, dstByteOffset: anyopaque, srcData: anyopaque, srcOffset: u64, length: anyopaque) ImplError!void {
-    _ = instance;
-    _ = target;
-    _ = dstByteOffset;
-    _ = srcData;
-    _ = srcOffset;
-    _ = length;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
 /// Operation: texImage2D
-pub fn call_texImage2D(instance: *runtime.Instance, target: anyopaque, level: anyopaque, internalformat: anyopaque, width: anyopaque, height: anyopaque, border: anyopaque, format: anyopaque, type: anyopaque, pixels: anyopaque) ImplError!void {
+pub fn call_texImage2D(instance: *runtime.Instance, target: anyopaque, level: anyopaque, internalformat: anyopaque, width: anyopaque, height: anyopaque, border: anyopaque, format: anyopaque, @"type": anyopaque, pixels: anyopaque) ImplError!void {
     _ = instance;
     _ = target;
     _ = level;
@@ -2259,106 +2109,14 @@ pub fn call_texImage2D(instance: *runtime.Instance, target: anyopaque, level: an
     _ = height;
     _ = border;
     _ = format;
-    _ = type;
-    _ = pixels;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: texImage2D
-pub fn call_texImage2D(instance: *runtime.Instance, target: anyopaque, level: anyopaque, internalformat: anyopaque, format: anyopaque, type: anyopaque, source: anyopaque) ImplError!void {
-    _ = instance;
-    _ = target;
-    _ = level;
-    _ = internalformat;
-    _ = format;
-    _ = type;
-    _ = source;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: texSubImage2D
-pub fn call_texSubImage2D(instance: *runtime.Instance, target: anyopaque, level: anyopaque, xoffset: anyopaque, yoffset: anyopaque, width: anyopaque, height: anyopaque, format: anyopaque, type: anyopaque, pixels: anyopaque) ImplError!void {
-    _ = instance;
-    _ = target;
-    _ = level;
-    _ = xoffset;
-    _ = yoffset;
-    _ = width;
-    _ = height;
-    _ = format;
-    _ = type;
+    _ = @"type";
     _ = pixels;
     // TODO: Implement operation
     return error.NotImplemented;
 }
 
 /// Operation: texSubImage2D
-pub fn call_texSubImage2D(instance: *runtime.Instance, target: anyopaque, level: anyopaque, xoffset: anyopaque, yoffset: anyopaque, format: anyopaque, type: anyopaque, source: anyopaque) ImplError!void {
-    _ = instance;
-    _ = target;
-    _ = level;
-    _ = xoffset;
-    _ = yoffset;
-    _ = format;
-    _ = type;
-    _ = source;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: texImage2D
-pub fn call_texImage2D(instance: *runtime.Instance, target: anyopaque, level: anyopaque, internalformat: anyopaque, width: anyopaque, height: anyopaque, border: anyopaque, format: anyopaque, type: anyopaque, pboOffset: anyopaque) ImplError!void {
-    _ = instance;
-    _ = target;
-    _ = level;
-    _ = internalformat;
-    _ = width;
-    _ = height;
-    _ = border;
-    _ = format;
-    _ = type;
-    _ = pboOffset;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: texImage2D
-pub fn call_texImage2D(instance: *runtime.Instance, target: anyopaque, level: anyopaque, internalformat: anyopaque, width: anyopaque, height: anyopaque, border: anyopaque, format: anyopaque, type: anyopaque, source: anyopaque) ImplError!void {
-    _ = instance;
-    _ = target;
-    _ = level;
-    _ = internalformat;
-    _ = width;
-    _ = height;
-    _ = border;
-    _ = format;
-    _ = type;
-    _ = source;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: texImage2D
-pub fn call_texImage2D(instance: *runtime.Instance, target: anyopaque, level: anyopaque, internalformat: anyopaque, width: anyopaque, height: anyopaque, border: anyopaque, format: anyopaque, type: anyopaque, srcData: anyopaque, srcOffset: u64) ImplError!void {
-    _ = instance;
-    _ = target;
-    _ = level;
-    _ = internalformat;
-    _ = width;
-    _ = height;
-    _ = border;
-    _ = format;
-    _ = type;
-    _ = srcData;
-    _ = srcOffset;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: texSubImage2D
-pub fn call_texSubImage2D(instance: *runtime.Instance, target: anyopaque, level: anyopaque, xoffset: anyopaque, yoffset: anyopaque, width: anyopaque, height: anyopaque, format: anyopaque, type: anyopaque, pboOffset: anyopaque) ImplError!void {
+pub fn call_texSubImage2D(instance: *runtime.Instance, target: anyopaque, level: anyopaque, xoffset: anyopaque, yoffset: anyopaque, width: anyopaque, height: anyopaque, format: anyopaque, @"type": anyopaque, pixels: anyopaque) ImplError!void {
     _ = instance;
     _ = target;
     _ = level;
@@ -2367,41 +2125,8 @@ pub fn call_texSubImage2D(instance: *runtime.Instance, target: anyopaque, level:
     _ = width;
     _ = height;
     _ = format;
-    _ = type;
-    _ = pboOffset;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: texSubImage2D
-pub fn call_texSubImage2D(instance: *runtime.Instance, target: anyopaque, level: anyopaque, xoffset: anyopaque, yoffset: anyopaque, width: anyopaque, height: anyopaque, format: anyopaque, type: anyopaque, source: anyopaque) ImplError!void {
-    _ = instance;
-    _ = target;
-    _ = level;
-    _ = xoffset;
-    _ = yoffset;
-    _ = width;
-    _ = height;
-    _ = format;
-    _ = type;
-    _ = source;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: texSubImage2D
-pub fn call_texSubImage2D(instance: *runtime.Instance, target: anyopaque, level: anyopaque, xoffset: anyopaque, yoffset: anyopaque, width: anyopaque, height: anyopaque, format: anyopaque, type: anyopaque, srcData: anyopaque, srcOffset: u64) ImplError!void {
-    _ = instance;
-    _ = target;
-    _ = level;
-    _ = xoffset;
-    _ = yoffset;
-    _ = width;
-    _ = height;
-    _ = format;
-    _ = type;
-    _ = srcData;
-    _ = srcOffset;
+    _ = @"type";
+    _ = pixels;
     // TODO: Implement operation
     return error.NotImplemented;
 }
@@ -2421,22 +2146,6 @@ pub fn call_compressedTexImage2D(instance: *runtime.Instance, target: anyopaque,
     return error.NotImplemented;
 }
 
-/// Operation: compressedTexImage2D
-pub fn call_compressedTexImage2D(instance: *runtime.Instance, target: anyopaque, level: anyopaque, internalformat: anyopaque, width: anyopaque, height: anyopaque, border: anyopaque, srcData: anyopaque, srcOffset: u64, srcLengthOverride: anyopaque) ImplError!void {
-    _ = instance;
-    _ = target;
-    _ = level;
-    _ = internalformat;
-    _ = width;
-    _ = height;
-    _ = border;
-    _ = srcData;
-    _ = srcOffset;
-    _ = srcLengthOverride;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
 /// Operation: compressedTexSubImage2D
 pub fn call_compressedTexSubImage2D(instance: *runtime.Instance, target: anyopaque, level: anyopaque, xoffset: anyopaque, yoffset: anyopaque, width: anyopaque, height: anyopaque, format: anyopaque, imageSize: anyopaque, offset: anyopaque) ImplError!void {
     _ = instance;
@@ -2449,23 +2158,6 @@ pub fn call_compressedTexSubImage2D(instance: *runtime.Instance, target: anyopaq
     _ = format;
     _ = imageSize;
     _ = offset;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: compressedTexSubImage2D
-pub fn call_compressedTexSubImage2D(instance: *runtime.Instance, target: anyopaque, level: anyopaque, xoffset: anyopaque, yoffset: anyopaque, width: anyopaque, height: anyopaque, format: anyopaque, srcData: anyopaque, srcOffset: u64, srcLengthOverride: anyopaque) ImplError!void {
-    _ = instance;
-    _ = target;
-    _ = level;
-    _ = xoffset;
-    _ = yoffset;
-    _ = width;
-    _ = height;
-    _ = format;
-    _ = srcData;
-    _ = srcOffset;
-    _ = srcLengthOverride;
     // TODO: Implement operation
     return error.NotImplemented;
 }
@@ -2595,44 +2287,15 @@ pub fn call_uniformMatrix4fv(instance: *runtime.Instance, location: anyopaque, t
 }
 
 /// Operation: readPixels
-pub fn call_readPixels(instance: *runtime.Instance, x: anyopaque, y: anyopaque, width: anyopaque, height: anyopaque, format: anyopaque, type: anyopaque, dstData: anyopaque) ImplError!void {
+pub fn call_readPixels(instance: *runtime.Instance, x: anyopaque, y: anyopaque, width: anyopaque, height: anyopaque, format: anyopaque, @"type": anyopaque, dstData: anyopaque) ImplError!void {
     _ = instance;
     _ = x;
     _ = y;
     _ = width;
     _ = height;
     _ = format;
-    _ = type;
+    _ = @"type";
     _ = dstData;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: readPixels
-pub fn call_readPixels(instance: *runtime.Instance, x: anyopaque, y: anyopaque, width: anyopaque, height: anyopaque, format: anyopaque, type: anyopaque, offset: anyopaque) ImplError!void {
-    _ = instance;
-    _ = x;
-    _ = y;
-    _ = width;
-    _ = height;
-    _ = format;
-    _ = type;
-    _ = offset;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: readPixels
-pub fn call_readPixels(instance: *runtime.Instance, x: anyopaque, y: anyopaque, width: anyopaque, height: anyopaque, format: anyopaque, type: anyopaque, dstData: anyopaque, dstOffset: u64) ImplError!void {
-    _ = instance;
-    _ = x;
-    _ = y;
-    _ = width;
-    _ = height;
-    _ = format;
-    _ = type;
-    _ = dstData;
-    _ = dstOffset;
     // TODO: Implement operation
     return error.NotImplemented;
 }

@@ -1,5 +1,5 @@
 //! Generated from: background-fetch.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,13 +7,18 @@ const std = @import("std");
 const runtime = @import("runtime");
 const BackgroundFetchRegistrationImpl = @import("impls").BackgroundFetchRegistration;
 const EventTarget = @import("interfaces").EventTarget;
-const BackgroundFetchFailureReason = @import("enums").BackgroundFetchFailureReason;
-const Promise<boolean> = @import("interfaces").Promise<boolean>;
-const BackgroundFetchResult = @import("enums").BackgroundFetchResult;
-const Promise<BackgroundFetchRecord> = @import("interfaces").Promise<BackgroundFetchRecord>;
-const RequestInfo = @import("typedefs").RequestInfo;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const CacheQueryOptions = @import("dictionaries").CacheQueryOptions;
-const Promise<sequence<BackgroundFetchRecord>> = @import("interfaces").Promise<sequence<BackgroundFetchRecord>>;
+const RequestInfo = @import("typedefs").RequestInfo;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const BackgroundFetchFailureReason = @import("enums").BackgroundFetchFailureReason;
+const BackgroundFetchResult = @import("enums").BackgroundFetchResult;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
+const BackgroundFetchRecord = @import("interfaces").BackgroundFetchRecord;
+const DOMString = @import("typedefs").DOMString;
 const EventHandler = @import("typedefs").EventHandler;
 
 pub const BackgroundFetchRegistration = struct {
@@ -75,17 +80,7 @@ pub const BackgroundFetchRegistration = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        BackgroundFetchRegistrationImpl.init(instance);
-        
-        return instance;
+        return BackgroundFetchRegistrationImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -138,9 +133,9 @@ pub const BackgroundFetchRegistration = struct {
         try BackgroundFetchRegistrationImpl.set_onprogress(instance, value);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try BackgroundFetchRegistrationImpl.call_when(instance, type_, options);
+        return try BackgroundFetchRegistrationImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_abort(instance: *runtime.Instance) anyerror!anyopaque {
@@ -162,14 +157,14 @@ pub const BackgroundFetchRegistration = struct {
         return try BackgroundFetchRegistrationImpl.call_matchAll(instance, request, options);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try BackgroundFetchRegistrationImpl.call_addEventListener(instance, type_, callback, options);
+        return try BackgroundFetchRegistrationImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try BackgroundFetchRegistrationImpl.call_removeEventListener(instance, type_, callback, options);
+        return try BackgroundFetchRegistrationImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

@@ -1,5 +1,5 @@
 //! Generated from: webusb.idl
-//! Generated at: 2025-11-18T18:28:13Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,6 @@ const std = @import("std");
 const runtime = @import("runtime");
 const USBInterfaceImpl = @import("impls").USBInterface;
 const USBConfiguration = @import("interfaces").USBConfiguration;
-const FrozenArray<USBAlternateInterface> = @import("interfaces").FrozenArray<USBAlternateInterface>;
 const USBAlternateInterface = @import("interfaces").USBAlternateInterface;
 
 pub const USBInterface = struct {
@@ -32,7 +31,7 @@ pub const USBInterface = struct {
         struct {
             interfaceNumber: u8 = undefined,
             alternate: USBAlternateInterface = undefined,
-            alternates: FrozenArray<USBAlternateInterface> = undefined,
+            alternates: runtime.FrozenArray(USBAlternateInterface) = undefined,
             claimed: bool = undefined,
         },
         Meta.BaseType,
@@ -50,17 +49,7 @@ pub const USBInterface = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        USBInterfaceImpl.init(instance);
-        
-        return instance;
+        return USBInterfaceImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

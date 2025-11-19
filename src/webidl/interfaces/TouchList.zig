@@ -1,5 +1,5 @@
 //! Generated from: touch-events.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -40,17 +40,7 @@ pub const TouchList = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        TouchListImpl.init(instance);
-        
-        return instance;
+        return TouchListImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -67,7 +57,7 @@ pub const TouchList = struct {
         return try TouchListImpl.get_length(instance);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!anyopaque {
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!Touch {
         
         return try TouchListImpl.call_item(instance, index);
     }

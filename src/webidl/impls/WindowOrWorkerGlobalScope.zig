@@ -13,16 +13,25 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Initialize instance
-pub fn init(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Initialize your instance state here
+/// Initialize instance (delegates to runtime.Instance.init)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable);
+    // TODO: Add custom initialization here if needed
+    // const state = instance.getState(StateType);
+    // state.* = .{}; // Initialize fields
+    return instance;
 }
 
-/// Deinitialize instance
+/// Deinitialize instance (delegates to runtime.Instance.deinit)
 pub fn deinit(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Clean up your instance resources here
+    // TODO: Add custom cleanup here if needed
+    // const state = instance.getState(State);
+    // Clean up fields...
+    runtime.Instance.deinit(instance);
 }
 
 /// Getter for origin
@@ -165,19 +174,6 @@ pub fn call_createImageBitmap(instance: *runtime.Instance, image: anyopaque, opt
     return error.NotImplemented;
 }
 
-/// Operation: createImageBitmap
-pub fn call_createImageBitmap(instance: *runtime.Instance, image: anyopaque, sx: i32, sy: i32, sw: i32, sh: i32, options: anyopaque) ImplError!anyopaque {
-    _ = instance;
-    _ = image;
-    _ = sx;
-    _ = sy;
-    _ = sw;
-    _ = sh;
-    _ = options;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
 /// Operation: structuredClone
 pub fn call_structuredClone(instance: *runtime.Instance, value: anyopaque, options: anyopaque) ImplError!anyopaque {
     _ = instance;
@@ -188,10 +184,10 @@ pub fn call_structuredClone(instance: *runtime.Instance, value: anyopaque, optio
 }
 
 /// Operation: fetch
-pub fn call_fetch(instance: *runtime.Instance, input: anyopaque, init: anyopaque) ImplError!anyopaque {
+pub fn call_fetch(instance: *runtime.Instance, input: anyopaque, init_data: anyopaque) ImplError!anyopaque {
     _ = instance;
     _ = input;
-    _ = init;
+    _ = init_data;
     // TODO: Implement operation
     return error.NotImplemented;
 }

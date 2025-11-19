@@ -1,5 +1,5 @@
 //! Generated from: webtransport.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,8 +7,8 @@ const std = @import("std");
 const runtime = @import("runtime");
 const WebTransportErrorImpl = @import("impls").WebTransportError;
 const DOMException = @import("interfaces").DOMException;
-const unsigned long = @import("interfaces").unsigned long;
 const WebTransportErrorOptions = @import("dictionaries").WebTransportErrorOptions;
+const DOMString = @import("typedefs").DOMString;
 const WebTransportErrorSource = @import("enums").WebTransportErrorSource;
 
 pub const WebTransportError = struct {
@@ -76,17 +76,7 @@ pub const WebTransportError = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        WebTransportErrorImpl.init(instance);
-        
-        return instance;
+        return WebTransportErrorImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -125,7 +115,7 @@ pub const WebTransportError = struct {
         return try WebTransportErrorImpl.get_source(instance);
     }
 
-    pub fn get_streamErrorCode(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_streamErrorCode(instance: *runtime.Instance) anyerror!u32 {
         return try WebTransportErrorImpl.get_streamErrorCode(instance);
     }
 

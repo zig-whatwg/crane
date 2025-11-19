@@ -1,5 +1,5 @@
 //! Generated from: web-animations.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,6 +8,9 @@ const runtime = @import("runtime");
 const DocumentTimelineImpl = @import("impls").DocumentTimeline;
 const AnimationTimeline = @import("interfaces").AnimationTimeline;
 const DocumentTimelineOptions = @import("dictionaries").DocumentTimelineOptions;
+const AnimationEffect = @import("interfaces").AnimationEffect;
+const CSSNumberish = @import("typedefs").CSSNumberish;
+const Animation = @import("interfaces").Animation;
 
 pub const DocumentTimeline = struct {
     pub const Meta = struct {
@@ -33,7 +36,6 @@ pub const DocumentTimeline = struct {
         .deinit_fn = &deinit_wrapper,
 
         .get_currentTime = &get_currentTime,
-        .get_currentTime = &get_currentTime,
         .get_duration = &get_duration,
 
         .call_play = &call_play,
@@ -41,17 +43,7 @@ pub const DocumentTimeline = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        DocumentTimelineImpl.init(instance);
-        
-        return instance;
+        return DocumentTimelineImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -74,19 +66,15 @@ pub const DocumentTimeline = struct {
         return instance;
     }
 
-    pub fn get_currentTime(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTime(instance: *runtime.Instance) anyerror!f64 {
         return try DocumentTimelineImpl.get_currentTime(instance);
     }
 
-    pub fn get_currentTime(instance: *runtime.Instance) anyerror!anyopaque {
-        return try DocumentTimelineImpl.get_currentTime(instance);
-    }
-
-    pub fn get_duration(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_duration(instance: *runtime.Instance) anyerror!CSSNumberish {
         return try DocumentTimelineImpl.get_duration(instance);
     }
 
-    pub fn call_play(instance: *runtime.Instance, effect: anyopaque) anyerror!Animation {
+    pub fn call_play(instance: *runtime.Instance, effect: AnimationEffect) anyerror!Animation {
         
         return try DocumentTimelineImpl.call_play(instance, effect);
     }

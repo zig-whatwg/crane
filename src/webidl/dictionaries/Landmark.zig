@@ -6,5 +6,5 @@ const runtime = @import("runtime");
 
 pub const Landmark = struct {
     locations: anyopaque,
-    type: ?anyopaque = null,
+    @"type": ?anyopaque = null,
 };

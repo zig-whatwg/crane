@@ -1,5 +1,5 @@
 //! Generated from: payment-request.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,17 +7,22 @@ const std = @import("std");
 const runtime = @import("runtime");
 const PaymentRequestImpl = @import("impls").PaymentRequest;
 const EventTarget = @import("interfaces").EventTarget;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const EventHandler = @import("typedefs").EventHandler;
-const Promise<boolean> = @import("interfaces").Promise<boolean>;
-const Promise<SecurePaymentConfirmationAvailability> = @import("interfaces").Promise<SecurePaymentConfirmationAvailability>;
-const PaymentDetailsInit = @import("dictionaries").PaymentDetailsInit;
-const Promise<PaymentDetailsUpdate> = @import("interfaces").Promise<PaymentDetailsUpdate>;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const PaymentMethodData = @import("dictionaries").PaymentMethodData;
 const PaymentShippingType = @import("enums").PaymentShippingType;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
-const ContactAddress = @import("interfaces").ContactAddress;
-const Promise<PaymentResponse> = @import("interfaces").Promise<PaymentResponse>;
+const SecurePaymentConfirmationAvailability = @import("enums").SecurePaymentConfirmationAvailability;
 const PaymentOptions = @import("dictionaries").PaymentOptions;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const PaymentDetailsInit = @import("dictionaries").PaymentDetailsInit;
+const EventListener = @import("interfaces").EventListener;
+const PaymentResponse = @import("interfaces").PaymentResponse;
+const ContactAddress = @import("interfaces").ContactAddress;
 const DOMString = @import("typedefs").DOMString;
+const PaymentDetailsUpdate = @import("dictionaries").PaymentDetailsUpdate;
 
 pub const PaymentRequest = struct {
     pub const Meta = struct {
@@ -75,17 +80,7 @@ pub const PaymentRequest = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PaymentRequestImpl.init(instance);
-        
-        return instance;
+        return PaymentRequestImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -112,15 +107,15 @@ pub const PaymentRequest = struct {
         return try PaymentRequestImpl.get_id(instance);
     }
 
-    pub fn get_shippingAddress(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_shippingAddress(instance: *runtime.Instance) anyerror!ContactAddress {
         return try PaymentRequestImpl.get_shippingAddress(instance);
     }
 
-    pub fn get_shippingOption(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_shippingOption(instance: *runtime.Instance) anyerror!DOMString {
         return try PaymentRequestImpl.get_shippingOption(instance);
     }
 
-    pub fn get_shippingType(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_shippingType(instance: *runtime.Instance) anyerror!PaymentShippingType {
         return try PaymentRequestImpl.get_shippingType(instance);
     }
 
@@ -152,9 +147,9 @@ pub const PaymentRequest = struct {
         return try PaymentRequestImpl.call_securePaymentConfirmationAvailability(instance);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try PaymentRequestImpl.call_when(instance, type_, options);
+        return try PaymentRequestImpl.call_when(instance, @"type", options);
     }
 
     /// Extended attributes: [NewObject]
@@ -181,14 +176,14 @@ pub const PaymentRequest = struct {
         return try PaymentRequestImpl.call_dispatchEvent(instance, event);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try PaymentRequestImpl.call_addEventListener(instance, type_, callback, options);
+        return try PaymentRequestImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try PaymentRequestImpl.call_removeEventListener(instance, type_, callback, options);
+        return try PaymentRequestImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

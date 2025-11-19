@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,11 @@ const std = @import("std");
 const runtime = @import("runtime");
 const AudioProcessingEventImpl = @import("impls").AudioProcessingEvent;
 const Event = @import("interfaces").Event;
+const DOMString = @import("typedefs").DOMString;
+const EventTarget = @import("interfaces").EventTarget;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const AudioBuffer = @import("interfaces").AudioBuffer;
+const EventInit = @import("dictionaries").EventInit;
 const AudioProcessingEventInit = @import("dictionaries").AudioProcessingEventInit;
 
 pub const AudioProcessingEvent = struct {
@@ -75,17 +79,7 @@ pub const AudioProcessingEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        AudioProcessingEventImpl.init(instance);
-        
-        return instance;
+        return AudioProcessingEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -99,11 +93,11 @@ pub const AudioProcessingEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, eventInitDict: AudioProcessingEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, eventInitDict: AudioProcessingEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try AudioProcessingEventImpl.constructor(instance, type_, eventInitDict);
+        try AudioProcessingEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -112,15 +106,15 @@ pub const AudioProcessingEvent = struct {
         return try AudioProcessingEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try AudioProcessingEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try AudioProcessingEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try AudioProcessingEventImpl.get_currentTarget(instance);
     }
 
@@ -185,9 +179,9 @@ pub const AudioProcessingEvent = struct {
         return try AudioProcessingEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try AudioProcessingEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try AudioProcessingEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_composedPath(instance: *runtime.Instance) anyerror!anyopaque {

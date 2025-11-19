@@ -1,5 +1,5 @@
 //! Generated from: webauthn.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -12,13 +12,12 @@ const PublicKeyCredentialCreationOptionsJSON = @import("dictionaries").PublicKey
 const AllAcceptedCredentialsOptions = @import("dictionaries").AllAcceptedCredentialsOptions;
 const CurrentUserDetailsOptions = @import("dictionaries").CurrentUserDetailsOptions;
 const AuthenticationExtensionsClientOutputs = @import("dictionaries").AuthenticationExtensionsClientOutputs;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
+const USVString = @import("interfaces").USVString;
+const PublicKeyCredentialClientCapabilities = @import("typedefs").PublicKeyCredentialClientCapabilities;
 const AuthenticatorResponse = @import("interfaces").AuthenticatorResponse;
-const Promise<boolean> = @import("interfaces").Promise<boolean>;
 const ArrayBuffer = @import("interfaces").ArrayBuffer;
 const PublicKeyCredentialCreationOptions = @import("dictionaries").PublicKeyCredentialCreationOptions;
 const PublicKeyCredentialRequestOptions = @import("dictionaries").PublicKeyCredentialRequestOptions;
-const Promise<PublicKeyCredentialClientCapabilities> = @import("interfaces").Promise<PublicKeyCredentialClientCapabilities>;
 const PublicKeyCredentialJSON = @import("typedefs").PublicKeyCredentialJSON;
 const DOMString = @import("typedefs").DOMString;
 const UnknownCredentialOptions = @import("dictionaries").UnknownCredentialOptions;
@@ -72,17 +71,7 @@ pub const PublicKeyCredential = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PublicKeyCredentialImpl.init(instance);
-        
-        return instance;
+        return PublicKeyCredentialImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -127,7 +116,7 @@ pub const PublicKeyCredential = struct {
         return value;
     }
 
-    pub fn get_authenticatorAttachment(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_authenticatorAttachment(instance: *runtime.Instance) anyerror!DOMString {
         return try PublicKeyCredentialImpl.get_authenticatorAttachment(instance);
     }
 
@@ -176,19 +165,8 @@ pub const PublicKeyCredential = struct {
         return try PublicKeyCredentialImpl.call_signalAllAcceptedCredentials(instance, options);
     }
 
-    /// Arguments for isConditionalMediationAvailable (WebIDL overloading)
-    pub const IsConditionalMediationAvailableArgs = union(enum) {
-        /// isConditionalMediationAvailable()
-        no_params: void,
-        /// isConditionalMediationAvailable()
-        no_params: void,
-    };
-
-    pub fn call_isConditionalMediationAvailable(instance: *runtime.Instance, args: IsConditionalMediationAvailableArgs) anyerror!anyopaque {
-        switch (args) {
-            .no_params => return try PublicKeyCredentialImpl.no_params(instance),
-            .no_params => return try PublicKeyCredentialImpl.no_params(instance),
-        }
+    pub fn call_isConditionalMediationAvailable(instance: *runtime.Instance) anyerror!anyopaque {
+        return try PublicKeyCredentialImpl.call_isConditionalMediationAvailable(instance);
     }
 
 };

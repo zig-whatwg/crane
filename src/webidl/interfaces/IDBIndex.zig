@@ -1,5 +1,5 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,6 +9,7 @@ const IDBIndexImpl = @import("impls").IDBIndex;
 const IDBRequest = @import("interfaces").IDBRequest;
 const IDBGetAllOptions = @import("dictionaries").IDBGetAllOptions;
 const IDBCursorDirection = @import("enums").IDBCursorDirection;
+const DOMString = @import("typedefs").DOMString;
 const IDBObjectStore = @import("interfaces").IDBObjectStore;
 
 pub const IDBIndex = struct {
@@ -63,17 +64,7 @@ pub const IDBIndex = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        IDBIndexImpl.init(instance);
-        
-        return instance;
+        return IDBIndexImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

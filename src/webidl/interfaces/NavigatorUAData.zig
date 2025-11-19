@@ -1,14 +1,15 @@
 //! Generated from: ua-client-hints.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const NavigatorUADataImpl = @import("impls").NavigatorUAData;
-const FrozenArray<NavigatorUABrandVersion> = @import("interfaces").FrozenArray<NavigatorUABrandVersion>;
-const Promise<UADataValues> = @import("interfaces").Promise<UADataValues>;
+const UADataValues = @import("dictionaries").UADataValues;
+const NavigatorUABrandVersion = @import("dictionaries").NavigatorUABrandVersion;
 const UALowEntropyJSON = @import("dictionaries").UALowEntropyJSON;
+const DOMString = @import("typedefs").DOMString;
 
 pub const NavigatorUAData = struct {
     pub const Meta = struct {
@@ -29,7 +30,7 @@ pub const NavigatorUAData = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            brands: FrozenArray<NavigatorUABrandVersion> = undefined,
+            brands: runtime.FrozenArray(NavigatorUABrandVersion) = undefined,
             mobile: bool = undefined,
             platform: runtime.DOMString = undefined,
         },
@@ -50,17 +51,7 @@ pub const NavigatorUAData = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        NavigatorUADataImpl.init(instance);
-        
-        return instance;
+        return NavigatorUADataImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

@@ -1,12 +1,12 @@
 //! Generated from: permissions.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const PermissionsImpl = @import("impls").Permissions;
-const Promise<PermissionStatus> = @import("interfaces").Promise<PermissionStatus>;
+const PermissionStatus = @import("interfaces").PermissionStatus;
 
 pub const Permissions = struct {
     pub const Meta = struct {
@@ -41,17 +41,7 @@ pub const Permissions = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PermissionsImpl.init(instance);
-        
-        return instance;
+        return PermissionsImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

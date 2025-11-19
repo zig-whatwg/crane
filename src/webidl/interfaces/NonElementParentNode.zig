@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,6 +7,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const NonElementParentNodeImpl = @import("impls").NonElementParentNode;
 const Element = @import("interfaces").Element;
+const DOMString = @import("typedefs").DOMString;
 
 pub const NonElementParentNode = struct {
     pub const Meta = struct {
@@ -31,17 +32,7 @@ pub const NonElementParentNode = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        NonElementParentNodeImpl.init(instance);
-        
-        return instance;
+        return NonElementParentNodeImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -54,7 +45,7 @@ pub const NonElementParentNode = struct {
         deinit(instance);
     }
 
-    pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!anyopaque {
+    pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!Element {
         
         return try NonElementParentNodeImpl.call_getElementById(instance, elementId);
     }

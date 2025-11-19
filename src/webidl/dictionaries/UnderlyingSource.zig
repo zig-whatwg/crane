@@ -8,6 +8,6 @@ pub const UnderlyingSource = struct {
     start: ?anyopaque = null,
     pull: ?anyopaque = null,
     cancel: ?anyopaque = null,
-    type: ?anyopaque = null,
+    @"type": ?anyopaque = null,
     autoAllocateChunkSize: ?u64 = null,
 };

@@ -1,5 +1,5 @@
 //! Generated from: background-fetch.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const BackgroundFetchRecordImpl = @import("impls").BackgroundFetchRecord;
 const Request = @import("interfaces").Request;
-const Promise<Response> = @import("interfaces").Promise<Response>;
+const Response = @import("interfaces").Response;
 
 pub const BackgroundFetchRecord = struct {
     pub const Meta = struct {
@@ -29,7 +29,7 @@ pub const BackgroundFetchRecord = struct {
     pub const State = runtime.FlattenedState(
         struct {
             request: Request = undefined,
-            responseReady: Promise<Response> = undefined,
+            responseReady: runtime.Promise(Response) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -44,17 +44,7 @@ pub const BackgroundFetchRecord = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        BackgroundFetchRecordImpl.init(instance);
-        
-        return instance;
+        return BackgroundFetchRecordImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

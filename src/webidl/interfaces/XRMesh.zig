@@ -1,12 +1,12 @@
 //! Generated from: real-world-meshing.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const XRMeshImpl = @import("impls").XRMesh;
-const FrozenArray<Float32Array> = @import("interfaces").FrozenArray<Float32Array>;
+const Float32Array = @import("interfaces").Float32Array;
 const Uint32Array = @import("interfaces").Uint32Array;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const DOMString = @import("typedefs").DOMString;
@@ -29,7 +29,7 @@ pub const XRMesh = struct {
     pub const State = runtime.FlattenedState(
         struct {
             meshSpace: XRSpace = undefined,
-            vertices: FrozenArray<Float32Array> = undefined,
+            vertices: runtime.FrozenArray(Float32Array) = undefined,
             indices: Uint32Array = undefined,
             lastChangedTime: DOMHighResTimeStamp = undefined,
             semanticLabel: ?runtime.DOMString = null,
@@ -50,17 +50,7 @@ pub const XRMesh = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        XRMeshImpl.init(instance);
-        
-        return instance;
+        return XRMeshImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -97,7 +87,7 @@ pub const XRMesh = struct {
         return try XRMeshImpl.get_lastChangedTime(instance);
     }
 
-    pub fn get_semanticLabel(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_semanticLabel(instance: *runtime.Instance) anyerror!DOMString {
         return try XRMeshImpl.get_semanticLabel(instance);
     }
 

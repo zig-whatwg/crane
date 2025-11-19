@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:13Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,10 +7,17 @@ const std = @import("std");
 const runtime = @import("runtime");
 const TextTrackImpl = @import("impls").TextTrack;
 const EventTarget = @import("interfaces").EventTarget;
-const TextTrackMode = @import("enums").TextTrackMode;
-const TextTrackCueList = @import("interfaces").TextTrackCueList;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const DOMString = @import("typedefs").DOMString;
 const TextTrackKind = @import("enums").TextTrackKind;
+const Observable = @import("interfaces").Observable;
+const TextTrackMode = @import("enums").TextTrackMode;
+const Event = @import("interfaces").Event;
+const TextTrackCueList = @import("interfaces").TextTrackCueList;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const SourceBuffer = @import("interfaces").SourceBuffer;
+const EventListener = @import("interfaces").EventListener;
 const TextTrackCue = @import("interfaces").TextTrackCue;
 const EventHandler = @import("typedefs").EventHandler;
 
@@ -75,17 +82,7 @@ pub const TextTrack = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        TextTrackImpl.init(instance);
-        
-        return instance;
+        return TextTrackImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -126,11 +123,11 @@ pub const TextTrack = struct {
         try TextTrackImpl.set_mode(instance, value);
     }
 
-    pub fn get_cues(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_cues(instance: *runtime.Instance) anyerror!TextTrackCueList {
         return try TextTrackImpl.get_cues(instance);
     }
 
-    pub fn get_activeCues(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_activeCues(instance: *runtime.Instance) anyerror!TextTrackCueList {
         return try TextTrackImpl.get_activeCues(instance);
     }
 
@@ -142,7 +139,7 @@ pub const TextTrack = struct {
         try TextTrackImpl.set_oncuechange(instance, value);
     }
 
-    pub fn get_sourceBuffer(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_sourceBuffer(instance: *runtime.Instance) anyerror!SourceBuffer {
         return try TextTrackImpl.get_sourceBuffer(instance);
     }
 
@@ -151,9 +148,9 @@ pub const TextTrack = struct {
         return try TextTrackImpl.call_dispatchEvent(instance, event);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try TextTrackImpl.call_when(instance, type_, options);
+        return try TextTrackImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_addCue(instance: *runtime.Instance, cue: TextTrackCue) anyerror!void {
@@ -166,14 +163,14 @@ pub const TextTrack = struct {
         return try TextTrackImpl.call_removeCue(instance, cue);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try TextTrackImpl.call_addEventListener(instance, type_, callback, options);
+        return try TextTrackImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try TextTrackImpl.call_removeEventListener(instance, type_, callback, options);
+        return try TextTrackImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

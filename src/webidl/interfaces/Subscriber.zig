@@ -1,5 +1,5 @@
 //! Generated from: observable.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -46,17 +46,7 @@ pub const Subscriber = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        SubscriberImpl.init(instance);
-        
-        return instance;
+        return SubscriberImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -77,9 +67,9 @@ pub const Subscriber = struct {
         return try SubscriberImpl.get_signal(instance);
     }
 
-    pub fn call_error(instance: *runtime.Instance, error_: anyopaque) anyerror!void {
+    pub fn call_error(instance: *runtime.Instance, @"error": anyopaque) anyerror!void {
         
-        return try SubscriberImpl.call_error(instance, error_);
+        return try SubscriberImpl.call_error(instance, @"error");
     }
 
     pub fn call_complete(instance: *runtime.Instance) anyerror!void {

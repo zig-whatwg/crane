@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,6 +7,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const MediaListImpl = @import("impls").MediaList;
 const CSSOMString = @import("interfaces").CSSOMString;
+const DOMString = @import("typedefs").DOMString;
 
 pub const MediaList = struct {
     pub const Meta = struct {
@@ -26,8 +27,6 @@ pub const MediaList = struct {
         struct {
             mediaText: CSSOMString = undefined,
             length: u32 = undefined,
-            mediaText: runtime.DOMString = undefined,
-            length: u32 = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -37,11 +36,8 @@ pub const MediaList = struct {
         .deinit_fn = &deinit_wrapper,
 
         .get_length = &get_length,
-        .get_length = &get_length,
-        .get_mediaText = &get_mediaText,
         .get_mediaText = &get_mediaText,
 
-        .set_mediaText = &set_mediaText,
         .set_mediaText = &set_mediaText,
 
         .call_appendMedium = &call_appendMedium,
@@ -51,17 +47,7 @@ pub const MediaList = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        MediaListImpl.init(instance);
-        
-        return instance;
+        return MediaListImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -88,61 +74,19 @@ pub const MediaList = struct {
         return try MediaListImpl.get_length(instance);
     }
 
-    pub fn get_mediaText(instance: *runtime.Instance) anyerror!DOMString {
-        return try MediaListImpl.get_mediaText(instance);
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!anyopaque {
+        
+        return try MediaListImpl.call_item(instance, index);
     }
 
-    pub fn set_mediaText(instance: *runtime.Instance, value: DOMString) anyerror!void {
-        try MediaListImpl.set_mediaText(instance, value);
+    pub fn call_deleteMedium(instance: *runtime.Instance, medium: anyopaque) anyerror!void {
+        
+        return try MediaListImpl.call_deleteMedium(instance, medium);
     }
 
-    pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
-        return try MediaListImpl.get_length(instance);
-    }
-
-    /// Arguments for item (WebIDL overloading)
-    pub const ItemArgs = union(enum) {
-        /// item(index)
-        long: u32,
-        /// item(index)
-        long: u32,
-    };
-
-    pub fn call_item(instance: *runtime.Instance, args: ItemArgs) anyerror!anyopaque {
-        switch (args) {
-            .long => |arg| return try MediaListImpl.long(instance, arg),
-            .long => |arg| return try MediaListImpl.long(instance, arg),
-        }
-    }
-
-    /// Arguments for deleteMedium (WebIDL overloading)
-    pub const DeleteMediumArgs = union(enum) {
-        /// deleteMedium(medium)
-        CSSOMString: anyopaque,
-        /// deleteMedium(oldMedium)
-        string: DOMString,
-    };
-
-    pub fn call_deleteMedium(instance: *runtime.Instance, args: DeleteMediumArgs) anyerror!void {
-        switch (args) {
-            .CSSOMString => |arg| return try MediaListImpl.CSSOMString(instance, arg),
-            .string => |arg| return try MediaListImpl.string(instance, arg),
-        }
-    }
-
-    /// Arguments for appendMedium (WebIDL overloading)
-    pub const AppendMediumArgs = union(enum) {
-        /// appendMedium(medium)
-        CSSOMString: anyopaque,
-        /// appendMedium(newMedium)
-        string: DOMString,
-    };
-
-    pub fn call_appendMedium(instance: *runtime.Instance, args: AppendMediumArgs) anyerror!void {
-        switch (args) {
-            .CSSOMString => |arg| return try MediaListImpl.CSSOMString(instance, arg),
-            .string => |arg| return try MediaListImpl.string(instance, arg),
-        }
+    pub fn call_appendMedium(instance: *runtime.Instance, medium: anyopaque) anyerror!void {
+        
+        return try MediaListImpl.call_appendMedium(instance, medium);
     }
 
 };

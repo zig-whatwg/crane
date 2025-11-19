@@ -1,5 +1,5 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,6 +8,7 @@ const runtime = @import("runtime");
 const DOMPointImpl = @import("impls").DOMPoint;
 const DOMPointReadOnly = @import("interfaces").DOMPointReadOnly;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
+const DOMMatrixInit = @import("dictionaries").DOMMatrixInit;
 
 pub const DOMPoint = struct {
     pub const Meta = struct {
@@ -43,12 +44,8 @@ pub const DOMPoint = struct {
         .deinit_fn = &deinit_wrapper,
 
         .get_w = &get_w,
-        .get_w = &get_w,
-        .get_x = &get_x,
         .get_x = &get_x,
         .get_y = &get_y,
-        .get_y = &get_y,
-        .get_z = &get_z,
         .get_z = &get_z,
 
         .call_fromPoint = &call_fromPoint,
@@ -58,17 +55,7 @@ pub const DOMPoint = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        DOMPointImpl.init(instance);
-        
-        return instance;
+        return DOMPointImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -107,22 +94,6 @@ pub const DOMPoint = struct {
         return try DOMPointImpl.get_w(instance);
     }
 
-    pub fn get_x(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMPointImpl.get_x(instance);
-    }
-
-    pub fn get_y(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMPointImpl.get_y(instance);
-    }
-
-    pub fn get_z(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMPointImpl.get_z(instance);
-    }
-
-    pub fn get_w(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMPointImpl.get_w(instance);
-    }
-
     /// Extended attributes: [Default]
     pub fn call_toJSON(instance: *runtime.Instance) anyerror!anyopaque {
         return try DOMPointImpl.call_toJSON(instance);
@@ -135,19 +106,11 @@ pub const DOMPoint = struct {
         return try DOMPointImpl.call_matrixTransform(instance, matrix);
     }
 
-    /// Arguments for fromPoint (WebIDL overloading)
-    pub const FromPointArgs = union(enum) {
-        /// fromPoint(other)
-        DOMPointInit: DOMPointInit,
-        /// fromPoint(other)
-        DOMPointInit: DOMPointInit,
-    };
-
-    pub fn call_fromPoint(instance: *runtime.Instance, args: FromPointArgs) anyerror!DOMPointReadOnly {
-        switch (args) {
-            .DOMPointInit => |arg| return try DOMPointImpl.DOMPointInit(instance, arg),
-            .DOMPointInit => |arg| return try DOMPointImpl.DOMPointInit(instance, arg),
-        }
+    /// Extended attributes: [NewObject]
+    pub fn call_fromPoint(instance: *runtime.Instance, other: DOMPointInit) anyerror!DOMPointReadOnly {
+        // [NewObject] - Caller owns the returned object
+        
+        return try DOMPointImpl.call_fromPoint(instance, other);
     }
 
 };

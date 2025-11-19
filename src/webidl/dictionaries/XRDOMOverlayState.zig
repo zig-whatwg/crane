@@ -5,5 +5,5 @@
 const runtime = @import("runtime");
 
 pub const XRDOMOverlayState = struct {
-    type: ?anyopaque = null,
+    @"type": ?anyopaque = null,
 };

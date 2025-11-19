@@ -1,5 +1,5 @@
 //! Generated from: css-paint-api.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -17,10 +17,9 @@ const CanvasDrawPath = @import("interfaces").CanvasDrawPath;
 const CanvasDrawImage = @import("interfaces").CanvasDrawImage;
 const CanvasPathDrawingStyles = @import("interfaces").CanvasPathDrawingStyles;
 const CanvasPath = @import("interfaces").CanvasPath;
-const (unrestricted double or DOMPointInit or sequence) = @import("interfaces").(unrestricted double or DOMPointInit or sequence);
 const DOMMatrix2DInit = @import("dictionaries").DOMMatrix2DInit;
 const CanvasPattern = @import("interfaces").CanvasPattern;
-const (DOMString or CanvasGradient or CanvasPattern) = @import("interfaces").(DOMString or CanvasGradient or CanvasPattern);
+const DOMPointInit = @import("dictionaries").DOMPointInit;
 const CanvasImageSource = @import("typedefs").CanvasImageSource;
 const CanvasFillRule = @import("enums").CanvasFillRule;
 const DOMMatrix = @import("interfaces").DOMMatrix;
@@ -29,6 +28,8 @@ const ImageSmoothingQuality = @import("enums").ImageSmoothingQuality;
 const CanvasGradient = @import("interfaces").CanvasGradient;
 const CanvasLineCap = @import("enums").CanvasLineCap;
 const CanvasLineJoin = @import("enums").CanvasLineJoin;
+const DOMString = @import("typedefs").DOMString;
+const sequence = @import("interfaces").sequence;
 
 pub const PaintRenderingContext2D = struct {
     pub const Meta = struct {
@@ -62,8 +63,16 @@ pub const PaintRenderingContext2D = struct {
             globalCompositeOperation: runtime.DOMString = undefined,
             imageSmoothingEnabled: bool = undefined,
             imageSmoothingQuality: ImageSmoothingQuality = undefined,
-            strokeStyle: (DOMString or CanvasGradient or CanvasPattern) = undefined,
-            fillStyle: (DOMString or CanvasGradient or CanvasPattern) = undefined,
+            strokeStyle: union(enum) {
+                DOMString: runtime.DOMString,
+                CanvasGradient: CanvasGradient,
+                CanvasPattern: CanvasPattern,
+            } = undefined,
+            fillStyle: union(enum) {
+                DOMString: runtime.DOMString,
+                CanvasGradient: CanvasGradient,
+                CanvasPattern: CanvasPattern,
+            } = undefined,
             shadowOffsetX: f64 = undefined,
             shadowOffsetY: f64 = undefined,
             shadowBlur: f64 = undefined,
@@ -154,17 +163,7 @@ pub const PaintRenderingContext2D = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PaintRenderingContext2DImpl.init(instance);
-        
-        return instance;
+        return PaintRenderingContext2DImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -297,28 +296,9 @@ pub const PaintRenderingContext2D = struct {
         try PaintRenderingContext2DImpl.set_lineDashOffset(instance, value);
     }
 
-    /// Arguments for isPointInPath (WebIDL overloading)
-    pub const IsPointInPathArgs = union(enum) {
-        /// isPointInPath(x, y, fillRule)
-        unrestricted double_unrestricted double_CanvasFillRule: struct {
-            x: f64,
-            y: f64,
-            fillRule: CanvasFillRule,
-        },
-        /// isPointInPath(path, x, y, fillRule)
-        Path2D_unrestricted double_unrestricted double_CanvasFillRule: struct {
-            path: Path2D,
-            x: f64,
-            y: f64,
-            fillRule: CanvasFillRule,
-        },
-    };
-
-    pub fn call_isPointInPath(instance: *runtime.Instance, args: IsPointInPathArgs) anyerror!bool {
-        switch (args) {
-            .unrestricted double_unrestricted double_CanvasFillRule => |a| return try PaintRenderingContext2DImpl.unrestricted double_unrestricted double_CanvasFillRule(instance, a.x, a.y, a.fillRule),
-            .Path2D_unrestricted double_unrestricted double_CanvasFillRule => |a| return try PaintRenderingContext2DImpl.Path2D_unrestricted double_unrestricted double_CanvasFillRule(instance, a.path, a.x, a.y, a.fillRule),
-        }
+    pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule: CanvasFillRule) anyerror!bool {
+        
+        return try PaintRenderingContext2DImpl.call_isPointInPath(instance, x, y, fillRule);
     }
 
     pub fn call_getLineDash(instance: *runtime.Instance) anyerror!anyopaque {
@@ -349,79 +329,22 @@ pub const PaintRenderingContext2D = struct {
         return try PaintRenderingContext2DImpl.call_restore(instance);
     }
 
-    /// Arguments for clip (WebIDL overloading)
-    pub const ClipArgs = union(enum) {
-        /// clip(fillRule)
-        CanvasFillRule: CanvasFillRule,
-        /// clip(path, fillRule)
-        Path2D_CanvasFillRule: struct {
-            path: Path2D,
-            fillRule: CanvasFillRule,
-        },
-    };
-
-    pub fn call_clip(instance: *runtime.Instance, args: ClipArgs) anyerror!void {
-        switch (args) {
-            .CanvasFillRule => |arg| return try PaintRenderingContext2DImpl.CanvasFillRule(instance, arg),
-            .Path2D_CanvasFillRule => |a| return try PaintRenderingContext2DImpl.Path2D_CanvasFillRule(instance, a.path, a.fillRule),
-        }
+    pub fn call_clip(instance: *runtime.Instance, fillRule: CanvasFillRule) anyerror!void {
+        
+        return try PaintRenderingContext2DImpl.call_clip(instance, fillRule);
     }
 
     pub fn call_reset(instance: *runtime.Instance) anyerror!void {
         return try PaintRenderingContext2DImpl.call_reset(instance);
     }
 
-    /// Arguments for stroke (WebIDL overloading)
-    pub const StrokeArgs = union(enum) {
-        /// stroke()
-        no_params: void,
-        /// stroke(path)
-        Path2D: Path2D,
-    };
-
-    pub fn call_stroke(instance: *runtime.Instance, args: StrokeArgs) anyerror!void {
-        switch (args) {
-            .no_params => return try PaintRenderingContext2DImpl.no_params(instance),
-            .Path2D => |arg| return try PaintRenderingContext2DImpl.Path2D(instance, arg),
-        }
+    pub fn call_stroke(instance: *runtime.Instance) anyerror!void {
+        return try PaintRenderingContext2DImpl.call_stroke(instance);
     }
 
-    /// Arguments for drawImage (WebIDL overloading)
-    pub const DrawImageArgs = union(enum) {
-        /// drawImage(image, dx, dy)
-        CanvasImageSource_unrestricted double_unrestricted double: struct {
-            image: CanvasImageSource,
-            dx: f64,
-            dy: f64,
-        },
-        /// drawImage(image, dx, dy, dw, dh)
-        CanvasImageSource_unrestricted double_unrestricted double_unrestricted double_unrestricted double: struct {
-            image: CanvasImageSource,
-            dx: f64,
-            dy: f64,
-            dw: f64,
-            dh: f64,
-        },
-        /// drawImage(image, sx, sy, sw, sh, dx, dy, dw, dh)
-        CanvasImageSource_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double: struct {
-            image: CanvasImageSource,
-            sx: f64,
-            sy: f64,
-            sw: f64,
-            sh: f64,
-            dx: f64,
-            dy: f64,
-            dw: f64,
-            dh: f64,
-        },
-    };
-
-    pub fn call_drawImage(instance: *runtime.Instance, args: DrawImageArgs) anyerror!void {
-        switch (args) {
-            .CanvasImageSource_unrestricted double_unrestricted double => |a| return try PaintRenderingContext2DImpl.CanvasImageSource_unrestricted double_unrestricted double(instance, a.image, a.dx, a.dy),
-            .CanvasImageSource_unrestricted double_unrestricted double_unrestricted double_unrestricted double => |a| return try PaintRenderingContext2DImpl.CanvasImageSource_unrestricted double_unrestricted double_unrestricted double_unrestricted double(instance, a.image, a.dx, a.dy, a.dw, a.dh),
-            .CanvasImageSource_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double => |a| return try PaintRenderingContext2DImpl.CanvasImageSource_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double(instance, a.image, a.sx, a.sy, a.sw, a.sh, a.dx, a.dy, a.dw, a.dh),
-        }
+    pub fn call_drawImage(instance: *runtime.Instance, image: CanvasImageSource, dx: f64, dy: f64) anyerror!void {
+        
+        return try PaintRenderingContext2DImpl.call_drawImage(instance, image, dx, dy);
     }
 
     pub fn call_arc(instance: *runtime.Instance, x: f64, y: f64, radius: f64, startAngle: f64, endAngle: f64, counterclockwise: bool) anyerror!void {
@@ -449,7 +372,7 @@ pub const PaintRenderingContext2D = struct {
         return try PaintRenderingContext2DImpl.call_roundRect(instance, x, y, w, h, radii);
     }
 
-    pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: DOMString) anyerror!anyopaque {
+    pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: DOMString) anyerror!CanvasPattern {
         
         return try PaintRenderingContext2DImpl.call_createPattern(instance, image, repetition);
     }
@@ -496,26 +419,9 @@ pub const PaintRenderingContext2D = struct {
         return try PaintRenderingContext2DImpl.call_isContextLost(instance);
     }
 
-    /// Arguments for isPointInStroke (WebIDL overloading)
-    pub const IsPointInStrokeArgs = union(enum) {
-        /// isPointInStroke(x, y)
-        unrestricted double_unrestricted double: struct {
-            x: f64,
-            y: f64,
-        },
-        /// isPointInStroke(path, x, y)
-        Path2D_unrestricted double_unrestricted double: struct {
-            path: Path2D,
-            x: f64,
-            y: f64,
-        },
-    };
-
-    pub fn call_isPointInStroke(instance: *runtime.Instance, args: IsPointInStrokeArgs) anyerror!bool {
-        switch (args) {
-            .unrestricted double_unrestricted double => |a| return try PaintRenderingContext2DImpl.unrestricted double_unrestricted double(instance, a.x, a.y),
-            .Path2D_unrestricted double_unrestricted double => |a| return try PaintRenderingContext2DImpl.Path2D_unrestricted double_unrestricted double(instance, a.path, a.x, a.y),
-        }
+    pub fn call_isPointInStroke(instance: *runtime.Instance, x: f64, y: f64) anyerror!bool {
+        
+        return try PaintRenderingContext2DImpl.call_isPointInStroke(instance, x, y);
     }
 
     pub fn call_rotate(instance: *runtime.Instance, angle: f64) anyerror!void {
@@ -543,26 +449,9 @@ pub const PaintRenderingContext2D = struct {
         return try PaintRenderingContext2DImpl.call_strokeRect(instance, x, y, w, h);
     }
 
-    /// Arguments for setTransform (WebIDL overloading)
-    pub const SetTransformArgs = union(enum) {
-        /// setTransform(a, b, c, d, e, f)
-        unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double: struct {
-            a: f64,
-            b: f64,
-            c: f64,
-            d: f64,
-            e: f64,
-            f: f64,
-        },
-        /// setTransform(transform)
-        DOMMatrix2DInit: DOMMatrix2DInit,
-    };
-
-    pub fn call_setTransform(instance: *runtime.Instance, args: SetTransformArgs) anyerror!void {
-        switch (args) {
-            .unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double => |a| return try PaintRenderingContext2DImpl.unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double(instance, a.a, a.b, a.c, a.d, a.e, a.f),
-            .DOMMatrix2DInit => |arg| return try PaintRenderingContext2DImpl.DOMMatrix2DInit(instance, arg),
-        }
+    pub fn call_setTransform(instance: *runtime.Instance, a: f64, b: f64, c: f64, d: f64, e: f64, f: f64) anyerror!void {
+        
+        return try PaintRenderingContext2DImpl.call_setTransform(instance, a, b, c, d, e, f);
     }
 
     pub fn call_fillRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
@@ -579,22 +468,9 @@ pub const PaintRenderingContext2D = struct {
         return try PaintRenderingContext2DImpl.call_rect(instance, x, y, w, h);
     }
 
-    /// Arguments for fill (WebIDL overloading)
-    pub const FillArgs = union(enum) {
-        /// fill(fillRule)
-        CanvasFillRule: CanvasFillRule,
-        /// fill(path, fillRule)
-        Path2D_CanvasFillRule: struct {
-            path: Path2D,
-            fillRule: CanvasFillRule,
-        },
-    };
-
-    pub fn call_fill(instance: *runtime.Instance, args: FillArgs) anyerror!void {
-        switch (args) {
-            .CanvasFillRule => |arg| return try PaintRenderingContext2DImpl.CanvasFillRule(instance, arg),
-            .Path2D_CanvasFillRule => |a| return try PaintRenderingContext2DImpl.Path2D_CanvasFillRule(instance, a.path, a.fillRule),
-        }
+    pub fn call_fill(instance: *runtime.Instance, fillRule: CanvasFillRule) anyerror!void {
+        
+        return try PaintRenderingContext2DImpl.call_fill(instance, fillRule);
     }
 
 };

@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -26,7 +26,6 @@ pub const StyleSheetList = struct {
     pub const State = runtime.FlattenedState(
         struct {
             length: u32 = undefined,
-            length: u32 = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -36,24 +35,13 @@ pub const StyleSheetList = struct {
         .deinit_fn = &deinit_wrapper,
 
         .get_length = &get_length,
-        .get_length = &get_length,
 
         .call_item = &call_item,
     });
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        StyleSheetListImpl.init(instance);
-        
-        return instance;
+        return StyleSheetListImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -70,23 +58,9 @@ pub const StyleSheetList = struct {
         return try StyleSheetListImpl.get_length(instance);
     }
 
-    pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
-        return try StyleSheetListImpl.get_length(instance);
-    }
-
-    /// Arguments for item (WebIDL overloading)
-    pub const ItemArgs = union(enum) {
-        /// item(index)
-        long: u32,
-        /// item(index)
-        long: u32,
-    };
-
-    pub fn call_item(instance: *runtime.Instance, args: ItemArgs) anyerror!anyopaque {
-        switch (args) {
-            .long => |arg| return try StyleSheetListImpl.long(instance, arg),
-            .long => |arg| return try StyleSheetListImpl.long(instance, arg),
-        }
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!CSSStyleSheet {
+        
+        return try StyleSheetListImpl.call_item(instance, index);
     }
 
 };

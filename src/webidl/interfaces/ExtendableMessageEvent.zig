@@ -1,5 +1,5 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,9 +7,16 @@ const std = @import("std");
 const runtime = @import("runtime");
 const ExtendableMessageEventImpl = @import("impls").ExtendableMessageEvent;
 const ExtendableEvent = @import("interfaces").ExtendableEvent;
+const ServiceWorker = @import("interfaces").ServiceWorker;
+const Client = @import("interfaces").Client;
+const ExtendableEventInit = @import("dictionaries").ExtendableEventInit;
+const EventTarget = @import("interfaces").EventTarget;
 const ExtendableMessageEventInit = @import("dictionaries").ExtendableMessageEventInit;
-const (Client or ServiceWorker or MessagePort) = @import("interfaces").(Client or ServiceWorker or MessagePort);
-const FrozenArray<MessagePort> = @import("interfaces").FrozenArray<MessagePort>;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
+const USVString = @import("interfaces").USVString;
+const DOMString = @import("typedefs").DOMString;
+const MessagePort = @import("interfaces").MessagePort;
 
 pub const ExtendableMessageEvent = struct {
     pub const Meta = struct {
@@ -35,8 +42,12 @@ pub const ExtendableMessageEvent = struct {
             data: anyopaque = undefined,
             origin: runtime.USVString = undefined,
             lastEventId: runtime.DOMString = undefined,
-            source: ?(Client or ServiceWorker or MessagePort) = null,
-            ports: FrozenArray<MessagePort> = undefined,
+            source: ?union(enum) {
+                Client: Client,
+                ServiceWorker: ServiceWorker,
+                MessagePort: MessagePort,
+            } = null,
+            ports: runtime.FrozenArray(MessagePort) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -81,17 +92,7 @@ pub const ExtendableMessageEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ExtendableMessageEventImpl.init(instance);
-        
-        return instance;
+        return ExtendableMessageEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -105,11 +106,11 @@ pub const ExtendableMessageEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, eventInitDict: ExtendableMessageEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, eventInitDict: ExtendableMessageEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try ExtendableMessageEventImpl.constructor(instance, type_, eventInitDict);
+        try ExtendableMessageEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -118,15 +119,15 @@ pub const ExtendableMessageEvent = struct {
         return try ExtendableMessageEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try ExtendableMessageEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try ExtendableMessageEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try ExtendableMessageEventImpl.get_currentTarget(instance);
     }
 
@@ -207,9 +208,9 @@ pub const ExtendableMessageEvent = struct {
         return try ExtendableMessageEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try ExtendableMessageEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try ExtendableMessageEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_composedPath(instance: *runtime.Instance) anyerror!anyopaque {

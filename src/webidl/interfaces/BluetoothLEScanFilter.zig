@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth-scanning.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,7 @@ const runtime = @import("runtime");
 const BluetoothLEScanFilterImpl = @import("impls").BluetoothLEScanFilter;
 const BluetoothManufacturerDataFilter = @import("interfaces").BluetoothManufacturerDataFilter;
 const BluetoothLEScanFilterInit = @import("dictionaries").BluetoothLEScanFilterInit;
-const FrozenArray<UUID> = @import("interfaces").FrozenArray<UUID>;
+const UUID = @import("typedefs").UUID;
 const DOMString = @import("typedefs").DOMString;
 const BluetoothServiceDataFilter = @import("interfaces").BluetoothServiceDataFilter;
 
@@ -31,7 +31,7 @@ pub const BluetoothLEScanFilter = struct {
         struct {
             name: ?runtime.DOMString = null,
             namePrefix: ?runtime.DOMString = null,
-            services: FrozenArray<UUID> = undefined,
+            services: runtime.FrozenArray(UUID) = undefined,
             manufacturerData: BluetoothManufacturerDataFilter = undefined,
             serviceData: BluetoothServiceDataFilter = undefined,
         },
@@ -51,17 +51,7 @@ pub const BluetoothLEScanFilter = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        BluetoothLEScanFilterImpl.init(instance);
-        
-        return instance;
+        return BluetoothLEScanFilterImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -75,20 +65,20 @@ pub const BluetoothLEScanFilter = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, init: BluetoothLEScanFilterInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, init_data: BluetoothLEScanFilterInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try BluetoothLEScanFilterImpl.constructor(instance, init);
+        try BluetoothLEScanFilterImpl.constructor(instance, init_data);
         
         return instance;
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
         return try BluetoothLEScanFilterImpl.get_name(instance);
     }
 
-    pub fn get_namePrefix(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_namePrefix(instance: *runtime.Instance) anyerror!DOMString {
         return try BluetoothLEScanFilterImpl.get_namePrefix(instance);
     }
 

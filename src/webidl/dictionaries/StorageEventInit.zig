@@ -9,9 +9,9 @@ pub const StorageEventInit = struct {
     // Inherited from EventInit
     base: EventInit,
 
-    key: ?anyopaque = null,
-    oldValue: ?anyopaque = null,
-    newValue: ?anyopaque = null,
+    key: ?runtime.DOMString = null,
+    oldValue: ?runtime.DOMString = null,
+    newValue: ?runtime.DOMString = null,
     url: ?runtime.DOMString = null,
     storageArea: ?anyopaque = null,
 };

@@ -1,5 +1,5 @@
 //! Generated from: webxrlayers.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -45,17 +45,7 @@ pub const XRMediaBinding = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        XRMediaBindingImpl.init(instance);
-        
-        return instance;
+        return XRMediaBindingImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -78,19 +68,19 @@ pub const XRMediaBinding = struct {
         return instance;
     }
 
-    pub fn call_createCylinderLayer(instance: *runtime.Instance, video: HTMLVideoElement, init: XRMediaCylinderLayerInit) anyerror!XRCylinderLayer {
+    pub fn call_createCylinderLayer(instance: *runtime.Instance, video: HTMLVideoElement, init_data: XRMediaCylinderLayerInit) anyerror!XRCylinderLayer {
         
-        return try XRMediaBindingImpl.call_createCylinderLayer(instance, video, init);
+        return try XRMediaBindingImpl.call_createCylinderLayer(instance, video, init_data);
     }
 
-    pub fn call_createQuadLayer(instance: *runtime.Instance, video: HTMLVideoElement, init: XRMediaQuadLayerInit) anyerror!XRQuadLayer {
+    pub fn call_createQuadLayer(instance: *runtime.Instance, video: HTMLVideoElement, init_data: XRMediaQuadLayerInit) anyerror!XRQuadLayer {
         
-        return try XRMediaBindingImpl.call_createQuadLayer(instance, video, init);
+        return try XRMediaBindingImpl.call_createQuadLayer(instance, video, init_data);
     }
 
-    pub fn call_createEquirectLayer(instance: *runtime.Instance, video: HTMLVideoElement, init: XRMediaEquirectLayerInit) anyerror!XREquirectLayer {
+    pub fn call_createEquirectLayer(instance: *runtime.Instance, video: HTMLVideoElement, init_data: XRMediaEquirectLayerInit) anyerror!XREquirectLayer {
         
-        return try XRMediaBindingImpl.call_createEquirectLayer(instance, video, init);
+        return try XRMediaBindingImpl.call_createEquirectLayer(instance, video, init_data);
     }
 
 };

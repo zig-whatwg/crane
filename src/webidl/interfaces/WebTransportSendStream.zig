@@ -1,5 +1,5 @@
 //! Generated from: webtransport.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,9 +7,11 @@ const std = @import("std");
 const runtime = @import("runtime");
 const WebTransportSendStreamImpl = @import("impls").WebTransportSendStream;
 const WritableStream = @import("interfaces").WritableStream;
+const WebTransportSendStreamStats = @import("dictionaries").WebTransportSendStreamStats;
+const QueuingStrategy = @import("dictionaries").QueuingStrategy;
 const WebTransportWriter = @import("interfaces").WebTransportWriter;
+const WritableStreamDefaultWriter = @import("interfaces").WritableStreamDefaultWriter;
 const WebTransportSendGroup = @import("interfaces").WebTransportSendGroup;
-const Promise<WebTransportSendStreamStats> = @import("interfaces").Promise<WebTransportSendStreamStats>;
 
 pub const WebTransportSendStream = struct {
     pub const Meta = struct {
@@ -57,17 +59,7 @@ pub const WebTransportSendStream = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        WebTransportSendStreamImpl.init(instance);
-        
-        return instance;
+        return WebTransportSendStreamImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -84,11 +76,11 @@ pub const WebTransportSendStream = struct {
         return try WebTransportSendStreamImpl.get_locked(instance);
     }
 
-    pub fn get_sendGroup(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_sendGroup(instance: *runtime.Instance) anyerror!WebTransportSendGroup {
         return try WebTransportSendStreamImpl.get_sendGroup(instance);
     }
 
-    pub fn set_sendGroup(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_sendGroup(instance: *runtime.Instance, value: WebTransportSendGroup) anyerror!void {
         try WebTransportSendStreamImpl.set_sendGroup(instance, value);
     }
 
@@ -100,19 +92,8 @@ pub const WebTransportSendStream = struct {
         try WebTransportSendStreamImpl.set_sendOrder(instance, value);
     }
 
-    /// Arguments for getWriter (WebIDL overloading)
-    pub const GetWriterArgs = union(enum) {
-        /// getWriter()
-        no_params: void,
-        /// getWriter()
-        no_params: void,
-    };
-
-    pub fn call_getWriter(instance: *runtime.Instance, args: GetWriterArgs) anyerror!WritableStreamDefaultWriter {
-        switch (args) {
-            .no_params => return try WebTransportSendStreamImpl.no_params(instance),
-            .no_params => return try WebTransportSendStreamImpl.no_params(instance),
-        }
+    pub fn call_getWriter(instance: *runtime.Instance) anyerror!WritableStreamDefaultWriter {
+        return try WebTransportSendStreamImpl.call_getWriter(instance);
     }
 
     pub fn call_abort(instance: *runtime.Instance, reason: anyopaque) anyerror!anyopaque {

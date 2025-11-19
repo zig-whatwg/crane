@@ -1,15 +1,15 @@
 //! Generated from: fs.idl
-//! Generated at: 2025-11-18T18:28:13Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const FileSystemHandleImpl = @import("impls").FileSystemHandle;
-const FileSystemHandlePermissionDescriptor = @import("dictionaries").FileSystemHandlePermissionDescriptor;
+const PermissionState = @import("enums").PermissionState;
 const FileSystemHandleKind = @import("enums").FileSystemHandleKind;
-const Promise<boolean> = @import("interfaces").Promise<boolean>;
-const Promise<PermissionState> = @import("interfaces").Promise<PermissionState>;
+const USVString = @import("interfaces").USVString;
+const FileSystemHandlePermissionDescriptor = @import("dictionaries").FileSystemHandlePermissionDescriptor;
 
 pub const FileSystemHandle = struct {
     pub const Meta = struct {
@@ -52,17 +52,7 @@ pub const FileSystemHandle = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        FileSystemHandleImpl.init(instance);
-        
-        return instance;
+        return FileSystemHandleImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

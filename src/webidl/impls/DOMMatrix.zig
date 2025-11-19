@@ -13,22 +13,31 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Initialize instance
-pub fn init(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Initialize your instance state here
+/// Initialize instance (delegates to runtime.Instance.init)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable);
+    // TODO: Add custom initialization here if needed
+    // const state = instance.getState(StateType);
+    // state.* = .{}; // Initialize fields
+    return instance;
 }
 
-/// Deinitialize instance
+/// Deinitialize instance (delegates to runtime.Instance.deinit)
 pub fn deinit(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Clean up your instance resources here
+    // TODO: Add custom cleanup here if needed
+    // const state = instance.getState(State);
+    // Clean up fields...
+    runtime.Instance.deinit(instance);
 }
 
 /// Constructor implementation
-pub fn constructor(instance: *runtime.Instance, init: anyopaque) !void {
+pub fn constructor(instance: *runtime.Instance, init_data: anyopaque) !void {
     _ = instance;
-    _ = init;
+    _ = init_data;
     // TODO: Implement constructor logic
 }
 
@@ -200,160 +209,6 @@ pub fn get_isIdentity(instance: *runtime.Instance) ImplError!bool {
     return error.NotImplemented;
 }
 
-/// Getter for a
-pub fn get_a(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for b
-pub fn get_b(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for c
-pub fn get_c(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for d
-pub fn get_d(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for e
-pub fn get_e(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for f
-pub fn get_f(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for m11
-pub fn get_m11(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for m12
-pub fn get_m12(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for m13
-pub fn get_m13(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for m14
-pub fn get_m14(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for m21
-pub fn get_m21(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for m22
-pub fn get_m22(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for m23
-pub fn get_m23(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for m24
-pub fn get_m24(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for m31
-pub fn get_m31(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for m32
-pub fn get_m32(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for m33
-pub fn get_m33(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for m34
-pub fn get_m34(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for m41
-pub fn get_m41(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for m42
-pub fn get_m42(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for m43
-pub fn get_m43(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for m44
-pub fn get_m44(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
 /// Operation: fromMatrix
 pub fn call_fromMatrix(instance: *runtime.Instance, other: anyopaque) ImplError!anyopaque {
     _ = instance;
@@ -518,40 +373,9 @@ pub fn call_toFloat64Array(instance: *runtime.Instance) ImplError!anyopaque {
     return error.NotImplemented;
 }
 
-/// Operation: unnamed
-pub fn call_unnamed(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
 /// Operation: toJSON
 pub fn call_toJSON(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: fromMatrix
-pub fn call_fromMatrix(instance: *runtime.Instance, other: anyopaque) ImplError!anyopaque {
-    _ = instance;
-    _ = other;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: fromFloat32Array
-pub fn call_fromFloat32Array(instance: *runtime.Instance, array32: anyopaque) ImplError!anyopaque {
-    _ = instance;
-    _ = array32;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: fromFloat64Array
-pub fn call_fromFloat64Array(instance: *runtime.Instance, array64: anyopaque) ImplError!anyopaque {
-    _ = instance;
-    _ = array64;
     // TODO: Implement operation
     return error.NotImplemented;
 }

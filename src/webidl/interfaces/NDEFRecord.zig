@@ -1,12 +1,11 @@
 //! Generated from: web-nfc.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const NDEFRecordImpl = @import("impls").NDEFRecord;
-const sequence = @import("interfaces").sequence;
 const DataView = @import("interfaces").DataView;
 const USVString = @import("interfaces").USVString;
 const NDEFRecordInit = @import("dictionaries").NDEFRecordInit;
@@ -54,17 +53,7 @@ pub const NDEFRecord = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        NDEFRecordImpl.init(instance);
-        
-        return instance;
+        return NDEFRecordImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -91,11 +80,11 @@ pub const NDEFRecord = struct {
         return try NDEFRecordImpl.get_recordType(instance);
     }
 
-    pub fn get_mediaType(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_mediaType(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try NDEFRecordImpl.get_mediaType(instance);
     }
 
-    pub fn get_id(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_id(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try NDEFRecordImpl.get_id(instance);
     }
 
@@ -103,11 +92,11 @@ pub const NDEFRecord = struct {
         return try NDEFRecordImpl.get_data(instance);
     }
 
-    pub fn get_encoding(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_encoding(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try NDEFRecordImpl.get_encoding(instance);
     }
 
-    pub fn get_lang(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_lang(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try NDEFRecordImpl.get_lang(instance);
     }
 

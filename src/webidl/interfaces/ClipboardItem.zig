@@ -1,5 +1,5 @@
 //! Generated from: clipboard-apis.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,8 +8,8 @@ const runtime = @import("runtime");
 const ClipboardItemImpl = @import("impls").ClipboardItem;
 const ClipboardItemOptions = @import("dictionaries").ClipboardItemOptions;
 const PresentationStyle = @import("enums").PresentationStyle;
-const Promise<Blob> = @import("interfaces").Promise<Blob>;
-const FrozenArray<DOMString> = @import("interfaces").FrozenArray<DOMString>;
+const Blob = @import("interfaces").Blob;
+const DOMString = @import("typedefs").DOMString;
 
 pub const ClipboardItem = struct {
     pub const Meta = struct {
@@ -29,7 +29,7 @@ pub const ClipboardItem = struct {
     pub const State = runtime.FlattenedState(
         struct {
             presentationStyle: PresentationStyle = undefined,
-            types: FrozenArray<DOMString> = undefined,
+            types: runtime.FrozenArray(runtime.DOMString) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -47,17 +47,7 @@ pub const ClipboardItem = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ClipboardItemImpl.init(instance);
-        
-        return instance;
+        return ClipboardItemImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -88,14 +78,14 @@ pub const ClipboardItem = struct {
         return try ClipboardItemImpl.get_types(instance);
     }
 
-    pub fn call_getType(instance: *runtime.Instance, type_: DOMString) anyerror!anyopaque {
+    pub fn call_getType(instance: *runtime.Instance, @"type": DOMString) anyerror!anyopaque {
         
-        return try ClipboardItemImpl.call_getType(instance, type_);
+        return try ClipboardItemImpl.call_getType(instance, @"type");
     }
 
-    pub fn call_supports(instance: *runtime.Instance, type_: DOMString) anyerror!bool {
+    pub fn call_supports(instance: *runtime.Instance, @"type": DOMString) anyerror!bool {
         
-        return try ClipboardItemImpl.call_supports(instance, type_);
+        return try ClipboardItemImpl.call_supports(instance, @"type");
     }
 
 };

@@ -1,5 +1,5 @@
 //! Generated from: xhr.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,13 +9,20 @@ const XMLHttpRequestImpl = @import("impls").XMLHttpRequest;
 const XMLHttpRequestEventTarget = @import("interfaces").XMLHttpRequestEventTarget;
 const Document = @import("interfaces").Document;
 const XMLHttpRequestResponseType = @import("enums").XMLHttpRequestResponseType;
-const AttributionReportingRequestOptions = @import("dictionaries").AttributionReportingRequestOptions;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ByteString = @import("interfaces").ByteString;
+const XMLHttpRequestBodyInit = @import("typedefs").XMLHttpRequestBodyInit;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const XMLHttpRequestUpload = @import("interfaces").XMLHttpRequestUpload;
-const (Document or XMLHttpRequestBodyInit) = @import("interfaces").(Document or XMLHttpRequestBodyInit);
-const PrivateToken = @import("dictionaries").PrivateToken;
 const USVString = @import("interfaces").USVString;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const AttributionReportingRequestOptions = @import("dictionaries").AttributionReportingRequestOptions;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
+const PrivateToken = @import("dictionaries").PrivateToken;
 const EventHandler = @import("typedefs").EventHandler;
+const DOMString = @import("typedefs").DOMString;
 
 pub const XMLHttpRequest = struct {
     pub const Meta = struct {
@@ -140,17 +147,7 @@ pub const XMLHttpRequest = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        XMLHttpRequestImpl.init(instance);
-        
-        return instance;
+        return XMLHttpRequestImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -298,7 +295,7 @@ pub const XMLHttpRequest = struct {
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn get_responseXML(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_responseXML(instance: *runtime.Instance) anyerror!Document {
         return try XMLHttpRequestImpl.get_responseXML(instance);
     }
 
@@ -307,33 +304,14 @@ pub const XMLHttpRequest = struct {
         return try XMLHttpRequestImpl.call_setPrivateToken(instance, privateToken);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try XMLHttpRequestImpl.call_when(instance, type_, options);
+        return try XMLHttpRequestImpl.call_when(instance, @"type", options);
     }
 
-    /// Arguments for open (WebIDL overloading)
-    pub const OpenArgs = union(enum) {
-        /// open(method, url)
-        ByteString_USVString: struct {
-            method: runtime.ByteString,
-            url: runtime.USVString,
-        },
-        /// open(method, url, async, username, password)
-        ByteString_USVString_bool_USVString?_USVString?: struct {
-            method: runtime.ByteString,
-            url: runtime.USVString,
-            async_: bool,
-            username: anyopaque,
-            password: anyopaque,
-        },
-    };
-
-    pub fn call_open(instance: *runtime.Instance, args: OpenArgs) anyerror!void {
-        switch (args) {
-            .ByteString_USVString => |a| return try XMLHttpRequestImpl.ByteString_USVString(instance, a.method, a.url),
-            .ByteString_USVString_bool_USVString?_USVString? => |a| return try XMLHttpRequestImpl.ByteString_USVString_bool_USVString?_USVString?(instance, a.method, a.url, a.async_, a.username, a.password),
-        }
+    pub fn call_open(instance: *runtime.Instance, method: runtime.ByteString, url: runtime.USVString) anyerror!void {
+        
+        return try XMLHttpRequestImpl.call_open(instance, method, url);
     }
 
     pub fn call_send(instance: *runtime.Instance, body: anyopaque) anyerror!void {
@@ -345,7 +323,7 @@ pub const XMLHttpRequest = struct {
         return try XMLHttpRequestImpl.call_abort(instance);
     }
 
-    pub fn call_getResponseHeader(instance: *runtime.Instance, name: runtime.ByteString) anyerror!anyopaque {
+    pub fn call_getResponseHeader(instance: *runtime.Instance, name: runtime.ByteString) anyerror!runtime.ByteString {
         
         return try XMLHttpRequestImpl.call_getResponseHeader(instance, name);
     }
@@ -359,14 +337,14 @@ pub const XMLHttpRequest = struct {
         return try XMLHttpRequestImpl.call_getAllResponseHeaders(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try XMLHttpRequestImpl.call_addEventListener(instance, type_, callback, options);
+        return try XMLHttpRequestImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try XMLHttpRequestImpl.call_removeEventListener(instance, type_, callback, options);
+        return try XMLHttpRequestImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
     /// Extended attributes: [SecureContext]

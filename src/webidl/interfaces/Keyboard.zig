@@ -1,5 +1,5 @@
 //! Generated from: keyboard-lock.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,9 +7,15 @@ const std = @import("std");
 const runtime = @import("runtime");
 const KeyboardImpl = @import("impls").Keyboard;
 const EventTarget = @import("interfaces").EventTarget;
-const Promise<KeyboardLayoutMap> = @import("interfaces").Promise<KeyboardLayoutMap>;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const KeyboardLayoutMap = @import("interfaces").KeyboardLayoutMap;
 const EventHandler = @import("typedefs").EventHandler;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const Event = @import("interfaces").Event;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
+const DOMString = @import("typedefs").DOMString;
+const Observable = @import("interfaces").Observable;
 
 pub const Keyboard = struct {
     pub const Meta = struct {
@@ -52,17 +58,7 @@ pub const Keyboard = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        KeyboardImpl.init(instance);
-        
-        return instance;
+        return KeyboardImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -83,9 +79,9 @@ pub const Keyboard = struct {
         try KeyboardImpl.set_onlayoutchange(instance, value);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try KeyboardImpl.call_when(instance, type_, options);
+        return try KeyboardImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_lock(instance: *runtime.Instance, keyCodes: anyopaque) anyerror!anyopaque {
@@ -106,14 +102,14 @@ pub const Keyboard = struct {
         return try KeyboardImpl.call_getLayoutMap(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try KeyboardImpl.call_addEventListener(instance, type_, callback, options);
+        return try KeyboardImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try KeyboardImpl.call_removeEventListener(instance, type_, callback, options);
+        return try KeyboardImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

@@ -1,5 +1,5 @@
 //! Generated from: cookiestore.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,13 +7,20 @@ const std = @import("std");
 const runtime = @import("runtime");
 const CookieStoreImpl = @import("impls").CookieStore;
 const EventTarget = @import("interfaces").EventTarget;
-const Promise<CookieListItem?> = @import("interfaces").Promise<CookieListItem?>;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const CookieStoreGetOptions = @import("dictionaries").CookieStoreGetOptions;
 const CookieStoreDeleteOptions = @import("dictionaries").CookieStoreDeleteOptions;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
+const USVString = @import("interfaces").USVString;
+const CookieListItem = @import("dictionaries").CookieListItem;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const CookieList = @import("typedefs").CookieList;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
 const CookieInit = @import("dictionaries").CookieInit;
-const Promise<CookieList> = @import("interfaces").Promise<CookieList>;
 const EventHandler = @import("typedefs").EventHandler;
+const DOMString = @import("typedefs").DOMString;
 
 pub const CookieStore = struct {
     pub const Meta = struct {
@@ -60,17 +67,7 @@ pub const CookieStore = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        CookieStoreImpl.init(instance);
-        
-        return instance;
+        return CookieStoreImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -93,57 +90,24 @@ pub const CookieStore = struct {
         try CookieStoreImpl.set_onchange(instance, value);
     }
 
-    /// Arguments for delete (WebIDL overloading)
-    pub const DeleteArgs = union(enum) {
-        /// delete(name)
-        USVString: runtime.USVString,
-        /// delete(options)
-        CookieStoreDeleteOptions: CookieStoreDeleteOptions,
-    };
-
-    pub fn call_delete(instance: *runtime.Instance, args: DeleteArgs) anyerror!anyopaque {
-        switch (args) {
-            .USVString => |arg| return try CookieStoreImpl.USVString(instance, arg),
-            .CookieStoreDeleteOptions => |arg| return try CookieStoreImpl.CookieStoreDeleteOptions(instance, arg),
-        }
-    }
-
-    /// Arguments for getAll (WebIDL overloading)
-    pub const GetAllArgs = union(enum) {
-        /// getAll(name)
-        USVString: runtime.USVString,
-        /// getAll(options)
-        CookieStoreGetOptions: CookieStoreGetOptions,
-    };
-
-    pub fn call_getAll(instance: *runtime.Instance, args: GetAllArgs) anyerror!anyopaque {
-        switch (args) {
-            .USVString => |arg| return try CookieStoreImpl.USVString(instance, arg),
-            .CookieStoreGetOptions => |arg| return try CookieStoreImpl.CookieStoreGetOptions(instance, arg),
-        }
-    }
-
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) anyerror!anyopaque {
         
-        return try CookieStoreImpl.call_when(instance, type_, options);
+        return try CookieStoreImpl.call_delete(instance, name);
     }
 
-    /// Arguments for set (WebIDL overloading)
-    pub const SetArgs = union(enum) {
-        /// set(name, value)
-        USVString_USVString: struct {
-            name: runtime.USVString,
-            value: runtime.USVString,
-        },
-        /// set(options)
-        CookieInit: CookieInit,
-    };
+    pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!anyopaque {
+        
+        return try CookieStoreImpl.call_getAll(instance, name);
+    }
 
-    pub fn call_set(instance: *runtime.Instance, args: SetArgs) anyerror!anyopaque {
-        switch (args) {
-            .USVString_USVString => |a| return try CookieStoreImpl.USVString_USVString(instance, a.name, a.value),
-            .CookieInit => |arg| return try CookieStoreImpl.CookieInit(instance, arg),
-        }
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+        
+        return try CookieStoreImpl.call_when(instance, @"type", options);
+    }
+
+    pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!anyopaque {
+        
+        return try CookieStoreImpl.call_set(instance, name, value);
     }
 
     pub fn call_dispatchEvent(instance: *runtime.Instance, event: Event) anyerror!bool {
@@ -151,29 +115,19 @@ pub const CookieStore = struct {
         return try CookieStoreImpl.call_dispatchEvent(instance, event);
     }
 
-    /// Arguments for get (WebIDL overloading)
-    pub const GetArgs = union(enum) {
-        /// get(name)
-        USVString: runtime.USVString,
-        /// get(options)
-        CookieStoreGetOptions: CookieStoreGetOptions,
-    };
-
-    pub fn call_get(instance: *runtime.Instance, args: GetArgs) anyerror!anyopaque {
-        switch (args) {
-            .USVString => |arg| return try CookieStoreImpl.USVString(instance, arg),
-            .CookieStoreGetOptions => |arg| return try CookieStoreImpl.CookieStoreGetOptions(instance, arg),
-        }
+    pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!anyopaque {
+        
+        return try CookieStoreImpl.call_get(instance, name);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try CookieStoreImpl.call_addEventListener(instance, type_, callback, options);
+        return try CookieStoreImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try CookieStoreImpl.call_removeEventListener(instance, type_, callback, options);
+        return try CookieStoreImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

@@ -1,5 +1,5 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,13 +7,19 @@ const std = @import("std");
 const runtime = @import("runtime");
 const AudioEncoderImpl = @import("impls").AudioEncoder;
 const EventTarget = @import("interfaces").EventTarget;
-const AudioEncoderInit = @import("dictionaries").AudioEncoderInit;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const AudioEncoderSupport = @import("dictionaries").AudioEncoderSupport;
 const CodecState = @import("enums").CodecState;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
+const Event = @import("interfaces").Event;
+const AudioEncoderInit = @import("dictionaries").AudioEncoderInit;
+const Observable = @import("interfaces").Observable;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
 const AudioData = @import("interfaces").AudioData;
 const AudioEncoderConfig = @import("dictionaries").AudioEncoderConfig;
 const EventHandler = @import("typedefs").EventHandler;
-const Promise<AudioEncoderSupport> = @import("interfaces").Promise<AudioEncoderSupport>;
+const DOMString = @import("typedefs").DOMString;
 
 pub const AudioEncoder = struct {
     pub const Meta = struct {
@@ -66,17 +72,7 @@ pub const AudioEncoder = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        AudioEncoderImpl.init(instance);
-        
-        return instance;
+        return AudioEncoderImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -90,11 +86,11 @@ pub const AudioEncoder = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, init: AudioEncoderInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, init_data: AudioEncoderInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try AudioEncoderImpl.constructor(instance, init);
+        try AudioEncoderImpl.constructor(instance, init_data);
         
         return instance;
     }
@@ -115,9 +111,9 @@ pub const AudioEncoder = struct {
         try AudioEncoderImpl.set_ondequeue(instance, value);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try AudioEncoderImpl.call_when(instance, type_, options);
+        return try AudioEncoderImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_dispatchEvent(instance: *runtime.Instance, event: Event) anyerror!bool {
@@ -152,14 +148,14 @@ pub const AudioEncoder = struct {
         return try AudioEncoderImpl.call_close(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try AudioEncoderImpl.call_addEventListener(instance, type_, callback, options);
+        return try AudioEncoderImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try AudioEncoderImpl.call_removeEventListener(instance, type_, callback, options);
+        return try AudioEncoderImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

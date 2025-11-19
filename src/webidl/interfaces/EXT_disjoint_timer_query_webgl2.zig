@@ -1,5 +1,5 @@
 //! Generated from: EXT_disjoint_timer_query_webgl2.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -70,17 +70,7 @@ pub const EXT_disjoint_timer_query_webgl2 = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        EXT_disjoint_timer_query_webgl2Impl.init(instance);
-        
-        return instance;
+        return EXT_disjoint_timer_query_webgl2Impl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

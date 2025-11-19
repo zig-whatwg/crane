@@ -1,5 +1,5 @@
 //! Generated from: paint-timing.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -40,17 +40,7 @@ pub const PaintTimingMixin = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PaintTimingMixinImpl.init(instance);
-        
-        return instance;
+        return PaintTimingMixinImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -67,7 +57,7 @@ pub const PaintTimingMixin = struct {
         return try PaintTimingMixinImpl.get_paintTime(instance);
     }
 
-    pub fn get_presentationTime(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_presentationTime(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
         return try PaintTimingMixinImpl.get_presentationTime(instance);
     }
 

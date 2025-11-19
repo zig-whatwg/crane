@@ -9,5 +9,5 @@ pub const SaveFilePickerOptions = struct {
     // Inherited from FilePickerOptions
     base: FilePickerOptions,
 
-    suggestedName: ?anyopaque = null,
+    suggestedName: ?runtime.DOMString = null,
 };

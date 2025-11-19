@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,11 @@ const runtime = @import("runtime");
 const CommandEventImpl = @import("impls").CommandEvent;
 const Event = @import("interfaces").Event;
 const Element = @import("interfaces").Element;
+const EventTarget = @import("interfaces").EventTarget;
 const CommandEventInit = @import("dictionaries").CommandEventInit;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
+const DOMString = @import("typedefs").DOMString;
 
 pub const CommandEvent = struct {
     pub const Meta = struct {
@@ -73,17 +77,7 @@ pub const CommandEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        CommandEventImpl.init(instance);
-        
-        return instance;
+        return CommandEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -97,11 +91,11 @@ pub const CommandEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, eventInitDict: CommandEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, eventInitDict: CommandEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try CommandEventImpl.constructor(instance, type_, eventInitDict);
+        try CommandEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -110,15 +104,15 @@ pub const CommandEvent = struct {
         return try CommandEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try CommandEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try CommandEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try CommandEventImpl.get_currentTarget(instance);
     }
 
@@ -167,7 +161,7 @@ pub const CommandEvent = struct {
         return try CommandEventImpl.get_timeStamp(instance);
     }
 
-    pub fn get_source(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_source(instance: *runtime.Instance) anyerror!Element {
         return try CommandEventImpl.get_source(instance);
     }
 
@@ -179,9 +173,9 @@ pub const CommandEvent = struct {
         return try CommandEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try CommandEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try CommandEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_composedPath(instance: *runtime.Instance) anyerror!anyopaque {

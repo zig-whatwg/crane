@@ -6,7 +6,7 @@ const runtime = @import("runtime");
 
 pub const RTCIceCandidateInit = struct {
     candidate: ?runtime.DOMString = null,
-    sdpMid: ?anyopaque = null,
-    sdpMLineIndex: ?anyopaque = null,
-    usernameFragment: ?anyopaque = null,
+    sdpMid: ?runtime.DOMString = null,
+    sdpMLineIndex: ?u16 = null,
+    usernameFragment: ?runtime.DOMString = null,
 };

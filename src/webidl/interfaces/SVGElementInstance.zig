@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -36,17 +36,7 @@ pub const SVGElementInstance = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        SVGElementInstanceImpl.init(instance);
-        
-        return instance;
+        return SVGElementInstanceImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -60,7 +50,7 @@ pub const SVGElementInstance = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_correspondingElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_correspondingElement(instance: *runtime.Instance) anyerror!SVGElement {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.cached_correspondingElement) |cached| {
@@ -72,7 +62,7 @@ pub const SVGElementInstance = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_correspondingUseElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_correspondingUseElement(instance: *runtime.Instance) anyerror!SVGUseElement {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.cached_correspondingUseElement) |cached| {

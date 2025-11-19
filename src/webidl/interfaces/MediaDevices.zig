@@ -1,5 +1,5 @@
 //! Generated from: mediacapture-streams.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,15 +7,21 @@ const std = @import("std");
 const runtime = @import("runtime");
 const MediaDevicesImpl = @import("impls").MediaDevices;
 const EventTarget = @import("interfaces").EventTarget;
-const Promise<MediaStream> = @import("interfaces").Promise<MediaStream>;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const MediaDeviceInfo = @import("interfaces").MediaDeviceInfo;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const AudioOutputOptions = @import("dictionaries").AudioOutputOptions;
 const CaptureHandleConfig = @import("dictionaries").CaptureHandleConfig;
-const DisplayMediaStreamOptions = @import("dictionaries").DisplayMediaStreamOptions;
 const MediaTrackSupportedConstraints = @import("dictionaries").MediaTrackSupportedConstraints;
-const Promise<MediaDeviceInfo> = @import("interfaces").Promise<MediaDeviceInfo>;
-const Promise<sequence<MediaDeviceInfo>> = @import("interfaces").Promise<sequence<MediaDeviceInfo>>;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const MediaStream = @import("interfaces").MediaStream;
+const DisplayMediaStreamOptions = @import("dictionaries").DisplayMediaStreamOptions;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
 const MediaStreamConstraints = @import("dictionaries").MediaStreamConstraints;
 const EventHandler = @import("typedefs").EventHandler;
+const DOMString = @import("typedefs").DOMString;
 
 pub const MediaDevices = struct {
     pub const Meta = struct {
@@ -66,17 +72,7 @@ pub const MediaDevices = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        MediaDevicesImpl.init(instance);
-        
-        return instance;
+        return MediaDevicesImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -105,9 +101,9 @@ pub const MediaDevices = struct {
         try MediaDevicesImpl.set_oncaptureaction(instance, value);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try MediaDevicesImpl.call_removeEventListener(instance, type_, callback, options);
+        return try MediaDevicesImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
     pub fn call_setSupportedCaptureActions(instance: *runtime.Instance, actions: anyopaque) anyerror!void {
@@ -120,9 +116,9 @@ pub const MediaDevices = struct {
         return try MediaDevicesImpl.call_getDisplayMedia(instance, options);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try MediaDevicesImpl.call_when(instance, type_, options);
+        return try MediaDevicesImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_setCaptureHandleConfig(instance: *runtime.Instance, config: CaptureHandleConfig) anyerror!void {
@@ -158,9 +154,9 @@ pub const MediaDevices = struct {
         return try MediaDevicesImpl.call_selectAudioOutput(instance, options);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try MediaDevicesImpl.call_addEventListener(instance, type_, callback, options);
+        return try MediaDevicesImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
 };

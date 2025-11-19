@@ -1,5 +1,5 @@
 //! Generated from: event-timing.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,6 +9,7 @@ const PerformanceEventTimingImpl = @import("impls").PerformanceEventTiming;
 const PerformanceEntry = @import("interfaces").PerformanceEntry;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const Node = @import("interfaces").Node;
+const DOMString = @import("typedefs").DOMString;
 
 pub const PerformanceEventTiming = struct {
     pub const Meta = struct {
@@ -30,6 +31,7 @@ pub const PerformanceEventTiming = struct {
             processingEnd: DOMHighResTimeStamp = undefined,
             cancelable: bool = undefined,
             target: ?Node = null,
+            targetSelector: runtime.DOMString = undefined,
             interactionId: u64 = undefined,
         },
         Meta.BaseType,
@@ -50,23 +52,14 @@ pub const PerformanceEventTiming = struct {
         .get_processingStart = &get_processingStart,
         .get_startTime = &get_startTime,
         .get_target = &get_target,
+        .get_targetSelector = &get_targetSelector,
 
         .call_toJSON = &call_toJSON,
     });
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PerformanceEventTimingImpl.init(instance);
-        
-        return instance;
+        return PerformanceEventTimingImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -115,27 +108,21 @@ pub const PerformanceEventTiming = struct {
         return try PerformanceEventTimingImpl.get_cancelable(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!Node {
         return try PerformanceEventTimingImpl.get_target(instance);
+    }
+
+    pub fn get_targetSelector(instance: *runtime.Instance) anyerror!DOMString {
+        return try PerformanceEventTimingImpl.get_targetSelector(instance);
     }
 
     pub fn get_interactionId(instance: *runtime.Instance) anyerror!u64 {
         return try PerformanceEventTimingImpl.get_interactionId(instance);
     }
 
-    /// Arguments for toJSON (WebIDL overloading)
-    pub const ToJSONArgs = union(enum) {
-        /// toJSON()
-        no_params: void,
-        /// toJSON()
-        no_params: void,
-    };
-
-    pub fn call_toJSON(instance: *runtime.Instance, args: ToJSONArgs) anyerror!anyopaque {
-        switch (args) {
-            .no_params => return try PerformanceEventTimingImpl.no_params(instance),
-            .no_params => return try PerformanceEventTimingImpl.no_params(instance),
-        }
+    /// Extended attributes: [Default]
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!anyopaque {
+        return try PerformanceEventTimingImpl.call_toJSON(instance);
     }
 
 };

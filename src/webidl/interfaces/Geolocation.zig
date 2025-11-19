@@ -1,5 +1,5 @@
 //! Generated from: geolocation.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -40,17 +40,7 @@ pub const Geolocation = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        GeolocationImpl.init(instance);
-        
-        return instance;
+        return GeolocationImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -63,7 +53,7 @@ pub const Geolocation = struct {
         deinit(instance);
     }
 
-    pub fn call_getCurrentPosition(instance: *runtime.Instance, successCallback: PositionCallback, errorCallback: anyopaque, options: PositionOptions) anyerror!void {
+    pub fn call_getCurrentPosition(instance: *runtime.Instance, successCallback: PositionCallback, errorCallback: PositionErrorCallback, options: PositionOptions) anyerror!void {
         
         return try GeolocationImpl.call_getCurrentPosition(instance, successCallback, errorCallback, options);
     }
@@ -73,7 +63,7 @@ pub const Geolocation = struct {
         return try GeolocationImpl.call_clearWatch(instance, watchId);
     }
 
-    pub fn call_watchPosition(instance: *runtime.Instance, successCallback: PositionCallback, errorCallback: anyopaque, options: PositionOptions) anyerror!i32 {
+    pub fn call_watchPosition(instance: *runtime.Instance, successCallback: PositionCallback, errorCallback: PositionErrorCallback, options: PositionOptions) anyerror!i32 {
         
         return try GeolocationImpl.call_watchPosition(instance, successCallback, errorCallback, options);
     }

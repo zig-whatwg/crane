@@ -10,5 +10,5 @@ pub const AuthenticationResponseJSON = struct {
     response: anyopaque,
     authenticatorAttachment: ?runtime.DOMString = null,
     clientExtensionResults: anyopaque,
-    type: runtime.DOMString,
+    @"type": runtime.DOMString,
 };

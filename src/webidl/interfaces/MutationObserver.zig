@@ -1,14 +1,15 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const MutationObserverImpl = @import("impls").MutationObserver;
-const MutationObserverInit = @import("dictionaries").MutationObserverInit;
-const Node = @import("interfaces").Node;
 const MutationCallback = @import("callbacks").MutationCallback;
+const Node = @import("interfaces").Node;
+const MutationRecord = @import("interfaces").MutationRecord;
+const MutationObserverInit = @import("dictionaries").MutationObserverInit;
 
 pub const MutationObserver = struct {
     pub const Meta = struct {
@@ -40,17 +41,7 @@ pub const MutationObserver = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        MutationObserverImpl.init(instance);
-        
-        return instance;
+        return MutationObserverImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

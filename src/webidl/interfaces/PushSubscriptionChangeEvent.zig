@@ -1,5 +1,5 @@
 //! Generated from: push-api.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,8 +7,13 @@ const std = @import("std");
 const runtime = @import("runtime");
 const PushSubscriptionChangeEventImpl = @import("impls").PushSubscriptionChangeEvent;
 const ExtendableEvent = @import("interfaces").ExtendableEvent;
-const PushSubscription = @import("interfaces").PushSubscription;
 const PushSubscriptionChangeEventInit = @import("dictionaries").PushSubscriptionChangeEventInit;
+const ExtendableEventInit = @import("dictionaries").ExtendableEventInit;
+const EventTarget = @import("interfaces").EventTarget;
+const PushSubscription = @import("interfaces").PushSubscription;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
+const DOMString = @import("typedefs").DOMString;
 
 pub const PushSubscriptionChangeEvent = struct {
     pub const Meta = struct {
@@ -75,17 +80,7 @@ pub const PushSubscriptionChangeEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PushSubscriptionChangeEventImpl.init(instance);
-        
-        return instance;
+        return PushSubscriptionChangeEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -99,11 +94,11 @@ pub const PushSubscriptionChangeEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, eventInitDict: PushSubscriptionChangeEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, eventInitDict: PushSubscriptionChangeEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try PushSubscriptionChangeEventImpl.constructor(instance, type_, eventInitDict);
+        try PushSubscriptionChangeEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -112,15 +107,15 @@ pub const PushSubscriptionChangeEvent = struct {
         return try PushSubscriptionChangeEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try PushSubscriptionChangeEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try PushSubscriptionChangeEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try PushSubscriptionChangeEventImpl.get_currentTarget(instance);
     }
 
@@ -169,11 +164,11 @@ pub const PushSubscriptionChangeEvent = struct {
         return try PushSubscriptionChangeEventImpl.get_timeStamp(instance);
     }
 
-    pub fn get_newSubscription(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_newSubscription(instance: *runtime.Instance) anyerror!PushSubscription {
         return try PushSubscriptionChangeEventImpl.get_newSubscription(instance);
     }
 
-    pub fn get_oldSubscription(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_oldSubscription(instance: *runtime.Instance) anyerror!PushSubscription {
         return try PushSubscriptionChangeEventImpl.get_oldSubscription(instance);
     }
 
@@ -181,9 +176,9 @@ pub const PushSubscriptionChangeEvent = struct {
         return try PushSubscriptionChangeEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try PushSubscriptionChangeEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try PushSubscriptionChangeEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_composedPath(instance: *runtime.Instance) anyerror!anyopaque {

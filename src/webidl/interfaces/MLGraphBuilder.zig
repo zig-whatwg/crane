@@ -1,5 +1,5 @@
 //! Generated from: webnn.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -15,13 +15,13 @@ const MLBatchNormalizationOptions = @import("dictionaries").MLBatchNormalization
 const MLResample2dOptions = @import("dictionaries").MLResample2dOptions;
 const MLOperatorOptions = @import("dictionaries").MLOperatorOptions;
 const MLGruOptions = @import("dictionaries").MLGruOptions;
-const (unsigned long or sequence) = @import("interfaces").(unsigned long or sequence);
 const MLTriangularOptions = @import("dictionaries").MLTriangularOptions;
+const USVString = @import("interfaces").USVString;
 const MLOperandDescriptor = @import("dictionaries").MLOperandDescriptor;
-const MLSliceOptions = @import("dictionaries").MLSliceOptions;
 const MLNumber = @import("typedefs").MLNumber;
 const MLPadOptions = @import("dictionaries").MLPadOptions;
 const MLInstanceNormalizationOptions = @import("dictionaries").MLInstanceNormalizationOptions;
+const MLSliceOptions = @import("dictionaries").MLSliceOptions;
 const MLOperand = @import("interfaces").MLOperand;
 const MLContext = @import("interfaces").MLContext;
 const MLOperandDataType = @import("enums").MLOperandDataType;
@@ -34,7 +34,6 @@ const MLHardSigmoidOptions = @import("dictionaries").MLHardSigmoidOptions;
 const MLGatherOptions = @import("dictionaries").MLGatherOptions;
 const MLArgMinMaxOptions = @import("dictionaries").MLArgMinMaxOptions;
 const MLReverseOptions = @import("dictionaries").MLReverseOptions;
-const Promise<MLGraph> = @import("interfaces").Promise<MLGraph>;
 const MLSplitOptions = @import("dictionaries").MLSplitOptions;
 const MLLstmCellOptions = @import("dictionaries").MLLstmCellOptions;
 const MLGemmOptions = @import("dictionaries").MLGemmOptions;
@@ -44,7 +43,9 @@ const MLLstmOptions = @import("dictionaries").MLLstmOptions;
 const MLPool2dOptions = @import("dictionaries").MLPool2dOptions;
 const MLGruCellOptions = @import("dictionaries").MLGruCellOptions;
 const MLReduceOptions = @import("dictionaries").MLReduceOptions;
+const sequence = @import("interfaces").sequence;
 const MLTransposeOptions = @import("dictionaries").MLTransposeOptions;
+const MLGraph = @import("interfaces").MLGraph;
 
 pub const MLGraphBuilder = struct {
     pub const Meta = struct {
@@ -175,17 +176,7 @@ pub const MLGraphBuilder = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        MLGraphBuilderImpl.init(instance);
-        
-        return instance;
+        return MLGraphBuilderImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -494,28 +485,9 @@ pub const MLGraphBuilder = struct {
         return try MLGraphBuilderImpl.call_sin(instance, input, options);
     }
 
-    /// Arguments for constant (WebIDL overloading)
-    pub const ConstantArgs = union(enum) {
-        /// constant(descriptor, buffer)
-        MLOperandDescriptor_AllowSharedBufferSource: struct {
-            descriptor: MLOperandDescriptor,
-            buffer: AllowSharedBufferSource,
-        },
-        /// constant(dataType, value)
-        MLOperandDataType_MLNumber: struct {
-            dataType: MLOperandDataType,
-            value: MLNumber,
-        },
-        /// constant(tensor)
-        MLTensor: MLTensor,
-    };
-
-    pub fn call_constant(instance: *runtime.Instance, args: ConstantArgs) anyerror!MLOperand {
-        switch (args) {
-            .MLOperandDescriptor_AllowSharedBufferSource => |a| return try MLGraphBuilderImpl.MLOperandDescriptor_AllowSharedBufferSource(instance, a.descriptor, a.buffer),
-            .MLOperandDataType_MLNumber => |a| return try MLGraphBuilderImpl.MLOperandDataType_MLNumber(instance, a.dataType, a.value),
-            .MLTensor => |arg| return try MLGraphBuilderImpl.MLTensor(instance, arg),
-        }
+    pub fn call_constant(instance: *runtime.Instance, descriptor: MLOperandDescriptor, buffer: AllowSharedBufferSource) anyerror!MLOperand {
+        
+        return try MLGraphBuilderImpl.call_constant(instance, descriptor, buffer);
     }
 
     pub fn call_gruCell(instance: *runtime.Instance, input: MLOperand, weight: MLOperand, recurrentWeight: MLOperand, hiddenState: MLOperand, hiddenSize: u32, options: MLGruCellOptions) anyerror!MLOperand {

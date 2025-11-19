@@ -1,18 +1,17 @@
 //! Generated from: fetch.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const BodyImpl = @import("impls").Body;
-const Promise<ArrayBuffer> = @import("interfaces").Promise<ArrayBuffer>;
+const Uint8Array = @import("interfaces").Uint8Array;
+const ArrayBuffer = @import("interfaces").ArrayBuffer;
 const ReadableStream = @import("interfaces").ReadableStream;
-const Promise<Blob> = @import("interfaces").Promise<Blob>;
-const Promise<FormData> = @import("interfaces").Promise<FormData>;
-const Promise<any> = @import("interfaces").Promise<any>;
-const Promise<USVString> = @import("interfaces").Promise<USVString>;
-const Promise<Uint8Array> = @import("interfaces").Promise<Uint8Array>;
+const Blob = @import("interfaces").Blob;
+const FormData = @import("interfaces").FormData;
+const USVString = @import("interfaces").USVString;
 
 pub const Body = struct {
     pub const Meta = struct {
@@ -48,17 +47,7 @@ pub const Body = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        BodyImpl.init(instance);
-        
-        return instance;
+        return BodyImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -71,7 +60,7 @@ pub const Body = struct {
         deinit(instance);
     }
 
-    pub fn get_body(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_body(instance: *runtime.Instance) anyerror!ReadableStream {
         return try BodyImpl.get_body(instance);
     }
 

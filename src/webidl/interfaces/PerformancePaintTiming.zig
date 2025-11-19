@@ -1,5 +1,5 @@
 //! Generated from: paint-timing.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,6 +9,7 @@ const PerformancePaintTimingImpl = @import("impls").PerformancePaintTiming;
 const PerformanceEntry = @import("interfaces").PerformanceEntry;
 const PaintTimingMixin = @import("interfaces").PaintTimingMixin;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const DOMString = @import("typedefs").DOMString;
 
 pub const PerformancePaintTiming = struct {
     pub const Meta = struct {
@@ -52,17 +53,7 @@ pub const PerformancePaintTiming = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PerformancePaintTimingImpl.init(instance);
-        
-        return instance;
+        return PerformancePaintTimingImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -103,23 +94,13 @@ pub const PerformancePaintTiming = struct {
         return try PerformancePaintTimingImpl.get_paintTime(instance);
     }
 
-    pub fn get_presentationTime(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_presentationTime(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
         return try PerformancePaintTimingImpl.get_presentationTime(instance);
     }
 
-    /// Arguments for toJSON (WebIDL overloading)
-    pub const ToJSONArgs = union(enum) {
-        /// toJSON()
-        no_params: void,
-        /// toJSON()
-        no_params: void,
-    };
-
-    pub fn call_toJSON(instance: *runtime.Instance, args: ToJSONArgs) anyerror!anyopaque {
-        switch (args) {
-            .no_params => return try PerformancePaintTimingImpl.no_params(instance),
-            .no_params => return try PerformancePaintTimingImpl.no_params(instance),
-        }
+    /// Extended attributes: [Default]
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!anyopaque {
+        return try PerformancePaintTimingImpl.call_toJSON(instance);
     }
 
 };

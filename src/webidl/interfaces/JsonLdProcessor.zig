@@ -1,5 +1,5 @@
 //! Generated from: json-ld-api.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,11 +8,9 @@ const runtime = @import("runtime");
 const JsonLdProcessorImpl = @import("impls").JsonLdProcessor;
 const RdfDataset = @import("interfaces").RdfDataset;
 const JsonLdOptions = @import("dictionaries").JsonLdOptions;
-const Promise<JsonLdRecord> = @import("interfaces").Promise<JsonLdRecord>;
 const JsonLdInput = @import("typedefs").JsonLdInput;
-const Promise<sequence<JsonLdRecord>> = @import("interfaces").Promise<sequence<JsonLdRecord>>;
+const JsonLdRecord = @import("typedefs").JsonLdRecord;
 const JsonLdContext = @import("typedefs").JsonLdContext;
-const Promise<RdfDataset> = @import("interfaces").Promise<RdfDataset>;
 
 pub const JsonLdProcessor = struct {
     pub const Meta = struct {
@@ -47,17 +45,7 @@ pub const JsonLdProcessor = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        JsonLdProcessorImpl.init(instance);
-        
-        return instance;
+        return JsonLdProcessorImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

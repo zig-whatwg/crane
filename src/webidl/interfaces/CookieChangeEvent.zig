@@ -1,5 +1,5 @@
 //! Generated from: cookiestore.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,8 +7,12 @@ const std = @import("std");
 const runtime = @import("runtime");
 const CookieChangeEventImpl = @import("impls").CookieChangeEvent;
 const Event = @import("interfaces").Event;
+const DOMString = @import("typedefs").DOMString;
+const EventTarget = @import("interfaces").EventTarget;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
 const CookieChangeEventInit = @import("dictionaries").CookieChangeEventInit;
-const FrozenArray<CookieListItem> = @import("interfaces").FrozenArray<CookieListItem>;
+const CookieListItem = @import("dictionaries").CookieListItem;
 
 pub const CookieChangeEvent = struct {
     pub const Meta = struct {
@@ -32,8 +36,8 @@ pub const CookieChangeEvent = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            changed: FrozenArray<CookieListItem> = undefined,
-            deleted: FrozenArray<CookieListItem> = undefined,
+            changed: runtime.FrozenArray(CookieListItem) = undefined,
+            deleted: runtime.FrozenArray(CookieListItem) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -74,17 +78,7 @@ pub const CookieChangeEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        CookieChangeEventImpl.init(instance);
-        
-        return instance;
+        return CookieChangeEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -98,11 +92,11 @@ pub const CookieChangeEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, eventInitDict: CookieChangeEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, eventInitDict: CookieChangeEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try CookieChangeEventImpl.constructor(instance, type_, eventInitDict);
+        try CookieChangeEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -111,15 +105,15 @@ pub const CookieChangeEvent = struct {
         return try CookieChangeEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try CookieChangeEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try CookieChangeEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try CookieChangeEventImpl.get_currentTarget(instance);
     }
 
@@ -196,9 +190,9 @@ pub const CookieChangeEvent = struct {
         return try CookieChangeEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try CookieChangeEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try CookieChangeEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_composedPath(instance: *runtime.Instance) anyerror!anyopaque {

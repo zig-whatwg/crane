@@ -1,5 +1,5 @@
 //! Generated from: orientation-event.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,10 +7,14 @@ const std = @import("std");
 const runtime = @import("runtime");
 const DeviceMotionEventImpl = @import("impls").DeviceMotionEvent;
 const Event = @import("interfaces").Event;
-const DeviceMotionEventInit = @import("dictionaries").DeviceMotionEventInit;
-const DeviceMotionEventAcceleration = @import("interfaces").DeviceMotionEventAcceleration;
-const Promise<PermissionState> = @import("interfaces").Promise<PermissionState>;
+const PermissionState = @import("enums").PermissionState;
 const DeviceMotionEventRotationRate = @import("interfaces").DeviceMotionEventRotationRate;
+const DeviceMotionEventInit = @import("dictionaries").DeviceMotionEventInit;
+const EventTarget = @import("interfaces").EventTarget;
+const DeviceMotionEventAcceleration = @import("interfaces").DeviceMotionEventAcceleration;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
+const DOMString = @import("typedefs").DOMString;
 
 pub const DeviceMotionEvent = struct {
     pub const Meta = struct {
@@ -81,17 +85,7 @@ pub const DeviceMotionEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        DeviceMotionEventImpl.init(instance);
-        
-        return instance;
+        return DeviceMotionEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -105,11 +99,11 @@ pub const DeviceMotionEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, eventInitDict: DeviceMotionEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, eventInitDict: DeviceMotionEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try DeviceMotionEventImpl.constructor(instance, type_, eventInitDict);
+        try DeviceMotionEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -118,15 +112,15 @@ pub const DeviceMotionEvent = struct {
         return try DeviceMotionEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try DeviceMotionEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try DeviceMotionEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try DeviceMotionEventImpl.get_currentTarget(instance);
     }
 
@@ -175,15 +169,15 @@ pub const DeviceMotionEvent = struct {
         return try DeviceMotionEventImpl.get_timeStamp(instance);
     }
 
-    pub fn get_acceleration(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_acceleration(instance: *runtime.Instance) anyerror!DeviceMotionEventAcceleration {
         return try DeviceMotionEventImpl.get_acceleration(instance);
     }
 
-    pub fn get_accelerationIncludingGravity(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_accelerationIncludingGravity(instance: *runtime.Instance) anyerror!DeviceMotionEventAcceleration {
         return try DeviceMotionEventImpl.get_accelerationIncludingGravity(instance);
     }
 
-    pub fn get_rotationRate(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_rotationRate(instance: *runtime.Instance) anyerror!DeviceMotionEventRotationRate {
         return try DeviceMotionEventImpl.get_rotationRate(instance);
     }
 
@@ -195,9 +189,9 @@ pub const DeviceMotionEvent = struct {
         return try DeviceMotionEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try DeviceMotionEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try DeviceMotionEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_requestPermission(instance: *runtime.Instance) anyerror!anyopaque {

@@ -1,5 +1,5 @@
 //! Generated from: pointerevents.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,15 @@ const std = @import("std");
 const runtime = @import("runtime");
 const PointerEventImpl = @import("impls").PointerEvent;
 const MouseEvent = @import("interfaces").MouseEvent;
+const UIEventInit = @import("dictionaries").UIEventInit;
+const Window = @import("interfaces").Window;
 const PointerEventInit = @import("dictionaries").PointerEventInit;
+const EventTarget = @import("interfaces").EventTarget;
+const InputDeviceCapabilities = @import("interfaces").InputDeviceCapabilities;
+const MouseEventInit = @import("dictionaries").MouseEventInit;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
+const DOMString = @import("typedefs").DOMString;
 
 pub const PointerEvent = struct {
     pub const Meta = struct {
@@ -64,8 +72,6 @@ pub const PointerEvent = struct {
         .get_cancelBubble = &get_cancelBubble,
         .get_cancelable = &get_cancelable,
         .get_clientX = &get_clientX,
-        .get_clientX = &get_clientX,
-        .get_clientY = &get_clientY,
         .get_clientY = &get_clientY,
         .get_composed = &get_composed,
         .get_ctrlKey = &get_ctrlKey,
@@ -92,8 +98,6 @@ pub const PointerEvent = struct {
         .get_relatedTarget = &get_relatedTarget,
         .get_returnValue = &get_returnValue,
         .get_screenX = &get_screenX,
-        .get_screenX = &get_screenX,
-        .get_screenY = &get_screenY,
         .get_screenY = &get_screenY,
         .get_shiftKey = &get_shiftKey,
         .get_sourceCapabilities = &get_sourceCapabilities,
@@ -128,17 +132,7 @@ pub const PointerEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PointerEventImpl.init(instance);
-        
-        return instance;
+        return PointerEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -152,11 +146,11 @@ pub const PointerEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, eventInitDict: PointerEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, eventInitDict: PointerEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try PointerEventImpl.constructor(instance, type_, eventInitDict);
+        try PointerEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -165,15 +159,15 @@ pub const PointerEvent = struct {
         return try PointerEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try PointerEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try PointerEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try PointerEventImpl.get_currentTarget(instance);
     }
 
@@ -222,7 +216,7 @@ pub const PointerEvent = struct {
         return try PointerEventImpl.get_timeStamp(instance);
     }
 
-    pub fn get_view(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_view(instance: *runtime.Instance) anyerror!Window {
         return try PointerEventImpl.get_view(instance);
     }
 
@@ -234,7 +228,7 @@ pub const PointerEvent = struct {
         return try PointerEventImpl.get_which(instance);
     }
 
-    pub fn get_sourceCapabilities(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_sourceCapabilities(instance: *runtime.Instance) anyerror!InputDeviceCapabilities {
         return try PointerEventImpl.get_sourceCapabilities(instance);
     }
 
@@ -286,7 +280,7 @@ pub const PointerEvent = struct {
         return try PointerEventImpl.get_buttons(instance);
     }
 
-    pub fn get_relatedTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_relatedTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try PointerEventImpl.get_relatedTarget(instance);
     }
 
@@ -298,28 +292,12 @@ pub const PointerEvent = struct {
         return try PointerEventImpl.get_movementY(instance);
     }
 
-    pub fn get_screenX(instance: *runtime.Instance) anyerror!f64 {
-        return try PointerEventImpl.get_screenX(instance);
-    }
-
-    pub fn get_screenY(instance: *runtime.Instance) anyerror!f64 {
-        return try PointerEventImpl.get_screenY(instance);
-    }
-
     pub fn get_pageX(instance: *runtime.Instance) anyerror!f64 {
         return try PointerEventImpl.get_pageX(instance);
     }
 
     pub fn get_pageY(instance: *runtime.Instance) anyerror!f64 {
         return try PointerEventImpl.get_pageY(instance);
-    }
-
-    pub fn get_clientX(instance: *runtime.Instance) anyerror!f64 {
-        return try PointerEventImpl.get_clientX(instance);
-    }
-
-    pub fn get_clientY(instance: *runtime.Instance) anyerror!f64 {
-        return try PointerEventImpl.get_clientY(instance);
     }
 
     pub fn get_x(instance: *runtime.Instance) anyerror!f64 {
@@ -394,12 +372,12 @@ pub const PointerEvent = struct {
         return try PointerEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try PointerEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try PointerEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
-    pub fn call_initMouseEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: anyopaque, detailArg: i32, screenXArg: i32, screenYArg: i32, clientXArg: i32, clientYArg: i32, ctrlKeyArg: bool, altKeyArg: bool, shiftKeyArg: bool, metaKeyArg: bool, buttonArg: i16, relatedTargetArg: anyopaque) anyerror!void {
+    pub fn call_initMouseEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: Window, detailArg: i32, screenXArg: i32, screenYArg: i32, clientXArg: i32, clientYArg: i32, ctrlKeyArg: bool, altKeyArg: bool, shiftKeyArg: bool, metaKeyArg: bool, buttonArg: i16, relatedTargetArg: EventTarget) anyerror!void {
         
         return try PointerEventImpl.call_initMouseEvent(instance, typeArg, bubblesArg, cancelableArg, viewArg, detailArg, screenXArg, screenYArg, clientXArg, clientYArg, ctrlKeyArg, altKeyArg, shiftKeyArg, metaKeyArg, buttonArg, relatedTargetArg);
     }
@@ -418,7 +396,7 @@ pub const PointerEvent = struct {
         return try PointerEventImpl.call_getPredictedEvents(instance);
     }
 
-    pub fn call_initUIEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: anyopaque, detailArg: i32) anyerror!void {
+    pub fn call_initUIEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: Window, detailArg: i32) anyerror!void {
         
         return try PointerEventImpl.call_initUIEvent(instance, typeArg, bubblesArg, cancelableArg, viewArg, detailArg);
     }

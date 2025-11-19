@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -43,17 +43,7 @@ pub const GPURenderCommandsMixin = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        GPURenderCommandsMixinImpl.init(instance);
-        
-        return instance;
+        return GPURenderCommandsMixinImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -76,7 +66,7 @@ pub const GPURenderCommandsMixin = struct {
         return try GPURenderCommandsMixinImpl.call_draw(instance, vertexCount, instanceCount, firstVertex, firstInstance);
     }
 
-    pub fn call_setVertexBuffer(instance: *runtime.Instance, slot: GPUIndex32, buffer: anyopaque, offset: GPUSize64, size: GPUSize64) anyerror!void {
+    pub fn call_setVertexBuffer(instance: *runtime.Instance, slot: GPUIndex32, buffer: GPUBuffer, offset: GPUSize64, size: GPUSize64) anyerror!void {
         
         return try GPURenderCommandsMixinImpl.call_setVertexBuffer(instance, slot, buffer, offset, size);
     }

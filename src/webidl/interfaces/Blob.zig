@@ -1,16 +1,18 @@
 //! Generated from: FileAPI.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const BlobImpl = @import("impls").Blob;
-const Promise<USVString> = @import("interfaces").Promise<USVString>;
+const Uint8Array = @import("interfaces").Uint8Array;
+const ArrayBuffer = @import("interfaces").ArrayBuffer;
 const ReadableStream = @import("interfaces").ReadableStream;
-const Promise<ArrayBuffer> = @import("interfaces").Promise<ArrayBuffer>;
+const BlobPart = @import("typedefs").BlobPart;
+const USVString = @import("interfaces").USVString;
 const BlobPropertyBag = @import("dictionaries").BlobPropertyBag;
-const Promise<Uint8Array> = @import("interfaces").Promise<Uint8Array>;
+const DOMString = @import("typedefs").DOMString;
 
 pub const Blob = struct {
     pub const Meta = struct {
@@ -33,7 +35,7 @@ pub const Blob = struct {
     pub const State = runtime.FlattenedState(
         struct {
             size: u64 = undefined,
-            type: runtime.DOMString = undefined,
+            @"type": runtime.DOMString = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -54,17 +56,7 @@ pub const Blob = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        BlobImpl.init(instance);
-        
-        return instance;
+        return BlobImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

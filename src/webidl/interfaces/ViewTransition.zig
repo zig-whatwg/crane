@@ -1,5 +1,5 @@
 //! Generated from: css-view-transitions.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,6 @@ const runtime = @import("runtime");
 const ViewTransitionImpl = @import("impls").ViewTransition;
 const ViewTransitionTypeSet = @import("interfaces").ViewTransitionTypeSet;
 const Element = @import("interfaces").Element;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
 
 pub const ViewTransition = struct {
     pub const Meta = struct {
@@ -26,9 +25,9 @@ pub const ViewTransition = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            updateCallbackDone: Promise<undefined> = undefined,
-            ready: Promise<undefined> = undefined,
-            finished: Promise<undefined> = undefined,
+            updateCallbackDone: runtime.Promise(undefined) = undefined,
+            ready: runtime.Promise(undefined) = undefined,
+            finished: runtime.Promise(undefined) = undefined,
             types: ViewTransitionTypeSet = undefined,
             transitionRoot: Element = undefined,
         },
@@ -48,21 +47,12 @@ pub const ViewTransition = struct {
         .set_types = &set_types,
 
         .call_skipTransition = &call_skipTransition,
+        .call_waitUntil = &call_waitUntil,
     });
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ViewTransitionImpl.init(instance);
-        
-        return instance;
+        return ViewTransitionImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -97,6 +87,11 @@ pub const ViewTransition = struct {
 
     pub fn get_transitionRoot(instance: *runtime.Instance) anyerror!Element {
         return try ViewTransitionImpl.get_transitionRoot(instance);
+    }
+
+    pub fn call_waitUntil(instance: *runtime.Instance, promise: anyopaque) anyerror!void {
+        
+        return try ViewTransitionImpl.call_waitUntil(instance, promise);
     }
 
     pub fn call_skipTransition(instance: *runtime.Instance) anyerror!void {

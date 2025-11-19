@@ -1,5 +1,5 @@
 //! Generated from: css-animations-2.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,24 @@ const std = @import("std");
 const runtime = @import("runtime");
 const CSSAnimationImpl = @import("impls").CSSAnimation;
 const Animation = @import("interfaces").Animation;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const AnimationPlayState = @import("enums").AnimationPlayState;
 const CSSOMString = @import("interfaces").CSSOMString;
+const TimelineRangeOffset = @import("dictionaries").TimelineRangeOffset;
+const CSSKeywordValue = @import("interfaces").CSSKeywordValue;
+const AnimationTrigger = @import("interfaces").AnimationTrigger;
+const AnimationTimeline = @import("interfaces").AnimationTimeline;
+const Event = @import("interfaces").Event;
+const CSSNumericValue = @import("interfaces").CSSNumericValue;
+const Observable = @import("interfaces").Observable;
+const AnimationEffect = @import("interfaces").AnimationEffect;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const AnimationReplaceState = @import("enums").AnimationReplaceState;
+const EventListener = @import("interfaces").EventListener;
+const CSSNumberish = @import("typedefs").CSSNumberish;
+const DOMString = @import("typedefs").DOMString;
+const EventHandler = @import("typedefs").EventHandler;
 
 pub const CSSAnimation = struct {
     pub const Meta = struct {
@@ -36,7 +53,6 @@ pub const CSSAnimation = struct {
 
         .get_animationName = &get_animationName,
         .get_currentTime = &get_currentTime,
-        .get_currentTime = &get_currentTime,
         .get_effect = &get_effect,
         .get_finished = &get_finished,
         .get_id = &get_id,
@@ -52,11 +68,9 @@ pub const CSSAnimation = struct {
         .get_ready = &get_ready,
         .get_replaceState = &get_replaceState,
         .get_startTime = &get_startTime,
-        .get_startTime = &get_startTime,
         .get_timeline = &get_timeline,
         .get_trigger = &get_trigger,
 
-        .set_currentTime = &set_currentTime,
         .set_currentTime = &set_currentTime,
         .set_effect = &set_effect,
         .set_id = &set_id,
@@ -66,7 +80,6 @@ pub const CSSAnimation = struct {
         .set_playbackRate = &set_playbackRate,
         .set_rangeEnd = &set_rangeEnd,
         .set_rangeStart = &set_rangeStart,
-        .set_startTime = &set_startTime,
         .set_startTime = &set_startTime,
         .set_timeline = &set_timeline,
         .set_trigger = &set_trigger,
@@ -87,17 +100,7 @@ pub const CSSAnimation = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        CSSAnimationImpl.init(instance);
-        
-        return instance;
+        return CSSAnimationImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -118,35 +121,35 @@ pub const CSSAnimation = struct {
         try CSSAnimationImpl.set_id(instance, value);
     }
 
-    pub fn get_effect(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_effect(instance: *runtime.Instance) anyerror!AnimationEffect {
         return try CSSAnimationImpl.get_effect(instance);
     }
 
-    pub fn set_effect(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_effect(instance: *runtime.Instance, value: AnimationEffect) anyerror!void {
         try CSSAnimationImpl.set_effect(instance, value);
     }
 
-    pub fn get_timeline(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_timeline(instance: *runtime.Instance) anyerror!AnimationTimeline {
         return try CSSAnimationImpl.get_timeline(instance);
     }
 
-    pub fn set_timeline(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_timeline(instance: *runtime.Instance, value: AnimationTimeline) anyerror!void {
         try CSSAnimationImpl.set_timeline(instance, value);
     }
 
-    pub fn get_startTime(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_startTime(instance: *runtime.Instance) anyerror!f64 {
         return try CSSAnimationImpl.get_startTime(instance);
     }
 
-    pub fn set_startTime(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_startTime(instance: *runtime.Instance, value: f64) anyerror!void {
         try CSSAnimationImpl.set_startTime(instance, value);
     }
 
-    pub fn get_currentTime(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTime(instance: *runtime.Instance) anyerror!f64 {
         return try CSSAnimationImpl.get_currentTime(instance);
     }
 
-    pub fn set_currentTime(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_currentTime(instance: *runtime.Instance, value: f64) anyerror!void {
         try CSSAnimationImpl.set_currentTime(instance, value);
     }
 
@@ -202,27 +205,11 @@ pub const CSSAnimation = struct {
         try CSSAnimationImpl.set_onremove(instance, value);
     }
 
-    pub fn get_startTime(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSAnimationImpl.get_startTime(instance);
-    }
-
-    pub fn set_startTime(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try CSSAnimationImpl.set_startTime(instance, value);
-    }
-
-    pub fn get_currentTime(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSAnimationImpl.get_currentTime(instance);
-    }
-
-    pub fn set_currentTime(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try CSSAnimationImpl.set_currentTime(instance, value);
-    }
-
-    pub fn get_trigger(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_trigger(instance: *runtime.Instance) anyerror!AnimationTrigger {
         return try CSSAnimationImpl.get_trigger(instance);
     }
 
-    pub fn set_trigger(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_trigger(instance: *runtime.Instance, value: AnimationTrigger) anyerror!void {
         try CSSAnimationImpl.set_trigger(instance, value);
     }
 
@@ -242,7 +229,7 @@ pub const CSSAnimation = struct {
         try CSSAnimationImpl.set_rangeEnd(instance, value);
     }
 
-    pub fn get_overallProgress(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_overallProgress(instance: *runtime.Instance) anyerror!f64 {
         return try CSSAnimationImpl.get_overallProgress(instance);
     }
 
@@ -263,9 +250,9 @@ pub const CSSAnimation = struct {
         return try CSSAnimationImpl.call_persist(instance);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try CSSAnimationImpl.call_when(instance, type_, options);
+        return try CSSAnimationImpl.call_when(instance, @"type", options);
     }
 
     /// Extended attributes: [CEReactions]
@@ -298,14 +285,14 @@ pub const CSSAnimation = struct {
         return try CSSAnimationImpl.call_finish(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try CSSAnimationImpl.call_addEventListener(instance, type_, callback, options);
+        return try CSSAnimationImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try CSSAnimationImpl.call_removeEventListener(instance, type_, callback, options);
+        return try CSSAnimationImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,8 +7,15 @@ const std = @import("std");
 const runtime = @import("runtime");
 const VideoTrackListImpl = @import("impls").VideoTrackList;
 const EventTarget = @import("interfaces").EventTarget;
-const VideoTrack = @import("interfaces").VideoTrack;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const EventHandler = @import("typedefs").EventHandler;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const Event = @import("interfaces").Event;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const VideoTrack = @import("interfaces").VideoTrack;
+const EventListener = @import("interfaces").EventListener;
+const DOMString = @import("typedefs").DOMString;
+const Observable = @import("interfaces").Observable;
 
 pub const VideoTrackList = struct {
     pub const Meta = struct {
@@ -58,17 +65,7 @@ pub const VideoTrackList = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        VideoTrackListImpl.init(instance);
-        
-        return instance;
+        return VideoTrackListImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -118,24 +115,24 @@ pub const VideoTrackList = struct {
         return try VideoTrackListImpl.call_dispatchEvent(instance, event);
     }
 
-    pub fn call_getTrackById(instance: *runtime.Instance, id: DOMString) anyerror!anyopaque {
+    pub fn call_getTrackById(instance: *runtime.Instance, id: DOMString) anyerror!VideoTrack {
         
         return try VideoTrackListImpl.call_getTrackById(instance, id);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try VideoTrackListImpl.call_when(instance, type_, options);
+        return try VideoTrackListImpl.call_when(instance, @"type", options);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try VideoTrackListImpl.call_addEventListener(instance, type_, callback, options);
+        return try VideoTrackListImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try VideoTrackListImpl.call_removeEventListener(instance, type_, callback, options);
+        return try VideoTrackListImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

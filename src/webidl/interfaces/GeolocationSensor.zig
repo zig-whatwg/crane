@@ -1,5 +1,5 @@
 //! Generated from: geolocation-sensor.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,10 +7,18 @@ const std = @import("std");
 const runtime = @import("runtime");
 const GeolocationSensorImpl = @import("impls").GeolocationSensor;
 const Sensor = @import("interfaces").Sensor;
-const unrestricted double = @import("interfaces").unrestricted double;
-const Promise<GeolocationSensorReading> = @import("interfaces").Promise<GeolocationSensorReading>;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const ReadOptions = @import("dictionaries").ReadOptions;
+const GeolocationSensorReading = @import("dictionaries").GeolocationSensorReading;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const GeolocationSensorOptions = @import("dictionaries").GeolocationSensorOptions;
+const EventListener = @import("interfaces").EventListener;
+const DOMString = @import("typedefs").DOMString;
+const EventHandler = @import("typedefs").EventHandler;
 
 pub const GeolocationSensor = struct {
     pub const Meta = struct {
@@ -76,17 +84,7 @@ pub const GeolocationSensor = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        GeolocationSensorImpl.init(instance);
-        
-        return instance;
+        return GeolocationSensorImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -117,7 +115,7 @@ pub const GeolocationSensor = struct {
         return try GeolocationSensorImpl.get_hasReading(instance);
     }
 
-    pub fn get_timestamp(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_timestamp(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
         return try GeolocationSensorImpl.get_timestamp(instance);
     }
 
@@ -145,31 +143,31 @@ pub const GeolocationSensor = struct {
         try GeolocationSensorImpl.set_onerror(instance, value);
     }
 
-    pub fn get_latitude(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_latitude(instance: *runtime.Instance) anyerror!f64 {
         return try GeolocationSensorImpl.get_latitude(instance);
     }
 
-    pub fn get_longitude(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_longitude(instance: *runtime.Instance) anyerror!f64 {
         return try GeolocationSensorImpl.get_longitude(instance);
     }
 
-    pub fn get_altitude(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_altitude(instance: *runtime.Instance) anyerror!f64 {
         return try GeolocationSensorImpl.get_altitude(instance);
     }
 
-    pub fn get_accuracy(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_accuracy(instance: *runtime.Instance) anyerror!f64 {
         return try GeolocationSensorImpl.get_accuracy(instance);
     }
 
-    pub fn get_altitudeAccuracy(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_altitudeAccuracy(instance: *runtime.Instance) anyerror!f64 {
         return try GeolocationSensorImpl.get_altitudeAccuracy(instance);
     }
 
-    pub fn get_heading(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_heading(instance: *runtime.Instance) anyerror!f64 {
         return try GeolocationSensorImpl.get_heading(instance);
     }
 
-    pub fn get_speed(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_speed(instance: *runtime.Instance) anyerror!f64 {
         return try GeolocationSensorImpl.get_speed(instance);
     }
 
@@ -177,9 +175,9 @@ pub const GeolocationSensor = struct {
         return try GeolocationSensorImpl.call_stop(instance);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try GeolocationSensorImpl.call_when(instance, type_, options);
+        return try GeolocationSensorImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_dispatchEvent(instance: *runtime.Instance, event: Event) anyerror!bool {
@@ -196,14 +194,14 @@ pub const GeolocationSensor = struct {
         return try GeolocationSensorImpl.call_start(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try GeolocationSensorImpl.call_addEventListener(instance, type_, callback, options);
+        return try GeolocationSensorImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try GeolocationSensorImpl.call_removeEventListener(instance, type_, callback, options);
+        return try GeolocationSensorImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,11 +7,10 @@ const std = @import("std");
 const runtime = @import("runtime");
 const XRViewImpl = @import("impls").XRView;
 const XRViewGeometry = @import("interfaces").XRViewGeometry;
-const XRCamera = @import("interfaces").XRCamera;
 const XRRigidTransform = @import("interfaces").XRRigidTransform;
 const Float32Array = @import("interfaces").Float32Array;
 const XREye = @import("enums").XREye;
-const double = @import("interfaces").double;
+const XRCamera = @import("interfaces").XRCamera;
 
 pub const XRView = struct {
     pub const Meta = struct {
@@ -60,17 +59,7 @@ pub const XRView = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        XRViewImpl.init(instance);
-        
-        return instance;
+        return XRViewImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -91,12 +80,12 @@ pub const XRView = struct {
         return try XRViewImpl.get_index(instance);
     }
 
-    pub fn get_recommendedViewportScale(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_recommendedViewportScale(instance: *runtime.Instance) anyerror!f64 {
         return try XRViewImpl.get_recommendedViewportScale(instance);
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_camera(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_camera(instance: *runtime.Instance) anyerror!XRCamera {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.cached_camera) |cached| {
@@ -127,7 +116,7 @@ pub const XRView = struct {
         return value;
     }
 
-    pub fn call_requestViewportScale(instance: *runtime.Instance, scale: anyopaque) anyerror!void {
+    pub fn call_requestViewportScale(instance: *runtime.Instance, scale: f64) anyerror!void {
         
         return try XRViewImpl.call_requestViewportScale(instance, scale);
     }

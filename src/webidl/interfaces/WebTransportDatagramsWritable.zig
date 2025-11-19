@@ -1,5 +1,5 @@
 //! Generated from: webtransport.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,9 @@ const std = @import("std");
 const runtime = @import("runtime");
 const WebTransportDatagramsWritableImpl = @import("impls").WebTransportDatagramsWritable;
 const WritableStream = @import("interfaces").WritableStream;
+const WritableStreamDefaultWriter = @import("interfaces").WritableStreamDefaultWriter;
 const WebTransportSendGroup = @import("interfaces").WebTransportSendGroup;
+const QueuingStrategy = @import("dictionaries").QueuingStrategy;
 
 pub const WebTransportDatagramsWritable = struct {
     pub const Meta = struct {
@@ -54,17 +56,7 @@ pub const WebTransportDatagramsWritable = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        WebTransportDatagramsWritableImpl.init(instance);
-        
-        return instance;
+        return WebTransportDatagramsWritableImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -81,11 +73,11 @@ pub const WebTransportDatagramsWritable = struct {
         return try WebTransportDatagramsWritableImpl.get_locked(instance);
     }
 
-    pub fn get_sendGroup(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_sendGroup(instance: *runtime.Instance) anyerror!WebTransportSendGroup {
         return try WebTransportDatagramsWritableImpl.get_sendGroup(instance);
     }
 
-    pub fn set_sendGroup(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_sendGroup(instance: *runtime.Instance, value: WebTransportSendGroup) anyerror!void {
         try WebTransportDatagramsWritableImpl.set_sendGroup(instance, value);
     }
 

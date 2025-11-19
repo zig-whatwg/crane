@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -23,8 +23,10 @@ const CanvasImageData = @import("interfaces").CanvasImageData;
 const CanvasPathDrawingStyles = @import("interfaces").CanvasPathDrawingStyles;
 const CanvasTextDrawingStyles = @import("interfaces").CanvasTextDrawingStyles;
 const CanvasPath = @import("interfaces").CanvasPath;
+const HTMLCanvasElement = @import("interfaces").HTMLCanvasElement;
 const DOMMatrix2DInit = @import("dictionaries").DOMMatrix2DInit;
 const CanvasFontVariantCaps = @import("enums").CanvasFontVariantCaps;
+const DOMPointInit = @import("dictionaries").DOMPointInit;
 const CanvasFillRule = @import("enums").CanvasFillRule;
 const TextMetrics = @import("interfaces").TextMetrics;
 const ImageData = @import("interfaces").ImageData;
@@ -34,9 +36,7 @@ const DOMMatrix = @import("interfaces").DOMMatrix;
 const CanvasTextBaseline = @import("enums").CanvasTextBaseline;
 const CanvasGradient = @import("interfaces").CanvasGradient;
 const CanvasLineCap = @import("enums").CanvasLineCap;
-const (unrestricted double or DOMPointInit or sequence) = @import("interfaces").(unrestricted double or DOMPointInit or sequence);
 const CanvasPattern = @import("interfaces").CanvasPattern;
-const (DOMString or CanvasGradient or CanvasPattern) = @import("interfaces").(DOMString or CanvasGradient or CanvasPattern);
 const CanvasImageSource = @import("typedefs").CanvasImageSource;
 const CanvasTextRendering = @import("enums").CanvasTextRendering;
 const Path2D = @import("interfaces").Path2D;
@@ -44,10 +44,11 @@ const CanvasRenderingContext2DSettings = @import("dictionaries").CanvasRendering
 const ImageDataSettings = @import("dictionaries").ImageDataSettings;
 const CanvasTextAlign = @import("enums").CanvasTextAlign;
 const ImageSmoothingQuality = @import("enums").ImageSmoothingQuality;
+const sequence = @import("interfaces").sequence;
 const CanvasLineJoin = @import("enums").CanvasLineJoin;
 const CanvasFontKerning = @import("enums").CanvasFontKerning;
 const CanvasFontStretch = @import("enums").CanvasFontStretch;
-const HTMLCanvasElement = @import("interfaces").HTMLCanvasElement;
+const DOMString = @import("typedefs").DOMString;
 
 pub const CanvasRenderingContext2D = struct {
     pub const Meta = struct {
@@ -88,8 +89,16 @@ pub const CanvasRenderingContext2D = struct {
             globalCompositeOperation: runtime.DOMString = undefined,
             imageSmoothingEnabled: bool = undefined,
             imageSmoothingQuality: ImageSmoothingQuality = undefined,
-            strokeStyle: (DOMString or CanvasGradient or CanvasPattern) = undefined,
-            fillStyle: (DOMString or CanvasGradient or CanvasPattern) = undefined,
+            strokeStyle: union(enum) {
+                DOMString: runtime.DOMString,
+                CanvasGradient: CanvasGradient,
+                CanvasPattern: CanvasPattern,
+            } = undefined,
+            fillStyle: union(enum) {
+                DOMString: runtime.DOMString,
+                CanvasGradient: CanvasGradient,
+                CanvasPattern: CanvasPattern,
+            } = undefined,
             shadowOffsetX: f64 = undefined,
             shadowOffsetY: f64 = undefined,
             shadowBlur: f64 = undefined,
@@ -225,17 +234,7 @@ pub const CanvasRenderingContext2D = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        CanvasRenderingContext2DImpl.init(instance);
-        
-        return instance;
+        return CanvasRenderingContext2DImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -473,28 +472,9 @@ pub const CanvasRenderingContext2D = struct {
         return try CanvasRenderingContext2DImpl.call_rect(instance, x, y, w, h);
     }
 
-    /// Arguments for isPointInPath (WebIDL overloading)
-    pub const IsPointInPathArgs = union(enum) {
-        /// isPointInPath(x, y, fillRule)
-        unrestricted double_unrestricted double_CanvasFillRule: struct {
-            x: f64,
-            y: f64,
-            fillRule: CanvasFillRule,
-        },
-        /// isPointInPath(path, x, y, fillRule)
-        Path2D_unrestricted double_unrestricted double_CanvasFillRule: struct {
-            path: Path2D,
-            x: f64,
-            y: f64,
-            fillRule: CanvasFillRule,
-        },
-    };
-
-    pub fn call_isPointInPath(instance: *runtime.Instance, args: IsPointInPathArgs) anyerror!bool {
-        switch (args) {
-            .unrestricted double_unrestricted double_CanvasFillRule => |a| return try CanvasRenderingContext2DImpl.unrestricted double_unrestricted double_CanvasFillRule(instance, a.x, a.y, a.fillRule),
-            .Path2D_unrestricted double_unrestricted double_CanvasFillRule => |a| return try CanvasRenderingContext2DImpl.Path2D_unrestricted double_unrestricted double_CanvasFillRule(instance, a.path, a.x, a.y, a.fillRule),
-        }
+    pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule: CanvasFillRule) anyerror!bool {
+        
+        return try CanvasRenderingContext2DImpl.call_isPointInPath(instance, x, y, fillRule);
     }
 
     pub fn call_getLineDash(instance: *runtime.Instance) anyerror!anyopaque {
@@ -525,22 +505,9 @@ pub const CanvasRenderingContext2D = struct {
         return try CanvasRenderingContext2DImpl.call_restore(instance);
     }
 
-    /// Arguments for clip (WebIDL overloading)
-    pub const ClipArgs = union(enum) {
-        /// clip(fillRule)
-        CanvasFillRule: CanvasFillRule,
-        /// clip(path, fillRule)
-        Path2D_CanvasFillRule: struct {
-            path: Path2D,
-            fillRule: CanvasFillRule,
-        },
-    };
-
-    pub fn call_clip(instance: *runtime.Instance, args: ClipArgs) anyerror!void {
-        switch (args) {
-            .CanvasFillRule => |arg| return try CanvasRenderingContext2DImpl.CanvasFillRule(instance, arg),
-            .Path2D_CanvasFillRule => |a| return try CanvasRenderingContext2DImpl.Path2D_CanvasFillRule(instance, a.path, a.fillRule),
-        }
+    pub fn call_clip(instance: *runtime.Instance, fillRule: CanvasFillRule) anyerror!void {
+        
+        return try CanvasRenderingContext2DImpl.call_clip(instance, fillRule);
     }
 
     pub fn call_reset(instance: *runtime.Instance) anyerror!void {
@@ -552,57 +519,13 @@ pub const CanvasRenderingContext2D = struct {
         return try CanvasRenderingContext2DImpl.call_strokeText(instance, text, x, y, maxWidth);
     }
 
-    /// Arguments for stroke (WebIDL overloading)
-    pub const StrokeArgs = union(enum) {
-        /// stroke()
-        no_params: void,
-        /// stroke(path)
-        Path2D: Path2D,
-    };
-
-    pub fn call_stroke(instance: *runtime.Instance, args: StrokeArgs) anyerror!void {
-        switch (args) {
-            .no_params => return try CanvasRenderingContext2DImpl.no_params(instance),
-            .Path2D => |arg| return try CanvasRenderingContext2DImpl.Path2D(instance, arg),
-        }
+    pub fn call_stroke(instance: *runtime.Instance) anyerror!void {
+        return try CanvasRenderingContext2DImpl.call_stroke(instance);
     }
 
-    /// Arguments for drawImage (WebIDL overloading)
-    pub const DrawImageArgs = union(enum) {
-        /// drawImage(image, dx, dy)
-        CanvasImageSource_unrestricted double_unrestricted double: struct {
-            image: CanvasImageSource,
-            dx: f64,
-            dy: f64,
-        },
-        /// drawImage(image, dx, dy, dw, dh)
-        CanvasImageSource_unrestricted double_unrestricted double_unrestricted double_unrestricted double: struct {
-            image: CanvasImageSource,
-            dx: f64,
-            dy: f64,
-            dw: f64,
-            dh: f64,
-        },
-        /// drawImage(image, sx, sy, sw, sh, dx, dy, dw, dh)
-        CanvasImageSource_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double: struct {
-            image: CanvasImageSource,
-            sx: f64,
-            sy: f64,
-            sw: f64,
-            sh: f64,
-            dx: f64,
-            dy: f64,
-            dw: f64,
-            dh: f64,
-        },
-    };
-
-    pub fn call_drawImage(instance: *runtime.Instance, args: DrawImageArgs) anyerror!void {
-        switch (args) {
-            .CanvasImageSource_unrestricted double_unrestricted double => |a| return try CanvasRenderingContext2DImpl.CanvasImageSource_unrestricted double_unrestricted double(instance, a.image, a.dx, a.dy),
-            .CanvasImageSource_unrestricted double_unrestricted double_unrestricted double_unrestricted double => |a| return try CanvasRenderingContext2DImpl.CanvasImageSource_unrestricted double_unrestricted double_unrestricted double_unrestricted double(instance, a.image, a.dx, a.dy, a.dw, a.dh),
-            .CanvasImageSource_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double => |a| return try CanvasRenderingContext2DImpl.CanvasImageSource_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double(instance, a.image, a.sx, a.sy, a.sw, a.sh, a.dx, a.dy, a.dw, a.dh),
-        }
+    pub fn call_drawImage(instance: *runtime.Instance, image: CanvasImageSource, dx: f64, dy: f64) anyerror!void {
+        
+        return try CanvasRenderingContext2DImpl.call_drawImage(instance, image, dx, dy);
     }
 
     pub fn call_getImageData(instance: *runtime.Instance, sx: i32, sy: i32, sw: i32, sh: i32, settings: ImageDataSettings) anyerror!ImageData {
@@ -634,22 +557,9 @@ pub const CanvasRenderingContext2D = struct {
         return try CanvasRenderingContext2DImpl.call_createRadialGradient(instance, x0, y0, r0, x1, y1, r1);
     }
 
-    /// Arguments for drawFocusIfNeeded (WebIDL overloading)
-    pub const DrawFocusIfNeededArgs = union(enum) {
-        /// drawFocusIfNeeded(element)
-        Element: Element,
-        /// drawFocusIfNeeded(path, element)
-        Path2D_Element: struct {
-            path: Path2D,
-            element: Element,
-        },
-    };
-
-    pub fn call_drawFocusIfNeeded(instance: *runtime.Instance, args: DrawFocusIfNeededArgs) anyerror!void {
-        switch (args) {
-            .Element => |arg| return try CanvasRenderingContext2DImpl.Element(instance, arg),
-            .Path2D_Element => |a| return try CanvasRenderingContext2DImpl.Path2D_Element(instance, a.path, a.element),
-        }
+    pub fn call_drawFocusIfNeeded(instance: *runtime.Instance, element: Element) anyerror!void {
+        
+        return try CanvasRenderingContext2DImpl.call_drawFocusIfNeeded(instance, element);
     }
 
     pub fn call_closePath(instance: *runtime.Instance) anyerror!void {
@@ -661,7 +571,7 @@ pub const CanvasRenderingContext2D = struct {
         return try CanvasRenderingContext2DImpl.call_roundRect(instance, x, y, w, h, radii);
     }
 
-    pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: DOMString) anyerror!anyopaque {
+    pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: DOMString) anyerror!CanvasPattern {
         
         return try CanvasRenderingContext2DImpl.call_createPattern(instance, image, repetition);
     }
@@ -707,26 +617,9 @@ pub const CanvasRenderingContext2D = struct {
         return try CanvasRenderingContext2DImpl.call_isContextLost(instance);
     }
 
-    /// Arguments for isPointInStroke (WebIDL overloading)
-    pub const IsPointInStrokeArgs = union(enum) {
-        /// isPointInStroke(x, y)
-        unrestricted double_unrestricted double: struct {
-            x: f64,
-            y: f64,
-        },
-        /// isPointInStroke(path, x, y)
-        Path2D_unrestricted double_unrestricted double: struct {
-            path: Path2D,
-            x: f64,
-            y: f64,
-        },
-    };
-
-    pub fn call_isPointInStroke(instance: *runtime.Instance, args: IsPointInStrokeArgs) anyerror!bool {
-        switch (args) {
-            .unrestricted double_unrestricted double => |a| return try CanvasRenderingContext2DImpl.unrestricted double_unrestricted double(instance, a.x, a.y),
-            .Path2D_unrestricted double_unrestricted double => |a| return try CanvasRenderingContext2DImpl.Path2D_unrestricted double_unrestricted double(instance, a.path, a.x, a.y),
-        }
+    pub fn call_isPointInStroke(instance: *runtime.Instance, x: f64, y: f64) anyerror!bool {
+        
+        return try CanvasRenderingContext2DImpl.call_isPointInStroke(instance, x, y);
     }
 
     pub fn call_bezierCurveTo(instance: *runtime.Instance, cp1x: f64, cp1y: f64, cp2x: f64, cp2y: f64, x: f64, y: f64) anyerror!void {
@@ -739,23 +632,13 @@ pub const CanvasRenderingContext2D = struct {
         return try CanvasRenderingContext2DImpl.call_rotate(instance, angle);
     }
 
-    /// Arguments for createImageData (WebIDL overloading)
-    pub const CreateImageDataArgs = union(enum) {
-        /// createImageData(sw, sh, settings)
-        long_long_ImageDataSettings: struct {
-            sw: i32,
-            sh: i32,
-            settings: ImageDataSettings,
-        },
-        /// createImageData(imageData)
-        ImageData: ImageData,
-    };
-
-    pub fn call_createImageData(instance: *runtime.Instance, args: CreateImageDataArgs) anyerror!ImageData {
-        switch (args) {
-            .long_long_ImageDataSettings => |a| return try CanvasRenderingContext2DImpl.long_long_ImageDataSettings(instance, a.sw, a.sh, a.settings),
-            .ImageData => |arg| return try CanvasRenderingContext2DImpl.ImageData(instance, arg),
-        }
+    pub fn call_createImageData(instance: *runtime.Instance, sw: i32, sh: i32, settings: ImageDataSettings) anyerror!ImageData {
+        // [EnforceRange] on sw
+        if (!runtime.isInRange(sw)) return error.TypeError;
+        // [EnforceRange] on sh
+        if (!runtime.isInRange(sh)) return error.TypeError;
+        
+        return try CanvasRenderingContext2DImpl.call_createImageData(instance, sw, sh, settings);
     }
 
     pub fn call_scale(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
@@ -778,26 +661,9 @@ pub const CanvasRenderingContext2D = struct {
         return try CanvasRenderingContext2DImpl.call_strokeRect(instance, x, y, w, h);
     }
 
-    /// Arguments for setTransform (WebIDL overloading)
-    pub const SetTransformArgs = union(enum) {
-        /// setTransform(a, b, c, d, e, f)
-        unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double: struct {
-            a: f64,
-            b: f64,
-            c: f64,
-            d: f64,
-            e: f64,
-            f: f64,
-        },
-        /// setTransform(transform)
-        DOMMatrix2DInit: DOMMatrix2DInit,
-    };
-
-    pub fn call_setTransform(instance: *runtime.Instance, args: SetTransformArgs) anyerror!void {
-        switch (args) {
-            .unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double => |a| return try CanvasRenderingContext2DImpl.unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double(instance, a.a, a.b, a.c, a.d, a.e, a.f),
-            .DOMMatrix2DInit => |arg| return try CanvasRenderingContext2DImpl.DOMMatrix2DInit(instance, arg),
-        }
+    pub fn call_setTransform(instance: *runtime.Instance, a: f64, b: f64, c: f64, d: f64, e: f64, f: f64) anyerror!void {
+        
+        return try CanvasRenderingContext2DImpl.call_setTransform(instance, a, b, c, d, e, f);
     }
 
     pub fn call_fillRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
@@ -819,49 +685,18 @@ pub const CanvasRenderingContext2D = struct {
         return try CanvasRenderingContext2DImpl.call_measureText(instance, text);
     }
 
-    /// Arguments for fill (WebIDL overloading)
-    pub const FillArgs = union(enum) {
-        /// fill(fillRule)
-        CanvasFillRule: CanvasFillRule,
-        /// fill(path, fillRule)
-        Path2D_CanvasFillRule: struct {
-            path: Path2D,
-            fillRule: CanvasFillRule,
-        },
-    };
-
-    pub fn call_fill(instance: *runtime.Instance, args: FillArgs) anyerror!void {
-        switch (args) {
-            .CanvasFillRule => |arg| return try CanvasRenderingContext2DImpl.CanvasFillRule(instance, arg),
-            .Path2D_CanvasFillRule => |a| return try CanvasRenderingContext2DImpl.Path2D_CanvasFillRule(instance, a.path, a.fillRule),
-        }
+    pub fn call_fill(instance: *runtime.Instance, fillRule: CanvasFillRule) anyerror!void {
+        
+        return try CanvasRenderingContext2DImpl.call_fill(instance, fillRule);
     }
 
-    /// Arguments for putImageData (WebIDL overloading)
-    pub const PutImageDataArgs = union(enum) {
-        /// putImageData(imageData, dx, dy)
-        ImageData_long_long: struct {
-            imageData: ImageData,
-            dx: i32,
-            dy: i32,
-        },
-        /// putImageData(imageData, dx, dy, dirtyX, dirtyY, dirtyWidth, dirtyHeight)
-        ImageData_long_long_long_long_long_long: struct {
-            imageData: ImageData,
-            dx: i32,
-            dy: i32,
-            dirtyX: i32,
-            dirtyY: i32,
-            dirtyWidth: i32,
-            dirtyHeight: i32,
-        },
-    };
-
-    pub fn call_putImageData(instance: *runtime.Instance, args: PutImageDataArgs) anyerror!void {
-        switch (args) {
-            .ImageData_long_long => |a| return try CanvasRenderingContext2DImpl.ImageData_long_long(instance, a.imageData, a.dx, a.dy),
-            .ImageData_long_long_long_long_long_long => |a| return try CanvasRenderingContext2DImpl.ImageData_long_long_long_long_long_long(instance, a.imageData, a.dx, a.dy, a.dirtyX, a.dirtyY, a.dirtyWidth, a.dirtyHeight),
-        }
+    pub fn call_putImageData(instance: *runtime.Instance, imageData: ImageData, dx: i32, dy: i32) anyerror!void {
+        // [EnforceRange] on dx
+        if (!runtime.isInRange(dx)) return error.TypeError;
+        // [EnforceRange] on dy
+        if (!runtime.isInRange(dy)) return error.TypeError;
+        
+        return try CanvasRenderingContext2DImpl.call_putImageData(instance, imageData, dx, dy);
     }
 
 };

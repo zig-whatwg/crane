@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,9 +8,71 @@ const runtime = @import("runtime");
 const HTMLStyleElementImpl = @import("impls").HTMLStyleElement;
 const HTMLElement = @import("interfaces").HTMLElement;
 const LinkStyle = @import("interfaces").LinkStyle;
-const StyleSheet = @import("interfaces").StyleSheet;
-const DOMTokenList = @import("interfaces").DOMTokenList;
+const DOMStringMap = @import("interfaces").DOMStringMap;
+const CSSOMString = @import("interfaces").CSSOMString;
+const HTMLCollection = @import("interfaces").HTMLCollection;
+const TogglePopoverOptions = @import("dictionaries").TogglePopoverOptions;
+const DOMPointInit = @import("dictionaries").DOMPointInit;
+const GeometryNode = @import("typedefs").GeometryNode;
+const NamedNodeMap = @import("interfaces").NamedNodeMap;
+const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
+const USVString = @import("interfaces").USVString;
+const TrustedType = @import("typedefs").TrustedType;
+const Element = @import("interfaces").Element;
+const CheckVisibilityOptions = @import("dictionaries").CheckVisibilityOptions;
+const ScrollIntoViewOptions = @import("dictionaries").ScrollIntoViewOptions;
+const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const FocusableAreasOption = @import("dictionaries").FocusableAreasOption;
+const EventListener = @import("interfaces").EventListener;
+const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
+const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
+const ShowPopoverOptions = @import("dictionaries").ShowPopoverOptions;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
+const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCallback;
+const Node = @import("interfaces").Node;
+const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
+const Animation = @import("interfaces").Animation;
+const Range = @import("interfaces").Range;
+const Event = @import("interfaces").Event;
+const FocusOptions = @import("dictionaries").FocusOptions;
+const DOMRectList = @import("interfaces").DOMRectList;
+const DOMString = @import("typedefs").DOMString;
+const Document = @import("interfaces").Document;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
+const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
+const ScrollToOptions = @import("dictionaries").ScrollToOptions;
+const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
+const DOMQuad = @import("interfaces").DOMQuad;
+const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
+const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
+const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
+const DOMTokenList = @import("interfaces").DOMTokenList;
+const StartViewTransitionOptions = @import("dictionaries").StartViewTransitionOptions;
+const EditContext = @import("interfaces").EditContext;
+const DOMRect = @import("interfaces").DOMRect;
+const ElementInternals = @import("interfaces").ElementInternals;
+const ViewTransition = @import("interfaces").ViewTransition;
+const StyleSheet = @import("interfaces").StyleSheet;
+const SpatialNavigationSearchOptions = @import("dictionaries").SpatialNavigationSearchOptions;
+const GetAnimationsOptions = @import("dictionaries").GetAnimationsOptions;
+const EventHandler = @import("typedefs").EventHandler;
+const ConvertCoordinateOptions = @import("dictionaries").ConvertCoordinateOptions;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const SpatialNavigationDirection = @import("enums").SpatialNavigationDirection;
+const StylePropertyMap = @import("interfaces").StylePropertyMap;
+const ShadowRoot = @import("interfaces").ShadowRoot;
+const Attr = @import("interfaces").Attr;
+const TrustedHTML = @import("interfaces").TrustedHTML;
+const DOMQuadInit = @import("dictionaries").DOMQuadInit;
+const NodeList = @import("interfaces").NodeList;
+const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const Observable = @import("interfaces").Observable;
+const DOMPoint = @import("interfaces").DOMPoint;
+const PointerLockOptions = @import("dictionaries").PointerLockOptions;
+const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
+const ShadowRootInit = @import("dictionaries").ShadowRootInit;
 
 pub const HTMLStyleElement = struct {
     pub const Meta = struct {
@@ -33,9 +95,8 @@ pub const HTMLStyleElement = struct {
             disabled: bool = undefined,
             media: runtime.DOMString = undefined,
             blocking: DOMTokenList = undefined,
-            type: runtime.DOMString = undefined,
+            @"type": runtime.DOMString = undefined,
             sheet: ?CSSStyleSheet = null,
-            sheet: StyleSheet = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -298,10 +359,8 @@ pub const HTMLStyleElement = struct {
         .get_scrollWidth = &get_scrollWidth,
         .get_shadowRoot = &get_shadowRoot,
         .get_sheet = &get_sheet,
-        .get_sheet = &get_sheet,
         .get_slot = &get_slot,
         .get_spellcheck = &get_spellcheck,
-        .get_style = &get_style,
         .get_style = &get_style,
         .get_tabIndex = &get_tabIndex,
         .get_tagName = &get_tagName,
@@ -603,17 +662,7 @@ pub const HTMLStyleElement = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        HTMLStyleElementImpl.init(instance);
-        
-        return instance;
+        return HTMLStyleElementImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -652,15 +701,15 @@ pub const HTMLStyleElement = struct {
         return try HTMLStyleElementImpl.get_isConnected(instance);
     }
 
-    pub fn get_ownerDocument(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ownerDocument(instance: *runtime.Instance) anyerror!Document {
         return try HTMLStyleElementImpl.get_ownerDocument(instance);
     }
 
-    pub fn get_parentNode(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_parentNode(instance: *runtime.Instance) anyerror!Node {
         return try HTMLStyleElementImpl.get_parentNode(instance);
     }
 
-    pub fn get_parentElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_parentElement(instance: *runtime.Instance) anyerror!Element {
         return try HTMLStyleElementImpl.get_parentElement(instance);
     }
 
@@ -676,29 +725,29 @@ pub const HTMLStyleElement = struct {
         return value;
     }
 
-    pub fn get_firstChild(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_firstChild(instance: *runtime.Instance) anyerror!Node {
         return try HTMLStyleElementImpl.get_firstChild(instance);
     }
 
-    pub fn get_lastChild(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_lastChild(instance: *runtime.Instance) anyerror!Node {
         return try HTMLStyleElementImpl.get_lastChild(instance);
     }
 
-    pub fn get_previousSibling(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_previousSibling(instance: *runtime.Instance) anyerror!Node {
         return try HTMLStyleElementImpl.get_previousSibling(instance);
     }
 
-    pub fn get_nextSibling(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_nextSibling(instance: *runtime.Instance) anyerror!Node {
         return try HTMLStyleElementImpl.get_nextSibling(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_nodeValue(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_nodeValue(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_nodeValue(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_nodeValue(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_nodeValue(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -707,12 +756,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_textContent(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_textContent(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_textContent(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_textContent(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_textContent(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -720,11 +769,11 @@ pub const HTMLStyleElement = struct {
         try HTMLStyleElementImpl.set_textContent(instance, value);
     }
 
-    pub fn get_namespaceURI(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_namespaceURI(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_namespaceURI(instance);
     }
 
-    pub fn get_prefix(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_prefix(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_prefix(instance);
     }
 
@@ -802,11 +851,11 @@ pub const HTMLStyleElement = struct {
         return value;
     }
 
-    pub fn get_shadowRoot(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_shadowRoot(instance: *runtime.Instance) anyerror!ShadowRoot {
         return try HTMLStyleElementImpl.get_shadowRoot(instance);
     }
 
-    pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!CustomElementRegistry {
         return try HTMLStyleElementImpl.get_customElementRegistry(instance);
     }
 
@@ -852,7 +901,7 @@ pub const HTMLStyleElement = struct {
         return value;
     }
 
-    pub fn get_activeViewTransition(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_activeViewTransition(instance: *runtime.Instance) anyerror!ViewTransition {
         return try HTMLStyleElementImpl.get_activeViewTransition(instance);
     }
 
@@ -929,12 +978,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_role(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_role(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_role(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_role(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_role(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -943,12 +992,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-activedescendant"]
-    pub fn get_ariaActiveDescendantElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaActiveDescendantElement(instance: *runtime.Instance) anyerror!Element {
         return try HTMLStyleElementImpl.get_ariaActiveDescendantElement(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-activedescendant"]
-    pub fn set_ariaActiveDescendantElement(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaActiveDescendantElement(instance: *runtime.Instance, value: Element) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -957,12 +1006,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-atomic"]
-    pub fn get_ariaAtomic(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaAtomic(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaAtomic(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-atomic"]
-    pub fn set_ariaAtomic(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaAtomic(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -971,12 +1020,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-autocomplete"]
-    pub fn get_ariaAutoComplete(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaAutoComplete(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaAutoComplete(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-autocomplete"]
-    pub fn set_ariaAutoComplete(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaAutoComplete(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -985,12 +1034,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-braillelabel"]
-    pub fn get_ariaBrailleLabel(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaBrailleLabel(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaBrailleLabel(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-braillelabel"]
-    pub fn set_ariaBrailleLabel(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaBrailleLabel(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -999,12 +1048,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-brailleroledescription"]
-    pub fn get_ariaBrailleRoleDescription(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaBrailleRoleDescription(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaBrailleRoleDescription(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-brailleroledescription"]
-    pub fn set_ariaBrailleRoleDescription(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaBrailleRoleDescription(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1013,12 +1062,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-busy"]
-    pub fn get_ariaBusy(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaBusy(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaBusy(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-busy"]
-    pub fn set_ariaBusy(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaBusy(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1027,12 +1076,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-checked"]
-    pub fn get_ariaChecked(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaChecked(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaChecked(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-checked"]
-    pub fn set_ariaChecked(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaChecked(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1041,12 +1090,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colcount"]
-    pub fn get_ariaColCount(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaColCount(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaColCount(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colcount"]
-    pub fn set_ariaColCount(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaColCount(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1055,12 +1104,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colindex"]
-    pub fn get_ariaColIndex(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaColIndex(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaColIndex(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colindex"]
-    pub fn set_ariaColIndex(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaColIndex(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1069,12 +1118,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colindextext"]
-    pub fn get_ariaColIndexText(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaColIndexText(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaColIndexText(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colindextext"]
-    pub fn set_ariaColIndexText(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaColIndexText(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1083,12 +1132,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colspan"]
-    pub fn get_ariaColSpan(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaColSpan(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaColSpan(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colspan"]
-    pub fn set_ariaColSpan(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaColSpan(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1111,12 +1160,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-current"]
-    pub fn get_ariaCurrent(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaCurrent(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaCurrent(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-current"]
-    pub fn set_ariaCurrent(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaCurrent(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1139,12 +1188,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-description"]
-    pub fn get_ariaDescription(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaDescription(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaDescription(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-description"]
-    pub fn set_ariaDescription(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaDescription(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1167,12 +1216,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-disabled"]
-    pub fn get_ariaDisabled(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaDisabled(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaDisabled(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-disabled"]
-    pub fn set_ariaDisabled(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaDisabled(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1195,12 +1244,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-expanded"]
-    pub fn get_ariaExpanded(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaExpanded(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaExpanded(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-expanded"]
-    pub fn set_ariaExpanded(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaExpanded(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1223,12 +1272,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-haspopup"]
-    pub fn get_ariaHasPopup(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaHasPopup(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaHasPopup(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-haspopup"]
-    pub fn set_ariaHasPopup(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaHasPopup(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1237,12 +1286,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-hidden"]
-    pub fn get_ariaHidden(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaHidden(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaHidden(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-hidden"]
-    pub fn set_ariaHidden(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaHidden(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1251,12 +1300,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-invalid"]
-    pub fn get_ariaInvalid(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaInvalid(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaInvalid(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-invalid"]
-    pub fn set_ariaInvalid(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaInvalid(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1265,12 +1314,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-keyshortcuts"]
-    pub fn get_ariaKeyShortcuts(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaKeyShortcuts(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaKeyShortcuts(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-keyshortcuts"]
-    pub fn set_ariaKeyShortcuts(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaKeyShortcuts(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1279,12 +1328,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-label"]
-    pub fn get_ariaLabel(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaLabel(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaLabel(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-label"]
-    pub fn set_ariaLabel(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaLabel(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1307,12 +1356,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-level"]
-    pub fn get_ariaLevel(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaLevel(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaLevel(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-level"]
-    pub fn set_ariaLevel(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaLevel(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1321,12 +1370,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-live"]
-    pub fn get_ariaLive(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaLive(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaLive(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-live"]
-    pub fn set_ariaLive(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaLive(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1335,12 +1384,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-modal"]
-    pub fn get_ariaModal(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaModal(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaModal(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-modal"]
-    pub fn set_ariaModal(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaModal(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1349,12 +1398,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-multiline"]
-    pub fn get_ariaMultiLine(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaMultiLine(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaMultiLine(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-multiline"]
-    pub fn set_ariaMultiLine(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaMultiLine(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1363,12 +1412,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-multiselectable"]
-    pub fn get_ariaMultiSelectable(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaMultiSelectable(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaMultiSelectable(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-multiselectable"]
-    pub fn set_ariaMultiSelectable(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaMultiSelectable(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1377,12 +1426,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-orientation"]
-    pub fn get_ariaOrientation(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaOrientation(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaOrientation(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-orientation"]
-    pub fn set_ariaOrientation(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaOrientation(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1405,12 +1454,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-placeholder"]
-    pub fn get_ariaPlaceholder(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaPlaceholder(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaPlaceholder(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-placeholder"]
-    pub fn set_ariaPlaceholder(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaPlaceholder(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1419,12 +1468,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-posinset"]
-    pub fn get_ariaPosInSet(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaPosInSet(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaPosInSet(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-posinset"]
-    pub fn set_ariaPosInSet(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaPosInSet(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1433,12 +1482,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-pressed"]
-    pub fn get_ariaPressed(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaPressed(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaPressed(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-pressed"]
-    pub fn set_ariaPressed(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaPressed(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1447,12 +1496,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-readonly"]
-    pub fn get_ariaReadOnly(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaReadOnly(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaReadOnly(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-readonly"]
-    pub fn set_ariaReadOnly(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaReadOnly(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1461,12 +1510,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-relevant"]
-    pub fn get_ariaRelevant(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaRelevant(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaRelevant(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-relevant"]
-    pub fn set_ariaRelevant(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaRelevant(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1475,12 +1524,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-required"]
-    pub fn get_ariaRequired(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaRequired(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaRequired(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-required"]
-    pub fn set_ariaRequired(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaRequired(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1489,12 +1538,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-roledescription"]
-    pub fn get_ariaRoleDescription(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaRoleDescription(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaRoleDescription(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-roledescription"]
-    pub fn set_ariaRoleDescription(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaRoleDescription(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1503,12 +1552,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowcount"]
-    pub fn get_ariaRowCount(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaRowCount(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaRowCount(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowcount"]
-    pub fn set_ariaRowCount(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaRowCount(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1517,12 +1566,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowindex"]
-    pub fn get_ariaRowIndex(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaRowIndex(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaRowIndex(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowindex"]
-    pub fn set_ariaRowIndex(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaRowIndex(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1531,12 +1580,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowindextext"]
-    pub fn get_ariaRowIndexText(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaRowIndexText(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaRowIndexText(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowindextext"]
-    pub fn set_ariaRowIndexText(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaRowIndexText(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1545,12 +1594,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowspan"]
-    pub fn get_ariaRowSpan(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaRowSpan(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaRowSpan(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowspan"]
-    pub fn set_ariaRowSpan(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaRowSpan(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1559,12 +1608,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-selected"]
-    pub fn get_ariaSelected(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaSelected(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaSelected(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-selected"]
-    pub fn set_ariaSelected(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaSelected(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1573,12 +1622,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-setsize"]
-    pub fn get_ariaSetSize(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaSetSize(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaSetSize(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-setsize"]
-    pub fn set_ariaSetSize(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaSetSize(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1587,12 +1636,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-sort"]
-    pub fn get_ariaSort(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaSort(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaSort(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-sort"]
-    pub fn set_ariaSort(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaSort(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1601,12 +1650,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuemax"]
-    pub fn get_ariaValueMax(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaValueMax(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaValueMax(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuemax"]
-    pub fn set_ariaValueMax(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaValueMax(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1615,12 +1664,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuemin"]
-    pub fn get_ariaValueMin(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaValueMin(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaValueMin(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuemin"]
-    pub fn set_ariaValueMin(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaValueMin(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1629,12 +1678,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuenow"]
-    pub fn get_ariaValueNow(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaValueNow(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaValueNow(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuenow"]
-    pub fn set_ariaValueNow(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaValueNow(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1643,12 +1692,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuetext"]
-    pub fn get_ariaValueText(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaValueText(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_ariaValueText(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuetext"]
-    pub fn set_ariaValueText(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaValueText(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1672,11 +1721,11 @@ pub const HTMLStyleElement = struct {
         return value;
     }
 
-    pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!Element {
         return try HTMLStyleElementImpl.get_firstElementChild(instance);
     }
 
-    pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!Element {
         return try HTMLStyleElementImpl.get_lastElementChild(instance);
     }
 
@@ -1684,15 +1733,15 @@ pub const HTMLStyleElement = struct {
         return try HTMLStyleElementImpl.get_childElementCount(instance);
     }
 
-    pub fn get_previousElementSibling(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_previousElementSibling(instance: *runtime.Instance) anyerror!Element {
         return try HTMLStyleElementImpl.get_previousElementSibling(instance);
     }
 
-    pub fn get_nextElementSibling(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_nextElementSibling(instance: *runtime.Instance) anyerror!Element {
         return try HTMLStyleElementImpl.get_nextElementSibling(instance);
     }
 
-    pub fn get_assignedSlot(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_assignedSlot(instance: *runtime.Instance) anyerror!HTMLSlotElement {
         return try HTMLStyleElementImpl.get_assignedSlot(instance);
     }
 
@@ -1897,12 +1946,12 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_popover(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_popover(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLStyleElementImpl.get_popover(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_popover(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_popover(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1938,19 +1987,19 @@ pub const HTMLStyleElement = struct {
         try HTMLStyleElementImpl.set_headingReset(instance, value);
     }
 
-    pub fn get_editContext(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_editContext(instance: *runtime.Instance) anyerror!EditContext {
         return try HTMLStyleElementImpl.get_editContext(instance);
     }
 
-    pub fn set_editContext(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_editContext(instance: *runtime.Instance, value: EditContext) anyerror!void {
         try HTMLStyleElementImpl.set_editContext(instance, value);
     }
 
-    pub fn get_scrollParent(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_scrollParent(instance: *runtime.Instance) anyerror!Element {
         return try HTMLStyleElementImpl.get_scrollParent(instance);
     }
 
-    pub fn get_offsetParent(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_offsetParent(instance: *runtime.Instance) anyerror!Element {
         return try HTMLStyleElementImpl.get_offsetParent(instance);
     }
 
@@ -1980,10 +2029,6 @@ pub const HTMLStyleElement = struct {
         const value = try HTMLStyleElementImpl.get_style(instance);
         state.cached_style = value;
         return value;
-    }
-
-    pub fn get_style(instance: *runtime.Instance) anyerror!CSSStyleDeclaration {
-        return try HTMLStyleElementImpl.get_style(instance);
     }
 
     /// Extended attributes: [SameObject]
@@ -3000,25 +3045,21 @@ pub const HTMLStyleElement = struct {
         try HTMLStyleElementImpl.set_type(instance, value);
     }
 
-    pub fn get_sheet(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_sheet(instance: *runtime.Instance) anyerror!CSSStyleSheet {
         return try HTMLStyleElementImpl.get_sheet(instance);
     }
 
-    pub fn get_sheet(instance: *runtime.Instance) anyerror!StyleSheet {
-        return try HTMLStyleElementImpl.get_sheet(instance);
-    }
-
-    pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: anyopaque) anyerror!bool {
+    pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: DOMString) anyerror!bool {
         
         return try HTMLStyleElementImpl.call_isDefaultNamespace(instance, namespace);
     }
 
-    pub fn call_getAttributeNS(instance: *runtime.Instance, namespace: anyopaque, localName: DOMString) anyerror!anyopaque {
+    pub fn call_getAttributeNS(instance: *runtime.Instance, namespace: DOMString, localName: DOMString) anyerror!DOMString {
         
         return try HTMLStyleElementImpl.call_getAttributeNS(instance, namespace, localName);
     }
 
-    pub fn call_getAttribute(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!anyopaque {
+    pub fn call_getAttribute(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!DOMString {
         
         return try HTMLStyleElementImpl.call_getAttribute(instance, qualifiedName);
     }
@@ -3028,7 +3069,7 @@ pub const HTMLStyleElement = struct {
         return try HTMLStyleElementImpl.call_hasAttribute(instance, qualifiedName);
     }
 
-    pub fn call_contains(instance: *runtime.Instance, other: anyopaque) anyerror!bool {
+    pub fn call_contains(instance: *runtime.Instance, other: Node) anyerror!bool {
         
         return try HTMLStyleElementImpl.call_contains(instance, other);
     }
@@ -3048,22 +3089,9 @@ pub const HTMLStyleElement = struct {
         return try HTMLStyleElementImpl.call_computedStyleMap(instance);
     }
 
-    /// Arguments for scroll (WebIDL overloading)
-    pub const ScrollArgs = union(enum) {
-        /// scroll(options)
-        ScrollToOptions: ScrollToOptions,
-        /// scroll(x, y)
-        unrestricted double_unrestricted double: struct {
-            x: f64,
-            y: f64,
-        },
-    };
-
-    pub fn call_scroll(instance: *runtime.Instance, args: ScrollArgs) anyerror!anyopaque {
-        switch (args) {
-            .ScrollToOptions => |arg| return try HTMLStyleElementImpl.ScrollToOptions(instance, arg),
-            .unrestricted double_unrestricted double => |a| return try HTMLStyleElementImpl.unrestricted double_unrestricted double(instance, a.x, a.y),
-        }
+    pub fn call_scroll(instance: *runtime.Instance, options: ScrollToOptions) anyerror!anyopaque {
+        
+        return try HTMLStyleElementImpl.call_scroll(instance, options);
     }
 
     pub fn call_togglePopover(instance: *runtime.Instance, options: anyopaque) anyerror!bool {
@@ -3080,22 +3108,9 @@ pub const HTMLStyleElement = struct {
         return try HTMLStyleElementImpl.call_getRootNode(instance, options);
     }
 
-    /// Arguments for scrollBy (WebIDL overloading)
-    pub const ScrollByArgs = union(enum) {
-        /// scrollBy(options)
-        ScrollToOptions: ScrollToOptions,
-        /// scrollBy(x, y)
-        unrestricted double_unrestricted double: struct {
-            x: f64,
-            y: f64,
-        },
-    };
-
-    pub fn call_scrollBy(instance: *runtime.Instance, args: ScrollByArgs) anyerror!anyopaque {
-        switch (args) {
-            .ScrollToOptions => |arg| return try HTMLStyleElementImpl.ScrollToOptions(instance, arg),
-            .unrestricted double_unrestricted double => |a| return try HTMLStyleElementImpl.unrestricted double_unrestricted double(instance, a.x, a.y),
-        }
+    pub fn call_scrollBy(instance: *runtime.Instance, options: ScrollToOptions) anyerror!anyopaque {
+        
+        return try HTMLStyleElementImpl.call_scrollBy(instance, options);
     }
 
     /// Extended attributes: [CEReactions], [Unscopable]
@@ -3134,7 +3149,7 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_setAttributeNodeNS(instance: *runtime.Instance, attr: Attr) anyerror!anyopaque {
+    pub fn call_setAttributeNodeNS(instance: *runtime.Instance, attr: Attr) anyerror!Attr {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -3143,13 +3158,13 @@ pub const HTMLStyleElement = struct {
         return try HTMLStyleElementImpl.call_setAttributeNodeNS(instance, attr);
     }
 
-    pub fn call_getAttributeNodeNS(instance: *runtime.Instance, namespace: anyopaque, localName: DOMString) anyerror!anyopaque {
+    pub fn call_getAttributeNodeNS(instance: *runtime.Instance, namespace: DOMString, localName: DOMString) anyerror!Attr {
         
         return try HTMLStyleElementImpl.call_getAttributeNodeNS(instance, namespace, localName);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_setAttributeNS(instance: *runtime.Instance, namespace: anyopaque, qualifiedName: DOMString, value: DOMString) anyerror!void {
+    pub fn call_setAttributeNS(instance: *runtime.Instance, namespace: DOMString, qualifiedName: DOMString, value: anyopaque) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -3159,7 +3174,7 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_setAttributeNode(instance: *runtime.Instance, attr: Attr) anyerror!anyopaque {
+    pub fn call_setAttributeNode(instance: *runtime.Instance, attr: Attr) anyerror!Attr {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -3168,31 +3183,18 @@ pub const HTMLStyleElement = struct {
         return try HTMLStyleElementImpl.call_setAttributeNode(instance, attr);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try HTMLStyleElementImpl.call_when(instance, type_, options);
+        return try HTMLStyleElementImpl.call_when(instance, @"type", options);
     }
 
-    /// Arguments for scrollTo (WebIDL overloading)
-    pub const ScrollToArgs = union(enum) {
-        /// scrollTo(options)
-        ScrollToOptions: ScrollToOptions,
-        /// scrollTo(x, y)
-        unrestricted double_unrestricted double: struct {
-            x: f64,
-            y: f64,
-        },
-    };
-
-    pub fn call_scrollTo(instance: *runtime.Instance, args: ScrollToArgs) anyerror!anyopaque {
-        switch (args) {
-            .ScrollToOptions => |arg| return try HTMLStyleElementImpl.ScrollToOptions(instance, arg),
-            .unrestricted double_unrestricted double => |a| return try HTMLStyleElementImpl.unrestricted double_unrestricted double(instance, a.x, a.y),
-        }
+    pub fn call_scrollTo(instance: *runtime.Instance, options: ScrollToOptions) anyerror!anyopaque {
+        
+        return try HTMLStyleElementImpl.call_scrollTo(instance, options);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_insertBefore(instance: *runtime.Instance, node: Node, child: anyopaque) anyerror!Node {
+    pub fn call_insertBefore(instance: *runtime.Instance, node: Node, child: Node) anyerror!Node {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -3201,12 +3203,12 @@ pub const HTMLStyleElement = struct {
         return try HTMLStyleElementImpl.call_insertBefore(instance, node, child);
     }
 
-    pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: anyopaque) anyerror!anyopaque {
+    pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: DOMString) anyerror!DOMString {
         
         return try HTMLStyleElementImpl.call_lookupNamespaceURI(instance, prefix);
     }
 
-    pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: anyopaque, localName: DOMString) anyerror!HTMLCollection {
+    pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: DOMString, localName: DOMString) anyerror!HTMLCollection {
         
         return try HTMLStyleElementImpl.call_getElementsByTagNameNS(instance, namespace, localName);
     }
@@ -3249,7 +3251,7 @@ pub const HTMLStyleElement = struct {
         return try HTMLStyleElementImpl.call_normalize(instance);
     }
 
-    pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: anyopaque) anyerror!bool {
+    pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: Node) anyerror!bool {
         
         return try HTMLStyleElementImpl.call_isEqualNode(instance, otherNode);
     }
@@ -3284,7 +3286,7 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_insertAdjacentElement(instance: *runtime.Instance, where: DOMString, element: Element) anyerror!anyopaque {
+    pub fn call_insertAdjacentElement(instance: *runtime.Instance, where: DOMString, element: Element) anyerror!Element {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -3298,7 +3300,7 @@ pub const HTMLStyleElement = struct {
         return try HTMLStyleElementImpl.call_webkitMatchesSelector(instance, selectors);
     }
 
-    pub fn call_spatialNavigationSearch(instance: *runtime.Instance, dir: SpatialNavigationDirection, options: SpatialNavigationSearchOptions) anyerror!anyopaque {
+    pub fn call_spatialNavigationSearch(instance: *runtime.Instance, dir: SpatialNavigationDirection, options: SpatialNavigationSearchOptions) anyerror!Node {
         
         return try HTMLStyleElementImpl.call_spatialNavigationSearch(instance, dir, options);
     }
@@ -3308,7 +3310,7 @@ pub const HTMLStyleElement = struct {
         return try HTMLStyleElementImpl.call_getElementsByTagName(instance, qualifiedName);
     }
 
-    pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!anyopaque {
+    pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!Element {
         
         return try HTMLStyleElementImpl.call_querySelector(instance, selectors);
     }
@@ -3318,7 +3320,7 @@ pub const HTMLStyleElement = struct {
         return try HTMLStyleElementImpl.call_compareDocumentPosition(instance, other);
     }
 
-    pub fn call_closest(instance: *runtime.Instance, selectors: DOMString) anyerror!anyopaque {
+    pub fn call_closest(instance: *runtime.Instance, selectors: DOMString) anyerror!Element {
         
         return try HTMLStyleElementImpl.call_closest(instance, selectors);
     }
@@ -3346,9 +3348,9 @@ pub const HTMLStyleElement = struct {
         return try HTMLStyleElementImpl.call_removeAttribute(instance, qualifiedName);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try HTMLStyleElementImpl.call_removeEventListener(instance, type_, callback, options);
+        return try HTMLStyleElementImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
     pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: DOMRectReadOnly, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!DOMQuad {
@@ -3378,7 +3380,7 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_removeAttributeNS(instance: *runtime.Instance, namespace: anyopaque, localName: DOMString) anyerror!void {
+    pub fn call_removeAttributeNS(instance: *runtime.Instance, namespace: DOMString, localName: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -3413,7 +3415,7 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_moveBefore(instance: *runtime.Instance, node: Node, child: anyopaque) anyerror!void {
+    pub fn call_moveBefore(instance: *runtime.Instance, node: Node, child: Node) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -3427,12 +3429,12 @@ pub const HTMLStyleElement = struct {
         return try HTMLStyleElementImpl.call_getHTML(instance, options);
     }
 
-    pub fn call_getAttributeNode(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!anyopaque {
+    pub fn call_getAttributeNode(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!Attr {
         
         return try HTMLStyleElementImpl.call_getAttributeNode(instance, qualifiedName);
     }
 
-    pub fn call_isSameNode(instance: *runtime.Instance, otherNode: anyopaque) anyerror!bool {
+    pub fn call_isSameNode(instance: *runtime.Instance, otherNode: Node) anyerror!bool {
         
         return try HTMLStyleElementImpl.call_isSameNode(instance, otherNode);
     }
@@ -3456,7 +3458,7 @@ pub const HTMLStyleElement = struct {
         return try HTMLStyleElementImpl.call_setHTMLUnsafe(instance, html);
     }
 
-    pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: anyopaque) anyerror!anyopaque {
+    pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: DOMString) anyerror!DOMString {
         
         return try HTMLStyleElementImpl.call_lookupPrefix(instance, namespace);
     }
@@ -3485,9 +3487,9 @@ pub const HTMLStyleElement = struct {
         return try HTMLStyleElementImpl.call_toggleAttribute(instance, qualifiedName, force);
     }
 
-    pub fn call_pseudo(instance: *runtime.Instance, type_: anyopaque) anyerror!anyopaque {
+    pub fn call_pseudo(instance: *runtime.Instance, @"type": anyopaque) anyerror!CSSPseudoElement {
         
-        return try HTMLStyleElementImpl.call_pseudo(instance, type_);
+        return try HTMLStyleElementImpl.call_pseudo(instance, @"type");
     }
 
     /// Extended attributes: [CEReactions], [Unscopable]
@@ -3511,7 +3513,7 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_setAttribute(instance: *runtime.Instance, qualifiedName: DOMString, value: DOMString) anyerror!void {
+    pub fn call_setAttribute(instance: *runtime.Instance, qualifiedName: DOMString, value: anyopaque) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -3534,9 +3536,9 @@ pub const HTMLStyleElement = struct {
         return try HTMLStyleElementImpl.call_appendChild(instance, node);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try HTMLStyleElementImpl.call_addEventListener(instance, type_, callback, options);
+        return try HTMLStyleElementImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
     pub fn call_getAttributeNames(instance: *runtime.Instance) anyerror!anyopaque {
@@ -3547,9 +3549,9 @@ pub const HTMLStyleElement = struct {
         return try HTMLStyleElementImpl.call_hasChildNodes(instance);
     }
 
-    pub fn call_attachShadow(instance: *runtime.Instance, init: ShadowRootInit) anyerror!ShadowRoot {
+    pub fn call_attachShadow(instance: *runtime.Instance, init_data: ShadowRootInit) anyerror!ShadowRoot {
         
-        return try HTMLStyleElementImpl.call_attachShadow(instance, init);
+        return try HTMLStyleElementImpl.call_attachShadow(instance, init_data);
     }
 
     pub fn call_requestPointerLock(instance: *runtime.Instance, options: PointerLockOptions) anyerror!anyopaque {
@@ -3567,7 +3569,7 @@ pub const HTMLStyleElement = struct {
         return try HTMLStyleElementImpl.call_insertAdjacentHTML(instance, position, string);
     }
 
-    pub fn call_hasAttributeNS(instance: *runtime.Instance, namespace: anyopaque, localName: DOMString) anyerror!bool {
+    pub fn call_hasAttributeNS(instance: *runtime.Instance, namespace: DOMString, localName: DOMString) anyerror!bool {
         
         return try HTMLStyleElementImpl.call_hasAttributeNS(instance, namespace, localName);
     }

@@ -1,5 +1,5 @@
 //! Generated from: observable.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,16 +9,12 @@ const ObservableImpl = @import("impls").Observable;
 const Mapper = @import("callbacks").Mapper;
 const Predicate = @import("callbacks").Predicate;
 const VoidFunction = @import("callbacks").VoidFunction;
-const Promise<any> = @import("interfaces").Promise<any>;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
 const Visitor = @import("callbacks").Visitor;
 const ObserverUnion = @import("typedefs").ObserverUnion;
 const SubscribeCallback = @import("callbacks").SubscribeCallback;
 const CatchCallback = @import("callbacks").CatchCallback;
-const Promise<sequence<any>> = @import("interfaces").Promise<sequence<any>>;
 const ObservableInspectorUnion = @import("typedefs").ObservableInspectorUnion;
 const SubscribeOptions = @import("dictionaries").SubscribeOptions;
-const Promise<boolean> = @import("interfaces").Promise<boolean>;
 const Reducer = @import("callbacks").Reducer;
 
 pub const Observable = struct {
@@ -68,17 +64,7 @@ pub const Observable = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ObservableImpl.init(instance);
-        
-        return instance;
+        return ObservableImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

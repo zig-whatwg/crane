@@ -1,13 +1,13 @@
 //! Generated from: webxr-hit-test.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const XRHitTestResultImpl = @import("impls").XRHitTestResult;
-const Promise<XRAnchor> = @import("interfaces").Promise<XRAnchor>;
 const XRPose = @import("interfaces").XRPose;
+const XRAnchor = @import("interfaces").XRAnchor;
 const XRSpace = @import("interfaces").XRSpace;
 
 pub const XRHitTestResult = struct {
@@ -40,17 +40,7 @@ pub const XRHitTestResult = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        XRHitTestResultImpl.init(instance);
-        
-        return instance;
+        return XRHitTestResultImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -67,7 +57,7 @@ pub const XRHitTestResult = struct {
         return try XRHitTestResultImpl.call_createAnchor(instance);
     }
 
-    pub fn call_getPose(instance: *runtime.Instance, baseSpace: XRSpace) anyerror!anyopaque {
+    pub fn call_getPose(instance: *runtime.Instance, baseSpace: XRSpace) anyerror!XRPose {
         
         return try XRHitTestResultImpl.call_getPose(instance, baseSpace);
     }

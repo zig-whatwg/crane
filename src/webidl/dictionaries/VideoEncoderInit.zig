@@ -6,5 +6,5 @@ const runtime = @import("runtime");
 
 pub const VideoEncoderInit = struct {
     output: anyopaque,
-    error: anyopaque,
+    @"error": anyopaque,
 };

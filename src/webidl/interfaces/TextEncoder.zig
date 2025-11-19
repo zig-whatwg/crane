@@ -1,5 +1,5 @@
 //! Generated from: encoding.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,6 +9,8 @@ const TextEncoderImpl = @import("impls").TextEncoder;
 const TextEncoderCommon = @import("interfaces").TextEncoderCommon;
 const Uint8Array = @import("interfaces").Uint8Array;
 const TextEncoderEncodeIntoResult = @import("dictionaries").TextEncoderEncodeIntoResult;
+const USVString = @import("interfaces").USVString;
+const DOMString = @import("typedefs").DOMString;
 
 pub const TextEncoder = struct {
     pub const Meta = struct {
@@ -45,17 +47,7 @@ pub const TextEncoder = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        TextEncoderImpl.init(instance);
-        
-        return instance;
+        return TextEncoderImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

@@ -1,5 +1,5 @@
 //! Generated from: webxr-hand-input.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,6 +7,8 @@ const std = @import("std");
 const runtime = @import("runtime");
 const XRJointPoseImpl = @import("impls").XRJointPose;
 const XRPose = @import("interfaces").XRPose;
+const XRRigidTransform = @import("interfaces").XRRigidTransform;
+const DOMPointReadOnly = @import("interfaces").DOMPointReadOnly;
 
 pub const XRJointPose = struct {
     pub const Meta = struct {
@@ -42,17 +44,7 @@ pub const XRJointPose = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        XRJointPoseImpl.init(instance);
-        
-        return instance;
+        return XRJointPoseImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -78,7 +70,7 @@ pub const XRJointPose = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_linearVelocity(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_linearVelocity(instance: *runtime.Instance) anyerror!DOMPointReadOnly {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.cached_linearVelocity) |cached| {
@@ -90,7 +82,7 @@ pub const XRJointPose = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_angularVelocity(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_angularVelocity(instance: *runtime.Instance) anyerror!DOMPointReadOnly {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.cached_angularVelocity) |cached| {

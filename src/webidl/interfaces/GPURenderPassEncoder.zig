@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -16,7 +16,10 @@ const Uint32Array = @import("interfaces").Uint32Array;
 const GPUIntegerCoordinate = @import("typedefs").GPUIntegerCoordinate;
 const GPUStencilValue = @import("typedefs").GPUStencilValue;
 const GPUSize32 = @import("typedefs").GPUSize32;
+const GPURenderBundle = @import("interfaces").GPURenderBundle;
+const GPUBufferDynamicOffset = @import("typedefs").GPUBufferDynamicOffset;
 const GPURenderPipeline = @import("interfaces").GPURenderPipeline;
+const USVString = @import("interfaces").USVString;
 const GPUIndexFormat = @import("enums").GPUIndexFormat;
 const GPUBuffer = @import("interfaces").GPUBuffer;
 const GPUSize64 = @import("typedefs").GPUSize64;
@@ -86,17 +89,7 @@ pub const GPURenderPassEncoder = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        GPURenderPassEncoderImpl.init(instance);
-        
-        return instance;
+        return GPURenderPassEncoderImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -127,36 +120,16 @@ pub const GPURenderPassEncoder = struct {
         return try GPURenderPassEncoderImpl.call_setBlendConstant(instance, color);
     }
 
-    /// Arguments for setBindGroup (WebIDL overloading)
-    pub const SetBindGroupArgs = union(enum) {
-        /// setBindGroup(index, bindGroup, dynamicOffsets)
-        GPUIndex32_GPUBindGroup?_sequence: struct {
-            index: GPUIndex32,
-            bindGroup: anyopaque,
-            dynamicOffsets: anyopaque,
-        },
-        /// setBindGroup(index, bindGroup, dynamicOffsetsData, dynamicOffsetsDataStart, dynamicOffsetsDataLength)
-        GPUIndex32_GPUBindGroup?_Uint32Array_GPUSize64_GPUSize32: struct {
-            index: GPUIndex32,
-            bindGroup: anyopaque,
-            dynamicOffsetsData: anyopaque,
-            dynamicOffsetsDataStart: GPUSize64,
-            dynamicOffsetsDataLength: GPUSize32,
-        },
-    };
-
-    pub fn call_setBindGroup(instance: *runtime.Instance, args: SetBindGroupArgs) anyerror!void {
-        switch (args) {
-            .GPUIndex32_GPUBindGroup?_sequence => |a| return try GPURenderPassEncoderImpl.GPUIndex32_GPUBindGroup?_sequence(instance, a.index, a.bindGroup, a.dynamicOffsets),
-            .GPUIndex32_GPUBindGroup?_Uint32Array_GPUSize64_GPUSize32 => |a| return try GPURenderPassEncoderImpl.GPUIndex32_GPUBindGroup?_Uint32Array_GPUSize64_GPUSize32(instance, a.index, a.bindGroup, a.dynamicOffsetsData, a.dynamicOffsetsDataStart, a.dynamicOffsetsDataLength),
-        }
+    pub fn call_setBindGroup(instance: *runtime.Instance, index: GPUIndex32, bindGroup: GPUBindGroup, dynamicOffsets: anyopaque) anyerror!void {
+        
+        return try GPURenderPassEncoderImpl.call_setBindGroup(instance, index, bindGroup, dynamicOffsets);
     }
 
     pub fn call_endOcclusionQuery(instance: *runtime.Instance) anyerror!void {
         return try GPURenderPassEncoderImpl.call_endOcclusionQuery(instance);
     }
 
-    pub fn call_setVertexBuffer(instance: *runtime.Instance, slot: GPUIndex32, buffer: anyopaque, offset: GPUSize64, size: GPUSize64) anyerror!void {
+    pub fn call_setVertexBuffer(instance: *runtime.Instance, slot: GPUIndex32, buffer: GPUBuffer, offset: GPUSize64, size: GPUSize64) anyerror!void {
         
         return try GPURenderPassEncoderImpl.call_setVertexBuffer(instance, slot, buffer, offset, size);
     }

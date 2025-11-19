@@ -1,15 +1,15 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const CanvasFillStrokeStylesImpl = @import("impls").CanvasFillStrokeStyles;
-const (DOMString or CanvasGradient or CanvasPattern) = @import("interfaces").(DOMString or CanvasGradient or CanvasPattern);
 const CanvasGradient = @import("interfaces").CanvasGradient;
 const CanvasImageSource = @import("typedefs").CanvasImageSource;
 const CanvasPattern = @import("interfaces").CanvasPattern;
+const DOMString = @import("typedefs").DOMString;
 
 pub const CanvasFillStrokeStyles = struct {
     pub const Meta = struct {
@@ -22,8 +22,16 @@ pub const CanvasFillStrokeStyles = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            strokeStyle: (DOMString or CanvasGradient or CanvasPattern) = undefined,
-            fillStyle: (DOMString or CanvasGradient or CanvasPattern) = undefined,
+            strokeStyle: union(enum) {
+                DOMString: runtime.DOMString,
+                CanvasGradient: CanvasGradient,
+                CanvasPattern: CanvasPattern,
+            } = undefined,
+            fillStyle: union(enum) {
+                DOMString: runtime.DOMString,
+                CanvasGradient: CanvasGradient,
+                CanvasPattern: CanvasPattern,
+            } = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -46,17 +54,7 @@ pub const CanvasFillStrokeStyles = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        CanvasFillStrokeStylesImpl.init(instance);
-        
-        return instance;
+        return CanvasFillStrokeStylesImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -90,7 +88,7 @@ pub const CanvasFillStrokeStyles = struct {
         return try CanvasFillStrokeStylesImpl.call_createLinearGradient(instance, x0, y0, x1, y1);
     }
 
-    pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: DOMString) anyerror!anyopaque {
+    pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: DOMString) anyerror!CanvasPattern {
         
         return try CanvasFillStrokeStylesImpl.call_createPattern(instance, image, repetition);
     }

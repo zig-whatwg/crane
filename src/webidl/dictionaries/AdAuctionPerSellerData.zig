@@ -7,5 +7,5 @@ const runtime = @import("runtime");
 pub const AdAuctionPerSellerData = struct {
     seller: runtime.DOMString,
     request: ?anyopaque = null,
-    error: ?runtime.DOMString = null,
+    @"error": ?runtime.DOMString = null,
 };

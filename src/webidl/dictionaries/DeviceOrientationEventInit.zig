@@ -9,8 +9,8 @@ pub const DeviceOrientationEventInit = struct {
     // Inherited from EventInit
     base: EventInit,
 
-    alpha: ?anyopaque = null,
-    beta: ?anyopaque = null,
-    gamma: ?anyopaque = null,
+    alpha: ?f64 = null,
+    beta: ?f64 = null,
+    gamma: ?f64 = null,
     absolute: ?bool = null,
 };

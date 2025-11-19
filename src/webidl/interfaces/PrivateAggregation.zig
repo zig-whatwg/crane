@@ -1,5 +1,5 @@
 //! Generated from: private-aggregation-api.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,6 +8,7 @@ const runtime = @import("runtime");
 const PrivateAggregationImpl = @import("impls").PrivateAggregation;
 const PAHistogramContribution = @import("dictionaries").PAHistogramContribution;
 const PADebugModeOptions = @import("dictionaries").PADebugModeOptions;
+const DOMString = @import("typedefs").DOMString;
 
 pub const PrivateAggregation = struct {
     pub const Meta = struct {
@@ -43,17 +44,7 @@ pub const PrivateAggregation = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PrivateAggregationImpl.init(instance);
-        
-        return instance;
+        return PrivateAggregationImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

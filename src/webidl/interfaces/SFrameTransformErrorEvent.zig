@@ -1,5 +1,5 @@
 //! Generated from: webrtc-encoded-transform.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,8 +8,12 @@ const runtime = @import("runtime");
 const SFrameTransformErrorEventImpl = @import("impls").SFrameTransformErrorEvent;
 const Event = @import("interfaces").Event;
 const SFrameTransformErrorEventInit = @import("dictionaries").SFrameTransformErrorEventInit;
+const EventTarget = @import("interfaces").EventTarget;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const SFrameTransformErrorEventType = @import("enums").SFrameTransformErrorEventType;
+const EventInit = @import("dictionaries").EventInit;
 const CryptoKeyID = @import("typedefs").CryptoKeyID;
+const DOMString = @import("typedefs").DOMString;
 
 pub const SFrameTransformErrorEvent = struct {
     pub const Meta = struct {
@@ -79,17 +83,7 @@ pub const SFrameTransformErrorEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        SFrameTransformErrorEventImpl.init(instance);
-        
-        return instance;
+        return SFrameTransformErrorEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -103,11 +97,11 @@ pub const SFrameTransformErrorEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, eventInitDict: SFrameTransformErrorEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, eventInitDict: SFrameTransformErrorEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try SFrameTransformErrorEventImpl.constructor(instance, type_, eventInitDict);
+        try SFrameTransformErrorEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -116,15 +110,15 @@ pub const SFrameTransformErrorEvent = struct {
         return try SFrameTransformErrorEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try SFrameTransformErrorEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try SFrameTransformErrorEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try SFrameTransformErrorEventImpl.get_currentTarget(instance);
     }
 
@@ -177,7 +171,7 @@ pub const SFrameTransformErrorEvent = struct {
         return try SFrameTransformErrorEventImpl.get_errorType(instance);
     }
 
-    pub fn get_keyID(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_keyID(instance: *runtime.Instance) anyerror!CryptoKeyID {
         return try SFrameTransformErrorEventImpl.get_keyID(instance);
     }
 
@@ -189,9 +183,9 @@ pub const SFrameTransformErrorEvent = struct {
         return try SFrameTransformErrorEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try SFrameTransformErrorEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try SFrameTransformErrorEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_composedPath(instance: *runtime.Instance) anyerror!anyopaque {

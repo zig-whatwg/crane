@@ -1,5 +1,5 @@
 //! Generated from: WEBGL_multi_draw_instanced_base_vertex_base_instance.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,8 +7,9 @@ const std = @import("std");
 const runtime = @import("runtime");
 const WEBGL_multi_draw_instanced_base_vertex_base_instanceImpl = @import("impls").WEBGL_multi_draw_instanced_base_vertex_base_instance;
 const GLenum = @import("typedefs").GLenum;
-const (Uint32Array or sequence) = @import("interfaces").(Uint32Array or sequence);
-const (Int32Array or sequence) = @import("interfaces").(Int32Array or sequence);
+const sequence = @import("interfaces").sequence;
+const Uint32Array = @import("interfaces").Uint32Array;
+const Int32Array = @import("interfaces").Int32Array;
 const GLsizei = @import("typedefs").GLsizei;
 
 pub const WEBGL_multi_draw_instanced_base_vertex_base_instance = struct {
@@ -44,17 +45,7 @@ pub const WEBGL_multi_draw_instanced_base_vertex_base_instance = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        WEBGL_multi_draw_instanced_base_vertex_base_instanceImpl.init(instance);
-        
-        return instance;
+        return WEBGL_multi_draw_instanced_base_vertex_base_instanceImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -72,9 +63,9 @@ pub const WEBGL_multi_draw_instanced_base_vertex_base_instance = struct {
         return try WEBGL_multi_draw_instanced_base_vertex_base_instanceImpl.call_multiDrawArraysInstancedBaseInstanceWEBGL(instance, mode, firstsList, firstsOffset, countsList, countsOffset, instanceCountsList, instanceCountsOffset, baseInstancesList, baseInstancesOffset, drawcount);
     }
 
-    pub fn call_multiDrawElementsInstancedBaseVertexBaseInstanceWEBGL(instance: *runtime.Instance, mode: GLenum, countsList: anyopaque, countsOffset: u64, type_: GLenum, offsetsList: anyopaque, offsetsOffset: u64, instanceCountsList: anyopaque, instanceCountsOffset: u64, baseVerticesList: anyopaque, baseVerticesOffset: u64, baseInstancesList: anyopaque, baseInstancesOffset: u64, drawcount: GLsizei) anyerror!void {
+    pub fn call_multiDrawElementsInstancedBaseVertexBaseInstanceWEBGL(instance: *runtime.Instance, mode: GLenum, countsList: anyopaque, countsOffset: u64, @"type": GLenum, offsetsList: anyopaque, offsetsOffset: u64, instanceCountsList: anyopaque, instanceCountsOffset: u64, baseVerticesList: anyopaque, baseVerticesOffset: u64, baseInstancesList: anyopaque, baseInstancesOffset: u64, drawcount: GLsizei) anyerror!void {
         
-        return try WEBGL_multi_draw_instanced_base_vertex_base_instanceImpl.call_multiDrawElementsInstancedBaseVertexBaseInstanceWEBGL(instance, mode, countsList, countsOffset, type_, offsetsList, offsetsOffset, instanceCountsList, instanceCountsOffset, baseVerticesList, baseVerticesOffset, baseInstancesList, baseInstancesOffset, drawcount);
+        return try WEBGL_multi_draw_instanced_base_vertex_base_instanceImpl.call_multiDrawElementsInstancedBaseVertexBaseInstanceWEBGL(instance, mode, countsList, countsOffset, @"type", offsetsList, offsetsOffset, instanceCountsList, instanceCountsOffset, baseVerticesList, baseVerticesOffset, baseInstancesList, baseInstancesOffset, drawcount);
     }
 
 };

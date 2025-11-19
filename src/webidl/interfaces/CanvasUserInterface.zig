@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -32,17 +32,7 @@ pub const CanvasUserInterface = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        CanvasUserInterfaceImpl.init(instance);
-        
-        return instance;
+        return CanvasUserInterfaceImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -55,22 +45,9 @@ pub const CanvasUserInterface = struct {
         deinit(instance);
     }
 
-    /// Arguments for drawFocusIfNeeded (WebIDL overloading)
-    pub const DrawFocusIfNeededArgs = union(enum) {
-        /// drawFocusIfNeeded(element)
-        Element: Element,
-        /// drawFocusIfNeeded(path, element)
-        Path2D_Element: struct {
-            path: Path2D,
-            element: Element,
-        },
-    };
-
-    pub fn call_drawFocusIfNeeded(instance: *runtime.Instance, args: DrawFocusIfNeededArgs) anyerror!void {
-        switch (args) {
-            .Element => |arg| return try CanvasUserInterfaceImpl.Element(instance, arg),
-            .Path2D_Element => |a| return try CanvasUserInterfaceImpl.Path2D_Element(instance, a.path, a.element),
-        }
+    pub fn call_drawFocusIfNeeded(instance: *runtime.Instance, element: Element) anyerror!void {
+        
+        return try CanvasUserInterfaceImpl.call_drawFocusIfNeeded(instance, element);
     }
 
 };

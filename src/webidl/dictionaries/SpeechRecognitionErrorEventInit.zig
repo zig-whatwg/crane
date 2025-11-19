@@ -9,6 +9,6 @@ pub const SpeechRecognitionErrorEventInit = struct {
     // Inherited from EventInit
     base: EventInit,
 
-    error: anyopaque,
+    @"error": anyopaque,
     message: ?runtime.DOMString = null,
 };

@@ -1,13 +1,15 @@
 //! Generated from: url.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const URLSearchParamsImpl = @import("impls").URLSearchParams;
-const (sequence or record or USVString) = @import("interfaces").(sequence or record or USVString);
+const sequence = @import("interfaces").sequence;
+const record = @import("interfaces").record;
 const USVString = @import("interfaces").USVString;
+const DOMString = @import("typedefs").DOMString;
 
 pub const URLSearchParams = struct {
     pub const Meta = struct {
@@ -47,17 +49,7 @@ pub const URLSearchParams = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        URLSearchParamsImpl.init(instance);
-        
-        return instance;
+        return URLSearchParamsImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -71,11 +63,11 @@ pub const URLSearchParams = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, init: anyopaque) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, init_data: anyopaque) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try URLSearchParamsImpl.constructor(instance, init);
+        try URLSearchParamsImpl.constructor(instance, init_data);
         
         return instance;
     }
@@ -109,7 +101,7 @@ pub const URLSearchParams = struct {
         return try URLSearchParamsImpl.call_set(instance, name, value);
     }
 
-    pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!anyopaque {
+    pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!runtime.USVString {
         
         return try URLSearchParamsImpl.call_get(instance, name);
     }

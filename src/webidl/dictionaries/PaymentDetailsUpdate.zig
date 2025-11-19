@@ -9,7 +9,7 @@ pub const PaymentDetailsUpdate = struct {
     // Inherited from PaymentDetailsBase
     base: PaymentDetailsBase,
 
-    error: ?runtime.DOMString = null,
+    @"error": ?runtime.DOMString = null,
     total: ?anyopaque = null,
     shippingAddressErrors: ?anyopaque = null,
     payerErrors: ?anyopaque = null,

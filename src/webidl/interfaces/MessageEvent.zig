@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,8 +8,13 @@ const runtime = @import("runtime");
 const MessageEventImpl = @import("impls").MessageEvent;
 const Event = @import("interfaces").Event;
 const MessageEventInit = @import("dictionaries").MessageEventInit;
-const FrozenArray<MessagePort> = @import("interfaces").FrozenArray<MessagePort>;
+const EventTarget = @import("interfaces").EventTarget;
 const MessageEventSource = @import("typedefs").MessageEventSource;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
+const USVString = @import("interfaces").USVString;
+const DOMString = @import("typedefs").DOMString;
+const MessagePort = @import("interfaces").MessagePort;
 
 pub const MessageEvent = struct {
     pub const Meta = struct {
@@ -40,7 +45,7 @@ pub const MessageEvent = struct {
             origin: runtime.USVString = undefined,
             lastEventId: runtime.DOMString = undefined,
             source: ?MessageEventSource = null,
-            ports: FrozenArray<MessagePort> = undefined,
+            ports: runtime.FrozenArray(MessagePort) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -85,17 +90,7 @@ pub const MessageEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        MessageEventImpl.init(instance);
-        
-        return instance;
+        return MessageEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -109,11 +104,11 @@ pub const MessageEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, eventInitDict: MessageEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, eventInitDict: MessageEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try MessageEventImpl.constructor(instance, type_, eventInitDict);
+        try MessageEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -122,15 +117,15 @@ pub const MessageEvent = struct {
         return try MessageEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try MessageEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try MessageEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try MessageEventImpl.get_currentTarget(instance);
     }
 
@@ -191,7 +186,7 @@ pub const MessageEvent = struct {
         return try MessageEventImpl.get_lastEventId(instance);
     }
 
-    pub fn get_source(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_source(instance: *runtime.Instance) anyerror!MessageEventSource {
         return try MessageEventImpl.get_source(instance);
     }
 
@@ -203,9 +198,9 @@ pub const MessageEvent = struct {
         return try MessageEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try MessageEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try MessageEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_composedPath(instance: *runtime.Instance) anyerror!anyopaque {
@@ -216,9 +211,9 @@ pub const MessageEvent = struct {
         return try MessageEventImpl.call_stopPropagation(instance);
     }
 
-    pub fn call_initMessageEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool, data: anyopaque, origin: runtime.USVString, lastEventId: DOMString, source: anyopaque, ports: anyopaque) anyerror!void {
+    pub fn call_initMessageEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool, data: anyopaque, origin: runtime.USVString, lastEventId: DOMString, source: MessageEventSource, ports: anyopaque) anyerror!void {
         
-        return try MessageEventImpl.call_initMessageEvent(instance, type_, bubbles, cancelable, data, origin, lastEventId, source, ports);
+        return try MessageEventImpl.call_initMessageEvent(instance, @"type", bubbles, cancelable, data, origin, lastEventId, source, ports);
     }
 
     pub fn call_preventDefault(instance: *runtime.Instance) anyerror!void {

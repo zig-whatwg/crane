@@ -6,5 +6,5 @@ const runtime = @import("runtime");
 
 pub const ClientQueryOptions = struct {
     includeUncontrolled: ?bool = null,
-    type: ?anyopaque = null,
+    @"type": ?anyopaque = null,
 };

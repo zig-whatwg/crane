@@ -1,5 +1,5 @@
 //! Generated from: css-layout-api.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,8 +7,8 @@ const std = @import("std");
 const runtime = @import("runtime");
 const LayoutChildImpl = @import("impls").LayoutChild;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
-const Promise<LayoutFragment> = @import("interfaces").Promise<LayoutFragment>;
-const Promise<IntrinsicSizes> = @import("interfaces").Promise<IntrinsicSizes>;
+const LayoutFragment = @import("interfaces").LayoutFragment;
+const IntrinsicSizes = @import("interfaces").IntrinsicSizes;
 const ChildBreakToken = @import("interfaces").ChildBreakToken;
 const LayoutConstraintsOptions = @import("dictionaries").LayoutConstraintsOptions;
 
@@ -45,17 +45,7 @@ pub const LayoutChild = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        LayoutChildImpl.init(instance);
-        
-        return instance;
+        return LayoutChildImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

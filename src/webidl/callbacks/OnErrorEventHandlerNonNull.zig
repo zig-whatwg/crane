@@ -4,4 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const OnErrorEventHandlerNonNull = *const fn (event: anyopaque, source: runtime.DOMString, lineno: u32, colno: u32, error: anyopaque) anyopaque;
+pub const OnErrorEventHandlerNonNull = *const fn (event: anyopaque, source: runtime.DOMString, lineno: u32, colno: u32, @"error": anyopaque) anyopaque;

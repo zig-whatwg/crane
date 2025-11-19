@@ -1,5 +1,5 @@
 //! Generated from: resize-observer.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,8 +7,8 @@ const std = @import("std");
 const runtime = @import("runtime");
 const ResizeObserverEntryImpl = @import("impls").ResizeObserverEntry;
 const Element = @import("interfaces").Element;
-const FrozenArray<ResizeObserverSize> = @import("interfaces").FrozenArray<ResizeObserverSize>;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
+const ResizeObserverSize = @import("interfaces").ResizeObserverSize;
 
 pub const ResizeObserverEntry = struct {
     pub const Meta = struct {
@@ -28,9 +28,9 @@ pub const ResizeObserverEntry = struct {
         struct {
             target: Element = undefined,
             contentRect: DOMRectReadOnly = undefined,
-            borderBoxSize: FrozenArray<ResizeObserverSize> = undefined,
-            contentBoxSize: FrozenArray<ResizeObserverSize> = undefined,
-            devicePixelContentBoxSize: FrozenArray<ResizeObserverSize> = undefined,
+            borderBoxSize: runtime.FrozenArray(ResizeObserverSize) = undefined,
+            contentBoxSize: runtime.FrozenArray(ResizeObserverSize) = undefined,
+            devicePixelContentBoxSize: runtime.FrozenArray(ResizeObserverSize) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -48,17 +48,7 @@ pub const ResizeObserverEntry = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ResizeObserverEntryImpl.init(instance);
-        
-        return instance;
+        return ResizeObserverEntryImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

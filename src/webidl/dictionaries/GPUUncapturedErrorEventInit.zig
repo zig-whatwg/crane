@@ -9,5 +9,5 @@ pub const GPUUncapturedErrorEventInit = struct {
     // Inherited from EventInit
     base: EventInit,
 
-    error: anyopaque,
+    @"error": anyopaque,
 };

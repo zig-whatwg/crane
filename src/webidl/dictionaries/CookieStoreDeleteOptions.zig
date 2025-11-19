@@ -6,7 +6,7 @@ const runtime = @import("runtime");
 
 pub const CookieStoreDeleteOptions = struct {
     name: runtime.DOMString,
-    domain: ?anyopaque = null,
+    domain: ?runtime.DOMString = null,
     path: ?runtime.DOMString = null,
     partitioned: ?bool = null,
 };

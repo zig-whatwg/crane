@@ -1,19 +1,18 @@
 //! Generated from: wasm-js-api.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const WebAssemblyImpl = @import("impls").WebAssembly;
+const Module = @import("interfaces").Module;
 const Tag = @import("interfaces").Tag;
 const BufferSource = @import("typedefs").BufferSource;
-const Promise<Instance> = @import("interfaces").Promise<Instance>;
-const Promise<WebAssemblyInstantiatedSource> = @import("interfaces").Promise<WebAssemblyInstantiatedSource>;
-const Promise<Module> = @import("interfaces").Promise<Module>;
-const Promise<Response> = @import("interfaces").Promise<Response>;
+const Instance = @import("interfaces").Instance;
+const WebAssemblyInstantiatedSource = @import("dictionaries").WebAssemblyInstantiatedSource;
 const WebAssemblyCompileOptions = @import("dictionaries").WebAssemblyCompileOptions;
-const Module = @import("interfaces").Module;
+const Response = @import("interfaces").Response;
 
 pub const WebAssembly = struct {
     pub const Meta = struct {
@@ -54,17 +53,7 @@ pub const WebAssembly = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        WebAssemblyImpl.init(instance);
-        
-        return instance;
+        return WebAssemblyImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -86,26 +75,9 @@ pub const WebAssembly = struct {
         return try WebAssemblyImpl.call_compile(instance, bytes, options);
     }
 
-    /// Arguments for instantiate (WebIDL overloading)
-    pub const InstantiateArgs = union(enum) {
-        /// instantiate(bytes, importObject, options)
-        BufferSource_object_WebAssemblyCompileOptions: struct {
-            bytes: BufferSource,
-            importObject: anyopaque,
-            options: WebAssemblyCompileOptions,
-        },
-        /// instantiate(moduleObject, importObject)
-        Module_object: struct {
-            moduleObject: Module,
-            importObject: anyopaque,
-        },
-    };
-
-    pub fn call_instantiate(instance: *runtime.Instance, args: InstantiateArgs) anyerror!anyopaque {
-        switch (args) {
-            .BufferSource_object_WebAssemblyCompileOptions => |a| return try WebAssemblyImpl.BufferSource_object_WebAssemblyCompileOptions(instance, a.bytes, a.importObject, a.options),
-            .Module_object => |a| return try WebAssemblyImpl.Module_object(instance, a.moduleObject, a.importObject),
-        }
+    pub fn call_instantiate(instance: *runtime.Instance, bytes: BufferSource, importObject: anyopaque, options: WebAssemblyCompileOptions) anyerror!anyopaque {
+        
+        return try WebAssemblyImpl.call_instantiate(instance, bytes, importObject, options);
     }
 
     pub fn call_validate(instance: *runtime.Instance, bytes: BufferSource, options: WebAssemblyCompileOptions) anyerror!bool {

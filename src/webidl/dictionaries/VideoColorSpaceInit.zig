@@ -8,5 +8,5 @@ pub const VideoColorSpaceInit = struct {
     primaries: ?anyopaque = null,
     transfer: ?anyopaque = null,
     matrix: ?anyopaque = null,
-    fullRange: ?anyopaque = null,
+    fullRange: ?bool = null,
 };

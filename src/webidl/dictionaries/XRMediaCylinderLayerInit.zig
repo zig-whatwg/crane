@@ -12,5 +12,5 @@ pub const XRMediaCylinderLayerInit = struct {
     transform: ?anyopaque = null,
     radius: ?f32 = null,
     centralAngle: ?f32 = null,
-    aspectRatio: ?anyopaque = null,
+    aspectRatio: ?f32 = null,
 };

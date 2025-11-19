@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,14 +7,15 @@ const std = @import("std");
 const runtime = @import("runtime");
 const BluetoothAdvertisingEventImpl = @import("impls").BluetoothAdvertisingEvent;
 const Event = @import("interfaces").Event;
-const byte = @import("interfaces").byte;
-const BluetoothServiceDataMap = @import("interfaces").BluetoothServiceDataMap;
 const BluetoothDevice = @import("interfaces").BluetoothDevice;
-const unsigned short = @import("interfaces").unsigned short;
 const BluetoothManufacturerDataMap = @import("interfaces").BluetoothManufacturerDataMap;
+const UUID = @import("typedefs").UUID;
+const EventTarget = @import("interfaces").EventTarget;
 const BluetoothAdvertisingEventInit = @import("dictionaries").BluetoothAdvertisingEventInit;
-const FrozenArray<UUID> = @import("interfaces").FrozenArray<UUID>;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
 const DOMString = @import("typedefs").DOMString;
+const BluetoothServiceDataMap = @import("interfaces").BluetoothServiceDataMap;
 
 pub const BluetoothAdvertisingEvent = struct {
     pub const Meta = struct {
@@ -39,7 +40,7 @@ pub const BluetoothAdvertisingEvent = struct {
     pub const State = runtime.FlattenedState(
         struct {
             device: BluetoothDevice = undefined,
-            uuids: FrozenArray<UUID> = undefined,
+            uuids: runtime.FrozenArray(UUID) = undefined,
             name: ?runtime.DOMString = null,
             appearance: ?u16 = null,
             txPower: ?i8 = null,
@@ -92,17 +93,7 @@ pub const BluetoothAdvertisingEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        BluetoothAdvertisingEventImpl.init(instance);
-        
-        return instance;
+        return BluetoothAdvertisingEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -116,11 +107,11 @@ pub const BluetoothAdvertisingEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, init: BluetoothAdvertisingEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, init_data: BluetoothAdvertisingEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try BluetoothAdvertisingEventImpl.constructor(instance, type_, init);
+        try BluetoothAdvertisingEventImpl.constructor(instance, @"type", init_data);
         
         return instance;
     }
@@ -129,15 +120,15 @@ pub const BluetoothAdvertisingEvent = struct {
         return try BluetoothAdvertisingEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try BluetoothAdvertisingEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try BluetoothAdvertisingEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try BluetoothAdvertisingEventImpl.get_currentTarget(instance);
     }
 
@@ -202,19 +193,19 @@ pub const BluetoothAdvertisingEvent = struct {
         return try BluetoothAdvertisingEventImpl.get_uuids(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
         return try BluetoothAdvertisingEventImpl.get_name(instance);
     }
 
-    pub fn get_appearance(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_appearance(instance: *runtime.Instance) anyerror!u16 {
         return try BluetoothAdvertisingEventImpl.get_appearance(instance);
     }
 
-    pub fn get_txPower(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_txPower(instance: *runtime.Instance) anyerror!i8 {
         return try BluetoothAdvertisingEventImpl.get_txPower(instance);
     }
 
-    pub fn get_rssi(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_rssi(instance: *runtime.Instance) anyerror!i8 {
         return try BluetoothAdvertisingEventImpl.get_rssi(instance);
     }
 
@@ -246,9 +237,9 @@ pub const BluetoothAdvertisingEvent = struct {
         return try BluetoothAdvertisingEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try BluetoothAdvertisingEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try BluetoothAdvertisingEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_composedPath(instance: *runtime.Instance) anyerror!anyopaque {

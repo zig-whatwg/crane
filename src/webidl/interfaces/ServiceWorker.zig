@@ -1,5 +1,5 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,8 +8,16 @@ const runtime = @import("runtime");
 const ServiceWorkerImpl = @import("impls").ServiceWorker;
 const EventTarget = @import("interfaces").EventTarget;
 const AbstractWorker = @import("interfaces").AbstractWorker;
-const ServiceWorkerState = @import("enums").ServiceWorkerState;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const StructuredSerializeOptions = @import("dictionaries").StructuredSerializeOptions;
+const USVString = @import("interfaces").USVString;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
+const ServiceWorkerState = @import("enums").ServiceWorkerState;
+const DOMString = @import("typedefs").DOMString;
 const EventHandler = @import("typedefs").EventHandler;
 
 pub const ServiceWorker = struct {
@@ -63,17 +71,7 @@ pub const ServiceWorker = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ServiceWorkerImpl.init(instance);
-        
-        return instance;
+        return ServiceWorkerImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -115,40 +113,24 @@ pub const ServiceWorker = struct {
         return try ServiceWorkerImpl.call_dispatchEvent(instance, event);
     }
 
-    /// Arguments for postMessage (WebIDL overloading)
-    pub const PostMessageArgs = union(enum) {
-        /// postMessage(message, transfer)
-        any_sequence: struct {
-            message: anyopaque,
-            transfer: anyopaque,
-        },
-        /// postMessage(message, options)
-        any_StructuredSerializeOptions: struct {
-            message: anyopaque,
-            options: StructuredSerializeOptions,
-        },
-    };
-
-    pub fn call_postMessage(instance: *runtime.Instance, args: PostMessageArgs) anyerror!void {
-        switch (args) {
-            .any_sequence => |a| return try ServiceWorkerImpl.any_sequence(instance, a.message, a.transfer),
-            .any_StructuredSerializeOptions => |a| return try ServiceWorkerImpl.any_StructuredSerializeOptions(instance, a.message, a.options),
-        }
+    pub fn call_postMessage(instance: *runtime.Instance, message: anyopaque, transfer: anyopaque) anyerror!void {
+        
+        return try ServiceWorkerImpl.call_postMessage(instance, message, transfer);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try ServiceWorkerImpl.call_when(instance, type_, options);
+        return try ServiceWorkerImpl.call_when(instance, @"type", options);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try ServiceWorkerImpl.call_addEventListener(instance, type_, callback, options);
+        return try ServiceWorkerImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try ServiceWorkerImpl.call_removeEventListener(instance, type_, callback, options);
+        return try ServiceWorkerImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

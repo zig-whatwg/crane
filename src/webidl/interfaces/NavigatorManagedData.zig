@@ -1,5 +1,5 @@
 //! Generated from: managed-configuration.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,9 +7,14 @@ const std = @import("std");
 const runtime = @import("runtime");
 const NavigatorManagedDataImpl = @import("impls").NavigatorManagedData;
 const EventTarget = @import("interfaces").EventTarget;
-const Promise<DOMString> = @import("interfaces").Promise<DOMString>;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const EventHandler = @import("typedefs").EventHandler;
-const Promise<record<DOMString,object>> = @import("interfaces").Promise<record<DOMString,object>>;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const Event = @import("interfaces").Event;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
+const DOMString = @import("typedefs").DOMString;
+const Observable = @import("interfaces").Observable;
 
 pub const NavigatorManagedData = struct {
     pub const Meta = struct {
@@ -55,17 +60,7 @@ pub const NavigatorManagedData = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        NavigatorManagedDataImpl.init(instance);
-        
-        return instance;
+        return NavigatorManagedDataImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -91,9 +86,9 @@ pub const NavigatorManagedData = struct {
         return try NavigatorManagedDataImpl.call_getManagedConfiguration(instance, keys);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try NavigatorManagedDataImpl.call_when(instance, type_, options);
+        return try NavigatorManagedDataImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_getAnnotatedAssetId(instance: *runtime.Instance) anyerror!anyopaque {
@@ -121,14 +116,14 @@ pub const NavigatorManagedData = struct {
         return try NavigatorManagedDataImpl.call_getSerialNumber(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try NavigatorManagedDataImpl.call_addEventListener(instance, type_, callback, options);
+        return try NavigatorManagedDataImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try NavigatorManagedDataImpl.call_removeEventListener(instance, type_, callback, options);
+        return try NavigatorManagedDataImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

@@ -10,5 +10,5 @@ pub const IDBVersionChangeEventInit = struct {
     base: EventInit,
 
     oldVersion: ?u64 = null,
-    newVersion: ?anyopaque = null,
+    newVersion: ?u64 = null,
 };

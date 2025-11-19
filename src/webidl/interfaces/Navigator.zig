@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -30,20 +30,20 @@ const Serial = @import("interfaces").Serial;
 const Presentation = @import("interfaces").Presentation;
 const SmartCardResourceManager = @import("interfaces").SmartCardResourceManager;
 const AdAuctionDataConfig = @import("dictionaries").AdAuctionDataConfig;
-const Promise<HandwritingRecognizerQueryResult?> = @import("interfaces").Promise<HandwritingRecognizerQueryResult?>;
 const HID = @import("interfaces").HID;
-const AuctionAdConfig = @import("dictionaries").AuctionAdConfig;
-const Promise<MIDIAccess> = @import("interfaces").Promise<MIDIAccess>;
 const PreferenceManager = @import("interfaces").PreferenceManager;
+const AuctionAdConfig = @import("dictionaries").AuctionAdConfig;
+const USVString = @import("interfaces").USVString;
+const MediaKeySystemAccess = @import("interfaces").MediaKeySystemAccess;
 const VibratePattern = @import("typedefs").VibratePattern;
+const BatteryManager = @import("interfaces").BatteryManager;
 const NetworkInformation = @import("interfaces").NetworkInformation;
 const ML = @import("interfaces").ML;
-const Promise<DOMString> = @import("interfaces").Promise<DOMString>;
 const StorageBucketManager = @import("interfaces").StorageBucketManager;
 const BodyInit = @import("typedefs").BodyInit;
-const Promise<sequence<RelatedApplication>> = @import("interfaces").Promise<sequence<RelatedApplication>>;
+const HandwritingRecognizer = @import("interfaces").HandwritingRecognizer;
+const MIDIAccess = @import("interfaces").MIDIAccess;
 const AuctionAdInterestGroupKey = @import("dictionaries").AuctionAdInterestGroupKey;
-const Promise<AdAuctionData> = @import("interfaces").Promise<AdAuctionData>;
 const Attribution = @import("interfaces").Attribution;
 const ShareData = @import("dictionaries").ShareData;
 const Scheduling = @import("interfaces").Scheduling;
@@ -52,19 +52,18 @@ const AutoplayPolicy = @import("enums").AutoplayPolicy;
 const Clipboard = @import("interfaces").Clipboard;
 const HandwritingModelConstraint = @import("dictionaries").HandwritingModelConstraint;
 const StorageManager = @import("interfaces").StorageManager;
-const FrozenArray<DOMString> = @import("interfaces").FrozenArray<DOMString>;
+const MediaKeySystemConfiguration = @import("dictionaries").MediaKeySystemConfiguration;
 const AudioSession = @import("interfaces").AudioSession;
 const CredentialsContainer = @import("interfaces").CredentialsContainer;
 const ServiceWorkerContainer = @import("interfaces").ServiceWorkerContainer;
 const HTMLMediaElement = @import("interfaces").HTMLMediaElement;
 const MediaDevices = @import("interfaces").MediaDevices;
 const NavigatorManagedData = @import("interfaces").NavigatorManagedData;
+const DOMString = @import("typedefs").DOMString;
 const Permissions = @import("interfaces").Permissions;
 const LockManager = @import("interfaces").LockManager;
-const Promise<(USVStringorFencedFrameConfig)?> = @import("interfaces").Promise<(USVStringorFencedFrameConfig)?>;
 const AudioContext = @import("interfaces").AudioContext;
-const Promise<MediaKeySystemAccess> = @import("interfaces").Promise<MediaKeySystemAccess>;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
+const HandwritingRecognizerQueryResult = @import("dictionaries").HandwritingRecognizerQueryResult;
 const ContactsManager = @import("interfaces").ContactsManager;
 const DevicePosture = @import("interfaces").DevicePosture;
 const Geolocation = @import("interfaces").Geolocation;
@@ -79,6 +78,7 @@ const Bluetooth = @import("interfaces").Bluetooth;
 const MediaSession = @import("interfaces").MediaSession;
 const USB = @import("interfaces").USB;
 const AutoplayPolicyMediaType = @import("enums").AutoplayPolicyMediaType;
+const AdAuctionData = @import("dictionaries").AdAuctionData;
 const MIDIOptions = @import("dictionaries").MIDIOptions;
 const Ink = @import("interfaces").Ink;
 const XRSystem = @import("interfaces").XRSystem;
@@ -86,10 +86,7 @@ const AuctionAdInterestGroup = @import("dictionaries").AuctionAdInterestGroup;
 const Keyboard = @import("interfaces").Keyboard;
 const WindowControlsOverlay = @import("interfaces").WindowControlsOverlay;
 const UserActivation = @import("interfaces").UserActivation;
-const Promise<USVString> = @import("interfaces").Promise<USVString>;
 const MediaCapabilities = @import("interfaces").MediaCapabilities;
-const Promise<HandwritingRecognizer> = @import("interfaces").Promise<HandwritingRecognizer>;
-const Promise<BatteryManager> = @import("interfaces").Promise<BatteryManager>;
 
 pub const Navigator = struct {
     pub const Meta = struct {
@@ -186,7 +183,7 @@ pub const Navigator = struct {
             vendorSub: runtime.DOMString = undefined,
             oscpu: runtime.DOMString = undefined,
             language: runtime.DOMString = undefined,
-            languages: FrozenArray<DOMString> = undefined,
+            languages: runtime.FrozenArray(runtime.DOMString) = undefined,
             onLine: bool = undefined,
             cookieEnabled: bool = undefined,
             plugins: PluginArray = undefined,
@@ -297,17 +294,7 @@ pub const Navigator = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        NavigatorImpl.init(instance);
-        
-        return instance;
+        return NavigatorImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -913,7 +900,7 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_createAuctionNonce(instance);
     }
 
-    pub fn call_sendBeacon(instance: *runtime.Instance, url: runtime.USVString, data: anyopaque) anyerror!bool {
+    pub fn call_sendBeacon(instance: *runtime.Instance, url: runtime.USVString, data: BodyInit) anyerror!bool {
         
         return try NavigatorImpl.call_sendBeacon(instance, url, data);
     }
@@ -949,22 +936,9 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_deprecatedReplaceInURN(instance, urnOrConfig, replacements);
     }
 
-    /// Arguments for getAutoplayPolicy (WebIDL overloading)
-    pub const GetAutoplayPolicyArgs = union(enum) {
-        /// getAutoplayPolicy(type)
-        AutoplayPolicyMediaType: AutoplayPolicyMediaType,
-        /// getAutoplayPolicy(element)
-        HTMLMediaElement: HTMLMediaElement,
-        /// getAutoplayPolicy(context)
-        AudioContext: AudioContext,
-    };
-
-    pub fn call_getAutoplayPolicy(instance: *runtime.Instance, args: GetAutoplayPolicyArgs) anyerror!AutoplayPolicy {
-        switch (args) {
-            .AutoplayPolicyMediaType => |arg| return try NavigatorImpl.AutoplayPolicyMediaType(instance, arg),
-            .HTMLMediaElement => |arg| return try NavigatorImpl.HTMLMediaElement(instance, arg),
-            .AudioContext => |arg| return try NavigatorImpl.AudioContext(instance, arg),
-        }
+    pub fn call_getAutoplayPolicy(instance: *runtime.Instance, @"type": AutoplayPolicyMediaType) anyerror!AutoplayPolicy {
+        
+        return try NavigatorImpl.call_getAutoplayPolicy(instance, @"type");
     }
 
     pub fn call_javaEnabled(instance: *runtime.Instance) anyerror!bool {

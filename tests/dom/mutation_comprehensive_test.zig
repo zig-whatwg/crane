@@ -140,7 +140,7 @@ test "mutation - insertBefore: insert at beginning" {
     var new_child = try Element.init(allocator, "p");
     defer new_child.deinit();
 
-    _ = try mutation.preInsert(@as(*Node, @ptrCast(&new_child)), @as(*Node, @ptrCast(&parent), @ptrCast(&existing));
+    _ = try mutation.preInsert(@as(*Node, @ptrCast(&new_child)), @as(*Node, @ptrCast(&parent)), @ptrCast(&existing));
 
     // new_child should be first
     try testing.expectEqual(@as(usize, 2), parent.child_nodes.toSlice().len);

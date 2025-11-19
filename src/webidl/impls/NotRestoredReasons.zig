@@ -13,41 +13,50 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Initialize instance
-pub fn init(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Initialize your instance state here
+/// Initialize instance (delegates to runtime.Instance.init)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable);
+    // TODO: Add custom initialization here if needed
+    // const state = instance.getState(StateType);
+    // state.* = .{}; // Initialize fields
+    return instance;
 }
 
-/// Deinitialize instance
+/// Deinitialize instance (delegates to runtime.Instance.deinit)
 pub fn deinit(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Clean up your instance resources here
+    // TODO: Add custom cleanup here if needed
+    // const state = instance.getState(State);
+    // Clean up fields...
+    runtime.Instance.deinit(instance);
 }
 
 /// Getter for src
-pub fn get_src(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_src(instance: *runtime.Instance) ImplError!runtime.DOMString {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for id
-pub fn get_id(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_id(instance: *runtime.Instance) ImplError!runtime.DOMString {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for url
-pub fn get_url(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_url(instance: *runtime.Instance) ImplError!runtime.DOMString {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;

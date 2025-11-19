@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,9 +7,11 @@ const std = @import("std");
 const runtime = @import("runtime");
 const HTMLOptionsCollectionImpl = @import("impls").HTMLOptionsCollection;
 const HTMLCollection = @import("interfaces").HTMLCollection;
+const Element = @import("interfaces").Element;
+const HTMLElement = @import("interfaces").HTMLElement;
 const HTMLOptionElement = @import("interfaces").HTMLOptionElement;
-const (HTMLOptionElement or HTMLOptGroupElement) = @import("interfaces").(HTMLOptionElement or HTMLOptGroupElement);
-const (HTMLElement or long) = @import("interfaces").(HTMLElement or long);
+const DOMString = @import("typedefs").DOMString;
+const HTMLOptGroupElement = @import("interfaces").HTMLOptGroupElement;
 
 pub const HTMLOptionsCollection = struct {
     pub const Meta = struct {
@@ -38,10 +40,8 @@ pub const HTMLOptionsCollection = struct {
         .deinit_fn = &deinit_wrapper,
 
         .get_length = &get_length,
-        .get_length = &get_length,
         .get_selectedIndex = &get_selectedIndex,
 
-        .set_length = &set_length,
         .set_selectedIndex = &set_selectedIndex,
 
         .call_add = &call_add,
@@ -52,17 +52,7 @@ pub const HTMLOptionsCollection = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        HTMLOptionsCollectionImpl.init(instance);
-        
-        return instance;
+        return HTMLOptionsCollectionImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -79,20 +69,6 @@ pub const HTMLOptionsCollection = struct {
         return try HTMLOptionsCollectionImpl.get_length(instance);
     }
 
-    /// Extended attributes: [CEReactions]
-    pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
-        return try HTMLOptionsCollectionImpl.get_length(instance);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn set_length(instance: *runtime.Instance, value: u32) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
-        try HTMLOptionsCollectionImpl.set_length(instance, value);
-    }
-
     pub fn get_selectedIndex(instance: *runtime.Instance) anyerror!i32 {
         return try HTMLOptionsCollectionImpl.get_selectedIndex(instance);
     }
@@ -101,12 +77,12 @@ pub const HTMLOptionsCollection = struct {
         try HTMLOptionsCollectionImpl.set_selectedIndex(instance, value);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!anyopaque {
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!Element {
         
         return try HTMLOptionsCollectionImpl.call_item(instance, index);
     }
 
-    pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!anyopaque {
+    pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!Element {
         
         return try HTMLOptionsCollectionImpl.call_namedItem(instance, name);
     }

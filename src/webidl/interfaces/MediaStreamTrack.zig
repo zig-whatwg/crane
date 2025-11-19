@@ -1,5 +1,5 @@
 //! Generated from: mediacapture-streams.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,14 +7,20 @@ const std = @import("std");
 const runtime = @import("runtime");
 const MediaStreamTrackImpl = @import("impls").MediaStreamTrack;
 const EventTarget = @import("interfaces").EventTarget;
-const CaptureAction = @import("enums").CaptureAction;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const CaptureHandle = @import("dictionaries").CaptureHandle;
-const MediaTrackCapabilities = @import("dictionaries").MediaTrackCapabilities;
 const MediaTrackSettings = @import("dictionaries").MediaTrackSettings;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
 const MediaTrackConstraints = @import("dictionaries").MediaTrackConstraints;
-const EventHandler = @import("typedefs").EventHandler;
 const MediaStreamTrackState = @import("enums").MediaStreamTrackState;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const CaptureAction = @import("enums").CaptureAction;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const MediaTrackCapabilities = @import("dictionaries").MediaTrackCapabilities;
+const EventListener = @import("interfaces").EventListener;
+const EventHandler = @import("typedefs").EventHandler;
+const DOMString = @import("typedefs").DOMString;
 
 pub const MediaStreamTrack = struct {
     pub const Meta = struct {
@@ -92,17 +98,7 @@ pub const MediaStreamTrack = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        MediaStreamTrackImpl.init(instance);
-        
-        return instance;
+        return MediaStreamTrackImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -203,9 +199,9 @@ pub const MediaStreamTrack = struct {
         return try MediaStreamTrackImpl.call_stop(instance);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try MediaStreamTrackImpl.call_when(instance, type_, options);
+        return try MediaStreamTrackImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_getCapabilities(instance: *runtime.Instance) anyerror!MediaTrackCapabilities {
@@ -217,9 +213,9 @@ pub const MediaStreamTrack = struct {
         return try MediaStreamTrackImpl.call_sendCaptureAction(instance, action);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try MediaStreamTrackImpl.call_addEventListener(instance, type_, callback, options);
+        return try MediaStreamTrackImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
     pub fn call_applyConstraints(instance: *runtime.Instance, constraints: MediaTrackConstraints) anyerror!anyopaque {
@@ -227,12 +223,12 @@ pub const MediaStreamTrack = struct {
         return try MediaStreamTrackImpl.call_applyConstraints(instance, constraints);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try MediaStreamTrackImpl.call_removeEventListener(instance, type_, callback, options);
+        return try MediaStreamTrackImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_getCaptureHandle(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn call_getCaptureHandle(instance: *runtime.Instance) anyerror!CaptureHandle {
         return try MediaStreamTrackImpl.call_getCaptureHandle(instance);
     }
 

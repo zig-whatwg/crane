@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,6 +7,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const GPUOutOfMemoryErrorImpl = @import("impls").GPUOutOfMemoryError;
 const GPUError = @import("interfaces").GPUError;
+const DOMString = @import("typedefs").DOMString;
 
 pub const GPUOutOfMemoryError = struct {
     pub const Meta = struct {
@@ -40,17 +41,7 @@ pub const GPUOutOfMemoryError = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        GPUOutOfMemoryErrorImpl.init(instance);
-        
-        return instance;
+        return GPUOutOfMemoryErrorImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

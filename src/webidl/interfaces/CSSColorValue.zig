@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,8 @@ const std = @import("std");
 const runtime = @import("runtime");
 const CSSColorValueImpl = @import("impls").CSSColorValue;
 const CSSStyleValue = @import("interfaces").CSSStyleValue;
-const (CSSColorValue or CSSStyleValue) = @import("interfaces").(CSSColorValue or CSSStyleValue);
+const USVString = @import("interfaces").USVString;
+const DOMString = @import("typedefs").DOMString;
 
 pub const CSSColorValue = struct {
     pub const Meta = struct {
@@ -43,17 +44,7 @@ pub const CSSColorValue = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        CSSColorValueImpl.init(instance);
-        
-        return instance;
+        return CSSColorValueImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -72,22 +63,10 @@ pub const CSSColorValue = struct {
         return try CSSColorValueImpl.call_parseAll(instance, property, cssText);
     }
 
-    /// Arguments for parse (WebIDL overloading)
-    pub const ParseArgs = union(enum) {
-        /// parse(property, cssText)
-        USVString_USVString: struct {
-            property: runtime.USVString,
-            cssText: runtime.USVString,
-        },
-        /// parse(cssText)
-        USVString: runtime.USVString,
-    };
-
-    pub fn call_parse(instance: *runtime.Instance, args: ParseArgs) anyerror!CSSStyleValue {
-        switch (args) {
-            .USVString_USVString => |a| return try CSSColorValueImpl.USVString_USVString(instance, a.property, a.cssText),
-            .USVString => |arg| return try CSSColorValueImpl.USVString(instance, arg),
-        }
+    /// Extended attributes: [Exposed=Window]
+    pub fn call_parse(instance: *runtime.Instance, property: runtime.USVString, cssText: runtime.USVString) anyerror!CSSStyleValue {
+        
+        return try CSSColorValueImpl.call_parse(instance, property, cssText);
     }
 
 };

@@ -1,12 +1,12 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const WorkletImpl = @import("impls").Worklet;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
+const USVString = @import("interfaces").USVString;
 const WorkletOptions = @import("dictionaries").WorkletOptions;
 
 pub const Worklet = struct {
@@ -38,17 +38,7 @@ pub const Worklet = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        WorkletImpl.init(instance);
-        
-        return instance;
+        return WorkletImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

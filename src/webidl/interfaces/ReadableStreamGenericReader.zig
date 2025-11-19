@@ -1,12 +1,11 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const ReadableStreamGenericReaderImpl = @import("impls").ReadableStreamGenericReader;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
 
 pub const ReadableStreamGenericReader = struct {
     pub const Meta = struct {
@@ -19,7 +18,7 @@ pub const ReadableStreamGenericReader = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            closed: Promise<undefined> = undefined,
+            closed: runtime.Promise(undefined) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -35,17 +34,7 @@ pub const ReadableStreamGenericReader = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ReadableStreamGenericReaderImpl.init(instance);
-        
-        return instance;
+        return ReadableStreamGenericReaderImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

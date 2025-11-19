@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,6 +8,9 @@ const runtime = @import("runtime");
 const CSSPageDescriptorsImpl = @import("impls").CSSPageDescriptors;
 const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
 const CSSOMString = @import("interfaces").CSSOMString;
+const CSSRule = @import("interfaces").CSSRule;
+const DOMString = @import("typedefs").DOMString;
+const CSSValue = @import("interfaces").CSSValue;
 
 pub const CSSPageDescriptors = struct {
     pub const Meta = struct {
@@ -30,13 +33,13 @@ pub const CSSPageDescriptors = struct {
             marginRight: CSSOMString = undefined,
             marginBottom: CSSOMString = undefined,
             marginLeft: CSSOMString = undefined,
-            margin-top: CSSOMString = undefined,
-            margin-right: CSSOMString = undefined,
-            margin-bottom: CSSOMString = undefined,
-            margin-left: CSSOMString = undefined,
+            @"margin-top": CSSOMString = undefined,
+            @"margin-right": CSSOMString = undefined,
+            @"margin-bottom": CSSOMString = undefined,
+            @"margin-left": CSSOMString = undefined,
             size: CSSOMString = undefined,
             pageOrientation: CSSOMString = undefined,
-            page-orientation: CSSOMString = undefined,
+            @"page-orientation": CSSOMString = undefined,
             marks: CSSOMString = undefined,
             bleed: CSSOMString = undefined,
         },
@@ -49,40 +52,36 @@ pub const CSSPageDescriptors = struct {
 
         .get_bleed = &get_bleed,
         .get_cssText = &get_cssText,
-        .get_cssText = &get_cssText,
-        .get_length = &get_length,
         .get_length = &get_length,
         .get_margin = &get_margin,
-        .get_margin-bottom = &get_margin-bottom,
-        .get_margin-left = &get_margin-left,
-        .get_margin-right = &get_margin-right,
-        .get_margin-top = &get_margin-top,
         .get_marginBottom = &get_marginBottom,
         .get_marginLeft = &get_marginLeft,
         .get_marginRight = &get_marginRight,
         .get_marginTop = &get_marginTop,
+        .get_margin_bottom = &get_margin_bottom,
+        .get_margin_left = &get_margin_left,
+        .get_margin_right = &get_margin_right,
+        .get_margin_top = &get_margin_top,
         .get_marks = &get_marks,
-        .get_page-orientation = &get_page-orientation,
         .get_pageOrientation = &get_pageOrientation,
-        .get_parentRule = &get_parentRule,
+        .get_page_orientation = &get_page_orientation,
         .get_parentRule = &get_parentRule,
         .get_size = &get_size,
 
         .set_bleed = &set_bleed,
         .set_cssText = &set_cssText,
-        .set_cssText = &set_cssText,
         .set_margin = &set_margin,
-        .set_margin-bottom = &set_margin-bottom,
-        .set_margin-left = &set_margin-left,
-        .set_margin-right = &set_margin-right,
-        .set_margin-top = &set_margin-top,
         .set_marginBottom = &set_marginBottom,
         .set_marginLeft = &set_marginLeft,
         .set_marginRight = &set_marginRight,
         .set_marginTop = &set_marginTop,
+        .set_margin_bottom = &set_margin_bottom,
+        .set_margin_left = &set_margin_left,
+        .set_margin_right = &set_margin_right,
+        .set_margin_top = &set_margin_top,
         .set_marks = &set_marks,
-        .set_page-orientation = &set_page-orientation,
         .set_pageOrientation = &set_pageOrientation,
+        .set_page_orientation = &set_page_orientation,
         .set_size = &set_size,
 
         .call_getPropertyCSSValue = &call_getPropertyCSSValue,
@@ -95,17 +94,7 @@ pub const CSSPageDescriptors = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        CSSPageDescriptorsImpl.init(instance);
-        
-        return instance;
+        return CSSPageDescriptorsImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -129,22 +118,6 @@ pub const CSSPageDescriptors = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
         
-        try CSSPageDescriptorsImpl.set_cssText(instance, value);
-    }
-
-    pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
-        return try CSSPageDescriptorsImpl.get_length(instance);
-    }
-
-    pub fn get_parentRule(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSPageDescriptorsImpl.get_parentRule(instance);
-    }
-
-    pub fn get_cssText(instance: *runtime.Instance) anyerror!DOMString {
-        return try CSSPageDescriptorsImpl.get_cssText(instance);
-    }
-
-    pub fn set_cssText(instance: *runtime.Instance, value: DOMString) anyerror!void {
         try CSSPageDescriptorsImpl.set_cssText(instance, value);
     }
 
@@ -207,43 +180,43 @@ pub const CSSPageDescriptors = struct {
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_margin-top(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSPageDescriptorsImpl.get_margin-top(instance);
+    pub fn get_margin_top(instance: *runtime.Instance) anyerror!anyopaque {
+        return try CSSPageDescriptorsImpl.get_margin_top(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_margin-top(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try CSSPageDescriptorsImpl.set_margin-top(instance, value);
+    pub fn set_margin_top(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+        try CSSPageDescriptorsImpl.set_margin_top(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_margin-right(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSPageDescriptorsImpl.get_margin-right(instance);
+    pub fn get_margin_right(instance: *runtime.Instance) anyerror!anyopaque {
+        return try CSSPageDescriptorsImpl.get_margin_right(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_margin-right(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try CSSPageDescriptorsImpl.set_margin-right(instance, value);
+    pub fn set_margin_right(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+        try CSSPageDescriptorsImpl.set_margin_right(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_margin-bottom(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSPageDescriptorsImpl.get_margin-bottom(instance);
+    pub fn get_margin_bottom(instance: *runtime.Instance) anyerror!anyopaque {
+        return try CSSPageDescriptorsImpl.get_margin_bottom(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_margin-bottom(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try CSSPageDescriptorsImpl.set_margin-bottom(instance, value);
+    pub fn set_margin_bottom(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+        try CSSPageDescriptorsImpl.set_margin_bottom(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_margin-left(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSPageDescriptorsImpl.get_margin-left(instance);
+    pub fn get_margin_left(instance: *runtime.Instance) anyerror!anyopaque {
+        return try CSSPageDescriptorsImpl.get_margin_left(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_margin-left(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try CSSPageDescriptorsImpl.set_margin-left(instance, value);
+    pub fn set_margin_left(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+        try CSSPageDescriptorsImpl.set_margin_left(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
@@ -267,13 +240,13 @@ pub const CSSPageDescriptors = struct {
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_page-orientation(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSPageDescriptorsImpl.get_page-orientation(instance);
+    pub fn get_page_orientation(instance: *runtime.Instance) anyerror!anyopaque {
+        return try CSSPageDescriptorsImpl.get_page_orientation(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_page-orientation(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try CSSPageDescriptorsImpl.set_page-orientation(instance, value);
+    pub fn set_page_orientation(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+        try CSSPageDescriptorsImpl.set_page_orientation(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
@@ -296,72 +269,19 @@ pub const CSSPageDescriptors = struct {
         try CSSPageDescriptorsImpl.set_bleed(instance, value);
     }
 
-    /// Arguments for item (WebIDL overloading)
-    pub const ItemArgs = union(enum) {
-        /// item(index)
-        long: u32,
-        /// item(index)
-        long: u32,
-    };
-
-    pub fn call_item(instance: *runtime.Instance, args: ItemArgs) anyerror!anyopaque {
-        switch (args) {
-            .long => |arg| return try CSSPageDescriptorsImpl.long(instance, arg),
-            .long => |arg| return try CSSPageDescriptorsImpl.long(instance, arg),
-        }
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!anyopaque {
+        
+        return try CSSPageDescriptorsImpl.call_item(instance, index);
     }
 
-    /// Arguments for removeProperty (WebIDL overloading)
-    pub const RemovePropertyArgs = union(enum) {
-        /// removeProperty(property)
-        CSSOMString: anyopaque,
-        /// removeProperty(propertyName)
-        string: DOMString,
-    };
-
-    pub fn call_removeProperty(instance: *runtime.Instance, args: RemovePropertyArgs) anyerror!anyopaque {
-        switch (args) {
-            .CSSOMString => |arg| return try CSSPageDescriptorsImpl.CSSOMString(instance, arg),
-            .string => |arg| return try CSSPageDescriptorsImpl.string(instance, arg),
-        }
-    }
-
-    /// Arguments for getPropertyPriority (WebIDL overloading)
-    pub const GetPropertyPriorityArgs = union(enum) {
-        /// getPropertyPriority(property)
-        CSSOMString: anyopaque,
-        /// getPropertyPriority(propertyName)
-        string: DOMString,
-    };
-
-    pub fn call_getPropertyPriority(instance: *runtime.Instance, args: GetPropertyPriorityArgs) anyerror!anyopaque {
-        switch (args) {
-            .CSSOMString => |arg| return try CSSPageDescriptorsImpl.CSSOMString(instance, arg),
-            .string => |arg| return try CSSPageDescriptorsImpl.string(instance, arg),
-        }
-    }
-
-    /// Arguments for setProperty (WebIDL overloading)
-    pub const SetPropertyArgs = union(enum) {
-        /// setProperty(property, value, priority)
-        CSSOMString_CSSOMString_CSSOMString: struct {
-            property: anyopaque,
-            value: anyopaque,
-            priority: anyopaque,
-        },
-        /// setProperty(propertyName, value, priority)
-        string_string_string: struct {
-            propertyName: DOMString,
-            value: DOMString,
-            priority: DOMString,
-        },
-    };
-
-    pub fn call_setProperty(instance: *runtime.Instance, args: SetPropertyArgs) anyerror!void {
-        switch (args) {
-            .CSSOMString_CSSOMString_CSSOMString => |a| return try CSSPageDescriptorsImpl.CSSOMString_CSSOMString_CSSOMString(instance, a.property, a.value, a.priority),
-            .string_string_string => |a| return try CSSPageDescriptorsImpl.string_string_string(instance, a.propertyName, a.value, a.priority),
-        }
+    /// Extended attributes: [CEReactions]
+    pub fn call_removeProperty(instance: *runtime.Instance, property: anyopaque) anyerror!anyopaque {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try CSSPageDescriptorsImpl.call_removeProperty(instance, property);
     }
 
     pub fn call_getPropertyCSSValue(instance: *runtime.Instance, propertyName: DOMString) anyerror!CSSValue {
@@ -369,19 +289,24 @@ pub const CSSPageDescriptors = struct {
         return try CSSPageDescriptorsImpl.call_getPropertyCSSValue(instance, propertyName);
     }
 
-    /// Arguments for getPropertyValue (WebIDL overloading)
-    pub const GetPropertyValueArgs = union(enum) {
-        /// getPropertyValue(property)
-        CSSOMString: anyopaque,
-        /// getPropertyValue(propertyName)
-        string: DOMString,
-    };
+    pub fn call_getPropertyPriority(instance: *runtime.Instance, property: anyopaque) anyerror!anyopaque {
+        
+        return try CSSPageDescriptorsImpl.call_getPropertyPriority(instance, property);
+    }
 
-    pub fn call_getPropertyValue(instance: *runtime.Instance, args: GetPropertyValueArgs) anyerror!anyopaque {
-        switch (args) {
-            .CSSOMString => |arg| return try CSSPageDescriptorsImpl.CSSOMString(instance, arg),
-            .string => |arg| return try CSSPageDescriptorsImpl.string(instance, arg),
-        }
+    /// Extended attributes: [CEReactions]
+    pub fn call_setProperty(instance: *runtime.Instance, property: anyopaque, value: anyopaque, priority: anyopaque) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try CSSPageDescriptorsImpl.call_setProperty(instance, property, value, priority);
+    }
+
+    pub fn call_getPropertyValue(instance: *runtime.Instance, property: anyopaque) anyerror!anyopaque {
+        
+        return try CSSPageDescriptorsImpl.call_getPropertyValue(instance, property);
     }
 
 };

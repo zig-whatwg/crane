@@ -1,5 +1,5 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,14 +7,20 @@ const std = @import("std");
 const runtime = @import("runtime");
 const VideoEncoderImpl = @import("impls").VideoEncoder;
 const EventTarget = @import("interfaces").EventTarget;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const VideoEncoderEncodeOptions = @import("dictionaries").VideoEncoderEncodeOptions;
+const CodecState = @import("enums").CodecState;
 const VideoEncoderConfig = @import("dictionaries").VideoEncoderConfig;
 const VideoFrame = @import("interfaces").VideoFrame;
-const CodecState = @import("enums").CodecState;
-const Promise<VideoEncoderSupport> = @import("interfaces").Promise<VideoEncoderSupport>;
+const Event = @import("interfaces").Event;
+const Observable = @import("interfaces").Observable;
+const VideoEncoderSupport = @import("dictionaries").VideoEncoderSupport;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
 const VideoEncoderInit = @import("dictionaries").VideoEncoderInit;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
 const EventHandler = @import("typedefs").EventHandler;
+const DOMString = @import("typedefs").DOMString;
 
 pub const VideoEncoder = struct {
     pub const Meta = struct {
@@ -67,17 +73,7 @@ pub const VideoEncoder = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        VideoEncoderImpl.init(instance);
-        
-        return instance;
+        return VideoEncoderImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -91,11 +87,11 @@ pub const VideoEncoder = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, init: VideoEncoderInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, init_data: VideoEncoderInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try VideoEncoderImpl.constructor(instance, init);
+        try VideoEncoderImpl.constructor(instance, init_data);
         
         return instance;
     }
@@ -116,9 +112,9 @@ pub const VideoEncoder = struct {
         try VideoEncoderImpl.set_ondequeue(instance, value);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try VideoEncoderImpl.call_when(instance, type_, options);
+        return try VideoEncoderImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_dispatchEvent(instance: *runtime.Instance, event: Event) anyerror!bool {
@@ -153,14 +149,14 @@ pub const VideoEncoder = struct {
         return try VideoEncoderImpl.call_close(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try VideoEncoderImpl.call_addEventListener(instance, type_, callback, options);
+        return try VideoEncoderImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try VideoEncoderImpl.call_removeEventListener(instance, type_, callback, options);
+        return try VideoEncoderImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

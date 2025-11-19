@@ -1,5 +1,5 @@
 //! Generated from: selection-api.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,6 +9,8 @@ const SelectionImpl = @import("impls").Selection;
 const Node = @import("interfaces").Node;
 const GetComposedRangesOptions = @import("dictionaries").GetComposedRangesOptions;
 const Range = @import("interfaces").Range;
+const DOMString = @import("typedefs").DOMString;
+const StaticRange = @import("interfaces").StaticRange;
 
 pub const Selection = struct {
     pub const Meta = struct {
@@ -32,7 +34,7 @@ pub const Selection = struct {
             focusOffset: u32 = undefined,
             isCollapsed: bool = undefined,
             rangeCount: u32 = undefined,
-            type: runtime.DOMString = undefined,
+            @"type": runtime.DOMString = undefined,
             direction: runtime.DOMString = undefined,
         },
         Meta.BaseType,
@@ -71,17 +73,7 @@ pub const Selection = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        SelectionImpl.init(instance);
-        
-        return instance;
+        return SelectionImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -94,7 +86,7 @@ pub const Selection = struct {
         deinit(instance);
     }
 
-    pub fn get_anchorNode(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_anchorNode(instance: *runtime.Instance) anyerror!Node {
         return try SelectionImpl.get_anchorNode(instance);
     }
 
@@ -102,7 +94,7 @@ pub const Selection = struct {
         return try SelectionImpl.get_anchorOffset(instance);
     }
 
-    pub fn get_focusNode(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_focusNode(instance: *runtime.Instance) anyerror!Node {
         return try SelectionImpl.get_focusNode(instance);
     }
 
@@ -126,7 +118,7 @@ pub const Selection = struct {
         return try SelectionImpl.get_direction(instance);
     }
 
-    pub fn call_setPosition(instance: *runtime.Instance, node: anyopaque, offset: u32) anyerror!void {
+    pub fn call_setPosition(instance: *runtime.Instance, node: Node, offset: u32) anyerror!void {
         
         return try SelectionImpl.call_setPosition(instance, node, offset);
     }
@@ -162,7 +154,7 @@ pub const Selection = struct {
         return try SelectionImpl.call_getComposedRanges(instance, options);
     }
 
-    pub fn call_collapse(instance: *runtime.Instance, node: anyopaque, offset: u32) anyerror!void {
+    pub fn call_collapse(instance: *runtime.Instance, node: Node, offset: u32) anyerror!void {
         
         return try SelectionImpl.call_collapse(instance, node, offset);
     }

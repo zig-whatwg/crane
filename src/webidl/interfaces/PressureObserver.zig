@@ -1,5 +1,5 @@
 //! Generated from: compute-pressure.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,9 +7,8 @@ const std = @import("std");
 const runtime = @import("runtime");
 const PressureObserverImpl = @import("impls").PressureObserver;
 const PressureSource = @import("enums").PressureSource;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
+const PressureRecord = @import("interfaces").PressureRecord;
 const PressureObserverOptions = @import("dictionaries").PressureObserverOptions;
-const FrozenArray<PressureSource> = @import("interfaces").FrozenArray<PressureSource>;
 const PressureUpdateCallback = @import("callbacks").PressureUpdateCallback;
 
 pub const PressureObserver = struct {
@@ -50,17 +49,7 @@ pub const PressureObserver = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PressureObserverImpl.init(instance);
-        
-        return instance;
+        return PressureObserverImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

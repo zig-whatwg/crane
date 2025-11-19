@@ -1,5 +1,5 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,10 +7,10 @@ const std = @import("std");
 const runtime = @import("runtime");
 const DOMQuadImpl = @import("impls").DOMQuad;
 const DOMPoint = @import("interfaces").DOMPoint;
-const DOMPointInit = @import("dictionaries").DOMPointInit;
 const DOMRect = @import("interfaces").DOMRect;
 const DOMRectInit = @import("dictionaries").DOMRectInit;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
+const DOMPointInit = @import("dictionaries").DOMPointInit;
 
 pub const DOMQuad = struct {
     pub const Meta = struct {
@@ -57,17 +57,7 @@ pub const DOMQuad = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        DOMQuadImpl.init(instance);
-        
-        return instance;
+        return DOMQuadImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

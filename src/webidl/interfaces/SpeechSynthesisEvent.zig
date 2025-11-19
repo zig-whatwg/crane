@@ -1,5 +1,5 @@
 //! Generated from: speech-api.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,8 +7,12 @@ const std = @import("std");
 const runtime = @import("runtime");
 const SpeechSynthesisEventImpl = @import("impls").SpeechSynthesisEvent;
 const Event = @import("interfaces").Event;
+const EventTarget = @import("interfaces").EventTarget;
 const SpeechSynthesisEventInit = @import("dictionaries").SpeechSynthesisEventInit;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
 const SpeechSynthesisUtterance = @import("interfaces").SpeechSynthesisUtterance;
+const DOMString = @import("typedefs").DOMString;
 
 pub const SpeechSynthesisEvent = struct {
     pub const Meta = struct {
@@ -79,17 +83,7 @@ pub const SpeechSynthesisEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        SpeechSynthesisEventImpl.init(instance);
-        
-        return instance;
+        return SpeechSynthesisEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -103,11 +97,11 @@ pub const SpeechSynthesisEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, eventInitDict: SpeechSynthesisEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, eventInitDict: SpeechSynthesisEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try SpeechSynthesisEventImpl.constructor(instance, type_, eventInitDict);
+        try SpeechSynthesisEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -116,15 +110,15 @@ pub const SpeechSynthesisEvent = struct {
         return try SpeechSynthesisEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try SpeechSynthesisEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try SpeechSynthesisEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try SpeechSynthesisEventImpl.get_currentTarget(instance);
     }
 
@@ -197,9 +191,9 @@ pub const SpeechSynthesisEvent = struct {
         return try SpeechSynthesisEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try SpeechSynthesisEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try SpeechSynthesisEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_composedPath(instance: *runtime.Instance) anyerror!anyopaque {

@@ -1,5 +1,5 @@
 //! Generated from: writing-assistance-apis.idl
-//! Generated at: 2025-11-18T18:28:13Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,17 +7,13 @@ const std = @import("std");
 const runtime = @import("runtime");
 const SummarizerImpl = @import("impls").Summarizer;
 const DestroyableModel = @import("interfaces").DestroyableModel;
-const Promise<Availability> = @import("interfaces").Promise<Availability>;
-const Promise<Summarizer> = @import("interfaces").Promise<Summarizer>;
-const SummarizerCreateOptions = @import("dictionaries").SummarizerCreateOptions;
-const SummarizerLength = @import("enums").SummarizerLength;
-const FrozenArray<DOMString> = @import("interfaces").FrozenArray<DOMString>;
-const Promise<DOMString> = @import("interfaces").Promise<DOMString>;
-const SummarizerSummarizeOptions = @import("dictionaries").SummarizerSummarizeOptions;
+const Availability = @import("enums").Availability;
 const ReadableStream = @import("interfaces").ReadableStream;
+const SummarizerSummarizeOptions = @import("dictionaries").SummarizerSummarizeOptions;
 const SummarizerCreateCoreOptions = @import("dictionaries").SummarizerCreateCoreOptions;
 const SummarizerType = @import("enums").SummarizerType;
-const Promise<double> = @import("interfaces").Promise<double>;
+const SummarizerCreateOptions = @import("dictionaries").SummarizerCreateOptions;
+const SummarizerLength = @import("enums").SummarizerLength;
 const SummarizerFormat = @import("enums").SummarizerFormat;
 const DOMString = @import("typedefs").DOMString;
 
@@ -41,11 +37,11 @@ pub const Summarizer = struct {
     pub const State = runtime.FlattenedState(
         struct {
             sharedContext: runtime.DOMString = undefined,
-            type: SummarizerType = undefined,
+            @"type": SummarizerType = undefined,
             format: SummarizerFormat = undefined,
             length: SummarizerLength = undefined,
-            expectedInputLanguages: ?FrozenArray<DOMString> = null,
-            expectedContextLanguages: ?FrozenArray<DOMString> = null,
+            expectedInputLanguages: ?runtime.FrozenArray(runtime.DOMString) = null,
+            expectedContextLanguages: ?runtime.FrozenArray(runtime.DOMString) = null,
             outputLanguage: ?runtime.DOMString = null,
             inputQuota: f64 = undefined,
         },
@@ -75,17 +71,7 @@ pub const Summarizer = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        SummarizerImpl.init(instance);
-        
-        return instance;
+        return SummarizerImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -122,7 +108,7 @@ pub const Summarizer = struct {
         return try SummarizerImpl.get_expectedContextLanguages(instance);
     }
 
-    pub fn get_outputLanguage(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_outputLanguage(instance: *runtime.Instance) anyerror!DOMString {
         return try SummarizerImpl.get_outputLanguage(instance);
     }
 

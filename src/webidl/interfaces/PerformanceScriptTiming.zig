@@ -1,5 +1,5 @@
 //! Generated from: long-animation-frames.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,9 +8,10 @@ const runtime = @import("runtime");
 const PerformanceScriptTimingImpl = @import("impls").PerformanceScriptTiming;
 const PerformanceEntry = @import("interfaces").PerformanceEntry;
 const Window = @import("interfaces").Window;
-const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const ScriptWindowAttribution = @import("enums").ScriptWindowAttribution;
 const ScriptInvokerType = @import("enums").ScriptInvokerType;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const DOMString = @import("typedefs").DOMString;
 
 pub const PerformanceScriptTiming = struct {
     pub const Meta = struct {
@@ -51,8 +52,6 @@ pub const PerformanceScriptTiming = struct {
         .deinit_fn = &deinit_wrapper,
 
         .get_duration = &get_duration,
-        .get_duration = &get_duration,
-        .get_entryType = &get_entryType,
         .get_entryType = &get_entryType,
         .get_executionStart = &get_executionStart,
         .get_forcedStyleAndLayoutDuration = &get_forcedStyleAndLayoutDuration,
@@ -60,13 +59,11 @@ pub const PerformanceScriptTiming = struct {
         .get_invoker = &get_invoker,
         .get_invokerType = &get_invokerType,
         .get_name = &get_name,
-        .get_name = &get_name,
         .get_navigationId = &get_navigationId,
         .get_pauseDuration = &get_pauseDuration,
         .get_sourceCharPosition = &get_sourceCharPosition,
         .get_sourceFunctionName = &get_sourceFunctionName,
         .get_sourceURL = &get_sourceURL,
-        .get_startTime = &get_startTime,
         .get_startTime = &get_startTime,
         .get_window = &get_window,
         .get_windowAttribution = &get_windowAttribution,
@@ -76,17 +73,7 @@ pub const PerformanceScriptTiming = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PerformanceScriptTimingImpl.init(instance);
-        
-        return instance;
+        return PerformanceScriptTimingImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -123,22 +110,6 @@ pub const PerformanceScriptTiming = struct {
         return try PerformanceScriptTimingImpl.get_navigationId(instance);
     }
 
-    pub fn get_startTime(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
-        return try PerformanceScriptTimingImpl.get_startTime(instance);
-    }
-
-    pub fn get_duration(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
-        return try PerformanceScriptTimingImpl.get_duration(instance);
-    }
-
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
-        return try PerformanceScriptTimingImpl.get_name(instance);
-    }
-
-    pub fn get_entryType(instance: *runtime.Instance) anyerror!DOMString {
-        return try PerformanceScriptTimingImpl.get_entryType(instance);
-    }
-
     pub fn get_invokerType(instance: *runtime.Instance) anyerror!ScriptInvokerType {
         return try PerformanceScriptTimingImpl.get_invokerType(instance);
     }
@@ -171,7 +142,7 @@ pub const PerformanceScriptTiming = struct {
         return try PerformanceScriptTimingImpl.get_forcedStyleAndLayoutDuration(instance);
     }
 
-    pub fn get_window(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_window(instance: *runtime.Instance) anyerror!Window {
         return try PerformanceScriptTimingImpl.get_window(instance);
     }
 
@@ -179,19 +150,9 @@ pub const PerformanceScriptTiming = struct {
         return try PerformanceScriptTimingImpl.get_windowAttribution(instance);
     }
 
-    /// Arguments for toJSON (WebIDL overloading)
-    pub const ToJSONArgs = union(enum) {
-        /// toJSON()
-        no_params: void,
-        /// toJSON()
-        no_params: void,
-    };
-
-    pub fn call_toJSON(instance: *runtime.Instance, args: ToJSONArgs) anyerror!anyopaque {
-        switch (args) {
-            .no_params => return try PerformanceScriptTimingImpl.no_params(instance),
-            .no_params => return try PerformanceScriptTimingImpl.no_params(instance),
-        }
+    /// Extended attributes: [Default]
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!anyopaque {
+        return try PerformanceScriptTimingImpl.call_toJSON(instance);
     }
 
 };

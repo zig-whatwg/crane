@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,6 +7,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const BaseAudioContextImpl = @import("impls").BaseAudioContext;
 const EventTarget = @import("interfaces").EventTarget;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const OscillatorNode = @import("interfaces").OscillatorNode;
 const ScriptProcessorNode = @import("interfaces").ScriptProcessorNode;
 const DelayNode = @import("interfaces").DelayNode;
@@ -18,22 +19,27 @@ const ArrayBuffer = @import("interfaces").ArrayBuffer;
 const PannerNode = @import("interfaces").PannerNode;
 const AudioBufferSourceNode = @import("interfaces").AudioBufferSourceNode;
 const WaveShaperNode = @import("interfaces").WaveShaperNode;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
 const IIRFilterNode = @import("interfaces").IIRFilterNode;
 const AudioBuffer = @import("interfaces").AudioBuffer;
-const Promise<AudioBuffer> = @import("interfaces").Promise<AudioBuffer>;
 const EventHandler = @import("typedefs").EventHandler;
 const AudioListener = @import("interfaces").AudioListener;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const DecodeSuccessCallback = @import("callbacks").DecodeSuccessCallback;
 const AnalyserNode = @import("interfaces").AnalyserNode;
 const StereoPannerNode = @import("interfaces").StereoPannerNode;
 const GainNode = @import("interfaces").GainNode;
 const ChannelSplitterNode = @import("interfaces").ChannelSplitterNode;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
 const ConstantSourceNode = @import("interfaces").ConstantSourceNode;
 const ChannelMergerNode = @import("interfaces").ChannelMergerNode;
 const PeriodicWave = @import("interfaces").PeriodicWave;
 const PeriodicWaveConstraints = @import("dictionaries").PeriodicWaveConstraints;
 const AudioWorklet = @import("interfaces").AudioWorklet;
 const BiquadFilterNode = @import("interfaces").BiquadFilterNode;
+const DOMString = @import("typedefs").DOMString;
 const DynamicsCompressorNode = @import("interfaces").DynamicsCompressorNode;
 
 pub const BaseAudioContext = struct {
@@ -106,17 +112,7 @@ pub const BaseAudioContext = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        BaseAudioContextImpl.init(instance);
-        
-        return instance;
+        return BaseAudioContextImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -177,9 +173,9 @@ pub const BaseAudioContext = struct {
         return try BaseAudioContextImpl.call_createPanner(instance);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try BaseAudioContextImpl.call_when(instance, type_, options);
+        return try BaseAudioContextImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_createChannelMerger(instance: *runtime.Instance, numberOfInputs: u32) anyerror!ChannelMergerNode {
@@ -208,14 +204,14 @@ pub const BaseAudioContext = struct {
         return try BaseAudioContextImpl.call_createStereoPanner(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try BaseAudioContextImpl.call_addEventListener(instance, type_, callback, options);
+        return try BaseAudioContextImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try BaseAudioContextImpl.call_removeEventListener(instance, type_, callback, options);
+        return try BaseAudioContextImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
     pub fn call_createConstantSource(instance: *runtime.Instance) anyerror!ConstantSourceNode {
@@ -272,7 +268,7 @@ pub const BaseAudioContext = struct {
         return try BaseAudioContextImpl.call_createChannelSplitter(instance, numberOfOutputs);
     }
 
-    pub fn call_decodeAudioData(instance: *runtime.Instance, audioData: anyopaque, successCallback: anyopaque, errorCallback: anyopaque) anyerror!anyopaque {
+    pub fn call_decodeAudioData(instance: *runtime.Instance, audioData: anyopaque, successCallback: DecodeSuccessCallback, errorCallback: DecodeErrorCallback) anyerror!anyopaque {
         
         return try BaseAudioContextImpl.call_decodeAudioData(instance, audioData, successCallback, errorCallback);
     }

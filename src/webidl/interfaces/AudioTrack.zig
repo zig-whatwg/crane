@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,6 +7,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const AudioTrackImpl = @import("impls").AudioTrack;
 const SourceBuffer = @import("interfaces").SourceBuffer;
+const DOMString = @import("typedefs").DOMString;
 
 pub const AudioTrack = struct {
     pub const Meta = struct {
@@ -53,17 +54,7 @@ pub const AudioTrack = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        AudioTrackImpl.init(instance);
-        
-        return instance;
+        return AudioTrackImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -100,7 +91,7 @@ pub const AudioTrack = struct {
         try AudioTrackImpl.set_enabled(instance, value);
     }
 
-    pub fn get_sourceBuffer(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_sourceBuffer(instance: *runtime.Instance) anyerror!SourceBuffer {
         return try AudioTrackImpl.get_sourceBuffer(instance);
     }
 

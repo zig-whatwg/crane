@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -53,17 +53,7 @@ pub const ImageData = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ImageDataImpl.init(instance);
-        
-        return instance;
+        return ImageDataImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -76,22 +66,32 @@ pub const ImageData = struct {
         deinit(instance);
     }
 
-    /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, sw: u32, sh: u32, settings: ImageDataSettings) !*runtime.Instance {
-        const instance = try init(allocator);
-        errdefer deinit(instance);
-        
-        try ImageDataImpl.constructor(instance, sw, sh, settings);
-        
-        return instance;
-    }
+    /// Arguments for constructor (WebIDL overloading)
+    pub const ConstructorArgs = union(enum) {
+        /// constructor(sw, sh, settings)
+        unsigned_long_unsigned_long_ImageDataSettings: struct {
+            sw: u32,
+            sh: u32,
+            settings: ImageDataSettings,
+        },
+        /// constructor(data, sw, sh, settings)
+        ImageDataArray_unsigned_long_unsigned_long_ImageDataSettings: struct {
+            data: ImageDataArray,
+            sw: u32,
+            sh: u32,
+            settings: ImageDataSettings,
+        },
+    };
 
-    /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, data: ImageDataArray, sw: u32, sh: u32, settings: ImageDataSettings) !*runtime.Instance {
+    /// WebIDL constructor (overloaded)
+    pub fn call_constructor(allocator: std.mem.Allocator, args: ConstructorArgs) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try ImageDataImpl.constructor(instance, data, sw, sh, settings);
+        switch (args) {
+            .unsigned_long_unsigned_long_ImageDataSettings => |a| try ImageDataImpl.constructor(instance, a.sw, a.sh, a.settings),
+            .ImageDataArray_unsigned_long_unsigned_long_ImageDataSettings => |a| try ImageDataImpl.constructor(instance, a.data, a.sw, a.sh, a.settings),
+        }
         
         return instance;
     }

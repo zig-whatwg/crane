@@ -4,4 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const OnBeforeUnloadEventHandlerNonNull = *const fn (event: anyopaque) anyopaque;
+pub const OnBeforeUnloadEventHandlerNonNull = *const fn (event: anyopaque) runtime.DOMString;

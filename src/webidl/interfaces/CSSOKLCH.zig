@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,8 +7,11 @@ const std = @import("std");
 const runtime = @import("runtime");
 const CSSOKLCHImpl = @import("impls").CSSOKLCH;
 const CSSColorValue = @import("interfaces").CSSColorValue;
+const CSSStyleValue = @import("interfaces").CSSStyleValue;
 const CSSColorAngle = @import("typedefs").CSSColorAngle;
 const CSSColorPercent = @import("typedefs").CSSColorPercent;
+const USVString = @import("interfaces").USVString;
+const DOMString = @import("typedefs").DOMString;
 
 pub const CSSOKLCH = struct {
     pub const Meta = struct {
@@ -59,17 +62,7 @@ pub const CSSOKLCH = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        CSSOKLCHImpl.init(instance);
-        
-        return instance;
+        return CSSOKLCHImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -130,22 +123,10 @@ pub const CSSOKLCH = struct {
         return try CSSOKLCHImpl.call_parseAll(instance, property, cssText);
     }
 
-    /// Arguments for parse (WebIDL overloading)
-    pub const ParseArgs = union(enum) {
-        /// parse(property, cssText)
-        USVString_USVString: struct {
-            property: runtime.USVString,
-            cssText: runtime.USVString,
-        },
-        /// parse(cssText)
-        USVString: runtime.USVString,
-    };
-
-    pub fn call_parse(instance: *runtime.Instance, args: ParseArgs) anyerror!CSSStyleValue {
-        switch (args) {
-            .USVString_USVString => |a| return try CSSOKLCHImpl.USVString_USVString(instance, a.property, a.cssText),
-            .USVString => |arg| return try CSSOKLCHImpl.USVString(instance, arg),
-        }
+    /// Extended attributes: [Exposed=Window]
+    pub fn call_parse(instance: *runtime.Instance, property: runtime.USVString, cssText: runtime.USVString) anyerror!CSSStyleValue {
+        
+        return try CSSOKLCHImpl.call_parse(instance, property, cssText);
     }
 
 };

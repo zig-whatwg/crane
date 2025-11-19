@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:13Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,9 +9,37 @@ const DedicatedWorkerGlobalScopeImpl = @import("impls").DedicatedWorkerGlobalSco
 const WorkerGlobalScope = @import("interfaces").WorkerGlobalScope;
 const AnimationFrameProvider = @import("interfaces").AnimationFrameProvider;
 const MessageEventTarget = @import("interfaces").MessageEventTarget;
-const FrameRequestCallback = @import("callbacks").FrameRequestCallback;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
+const ByteString = @import("interfaces").ByteString;
 const StructuredSerializeOptions = @import("dictionaries").StructuredSerializeOptions;
+const FontFaceSet = @import("interfaces").FontFaceSet;
+const WorkerNavigator = @import("interfaces").WorkerNavigator;
+const ImageBitmapSource = @import("typedefs").ImageBitmapSource;
+const TimerHandler = @import("typedefs").TimerHandler;
+const USVString = @import("interfaces").USVString;
+const Scheduler = @import("interfaces").Scheduler;
+const Crypto = @import("interfaces").Crypto;
+const TrustedScriptURL = @import("interfaces").TrustedScriptURL;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
+const ImageBitmapOptions = @import("dictionaries").ImageBitmapOptions;
+const WorkerLocation = @import("interfaces").WorkerLocation;
 const EventHandler = @import("typedefs").EventHandler;
+const ImageBitmap = @import("interfaces").ImageBitmap;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const FrameRequestCallback = @import("callbacks").FrameRequestCallback;
+const VoidFunction = @import("callbacks").VoidFunction;
+const Performance = @import("interfaces").Performance;
+const IDBFactory = @import("interfaces").IDBFactory;
+const CacheStorage = @import("interfaces").CacheStorage;
+const RequestInfo = @import("typedefs").RequestInfo;
+const TrustedTypePolicyFactory = @import("interfaces").TrustedTypePolicyFactory;
+const RequestInit = @import("dictionaries").RequestInit;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const Response = @import("interfaces").Response;
+const DOMString = @import("typedefs").DOMString;
 
 pub const DedicatedWorkerGlobalScope = struct {
     pub const Meta = struct {
@@ -103,17 +131,7 @@ pub const DedicatedWorkerGlobalScope = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        DedicatedWorkerGlobalScopeImpl.init(instance);
-        
-        return instance;
+        return DedicatedWorkerGlobalScopeImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -282,9 +300,9 @@ pub const DedicatedWorkerGlobalScope = struct {
         try DedicatedWorkerGlobalScopeImpl.set_onmessageerror(instance, value);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try DedicatedWorkerGlobalScopeImpl.call_when(instance, type_, options);
+        return try DedicatedWorkerGlobalScopeImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_reportError(instance: *runtime.Instance, e: anyopaque) anyerror!void {
@@ -297,25 +315,9 @@ pub const DedicatedWorkerGlobalScope = struct {
         return try DedicatedWorkerGlobalScopeImpl.call_setInterval(instance, handler, timeout, arguments);
     }
 
-    /// Arguments for postMessage (WebIDL overloading)
-    pub const PostMessageArgs = union(enum) {
-        /// postMessage(message, transfer)
-        any_sequence: struct {
-            message: anyopaque,
-            transfer: anyopaque,
-        },
-        /// postMessage(message, options)
-        any_StructuredSerializeOptions: struct {
-            message: anyopaque,
-            options: StructuredSerializeOptions,
-        },
-    };
-
-    pub fn call_postMessage(instance: *runtime.Instance, args: PostMessageArgs) anyerror!void {
-        switch (args) {
-            .any_sequence => |a| return try DedicatedWorkerGlobalScopeImpl.any_sequence(instance, a.message, a.transfer),
-            .any_StructuredSerializeOptions => |a| return try DedicatedWorkerGlobalScopeImpl.any_StructuredSerializeOptions(instance, a.message, a.options),
-        }
+    pub fn call_postMessage(instance: *runtime.Instance, message: anyopaque, transfer: anyopaque) anyerror!void {
+        
+        return try DedicatedWorkerGlobalScopeImpl.call_postMessage(instance, message, transfer);
     }
 
     pub fn call_clearInterval(instance: *runtime.Instance, id: i32) anyerror!void {
@@ -338,21 +340,21 @@ pub const DedicatedWorkerGlobalScope = struct {
         return try DedicatedWorkerGlobalScopeImpl.call_setTimeout(instance, handler, timeout, arguments);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try DedicatedWorkerGlobalScopeImpl.call_addEventListener(instance, type_, callback, options);
+        return try DedicatedWorkerGlobalScopeImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try DedicatedWorkerGlobalScopeImpl.call_removeEventListener(instance, type_, callback, options);
+        return try DedicatedWorkerGlobalScopeImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_fetch(instance: *runtime.Instance, input: RequestInfo, init: RequestInit) anyerror!anyopaque {
+    pub fn call_fetch(instance: *runtime.Instance, input: RequestInfo, init_data: RequestInit) anyerror!anyopaque {
         // [NewObject] - Caller owns the returned object
         
-        return try DedicatedWorkerGlobalScopeImpl.call_fetch(instance, input, init);
+        return try DedicatedWorkerGlobalScopeImpl.call_fetch(instance, input, init_data);
     }
 
     pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: FrameRequestCallback) anyerror!u32 {
@@ -375,29 +377,9 @@ pub const DedicatedWorkerGlobalScope = struct {
         return try DedicatedWorkerGlobalScopeImpl.call_dispatchEvent(instance, event);
     }
 
-    /// Arguments for createImageBitmap (WebIDL overloading)
-    pub const CreateImageBitmapArgs = union(enum) {
-        /// createImageBitmap(image, options)
-        ImageBitmapSource_ImageBitmapOptions: struct {
-            image: ImageBitmapSource,
-            options: ImageBitmapOptions,
-        },
-        /// createImageBitmap(image, sx, sy, sw, sh, options)
-        ImageBitmapSource_long_long_long_long_ImageBitmapOptions: struct {
-            image: ImageBitmapSource,
-            sx: i32,
-            sy: i32,
-            sw: i32,
-            sh: i32,
-            options: ImageBitmapOptions,
-        },
-    };
-
-    pub fn call_createImageBitmap(instance: *runtime.Instance, args: CreateImageBitmapArgs) anyerror!anyopaque {
-        switch (args) {
-            .ImageBitmapSource_ImageBitmapOptions => |a| return try DedicatedWorkerGlobalScopeImpl.ImageBitmapSource_ImageBitmapOptions(instance, a.image, a.options),
-            .ImageBitmapSource_long_long_long_long_ImageBitmapOptions => |a| return try DedicatedWorkerGlobalScopeImpl.ImageBitmapSource_long_long_long_long_ImageBitmapOptions(instance, a.image, a.sx, a.sy, a.sw, a.sh, a.options),
-        }
+    pub fn call_createImageBitmap(instance: *runtime.Instance, image: ImageBitmapSource, options: ImageBitmapOptions) anyerror!anyopaque {
+        
+        return try DedicatedWorkerGlobalScopeImpl.call_createImageBitmap(instance, image, options);
     }
 
     pub fn call_queueMicrotask(instance: *runtime.Instance, callback: VoidFunction) anyerror!void {

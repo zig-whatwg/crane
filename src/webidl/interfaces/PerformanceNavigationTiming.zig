@@ -1,5 +1,5 @@
 //! Generated from: navigation-timing.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,9 +7,13 @@ const std = @import("std");
 const runtime = @import("runtime");
 const PerformanceNavigationTimingImpl = @import("impls").PerformanceNavigationTiming;
 const PerformanceResourceTiming = @import("interfaces").PerformanceResourceTiming;
-const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const ByteString = @import("interfaces").ByteString;
 const NotRestoredReasons = @import("interfaces").NotRestoredReasons;
+const PerformanceServerTiming = @import("interfaces").PerformanceServerTiming;
+const RenderBlockingStatusType = @import("enums").RenderBlockingStatusType;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const NavigationTimingType = @import("enums").NavigationTimingType;
+const DOMString = @import("typedefs").DOMString;
 
 pub const PerformanceNavigationTiming = struct {
     pub const Meta = struct {
@@ -35,7 +39,7 @@ pub const PerformanceNavigationTiming = struct {
             domComplete: DOMHighResTimeStamp = undefined,
             loadEventStart: DOMHighResTimeStamp = undefined,
             loadEventEnd: DOMHighResTimeStamp = undefined,
-            type: NavigationTimingType = undefined,
+            @"type": NavigationTimingType = undefined,
             redirectCount: u16 = undefined,
             criticalCHRestart: DOMHighResTimeStamp = undefined,
             notRestoredReasons: ?NotRestoredReasons = null,
@@ -98,17 +102,7 @@ pub const PerformanceNavigationTiming = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PerformanceNavigationTimingImpl.init(instance);
-        
-        return instance;
+        return PerformanceNavigationTimingImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -289,7 +283,7 @@ pub const PerformanceNavigationTiming = struct {
         return try PerformanceNavigationTimingImpl.get_criticalCHRestart(instance);
     }
 
-    pub fn get_notRestoredReasons(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_notRestoredReasons(instance: *runtime.Instance) anyerror!NotRestoredReasons {
         return try PerformanceNavigationTimingImpl.get_notRestoredReasons(instance);
     }
 
@@ -297,22 +291,9 @@ pub const PerformanceNavigationTiming = struct {
         return try PerformanceNavigationTimingImpl.get_activationStart(instance);
     }
 
-    /// Arguments for toJSON (WebIDL overloading)
-    pub const ToJSONArgs = union(enum) {
-        /// toJSON()
-        no_params: void,
-        /// toJSON()
-        no_params: void,
-        /// toJSON()
-        no_params: void,
-    };
-
-    pub fn call_toJSON(instance: *runtime.Instance, args: ToJSONArgs) anyerror!anyopaque {
-        switch (args) {
-            .no_params => return try PerformanceNavigationTimingImpl.no_params(instance),
-            .no_params => return try PerformanceNavigationTimingImpl.no_params(instance),
-            .no_params => return try PerformanceNavigationTimingImpl.no_params(instance),
-        }
+    /// Extended attributes: [Default]
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!anyopaque {
+        return try PerformanceNavigationTimingImpl.call_toJSON(instance);
     }
 
 };

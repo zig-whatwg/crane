@@ -1,11 +1,12 @@
 //! Generated from: xhr.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const FormDataImpl = @import("impls").FormData;
+const USVString = @import("interfaces").USVString;
 const Blob = @import("interfaces").Blob;
 const HTMLElement = @import("interfaces").HTMLElement;
 const HTMLFormElement = @import("interfaces").HTMLFormElement;
@@ -47,17 +48,7 @@ pub const FormData = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        FormDataImpl.init(instance);
-        
-        return instance;
+        return FormDataImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -71,7 +62,7 @@ pub const FormData = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, form: HTMLFormElement, submitter: anyopaque) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, form: HTMLFormElement, submitter: HTMLElement) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
@@ -85,26 +76,14 @@ pub const FormData = struct {
         return try FormDataImpl.call_delete(instance, name);
     }
 
-    /// Arguments for append (WebIDL overloading)
-    pub const AppendArgs = union(enum) {
-        /// append(name, value)
-        USVString_USVString: struct {
-            name: runtime.USVString,
-            value: runtime.USVString,
-        },
-        /// append(name, blobValue, filename)
-        USVString_Blob_USVString: struct {
-            name: runtime.USVString,
-            blobValue: Blob,
-            filename: runtime.USVString,
-        },
-    };
+    pub fn call_append(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!void {
+        
+        return try FormDataImpl.call_append(instance, name, value);
+    }
 
-    pub fn call_append(instance: *runtime.Instance, args: AppendArgs) anyerror!void {
-        switch (args) {
-            .USVString_USVString => |a| return try FormDataImpl.USVString_USVString(instance, a.name, a.value),
-            .USVString_Blob_USVString => |a| return try FormDataImpl.USVString_Blob_USVString(instance, a.name, a.blobValue, a.filename),
-        }
+    pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!FormDataEntryValue {
+        
+        return try FormDataImpl.call_get(instance, name);
     }
 
     pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!anyopaque {
@@ -117,31 +96,9 @@ pub const FormData = struct {
         return try FormDataImpl.call_has(instance, name);
     }
 
-    /// Arguments for set (WebIDL overloading)
-    pub const SetArgs = union(enum) {
-        /// set(name, value)
-        USVString_USVString: struct {
-            name: runtime.USVString,
-            value: runtime.USVString,
-        },
-        /// set(name, blobValue, filename)
-        USVString_Blob_USVString: struct {
-            name: runtime.USVString,
-            blobValue: Blob,
-            filename: runtime.USVString,
-        },
-    };
-
-    pub fn call_set(instance: *runtime.Instance, args: SetArgs) anyerror!void {
-        switch (args) {
-            .USVString_USVString => |a| return try FormDataImpl.USVString_USVString(instance, a.name, a.value),
-            .USVString_Blob_USVString => |a| return try FormDataImpl.USVString_Blob_USVString(instance, a.name, a.blobValue, a.filename),
-        }
-    }
-
-    pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!anyopaque {
+    pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!void {
         
-        return try FormDataImpl.call_get(instance, name);
+        return try FormDataImpl.call_set(instance, name, value);
     }
 
 };

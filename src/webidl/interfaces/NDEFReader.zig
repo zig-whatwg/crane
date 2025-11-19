@@ -1,5 +1,5 @@
 //! Generated from: web-nfc.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,12 +7,18 @@ const std = @import("std");
 const runtime = @import("runtime");
 const NDEFReaderImpl = @import("impls").NDEFReader;
 const EventTarget = @import("interfaces").EventTarget;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const NDEFMessageSource = @import("typedefs").NDEFMessageSource;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
-const NDEFMakeReadOnlyOptions = @import("dictionaries").NDEFMakeReadOnlyOptions;
-const NDEFScanOptions = @import("dictionaries").NDEFScanOptions;
-const NDEFWriteOptions = @import("dictionaries").NDEFWriteOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const EventHandler = @import("typedefs").EventHandler;
+const NDEFMakeReadOnlyOptions = @import("dictionaries").NDEFMakeReadOnlyOptions;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
+const NDEFScanOptions = @import("dictionaries").NDEFScanOptions;
+const DOMString = @import("typedefs").DOMString;
+const NDEFWriteOptions = @import("dictionaries").NDEFWriteOptions;
 
 pub const NDEFReader = struct {
     pub const Meta = struct {
@@ -58,17 +64,7 @@ pub const NDEFReader = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        NDEFReaderImpl.init(instance);
-        
-        return instance;
+        return NDEFReaderImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -112,9 +108,9 @@ pub const NDEFReader = struct {
         return try NDEFReaderImpl.call_scan(instance, options);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try NDEFReaderImpl.call_when(instance, type_, options);
+        return try NDEFReaderImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_dispatchEvent(instance: *runtime.Instance, event: Event) anyerror!bool {
@@ -132,14 +128,14 @@ pub const NDEFReader = struct {
         return try NDEFReaderImpl.call_write(instance, message, options);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try NDEFReaderImpl.call_addEventListener(instance, type_, callback, options);
+        return try NDEFReaderImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try NDEFReaderImpl.call_removeEventListener(instance, type_, callback, options);
+        return try NDEFReaderImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

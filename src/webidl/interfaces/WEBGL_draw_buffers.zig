@@ -1,11 +1,12 @@
 //! Generated from: WEBGL_draw_buffers.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const WEBGL_draw_buffersImpl = @import("impls").WEBGL_draw_buffers;
+const GLenum = @import("typedefs").GLenum;
 
 pub const WEBGL_draw_buffers = struct {
     pub const Meta = struct {
@@ -248,17 +249,7 @@ pub const WEBGL_draw_buffers = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        WEBGL_draw_buffersImpl.init(instance);
-        
-        return instance;
+        return WEBGL_draw_buffersImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

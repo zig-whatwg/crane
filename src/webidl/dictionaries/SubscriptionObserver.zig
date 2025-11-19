@@ -6,6 +6,6 @@ const runtime = @import("runtime");
 
 pub const SubscriptionObserver = struct {
     next: ?anyopaque = null,
-    error: ?anyopaque = null,
+    @"error": ?anyopaque = null,
     complete: ?anyopaque = null,
 };

@@ -1,5 +1,5 @@
 //! Generated from: webxr-depth-sensing.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,8 @@ const std = @import("std");
 const runtime = @import("runtime");
 const XRWebGLDepthInformationImpl = @import("impls").XRWebGLDepthInformation;
 const XRDepthInformation = @import("interfaces").XRDepthInformation;
-const unsigned long = @import("interfaces").unsigned long;
+const XRRigidTransform = @import("interfaces").XRRigidTransform;
+const Float32Array = @import("interfaces").Float32Array;
 const XRTextureType = @import("enums").XRTextureType;
 const WebGLTexture = @import("interfaces").WebGLTexture;
 
@@ -51,17 +52,7 @@ pub const XRWebGLDepthInformation = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        XRWebGLDepthInformationImpl.init(instance);
-        
-        return instance;
+        return XRWebGLDepthInformationImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -130,7 +121,7 @@ pub const XRWebGLDepthInformation = struct {
         return try XRWebGLDepthInformationImpl.get_textureType(instance);
     }
 
-    pub fn get_imageIndex(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_imageIndex(instance: *runtime.Instance) anyerror!u32 {
         return try XRWebGLDepthInformationImpl.get_imageIndex(instance);
     }
 

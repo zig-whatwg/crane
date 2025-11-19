@@ -1,5 +1,5 @@
 //! Generated from: css-pseudo.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,16 +8,22 @@ const runtime = @import("runtime");
 const CSSPseudoElementImpl = @import("impls").CSSPseudoElement;
 const EventTarget = @import("interfaces").EventTarget;
 const GeometryUtils = @import("interfaces").GeometryUtils;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const DOMString = @import("typedefs").DOMString;
 const CSSOMString = @import("interfaces").CSSOMString;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const DOMQuad = @import("interfaces").DOMQuad;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
+const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const Element = @import("interfaces").Element;
+const Event = @import("interfaces").Event;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
-const (Element or CSSPseudoElement) = @import("interfaces").(Element or CSSPseudoElement);
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
 const ConvertCoordinateOptions = @import("dictionaries").ConvertCoordinateOptions;
 
 pub const CSSPseudoElement = struct {
@@ -38,9 +44,12 @@ pub const CSSPseudoElement = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            type: CSSOMString = undefined,
+            @"type": CSSOMString = undefined,
             element: Element = undefined,
-            parent: (Element or CSSPseudoElement) = undefined,
+            parent: union(enum) {
+                Element: Element,
+                CSSPseudoElement: CSSPseudoElement,
+            } = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -66,17 +75,7 @@ pub const CSSPseudoElement = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        CSSPseudoElementImpl.init(instance);
-        
-        return instance;
+        return CSSPseudoElementImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -106,9 +105,9 @@ pub const CSSPseudoElement = struct {
         return try CSSPseudoElementImpl.call_convertRectFromNode(instance, rect, from, options);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try CSSPseudoElementImpl.call_when(instance, type_, options);
+        return try CSSPseudoElementImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_getBoxQuads(instance: *runtime.Instance, options: BoxQuadOptions) anyerror!anyopaque {
@@ -116,9 +115,9 @@ pub const CSSPseudoElement = struct {
         return try CSSPseudoElementImpl.call_getBoxQuads(instance, options);
     }
 
-    pub fn call_pseudo(instance: *runtime.Instance, type_: anyopaque) anyerror!anyopaque {
+    pub fn call_pseudo(instance: *runtime.Instance, @"type": anyopaque) anyerror!CSSPseudoElement {
         
-        return try CSSPseudoElementImpl.call_pseudo(instance, type_);
+        return try CSSPseudoElementImpl.call_pseudo(instance, @"type");
     }
 
     pub fn call_dispatchEvent(instance: *runtime.Instance, event: Event) anyerror!bool {
@@ -136,14 +135,14 @@ pub const CSSPseudoElement = struct {
         return try CSSPseudoElementImpl.call_convertPointFromNode(instance, point, from, options);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try CSSPseudoElementImpl.call_addEventListener(instance, type_, callback, options);
+        return try CSSPseudoElementImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try CSSPseudoElementImpl.call_removeEventListener(instance, type_, callback, options);
+        return try CSSPseudoElementImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

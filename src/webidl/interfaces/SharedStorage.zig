@@ -1,22 +1,22 @@
 //! Generated from: shared-storage.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const SharedStorageImpl = @import("impls").SharedStorage;
+const SharedStorageRunOperationMethodOptions = @import("dictionaries").SharedStorageRunOperationMethodOptions;
 const SharedStorageWorkletOptions = @import("dictionaries").SharedStorageWorkletOptions;
-const Promise<DOMString> = @import("interfaces").Promise<DOMString>;
-const Promise<SharedStorageWorklet> = @import("interfaces").Promise<SharedStorageWorklet>;
-const Promise<unsignedlong> = @import("interfaces").Promise<unsignedlong>;
-const Promise<double> = @import("interfaces").Promise<double>;
-const Promise<any> = @import("interfaces").Promise<any>;
+const SharedStorageResponse = @import("typedefs").SharedStorageResponse;
 const SharedStorageSetMethodOptions = @import("dictionaries").SharedStorageSetMethodOptions;
 const SharedStorageModifierMethodOptions = @import("dictionaries").SharedStorageModifierMethodOptions;
+const SharedStorageModifierMethod = @import("interfaces").SharedStorageModifierMethod;
+const unsignedlong = @import("interfaces").unsignedlong;
+const SharedStorageUrlWithMetadata = @import("dictionaries").SharedStorageUrlWithMetadata;
 const SharedStorageWorklet = @import("interfaces").SharedStorageWorklet;
-const SharedStorageRunOperationMethodOptions = @import("dictionaries").SharedStorageRunOperationMethodOptions;
-const Promise<SharedStorageResponse> = @import("interfaces").Promise<SharedStorageResponse>;
+const USVString = @import("interfaces").USVString;
+const DOMString = @import("typedefs").DOMString;
 
 pub const SharedStorage = struct {
     pub const Meta = struct {
@@ -63,17 +63,7 @@ pub const SharedStorage = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        SharedStorageImpl.init(instance);
-        
-        return instance;
+        return SharedStorageImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

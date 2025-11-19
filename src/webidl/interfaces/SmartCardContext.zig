@@ -1,17 +1,17 @@
 //! Generated from: web-smart-card.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const SmartCardContextImpl = @import("impls").SmartCardContext;
+const SmartCardReaderStateIn = @import("dictionaries").SmartCardReaderStateIn;
 const SmartCardGetStatusChangeOptions = @import("dictionaries").SmartCardGetStatusChangeOptions;
-const Promise<SmartCardConnectResult> = @import("interfaces").Promise<SmartCardConnectResult>;
-const Promise<sequence<SmartCardReaderStateOut>> = @import("interfaces").Promise<sequence<SmartCardReaderStateOut>>;
 const SmartCardAccessMode = @import("enums").SmartCardAccessMode;
 const SmartCardConnectOptions = @import("dictionaries").SmartCardConnectOptions;
-const Promise<sequence<DOMString>> = @import("interfaces").Promise<sequence<DOMString>>;
+const SmartCardConnectResult = @import("dictionaries").SmartCardConnectResult;
+const DOMString = @import("typedefs").DOMString;
 
 pub const SmartCardContext = struct {
     pub const Meta = struct {
@@ -22,6 +22,7 @@ pub const SmartCardContext = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "DedicatedWorker", "SharedWorker", "Window" } } },
             .{ .name = "SecureContext" },
+            .{ .name = "IsolatedContext" },
         };
         
         /// Global contexts where this interface is exposed
@@ -48,17 +49,7 @@ pub const SmartCardContext = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        SmartCardContextImpl.init(instance);
-        
-        return instance;
+        return SmartCardContextImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

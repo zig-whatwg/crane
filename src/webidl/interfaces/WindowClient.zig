@@ -1,5 +1,5 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,9 +8,12 @@ const runtime = @import("runtime");
 const WindowClientImpl = @import("impls").WindowClient;
 const Client = @import("interfaces").Client;
 const VisibilityState = @import("interfaces").VisibilityState;
-const Promise<WindowClient> = @import("interfaces").Promise<WindowClient>;
-const Promise<WindowClient?> = @import("interfaces").Promise<WindowClient?>;
-const FrozenArray<USVString> = @import("interfaces").FrozenArray<USVString>;
+const StructuredSerializeOptions = @import("dictionaries").StructuredSerializeOptions;
+const FrameType = @import("enums").FrameType;
+const ClientLifecycleState = @import("enums").ClientLifecycleState;
+const USVString = @import("interfaces").USVString;
+const DOMString = @import("typedefs").DOMString;
+const ClientType = @import("enums").ClientType;
 
 pub const WindowClient = struct {
     pub const Meta = struct {
@@ -30,7 +33,7 @@ pub const WindowClient = struct {
         struct {
             visibilityState: VisibilityState = undefined,
             focused: bool = undefined,
-            ancestorOrigins: FrozenArray<USVString> = undefined,
+            ancestorOrigins: runtime.FrozenArray(runtime.USVString) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -55,17 +58,7 @@ pub const WindowClient = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        WindowClientImpl.init(instance);
-        
-        return instance;
+        return WindowClientImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -131,25 +124,9 @@ pub const WindowClient = struct {
         return try WindowClientImpl.call_navigate(instance, url);
     }
 
-    /// Arguments for postMessage (WebIDL overloading)
-    pub const PostMessageArgs = union(enum) {
-        /// postMessage(message, transfer)
-        any_sequence: struct {
-            message: anyopaque,
-            transfer: anyopaque,
-        },
-        /// postMessage(message, options)
-        any_StructuredSerializeOptions: struct {
-            message: anyopaque,
-            options: StructuredSerializeOptions,
-        },
-    };
-
-    pub fn call_postMessage(instance: *runtime.Instance, args: PostMessageArgs) anyerror!void {
-        switch (args) {
-            .any_sequence => |a| return try WindowClientImpl.any_sequence(instance, a.message, a.transfer),
-            .any_StructuredSerializeOptions => |a| return try WindowClientImpl.any_StructuredSerializeOptions(instance, a.message, a.options),
-        }
+    pub fn call_postMessage(instance: *runtime.Instance, message: anyopaque, transfer: anyopaque) anyerror!void {
+        
+        return try WindowClientImpl.call_postMessage(instance, message, transfer);
     }
 
 };

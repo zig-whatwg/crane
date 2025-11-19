@@ -1,16 +1,17 @@
 //! Generated from: intersection-observer.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const IntersectionObserverImpl = @import("impls").IntersectionObserver;
-const IntersectionObserverInit = @import("dictionaries").IntersectionObserverInit;
+const Document = @import("interfaces").Document;
 const Element = @import("interfaces").Element;
 const IntersectionObserverCallback = @import("callbacks").IntersectionObserverCallback;
-const FrozenArray<double> = @import("interfaces").FrozenArray<double>;
-const (Element or Document) = @import("interfaces").(Element or Document);
+const IntersectionObserverInit = @import("dictionaries").IntersectionObserverInit;
+const IntersectionObserverEntry = @import("interfaces").IntersectionObserverEntry;
+const DOMString = @import("typedefs").DOMString;
 
 pub const IntersectionObserver = struct {
     pub const Meta = struct {
@@ -28,10 +29,13 @@ pub const IntersectionObserver = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            root: ?(Element or Document) = null,
+            root: ?union(enum) {
+                Element: Element,
+                Document: Document,
+            } = null,
             rootMargin: runtime.DOMString = undefined,
             scrollMargin: runtime.DOMString = undefined,
-            thresholds: FrozenArray<double> = undefined,
+            thresholds: runtime.FrozenArray(f64) = undefined,
             delay: i32 = undefined,
             trackVisibility: bool = undefined,
         },
@@ -57,17 +61,7 @@ pub const IntersectionObserver = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        IntersectionObserverImpl.init(instance);
-        
-        return instance;
+        return IntersectionObserverImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

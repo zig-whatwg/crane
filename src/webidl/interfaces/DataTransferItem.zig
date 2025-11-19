@@ -1,15 +1,16 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const DataTransferItemImpl = @import("impls").DataTransferItem;
-const Promise<FileSystemHandle?> = @import("interfaces").Promise<FileSystemHandle?>;
+const FileSystemHandle = @import("interfaces").FileSystemHandle;
 const FunctionStringCallback = @import("callbacks").FunctionStringCallback;
-const File = @import("interfaces").File;
 const FileSystemEntry = @import("interfaces").FileSystemEntry;
+const File = @import("interfaces").File;
+const DOMString = @import("typedefs").DOMString;
 
 pub const DataTransferItem = struct {
     pub const Meta = struct {
@@ -28,7 +29,7 @@ pub const DataTransferItem = struct {
     pub const State = runtime.FlattenedState(
         struct {
             kind: runtime.DOMString = undefined,
-            type: runtime.DOMString = undefined,
+            @"type": runtime.DOMString = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -48,17 +49,7 @@ pub const DataTransferItem = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        DataTransferItemImpl.init(instance);
-        
-        return instance;
+        return DataTransferItemImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -79,7 +70,7 @@ pub const DataTransferItem = struct {
         return try DataTransferItemImpl.get_type(instance);
     }
 
-    pub fn call_getAsString(instance: *runtime.Instance, _callback: anyopaque) anyerror!void {
+    pub fn call_getAsString(instance: *runtime.Instance, _callback: FunctionStringCallback) anyerror!void {
         
         return try DataTransferItemImpl.call_getAsString(instance, _callback);
     }
@@ -88,11 +79,11 @@ pub const DataTransferItem = struct {
         return try DataTransferItemImpl.call_getAsFileSystemHandle(instance);
     }
 
-    pub fn call_webkitGetAsEntry(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn call_webkitGetAsEntry(instance: *runtime.Instance) anyerror!FileSystemEntry {
         return try DataTransferItemImpl.call_webkitGetAsEntry(instance);
     }
 
-    pub fn call_getAsFile(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn call_getAsFile(instance: *runtime.Instance) anyerror!File {
         return try DataTransferItemImpl.call_getAsFile(instance);
     }
 

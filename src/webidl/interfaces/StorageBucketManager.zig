@@ -1,5 +1,5 @@
 //! Generated from: storage-buckets.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,9 +7,8 @@ const std = @import("std");
 const runtime = @import("runtime");
 const StorageBucketManagerImpl = @import("impls").StorageBucketManager;
 const StorageBucketOptions = @import("dictionaries").StorageBucketOptions;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
-const Promise<StorageBucket> = @import("interfaces").Promise<StorageBucket>;
-const Promise<sequence<DOMString>> = @import("interfaces").Promise<sequence<DOMString>>;
+const StorageBucket = @import("interfaces").StorageBucket;
+const DOMString = @import("typedefs").DOMString;
 
 pub const StorageBucketManager = struct {
     pub const Meta = struct {
@@ -45,17 +44,7 @@ pub const StorageBucketManager = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        StorageBucketManagerImpl.init(instance);
-        
-        return instance;
+        return StorageBucketManagerImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

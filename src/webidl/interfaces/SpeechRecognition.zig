@@ -1,5 +1,5 @@
 //! Generated from: speech-api.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,12 +7,18 @@ const std = @import("std");
 const runtime = @import("runtime");
 const SpeechRecognitionImpl = @import("impls").SpeechRecognition;
 const EventTarget = @import("interfaces").EventTarget;
-const SpeechRecognitionOptions = @import("dictionaries").SpeechRecognitionOptions;
-const Promise<boolean> = @import("interfaces").Promise<boolean>;
-const Promise<AvailabilityStatus> = @import("interfaces").Promise<AvailabilityStatus>;
-const ObservableArray<SpeechRecognitionPhrase> = @import("interfaces").ObservableArray<SpeechRecognitionPhrase>;
-const SpeechGrammarList = @import("interfaces").SpeechGrammarList;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const AvailabilityStatus = @import("enums").AvailabilityStatus;
 const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const SpeechRecognitionOptions = @import("dictionaries").SpeechRecognitionOptions;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const SpeechGrammarList = @import("interfaces").SpeechGrammarList;
+const EventListener = @import("interfaces").EventListener;
+const SpeechRecognitionPhrase = @import("interfaces").SpeechRecognitionPhrase;
+const DOMString = @import("typedefs").DOMString;
 const EventHandler = @import("typedefs").EventHandler;
 
 pub const SpeechRecognition = struct {
@@ -38,7 +44,7 @@ pub const SpeechRecognition = struct {
             interimResults: bool = undefined,
             maxAlternatives: u32 = undefined,
             processLocally: bool = undefined,
-            phrases: ObservableArray<SpeechRecognitionPhrase> = undefined,
+            phrases: runtime.ObservableArray(SpeechRecognitionPhrase) = undefined,
             onaudiostart: EventHandler = undefined,
             onsoundstart: EventHandler = undefined,
             onspeechstart: EventHandler = undefined,
@@ -109,17 +115,7 @@ pub const SpeechRecognition = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        SpeechRecognitionImpl.init(instance);
-        
-        return instance;
+        return SpeechRecognitionImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -295,9 +291,9 @@ pub const SpeechRecognition = struct {
         return try SpeechRecognitionImpl.call_available(instance, options);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try SpeechRecognitionImpl.call_when(instance, type_, options);
+        return try SpeechRecognitionImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_abort(instance: *runtime.Instance) anyerror!void {
@@ -309,19 +305,8 @@ pub const SpeechRecognition = struct {
         return try SpeechRecognitionImpl.call_dispatchEvent(instance, event);
     }
 
-    /// Arguments for start (WebIDL overloading)
-    pub const StartArgs = union(enum) {
-        /// start()
-        no_params: void,
-        /// start(audioTrack)
-        MediaStreamTrack: MediaStreamTrack,
-    };
-
-    pub fn call_start(instance: *runtime.Instance, args: StartArgs) anyerror!void {
-        switch (args) {
-            .no_params => return try SpeechRecognitionImpl.no_params(instance),
-            .MediaStreamTrack => |arg| return try SpeechRecognitionImpl.MediaStreamTrack(instance, arg),
-        }
+    pub fn call_start(instance: *runtime.Instance) anyerror!void {
+        return try SpeechRecognitionImpl.call_start(instance);
     }
 
     pub fn call_install(instance: *runtime.Instance, options: SpeechRecognitionOptions) anyerror!anyopaque {
@@ -329,14 +314,14 @@ pub const SpeechRecognition = struct {
         return try SpeechRecognitionImpl.call_install(instance, options);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try SpeechRecognitionImpl.call_addEventListener(instance, type_, callback, options);
+        return try SpeechRecognitionImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try SpeechRecognitionImpl.call_removeEventListener(instance, type_, callback, options);
+        return try SpeechRecognitionImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

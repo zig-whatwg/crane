@@ -1,5 +1,5 @@
 //! Generated from: payment-request.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,13 +7,18 @@ const std = @import("std");
 const runtime = @import("runtime");
 const PaymentResponseImpl = @import("impls").PaymentResponse;
 const EventTarget = @import("interfaces").EventTarget;
-const PaymentValidationErrors = @import("dictionaries").PaymentValidationErrors;
-const EventHandler = @import("typedefs").EventHandler;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
-const ContactAddress = @import("interfaces").ContactAddress;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const PaymentComplete = @import("enums").PaymentComplete;
-const DOMString = @import("typedefs").DOMString;
+const PaymentValidationErrors = @import("dictionaries").PaymentValidationErrors;
 const PaymentCompleteDetails = @import("dictionaries").PaymentCompleteDetails;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
+const ContactAddress = @import("interfaces").ContactAddress;
+const DOMString = @import("typedefs").DOMString;
+const EventHandler = @import("typedefs").EventHandler;
 
 pub const PaymentResponse = struct {
     pub const Meta = struct {
@@ -72,17 +77,7 @@ pub const PaymentResponse = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PaymentResponseImpl.init(instance);
-        
-        return instance;
+        return PaymentResponseImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -107,23 +102,23 @@ pub const PaymentResponse = struct {
         return try PaymentResponseImpl.get_details(instance);
     }
 
-    pub fn get_shippingAddress(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_shippingAddress(instance: *runtime.Instance) anyerror!ContactAddress {
         return try PaymentResponseImpl.get_shippingAddress(instance);
     }
 
-    pub fn get_shippingOption(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_shippingOption(instance: *runtime.Instance) anyerror!DOMString {
         return try PaymentResponseImpl.get_shippingOption(instance);
     }
 
-    pub fn get_payerName(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_payerName(instance: *runtime.Instance) anyerror!DOMString {
         return try PaymentResponseImpl.get_payerName(instance);
     }
 
-    pub fn get_payerEmail(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_payerEmail(instance: *runtime.Instance) anyerror!DOMString {
         return try PaymentResponseImpl.get_payerEmail(instance);
     }
 
-    pub fn get_payerPhone(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_payerPhone(instance: *runtime.Instance) anyerror!DOMString {
         return try PaymentResponseImpl.get_payerPhone(instance);
     }
 
@@ -135,9 +130,9 @@ pub const PaymentResponse = struct {
         try PaymentResponseImpl.set_onpayerdetailchange(instance, value);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try PaymentResponseImpl.call_when(instance, type_, options);
+        return try PaymentResponseImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_dispatchEvent(instance: *runtime.Instance, event: Event) anyerror!bool {
@@ -164,14 +159,14 @@ pub const PaymentResponse = struct {
         return try PaymentResponseImpl.call_retry(instance, errorFields);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try PaymentResponseImpl.call_addEventListener(instance, type_, callback, options);
+        return try PaymentResponseImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try PaymentResponseImpl.call_removeEventListener(instance, type_, callback, options);
+        return try PaymentResponseImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

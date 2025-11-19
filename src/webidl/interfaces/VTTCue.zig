@@ -1,5 +1,5 @@
 //! Generated from: webvtt.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -10,10 +10,19 @@ const TextTrackCue = @import("interfaces").TextTrackCue;
 const VTTRegion = @import("interfaces").VTTRegion;
 const DocumentFragment = @import("interfaces").DocumentFragment;
 const PositionAlignSetting = @import("enums").PositionAlignSetting;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const LineAlignSetting = @import("enums").LineAlignSetting;
+const EventHandler = @import("typedefs").EventHandler;
+const AlignSetting = @import("enums").AlignSetting;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const TextTrack = @import("interfaces").TextTrack;
+const EventListener = @import("interfaces").EventListener;
 const DirectionSetting = @import("enums").DirectionSetting;
 const LineAndPositionSetting = @import("typedefs").LineAndPositionSetting;
-const AlignSetting = @import("enums").AlignSetting;
+const DOMString = @import("typedefs").DOMString;
 
 pub const VTTCue = struct {
     pub const Meta = struct {
@@ -39,7 +48,7 @@ pub const VTTCue = struct {
             position: LineAndPositionSetting = undefined,
             positionAlign: PositionAlignSetting = undefined,
             size: f64 = undefined,
-            align: AlignSetting = undefined,
+            @"align": AlignSetting = undefined,
             text: runtime.DOMString = undefined,
         },
         Meta.BaseType,
@@ -93,17 +102,7 @@ pub const VTTCue = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        VTTCueImpl.init(instance);
-        
-        return instance;
+        return VTTCueImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -126,7 +125,7 @@ pub const VTTCue = struct {
         return instance;
     }
 
-    pub fn get_track(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_track(instance: *runtime.Instance) anyerror!TextTrack {
         return try VTTCueImpl.get_track(instance);
     }
 
@@ -178,11 +177,11 @@ pub const VTTCue = struct {
         try VTTCueImpl.set_onexit(instance, value);
     }
 
-    pub fn get_region(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_region(instance: *runtime.Instance) anyerror!VTTRegion {
         return try VTTCueImpl.get_region(instance);
     }
 
-    pub fn set_region(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_region(instance: *runtime.Instance, value: VTTRegion) anyerror!void {
         try VTTCueImpl.set_region(instance, value);
     }
 
@@ -263,23 +262,23 @@ pub const VTTCue = struct {
         return try VTTCueImpl.call_dispatchEvent(instance, event);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try VTTCueImpl.call_when(instance, type_, options);
+        return try VTTCueImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_getCueAsHTML(instance: *runtime.Instance) anyerror!DocumentFragment {
         return try VTTCueImpl.call_getCueAsHTML(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try VTTCueImpl.call_addEventListener(instance, type_, callback, options);
+        return try VTTCueImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try VTTCueImpl.call_removeEventListener(instance, type_, callback, options);
+        return try VTTCueImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

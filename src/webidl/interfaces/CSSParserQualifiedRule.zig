@@ -1,5 +1,5 @@
 //! Generated from: css-parser-api.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,9 +7,9 @@ const std = @import("std");
 const runtime = @import("runtime");
 const CSSParserQualifiedRuleImpl = @import("impls").CSSParserQualifiedRule;
 const CSSParserRule = @import("interfaces").CSSParserRule;
-const sequence = @import("interfaces").sequence;
-const FrozenArray<CSSParserRule> = @import("interfaces").FrozenArray<CSSParserRule>;
-const FrozenArray<CSSParserValue> = @import("interfaces").FrozenArray<CSSParserValue>;
+const CSSToken = @import("typedefs").CSSToken;
+const CSSParserValue = @import("interfaces").CSSParserValue;
+const DOMString = @import("typedefs").DOMString;
 
 pub const CSSParserQualifiedRule = struct {
     pub const Meta = struct {
@@ -27,8 +27,8 @@ pub const CSSParserQualifiedRule = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            prelude: FrozenArray<CSSParserValue> = undefined,
-            body: FrozenArray<CSSParserRule> = undefined,
+            prelude: runtime.FrozenArray(CSSParserValue) = undefined,
+            body: runtime.FrozenArray(CSSParserRule) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -43,17 +43,7 @@ pub const CSSParserQualifiedRule = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        CSSParserQualifiedRuleImpl.init(instance);
-        
-        return instance;
+        return CSSParserQualifiedRuleImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

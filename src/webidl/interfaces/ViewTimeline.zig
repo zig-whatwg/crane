@@ -1,5 +1,5 @@
 //! Generated from: scroll-animations.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -10,6 +10,11 @@ const ScrollTimeline = @import("interfaces").ScrollTimeline;
 const CSSNumericValue = @import("interfaces").CSSNumericValue;
 const ViewTimelineOptions = @import("dictionaries").ViewTimelineOptions;
 const Element = @import("interfaces").Element;
+const AnimationEffect = @import("interfaces").AnimationEffect;
+const CSSNumberish = @import("typedefs").CSSNumberish;
+const Animation = @import("interfaces").Animation;
+const ScrollAxis = @import("enums").ScrollAxis;
+const ScrollTimelineOptions = @import("dictionaries").ScrollTimelineOptions;
 
 pub const ViewTimeline = struct {
     pub const Meta = struct {
@@ -40,7 +45,6 @@ pub const ViewTimeline = struct {
 
         .get_axis = &get_axis,
         .get_currentTime = &get_currentTime,
-        .get_currentTime = &get_currentTime,
         .get_duration = &get_duration,
         .get_endOffset = &get_endOffset,
         .get_source = &get_source,
@@ -52,17 +56,7 @@ pub const ViewTimeline = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ViewTimelineImpl.init(instance);
-        
-        return instance;
+        return ViewTimelineImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -85,19 +79,15 @@ pub const ViewTimeline = struct {
         return instance;
     }
 
-    pub fn get_currentTime(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTime(instance: *runtime.Instance) anyerror!f64 {
         return try ViewTimelineImpl.get_currentTime(instance);
     }
 
-    pub fn get_currentTime(instance: *runtime.Instance) anyerror!anyopaque {
-        return try ViewTimelineImpl.get_currentTime(instance);
-    }
-
-    pub fn get_duration(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_duration(instance: *runtime.Instance) anyerror!CSSNumberish {
         return try ViewTimelineImpl.get_duration(instance);
     }
 
-    pub fn get_source(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_source(instance: *runtime.Instance) anyerror!Element {
         return try ViewTimelineImpl.get_source(instance);
     }
 
@@ -117,7 +107,7 @@ pub const ViewTimeline = struct {
         return try ViewTimelineImpl.get_endOffset(instance);
     }
 
-    pub fn call_play(instance: *runtime.Instance, effect: anyopaque) anyerror!Animation {
+    pub fn call_play(instance: *runtime.Instance, effect: AnimationEffect) anyerror!Animation {
         
         return try ViewTimelineImpl.call_play(instance, effect);
     }

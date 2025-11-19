@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,11 +7,15 @@ const std = @import("std");
 const runtime = @import("runtime");
 const RTCTrackEventImpl = @import("impls").RTCTrackEvent;
 const Event = @import("interfaces").Event;
-const RTCRtpTransceiver = @import("interfaces").RTCRtpTransceiver;
+const RTCRtpReceiver = @import("interfaces").RTCRtpReceiver;
+const MediaStream = @import("interfaces").MediaStream;
+const EventTarget = @import("interfaces").EventTarget;
 const RTCTrackEventInit = @import("dictionaries").RTCTrackEventInit;
 const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
-const RTCRtpReceiver = @import("interfaces").RTCRtpReceiver;
-const FrozenArray<MediaStream> = @import("interfaces").FrozenArray<MediaStream>;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
+const DOMString = @import("typedefs").DOMString;
+const RTCRtpTransceiver = @import("interfaces").RTCRtpTransceiver;
 
 pub const RTCTrackEvent = struct {
     pub const Meta = struct {
@@ -36,7 +40,7 @@ pub const RTCTrackEvent = struct {
         struct {
             receiver: RTCRtpReceiver = undefined,
             track: MediaStreamTrack = undefined,
-            streams: FrozenArray<MediaStream> = undefined,
+            streams: runtime.FrozenArray(MediaStream) = undefined,
             transceiver: RTCRtpTransceiver = undefined,
         },
         Meta.BaseType,
@@ -80,17 +84,7 @@ pub const RTCTrackEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        RTCTrackEventImpl.init(instance);
-        
-        return instance;
+        return RTCTrackEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -104,11 +98,11 @@ pub const RTCTrackEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, eventInitDict: RTCTrackEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, eventInitDict: RTCTrackEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try RTCTrackEventImpl.constructor(instance, type_, eventInitDict);
+        try RTCTrackEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -117,15 +111,15 @@ pub const RTCTrackEvent = struct {
         return try RTCTrackEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try RTCTrackEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try RTCTrackEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try RTCTrackEventImpl.get_currentTarget(instance);
     }
 
@@ -202,9 +196,9 @@ pub const RTCTrackEvent = struct {
         return try RTCTrackEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try RTCTrackEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try RTCTrackEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_composedPath(instance: *runtime.Instance) anyerror!anyopaque {

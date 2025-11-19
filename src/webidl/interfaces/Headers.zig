@@ -1,5 +1,5 @@
 //! Generated from: fetch.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -45,17 +45,7 @@ pub const Headers = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        HeadersImpl.init(instance);
-        
-        return instance;
+        return HeadersImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -69,11 +59,11 @@ pub const Headers = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, init: HeadersInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, init_data: HeadersInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try HeadersImpl.constructor(instance, init);
+        try HeadersImpl.constructor(instance, init_data);
         
         return instance;
     }
@@ -88,7 +78,7 @@ pub const Headers = struct {
         return try HeadersImpl.call_append(instance, name, value);
     }
 
-    pub fn call_get(instance: *runtime.Instance, name: runtime.ByteString) anyerror!anyopaque {
+    pub fn call_get(instance: *runtime.Instance, name: runtime.ByteString) anyerror!runtime.ByteString {
         
         return try HeadersImpl.call_get(instance, name);
     }

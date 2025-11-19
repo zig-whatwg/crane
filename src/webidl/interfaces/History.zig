@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,6 +7,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const HistoryImpl = @import("impls").History;
 const ScrollRestoration = @import("enums").ScrollRestoration;
+const DOMString = @import("typedefs").DOMString;
 const USVString = @import("interfaces").USVString;
 
 pub const History = struct {
@@ -51,17 +52,7 @@ pub const History = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        HistoryImpl.init(instance);
-        
-        return instance;
+        return HistoryImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -94,7 +85,7 @@ pub const History = struct {
         return try HistoryImpl.call_forward(instance);
     }
 
-    pub fn call_pushState(instance: *runtime.Instance, data: anyopaque, unused: DOMString, url: anyopaque) anyerror!void {
+    pub fn call_pushState(instance: *runtime.Instance, data: anyopaque, unused: DOMString, url: runtime.USVString) anyerror!void {
         
         return try HistoryImpl.call_pushState(instance, data, unused, url);
     }
@@ -108,7 +99,7 @@ pub const History = struct {
         return try HistoryImpl.call_back(instance);
     }
 
-    pub fn call_replaceState(instance: *runtime.Instance, data: anyopaque, unused: DOMString, url: anyopaque) anyerror!void {
+    pub fn call_replaceState(instance: *runtime.Instance, data: anyopaque, unused: DOMString, url: runtime.USVString) anyerror!void {
         
         return try HistoryImpl.call_replaceState(instance, data, unused, url);
     }

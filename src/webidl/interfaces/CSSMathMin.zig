@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,15 @@ const runtime = @import("runtime");
 const CSSMathMinImpl = @import("impls").CSSMathMin;
 const CSSMathValue = @import("interfaces").CSSMathValue;
 const CSSNumericArray = @import("interfaces").CSSNumericArray;
+const CSSNumericValue = @import("interfaces").CSSNumericValue;
+const CSSUnitValue = @import("interfaces").CSSUnitValue;
+const CSSMathSum = @import("interfaces").CSSMathSum;
+const CSSNumericType = @import("dictionaries").CSSNumericType;
+const CSSMathOperator = @import("enums").CSSMathOperator;
+const CSSStyleValue = @import("interfaces").CSSStyleValue;
 const CSSNumberish = @import("typedefs").CSSNumberish;
+const USVString = @import("interfaces").USVString;
+const DOMString = @import("typedefs").DOMString;
 
 pub const CSSMathMin = struct {
     pub const Meta = struct {
@@ -59,17 +67,7 @@ pub const CSSMathMin = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        CSSMathMinImpl.init(instance);
-        
-        return instance;
+        return CSSMathMinImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -100,26 +98,6 @@ pub const CSSMathMin = struct {
         return try CSSMathMinImpl.get_values(instance);
     }
 
-    pub fn call_max(instance: *runtime.Instance, values: CSSNumberish) anyerror!CSSNumericValue {
-        
-        return try CSSMathMinImpl.call_max(instance, values);
-    }
-
-    pub fn call_mul(instance: *runtime.Instance, values: CSSNumberish) anyerror!CSSNumericValue {
-        
-        return try CSSMathMinImpl.call_mul(instance, values);
-    }
-
-    pub fn call_add(instance: *runtime.Instance, values: CSSNumberish) anyerror!CSSNumericValue {
-        
-        return try CSSMathMinImpl.call_add(instance, values);
-    }
-
-    pub fn call_toSum(instance: *runtime.Instance, units: runtime.USVString) anyerror!CSSMathSum {
-        
-        return try CSSMathMinImpl.call_toSum(instance, units);
-    }
-
     pub fn call_equals(instance: *runtime.Instance, value: CSSNumberish) anyerror!bool {
         
         return try CSSMathMinImpl.call_equals(instance, value);
@@ -141,9 +119,29 @@ pub const CSSMathMin = struct {
         return try CSSMathMinImpl.call_min(instance, values);
     }
 
+    pub fn call_max(instance: *runtime.Instance, values: CSSNumberish) anyerror!CSSNumericValue {
+        
+        return try CSSMathMinImpl.call_max(instance, values);
+    }
+
+    pub fn call_mul(instance: *runtime.Instance, values: CSSNumberish) anyerror!CSSNumericValue {
+        
+        return try CSSMathMinImpl.call_mul(instance, values);
+    }
+
+    pub fn call_add(instance: *runtime.Instance, values: CSSNumberish) anyerror!CSSNumericValue {
+        
+        return try CSSMathMinImpl.call_add(instance, values);
+    }
+
     pub fn call_to(instance: *runtime.Instance, unit: runtime.USVString) anyerror!CSSUnitValue {
         
         return try CSSMathMinImpl.call_to(instance, unit);
+    }
+
+    pub fn call_toSum(instance: *runtime.Instance, units: runtime.USVString) anyerror!CSSMathSum {
+        
+        return try CSSMathMinImpl.call_toSum(instance, units);
     }
 
     pub fn call_div(instance: *runtime.Instance, values: CSSNumberish) anyerror!CSSNumericValue {
@@ -151,22 +149,10 @@ pub const CSSMathMin = struct {
         return try CSSMathMinImpl.call_div(instance, values);
     }
 
-    /// Arguments for parse (WebIDL overloading)
-    pub const ParseArgs = union(enum) {
-        /// parse(property, cssText)
-        USVString_USVString: struct {
-            property: runtime.USVString,
-            cssText: runtime.USVString,
-        },
-        /// parse(cssText)
-        USVString: runtime.USVString,
-    };
-
-    pub fn call_parse(instance: *runtime.Instance, args: ParseArgs) anyerror!CSSStyleValue {
-        switch (args) {
-            .USVString_USVString => |a| return try CSSMathMinImpl.USVString_USVString(instance, a.property, a.cssText),
-            .USVString => |arg| return try CSSMathMinImpl.USVString(instance, arg),
-        }
+    /// Extended attributes: [Exposed=Window]
+    pub fn call_parse(instance: *runtime.Instance, property: runtime.USVString, cssText: runtime.USVString) anyerror!CSSStyleValue {
+        
+        return try CSSMathMinImpl.call_parse(instance, property, cssText);
     }
 
     pub fn call_type(instance: *runtime.Instance) anyerror!CSSNumericType {

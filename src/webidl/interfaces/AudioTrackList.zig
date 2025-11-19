@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,8 +7,15 @@ const std = @import("std");
 const runtime = @import("runtime");
 const AudioTrackListImpl = @import("impls").AudioTrackList;
 const EventTarget = @import("interfaces").EventTarget;
-const EventHandler = @import("typedefs").EventHandler;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const DOMString = @import("typedefs").DOMString;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const Event = @import("interfaces").Event;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const AudioTrack = @import("interfaces").AudioTrack;
+const EventListener = @import("interfaces").EventListener;
+const EventHandler = @import("typedefs").EventHandler;
+const Observable = @import("interfaces").Observable;
 
 pub const AudioTrackList = struct {
     pub const Meta = struct {
@@ -56,17 +63,7 @@ pub const AudioTrackList = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        AudioTrackListImpl.init(instance);
-        
-        return instance;
+        return AudioTrackListImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -112,24 +109,24 @@ pub const AudioTrackList = struct {
         return try AudioTrackListImpl.call_dispatchEvent(instance, event);
     }
 
-    pub fn call_getTrackById(instance: *runtime.Instance, id: DOMString) anyerror!anyopaque {
+    pub fn call_getTrackById(instance: *runtime.Instance, id: DOMString) anyerror!AudioTrack {
         
         return try AudioTrackListImpl.call_getTrackById(instance, id);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try AudioTrackListImpl.call_when(instance, type_, options);
+        return try AudioTrackListImpl.call_when(instance, @"type", options);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try AudioTrackListImpl.call_addEventListener(instance, type_, callback, options);
+        return try AudioTrackListImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try AudioTrackListImpl.call_removeEventListener(instance, type_, callback, options);
+        return try AudioTrackListImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

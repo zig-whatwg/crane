@@ -1,5 +1,5 @@
 //! Generated from: edit-context.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,11 @@ const std = @import("std");
 const runtime = @import("runtime");
 const TextUpdateEventImpl = @import("impls").TextUpdateEvent;
 const Event = @import("interfaces").Event;
+const EventTarget = @import("interfaces").EventTarget;
 const TextUpdateEventInit = @import("dictionaries").TextUpdateEventInit;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
+const DOMString = @import("typedefs").DOMString;
 
 pub const TextUpdateEvent = struct {
     pub const Meta = struct {
@@ -78,17 +82,7 @@ pub const TextUpdateEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        TextUpdateEventImpl.init(instance);
-        
-        return instance;
+        return TextUpdateEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -102,11 +96,11 @@ pub const TextUpdateEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, options: TextUpdateEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, options: TextUpdateEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try TextUpdateEventImpl.constructor(instance, type_, options);
+        try TextUpdateEventImpl.constructor(instance, @"type", options);
         
         return instance;
     }
@@ -115,15 +109,15 @@ pub const TextUpdateEvent = struct {
         return try TextUpdateEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try TextUpdateEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try TextUpdateEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try TextUpdateEventImpl.get_currentTarget(instance);
     }
 
@@ -196,9 +190,9 @@ pub const TextUpdateEvent = struct {
         return try TextUpdateEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try TextUpdateEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try TextUpdateEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_composedPath(instance: *runtime.Instance) anyerror!anyopaque {

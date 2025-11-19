@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -20,59 +20,63 @@ const Navigator = @import("interfaces").Navigator;
 const FetchLaterResult = @import("interfaces").FetchLaterResult;
 const ImageBitmapSource = @import("typedefs").ImageBitmapSource;
 const TimerHandler = @import("typedefs").TimerHandler;
+const USVString = @import("interfaces").USVString;
 const History = @import("interfaces").History;
 const VisualViewport = @import("interfaces").VisualViewport;
-const Scheduler = @import("interfaces").Scheduler;
+const FileSystemFileHandle = @import("interfaces").FileSystemFileHandle;
 const Element = @import("interfaces").Element;
 const PushManager = @import("interfaces").PushManager;
+const Scheduler = @import("interfaces").Scheduler;
 const Crypto = @import("interfaces").Crypto;
 const Location = @import("interfaces").Location;
-const (Event or undefined) = @import("interfaces").(Event or undefined);
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
 const ImageBitmapOptions = @import("dictionaries").ImageBitmapOptions;
 const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
 const CookieStore = @import("interfaces").CookieStore;
 const IdleRequestCallback = @import("callbacks").IdleRequestCallback;
 const PortalHost = @import("interfaces").PortalHost;
 const FrameRequestCallback = @import("callbacks").FrameRequestCallback;
-const Promise<DigitalGoodsService> = @import("interfaces").Promise<DigitalGoodsService>;
 const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
 const RequestInit = @import("dictionaries").RequestInit;
 const Storage = @import("interfaces").Storage;
-const Promise<FileSystemFileHandle> = @import("interfaces").Promise<FileSystemFileHandle>;
-const Promise<FileSystemDirectoryHandle> = @import("interfaces").Promise<FileSystemDirectoryHandle>;
+const Event = @import("interfaces").Event;
 const DirectoryPickerOptions = @import("dictionaries").DirectoryPickerOptions;
 const SaveFilePickerOptions = @import("dictionaries").SaveFilePickerOptions;
+const Response = @import("interfaces").Response;
 const DocumentPictureInPicture = @import("interfaces").DocumentPictureInPicture;
-const DOMString = @import("typedefs").DOMString;
 const Document = @import("interfaces").Document;
+const FileSystemDirectoryHandle = @import("interfaces").FileSystemDirectoryHandle;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
-const Promise<ImageBitmap> = @import("interfaces").Promise<ImageBitmap>;
+const ByteString = @import("interfaces").ByteString;
+const DigitalGoodsService = @import("interfaces").DigitalGoodsService;
 const ScrollToOptions = @import("dictionaries").ScrollToOptions;
-const StructuredSerializeOptions = @import("dictionaries").StructuredSerializeOptions;
 const OpenFilePickerOptions = @import("dictionaries").OpenFilePickerOptions;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
-const Promise<sequence<FileSystemFileHandle>> = @import("interfaces").Promise<sequence<FileSystemFileHandle>>;
+const StructuredSerializeOptions = @import("dictionaries").StructuredSerializeOptions;
+const DOMString = @import("typedefs").DOMString;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const DeferredRequestInit = @import("dictionaries").DeferredRequestInit;
 const Navigation = @import("interfaces").Navigation;
 const WindowPostMessageOptions = @import("dictionaries").WindowPostMessageOptions;
-const Promise<ScreenDetails> = @import("interfaces").Promise<ScreenDetails>;
 const EventHandler = @import("typedefs").EventHandler;
 const Fence = @import("interfaces").Fence;
 const SharedStorage = @import("interfaces").SharedStorage;
 const QueryOptions = @import("dictionaries").QueryOptions;
 const OnBeforeUnloadEventHandler = @import("typedefs").OnBeforeUnloadEventHandler;
+const ImageBitmap = @import("interfaces").ImageBitmap;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const SpatialNavigationDirection = @import("enums").SpatialNavigationDirection;
 const WindowProxy = @import("interfaces").WindowProxy;
+const ScreenDetails = @import("interfaces").ScreenDetails;
 const RequestInfo = @import("typedefs").RequestInfo;
 const Screen = @import("interfaces").Screen;
-const Promise<sequence<FontData>> = @import("interfaces").Promise<sequence<FontData>>;
 const VoidFunction = @import("callbacks").VoidFunction;
 const IDBFactory = @import("interfaces").IDBFactory;
 const BarProp = @import("interfaces").BarProp;
 const TrustedTypePolicyFactory = @import("interfaces").TrustedTypePolicyFactory;
 const Performance = @import("interfaces").Performance;
 const CacheStorage = @import("interfaces").CacheStorage;
-const Promise<Response> = @import("interfaces").Promise<Response>;
+const Observable = @import("interfaces").Observable;
 const IdleRequestOptions = @import("dictionaries").IdleRequestOptions;
 const LaunchQueue = @import("interfaces").LaunchQueue;
 const SpeechSynthesis = @import("interfaces").SpeechSynthesis;
@@ -149,7 +153,10 @@ pub const Window = struct {
             speechSynthesis: SpeechSynthesis = undefined,
             fence: ?Fence = null,
             documentPictureInPicture: DocumentPictureInPicture = undefined,
-            event: (Event or undefined) = undefined,
+            event: union(enum) {
+                Event: Event,
+                undefined: undefined,
+            } = undefined,
             orientation: i16 = undefined,
             onorientationchange: EventHandler = undefined,
             sharedStorage: ?SharedStorage = null,
@@ -705,17 +712,7 @@ pub const Window = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        WindowImpl.init(instance);
-        
-        return instance;
+        return WindowImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -760,6 +757,7 @@ pub const Window = struct {
         return try WindowImpl.get_history(instance);
     }
 
+    /// Extended attributes: [Replaceable]
     pub fn get_navigation(instance: *runtime.Instance) anyerror!Navigation {
         return try WindowImpl.get_navigation(instance);
     }
@@ -838,7 +836,7 @@ pub const Window = struct {
         return try WindowImpl.get_parent(instance);
     }
 
-    pub fn get_frameElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_frameElement(instance: *runtime.Instance) anyerror!Element {
         return try WindowImpl.get_frameElement(instance);
     }
 
@@ -925,7 +923,7 @@ pub const Window = struct {
         return value;
     }
 
-    pub fn get_fence(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_fence(instance: *runtime.Instance) anyerror!Fence {
         return try WindowImpl.get_fence(instance);
     }
 
@@ -959,7 +957,7 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn get_sharedStorage(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_sharedStorage(instance: *runtime.Instance) anyerror!SharedStorage {
         return try WindowImpl.get_sharedStorage(instance);
     }
 
@@ -1004,7 +1002,7 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [SameObject], [Replaceable]
-    pub fn get_visualViewport(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_visualViewport(instance: *runtime.Instance) anyerror!VisualViewport {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.cached_visualViewport) |cached| {
@@ -1084,7 +1082,7 @@ pub const Window = struct {
         return try WindowImpl.get_launchQueue(instance);
     }
 
-    pub fn get_portalHost(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_portalHost(instance: *runtime.Instance) anyerror!PortalHost {
         return try WindowImpl.get_portalHost(instance);
     }
 
@@ -2186,26 +2184,9 @@ pub const Window = struct {
         return try WindowImpl.call_confirm(instance, message);
     }
 
-    /// Arguments for postMessage (WebIDL overloading)
-    pub const PostMessageArgs = union(enum) {
-        /// postMessage(message, targetOrigin, transfer)
-        any_USVString_sequence: struct {
-            message: anyopaque,
-            targetOrigin: runtime.USVString,
-            transfer: anyopaque,
-        },
-        /// postMessage(message, options)
-        any_WindowPostMessageOptions: struct {
-            message: anyopaque,
-            options: WindowPostMessageOptions,
-        },
-    };
-
-    pub fn call_postMessage(instance: *runtime.Instance, args: PostMessageArgs) anyerror!void {
-        switch (args) {
-            .any_USVString_sequence => |a| return try WindowImpl.any_USVString_sequence(instance, a.message, a.targetOrigin, a.transfer),
-            .any_WindowPostMessageOptions => |a| return try WindowImpl.any_WindowPostMessageOptions(instance, a.message, a.options),
-        }
+    pub fn call_postMessage(instance: *runtime.Instance, message: anyopaque, targetOrigin: runtime.USVString, transfer: anyopaque) anyerror!void {
+        
+        return try WindowImpl.call_postMessage(instance, message, targetOrigin, transfer);
     }
 
     pub fn call_showDirectoryPicker(instance: *runtime.Instance, options: DirectoryPickerOptions) anyerror!anyopaque {
@@ -2220,22 +2201,9 @@ pub const Window = struct {
         return try WindowImpl.call_matchMedia(instance, query);
     }
 
-    /// Arguments for scroll (WebIDL overloading)
-    pub const ScrollArgs = union(enum) {
-        /// scroll(options)
-        ScrollToOptions: ScrollToOptions,
-        /// scroll(x, y)
-        unrestricted double_unrestricted double: struct {
-            x: f64,
-            y: f64,
-        },
-    };
-
-    pub fn call_scroll(instance: *runtime.Instance, args: ScrollArgs) anyerror!anyopaque {
-        switch (args) {
-            .ScrollToOptions => |arg| return try WindowImpl.ScrollToOptions(instance, arg),
-            .unrestricted double_unrestricted double => |a| return try WindowImpl.unrestricted double_unrestricted double(instance, a.x, a.y),
-        }
+    pub fn call_scroll(instance: *runtime.Instance, options: ScrollToOptions) anyerror!anyopaque {
+        
+        return try WindowImpl.call_scroll(instance, options);
     }
 
     pub fn call_resizeTo(instance: *runtime.Instance, width: i32, height: i32) anyerror!void {
@@ -2258,16 +2226,16 @@ pub const Window = struct {
         return try WindowImpl.call_clearInterval(instance, id);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try WindowImpl.call_removeEventListener(instance, type_, callback, options);
+        return try WindowImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_fetch(instance: *runtime.Instance, input: RequestInfo, init: RequestInit) anyerror!anyopaque {
+    pub fn call_fetch(instance: *runtime.Instance, input: RequestInfo, init_data: RequestInit) anyerror!anyopaque {
         // [NewObject] - Caller owns the returned object
         
-        return try WindowImpl.call_fetch(instance, input, init);
+        return try WindowImpl.call_fetch(instance, input, init_data);
     }
 
     pub fn call_blur(instance: *runtime.Instance) anyerror!void {
@@ -2279,22 +2247,9 @@ pub const Window = struct {
         return try WindowImpl.call_showOpenFilePicker(instance, options);
     }
 
-    /// Arguments for scrollBy (WebIDL overloading)
-    pub const ScrollByArgs = union(enum) {
-        /// scrollBy(options)
-        ScrollToOptions: ScrollToOptions,
-        /// scrollBy(x, y)
-        unrestricted double_unrestricted double: struct {
-            x: f64,
-            y: f64,
-        },
-    };
-
-    pub fn call_scrollBy(instance: *runtime.Instance, args: ScrollByArgs) anyerror!anyopaque {
-        switch (args) {
-            .ScrollToOptions => |arg| return try WindowImpl.ScrollToOptions(instance, arg),
-            .unrestricted double_unrestricted double => |a| return try WindowImpl.unrestricted double_unrestricted double(instance, a.x, a.y),
-        }
+    pub fn call_scrollBy(instance: *runtime.Instance, options: ScrollToOptions) anyerror!anyopaque {
+        
+        return try WindowImpl.call_scrollBy(instance, options);
     }
 
     pub fn call_releaseEvents(instance: *runtime.Instance) anyerror!void {
@@ -2306,19 +2261,8 @@ pub const Window = struct {
         return try WindowImpl.call_atob(instance, data);
     }
 
-    /// Arguments for alert (WebIDL overloading)
-    pub const AlertArgs = union(enum) {
-        /// alert()
-        no_params: void,
-        /// alert(message)
-        string: DOMString,
-    };
-
-    pub fn call_alert(instance: *runtime.Instance, args: AlertArgs) anyerror!void {
-        switch (args) {
-            .no_params => return try WindowImpl.no_params(instance),
-            .string => |arg| return try WindowImpl.string(instance, arg),
-        }
+    pub fn call_alert(instance: *runtime.Instance) anyerror!void {
+        return try WindowImpl.call_alert(instance);
     }
 
     pub fn call_dispatchEvent(instance: *runtime.Instance, event: Event) anyerror!bool {
@@ -2365,7 +2309,7 @@ pub const Window = struct {
         return try WindowImpl.call_moveBy(instance, x, y);
     }
 
-    pub fn call_getSelection(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn call_getSelection(instance: *runtime.Instance) anyerror!Selection {
         return try WindowImpl.call_getSelection(instance);
     }
 
@@ -2378,9 +2322,9 @@ pub const Window = struct {
         return try WindowImpl.call_resizeBy(instance, x, y);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try WindowImpl.call_when(instance, type_, options);
+        return try WindowImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_open(instance: *runtime.Instance, url: runtime.USVString, target: DOMString, features: DOMString) anyerror!anyopaque {
@@ -2393,27 +2337,14 @@ pub const Window = struct {
         return try WindowImpl.call_moveTo(instance, x, y);
     }
 
-    pub fn call_prompt(instance: *runtime.Instance, message: DOMString, default: DOMString) anyerror!anyopaque {
+    pub fn call_prompt(instance: *runtime.Instance, message: DOMString, default: DOMString) anyerror!DOMString {
         
         return try WindowImpl.call_prompt(instance, message, default);
     }
 
-    /// Arguments for scrollTo (WebIDL overloading)
-    pub const ScrollToArgs = union(enum) {
-        /// scrollTo(options)
-        ScrollToOptions: ScrollToOptions,
-        /// scrollTo(x, y)
-        unrestricted double_unrestricted double: struct {
-            x: f64,
-            y: f64,
-        },
-    };
-
-    pub fn call_scrollTo(instance: *runtime.Instance, args: ScrollToArgs) anyerror!anyopaque {
-        switch (args) {
-            .ScrollToOptions => |arg| return try WindowImpl.ScrollToOptions(instance, arg),
-            .unrestricted double_unrestricted double => |a| return try WindowImpl.unrestricted double_unrestricted double(instance, a.x, a.y),
-        }
+    pub fn call_scrollTo(instance: *runtime.Instance, options: ScrollToOptions) anyerror!anyopaque {
+        
+        return try WindowImpl.call_scrollTo(instance, options);
     }
 
     pub fn call_reportError(instance: *runtime.Instance, e: anyopaque) anyerror!void {
@@ -2444,15 +2375,15 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [NewObject], [SecureContext]
-    pub fn call_fetchLater(instance: *runtime.Instance, input: RequestInfo, init: DeferredRequestInit) anyerror!FetchLaterResult {
+    pub fn call_fetchLater(instance: *runtime.Instance, input: RequestInfo, init_data: DeferredRequestInit) anyerror!FetchLaterResult {
         // [NewObject] - Caller owns the returned object
         
-        return try WindowImpl.call_fetchLater(instance, input, init);
+        return try WindowImpl.call_fetchLater(instance, input, init_data);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try WindowImpl.call_addEventListener(instance, type_, callback, options);
+        return try WindowImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
     pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: FrameRequestCallback) anyerror!u32 {
@@ -2460,29 +2391,9 @@ pub const Window = struct {
         return try WindowImpl.call_requestAnimationFrame(instance, callback);
     }
 
-    /// Arguments for createImageBitmap (WebIDL overloading)
-    pub const CreateImageBitmapArgs = union(enum) {
-        /// createImageBitmap(image, options)
-        ImageBitmapSource_ImageBitmapOptions: struct {
-            image: ImageBitmapSource,
-            options: ImageBitmapOptions,
-        },
-        /// createImageBitmap(image, sx, sy, sw, sh, options)
-        ImageBitmapSource_long_long_long_long_ImageBitmapOptions: struct {
-            image: ImageBitmapSource,
-            sx: i32,
-            sy: i32,
-            sw: i32,
-            sh: i32,
-            options: ImageBitmapOptions,
-        },
-    };
-
-    pub fn call_createImageBitmap(instance: *runtime.Instance, args: CreateImageBitmapArgs) anyerror!anyopaque {
-        switch (args) {
-            .ImageBitmapSource_ImageBitmapOptions => |a| return try WindowImpl.ImageBitmapSource_ImageBitmapOptions(instance, a.image, a.options),
-            .ImageBitmapSource_long_long_long_long_ImageBitmapOptions => |a| return try WindowImpl.ImageBitmapSource_long_long_long_long_ImageBitmapOptions(instance, a.image, a.sx, a.sy, a.sw, a.sh, a.options),
-        }
+    pub fn call_createImageBitmap(instance: *runtime.Instance, image: ImageBitmapSource, options: ImageBitmapOptions) anyerror!anyopaque {
+        
+        return try WindowImpl.call_createImageBitmap(instance, image, options);
     }
 
     pub fn call_cancelIdleCallback(instance: *runtime.Instance, handle: u32) anyerror!void {

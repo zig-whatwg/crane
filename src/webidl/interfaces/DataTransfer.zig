@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,7 @@ const runtime = @import("runtime");
 const DataTransferImpl = @import("impls").DataTransfer;
 const Element = @import("interfaces").Element;
 const DataTransferItemList = @import("interfaces").DataTransferItemList;
-const FrozenArray<DOMString> = @import("interfaces").FrozenArray<DOMString>;
+const DOMString = @import("typedefs").DOMString;
 const FileList = @import("interfaces").FileList;
 
 pub const DataTransfer = struct {
@@ -30,7 +30,7 @@ pub const DataTransfer = struct {
             dropEffect: runtime.DOMString = undefined,
             effectAllowed: runtime.DOMString = undefined,
             items: DataTransferItemList = undefined,
-            types: FrozenArray<DOMString> = undefined,
+            types: runtime.FrozenArray(runtime.DOMString) = undefined,
             files: FileList = undefined,
         },
         Meta.BaseType,
@@ -57,17 +57,7 @@ pub const DataTransfer = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        DataTransferImpl.init(instance);
-        
-        return instance;
+        return DataTransferImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

@@ -1,15 +1,15 @@
 //! Generated from: web-locks.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const LockManagerImpl = @import("impls").LockManager;
-const Promise<any> = @import("interfaces").Promise<any>;
-const Promise<LockManagerSnapshot> = @import("interfaces").Promise<LockManagerSnapshot>;
 const LockOptions = @import("dictionaries").LockOptions;
 const LockGrantedCallback = @import("callbacks").LockGrantedCallback;
+const DOMString = @import("typedefs").DOMString;
+const LockManagerSnapshot = @import("dictionaries").LockManagerSnapshot;
 
 pub const LockManager = struct {
     pub const Meta = struct {
@@ -44,17 +44,7 @@ pub const LockManager = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        LockManagerImpl.init(instance);
-        
-        return instance;
+        return LockManagerImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -67,26 +57,9 @@ pub const LockManager = struct {
         deinit(instance);
     }
 
-    /// Arguments for request (WebIDL overloading)
-    pub const RequestArgs = union(enum) {
-        /// request(name, callback)
-        string_LockGrantedCallback: struct {
-            name: DOMString,
-            callback: LockGrantedCallback,
-        },
-        /// request(name, options, callback)
-        string_LockOptions_LockGrantedCallback: struct {
-            name: DOMString,
-            options: LockOptions,
-            callback: LockGrantedCallback,
-        },
-    };
-
-    pub fn call_request(instance: *runtime.Instance, args: RequestArgs) anyerror!anyopaque {
-        switch (args) {
-            .string_LockGrantedCallback => |a| return try LockManagerImpl.string_LockGrantedCallback(instance, a.name, a.callback),
-            .string_LockOptions_LockGrantedCallback => |a| return try LockManagerImpl.string_LockOptions_LockGrantedCallback(instance, a.name, a.options, a.callback),
-        }
+    pub fn call_request(instance: *runtime.Instance, name: DOMString, callback: LockGrantedCallback) anyerror!anyopaque {
+        
+        return try LockManagerImpl.call_request(instance, name, callback);
     }
 
     pub fn call_query(instance: *runtime.Instance) anyerror!anyopaque {

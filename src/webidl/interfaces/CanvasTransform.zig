@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -38,17 +38,7 @@ pub const CanvasTransform = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        CanvasTransformImpl.init(instance);
-        
-        return instance;
+        return CanvasTransformImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -65,26 +55,9 @@ pub const CanvasTransform = struct {
         return try CanvasTransformImpl.call_resetTransform(instance);
     }
 
-    /// Arguments for setTransform (WebIDL overloading)
-    pub const SetTransformArgs = union(enum) {
-        /// setTransform(a, b, c, d, e, f)
-        unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double: struct {
-            a: f64,
-            b: f64,
-            c: f64,
-            d: f64,
-            e: f64,
-            f: f64,
-        },
-        /// setTransform(transform)
-        DOMMatrix2DInit: DOMMatrix2DInit,
-    };
-
-    pub fn call_setTransform(instance: *runtime.Instance, args: SetTransformArgs) anyerror!void {
-        switch (args) {
-            .unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double => |a| return try CanvasTransformImpl.unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double_unrestricted double(instance, a.a, a.b, a.c, a.d, a.e, a.f),
-            .DOMMatrix2DInit => |arg| return try CanvasTransformImpl.DOMMatrix2DInit(instance, arg),
-        }
+    pub fn call_setTransform(instance: *runtime.Instance, a: f64, b: f64, c: f64, d: f64, e: f64, f: f64) anyerror!void {
+        
+        return try CanvasTransformImpl.call_setTransform(instance, a, b, c, d, e, f);
     }
 
     /// Extended attributes: [NewObject]

@@ -5,7 +5,7 @@
 const runtime = @import("runtime");
 
 pub const BaseKeyframe = struct {
-    offset: ?anyopaque = null,
+    offset: ?f64 = null,
     easing: ?runtime.DOMString = null,
     composite: ?anyopaque = null,
 };

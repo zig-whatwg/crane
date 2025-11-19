@@ -6,6 +6,6 @@ const runtime = @import("runtime");
 
 pub const FunctionParameter = struct {
     name: anyopaque,
-    type: anyopaque,
+    @"type": anyopaque,
     defaultValue: ?anyopaque = null,
 };

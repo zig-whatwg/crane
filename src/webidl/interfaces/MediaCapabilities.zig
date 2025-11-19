@@ -1,15 +1,15 @@
 //! Generated from: media-capabilities.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const MediaCapabilitiesImpl = @import("impls").MediaCapabilities;
-const Promise<MediaCapabilitiesEncodingInfo> = @import("interfaces").Promise<MediaCapabilitiesEncodingInfo>;
-const MediaDecodingConfiguration = @import("dictionaries").MediaDecodingConfiguration;
+const MediaCapabilitiesEncodingInfo = @import("dictionaries").MediaCapabilitiesEncodingInfo;
 const MediaEncodingConfiguration = @import("dictionaries").MediaEncodingConfiguration;
-const Promise<MediaCapabilitiesDecodingInfo> = @import("interfaces").Promise<MediaCapabilitiesDecodingInfo>;
+const MediaDecodingConfiguration = @import("dictionaries").MediaDecodingConfiguration;
+const MediaCapabilitiesDecodingInfo = @import("dictionaries").MediaCapabilitiesDecodingInfo;
 
 pub const MediaCapabilities = struct {
     pub const Meta = struct {
@@ -43,17 +43,7 @@ pub const MediaCapabilities = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        MediaCapabilitiesImpl.init(instance);
-        
-        return instance;
+        return MediaCapabilitiesImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

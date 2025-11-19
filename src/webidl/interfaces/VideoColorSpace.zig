@@ -1,16 +1,15 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const VideoColorSpaceImpl = @import("impls").VideoColorSpace;
-const VideoMatrixCoefficients = @import("enums").VideoMatrixCoefficients;
-const VideoColorSpaceInit = @import("dictionaries").VideoColorSpaceInit;
-const boolean = @import("interfaces").boolean;
-const VideoColorPrimaries = @import("enums").VideoColorPrimaries;
 const VideoTransferCharacteristics = @import("enums").VideoTransferCharacteristics;
+const VideoColorSpaceInit = @import("dictionaries").VideoColorSpaceInit;
+const VideoMatrixCoefficients = @import("enums").VideoMatrixCoefficients;
+const VideoColorPrimaries = @import("enums").VideoColorPrimaries;
 
 pub const VideoColorSpace = struct {
     pub const Meta = struct {
@@ -53,17 +52,7 @@ pub const VideoColorSpace = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        VideoColorSpaceImpl.init(instance);
-        
-        return instance;
+        return VideoColorSpaceImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -77,28 +66,28 @@ pub const VideoColorSpace = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, init: VideoColorSpaceInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, init_data: VideoColorSpaceInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try VideoColorSpaceImpl.constructor(instance, init);
+        try VideoColorSpaceImpl.constructor(instance, init_data);
         
         return instance;
     }
 
-    pub fn get_primaries(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_primaries(instance: *runtime.Instance) anyerror!VideoColorPrimaries {
         return try VideoColorSpaceImpl.get_primaries(instance);
     }
 
-    pub fn get_transfer(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_transfer(instance: *runtime.Instance) anyerror!VideoTransferCharacteristics {
         return try VideoColorSpaceImpl.get_transfer(instance);
     }
 
-    pub fn get_matrix(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_matrix(instance: *runtime.Instance) anyerror!VideoMatrixCoefficients {
         return try VideoColorSpaceImpl.get_matrix(instance);
     }
 
-    pub fn get_fullRange(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_fullRange(instance: *runtime.Instance) anyerror!bool {
         return try VideoColorSpaceImpl.get_fullRange(instance);
     }
 

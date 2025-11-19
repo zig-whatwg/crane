@@ -1,5 +1,5 @@
 //! Generated from: writing-assistance-apis.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,19 +7,15 @@ const std = @import("std");
 const runtime = @import("runtime");
 const RewriterImpl = @import("impls").Rewriter;
 const DestroyableModel = @import("interfaces").DestroyableModel;
-const RewriterLength = @import("enums").RewriterLength;
-const Promise<Availability> = @import("interfaces").Promise<Availability>;
-const RewriterFormat = @import("enums").RewriterFormat;
-const FrozenArray<DOMString> = @import("interfaces").FrozenArray<DOMString>;
-const RewriterCreateOptions = @import("dictionaries").RewriterCreateOptions;
+const Availability = @import("enums").Availability;
 const RewriterTone = @import("enums").RewriterTone;
-const Promise<DOMString> = @import("interfaces").Promise<DOMString>;
 const ReadableStream = @import("interfaces").ReadableStream;
+const RewriterFormat = @import("enums").RewriterFormat;
 const RewriterCreateCoreOptions = @import("dictionaries").RewriterCreateCoreOptions;
 const RewriterRewriteOptions = @import("dictionaries").RewriterRewriteOptions;
-const Promise<double> = @import("interfaces").Promise<double>;
-const Promise<Rewriter> = @import("interfaces").Promise<Rewriter>;
+const RewriterLength = @import("enums").RewriterLength;
 const DOMString = @import("typedefs").DOMString;
+const RewriterCreateOptions = @import("dictionaries").RewriterCreateOptions;
 
 pub const Rewriter = struct {
     pub const Meta = struct {
@@ -44,8 +40,8 @@ pub const Rewriter = struct {
             tone: RewriterTone = undefined,
             format: RewriterFormat = undefined,
             length: RewriterLength = undefined,
-            expectedInputLanguages: ?FrozenArray<DOMString> = null,
-            expectedContextLanguages: ?FrozenArray<DOMString> = null,
+            expectedInputLanguages: ?runtime.FrozenArray(runtime.DOMString) = null,
+            expectedContextLanguages: ?runtime.FrozenArray(runtime.DOMString) = null,
             outputLanguage: ?runtime.DOMString = null,
             inputQuota: f64 = undefined,
         },
@@ -75,17 +71,7 @@ pub const Rewriter = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        RewriterImpl.init(instance);
-        
-        return instance;
+        return RewriterImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -122,7 +108,7 @@ pub const Rewriter = struct {
         return try RewriterImpl.get_expectedContextLanguages(instance);
     }
 
-    pub fn get_outputLanguage(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_outputLanguage(instance: *runtime.Instance) anyerror!DOMString {
         return try RewriterImpl.get_outputLanguage(instance);
     }
 

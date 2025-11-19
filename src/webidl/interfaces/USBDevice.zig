@@ -1,5 +1,5 @@
 //! Generated from: webusb.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,16 +7,14 @@ const std = @import("std");
 const runtime = @import("runtime");
 const USBDeviceImpl = @import("impls").USBDevice;
 const USBDirection = @import("enums").USBDirection;
-const Promise<USBIsochronousInTransferResult> = @import("interfaces").Promise<USBIsochronousInTransferResult>;
-const Promise<USBOutTransferResult> = @import("interfaces").Promise<USBOutTransferResult>;
+const USBOutTransferResult = @import("interfaces").USBOutTransferResult;
 const BufferSource = @import("typedefs").BufferSource;
-const Promise<USBIsochronousOutTransferResult> = @import("interfaces").Promise<USBIsochronousOutTransferResult>;
-const USBControlTransferParameters = @import("dictionaries").USBControlTransferParameters;
+const USBInTransferResult = @import("interfaces").USBInTransferResult;
 const USBConfiguration = @import("interfaces").USBConfiguration;
-const Promise<USBInTransferResult> = @import("interfaces").Promise<USBInTransferResult>;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
+const USBControlTransferParameters = @import("dictionaries").USBControlTransferParameters;
+const USBIsochronousOutTransferResult = @import("interfaces").USBIsochronousOutTransferResult;
+const USBIsochronousInTransferResult = @import("interfaces").USBIsochronousInTransferResult;
 const DOMString = @import("typedefs").DOMString;
-const FrozenArray<USBConfiguration> = @import("interfaces").FrozenArray<USBConfiguration>;
 
 pub const USBDevice = struct {
     pub const Meta = struct {
@@ -53,7 +51,7 @@ pub const USBDevice = struct {
             productName: ?runtime.DOMString = null,
             serialNumber: ?runtime.DOMString = null,
             configuration: ?USBConfiguration = null,
-            configurations: FrozenArray<USBConfiguration> = undefined,
+            configurations: runtime.FrozenArray(USBConfiguration) = undefined,
             opened: bool = undefined,
         },
         Meta.BaseType,
@@ -100,17 +98,7 @@ pub const USBDevice = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        USBDeviceImpl.init(instance);
-        
-        return instance;
+        return USBDeviceImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -167,19 +155,19 @@ pub const USBDevice = struct {
         return try USBDeviceImpl.get_deviceVersionSubminor(instance);
     }
 
-    pub fn get_manufacturerName(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_manufacturerName(instance: *runtime.Instance) anyerror!DOMString {
         return try USBDeviceImpl.get_manufacturerName(instance);
     }
 
-    pub fn get_productName(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_productName(instance: *runtime.Instance) anyerror!DOMString {
         return try USBDeviceImpl.get_productName(instance);
     }
 
-    pub fn get_serialNumber(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_serialNumber(instance: *runtime.Instance) anyerror!DOMString {
         return try USBDeviceImpl.get_serialNumber(instance);
     }
 
-    pub fn get_configuration(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_configuration(instance: *runtime.Instance) anyerror!USBConfiguration {
         return try USBDeviceImpl.get_configuration(instance);
     }
 

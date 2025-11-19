@@ -1,5 +1,5 @@
 //! Generated from: entries-api.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,6 +7,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const FileSystemEntryImpl = @import("impls").FileSystemEntry;
 const FileSystemEntryCallback = @import("callbacks").FileSystemEntryCallback;
+const USVString = @import("interfaces").USVString;
 const FileSystem = @import("interfaces").FileSystem;
 const ErrorCallback = @import("callbacks").ErrorCallback;
 
@@ -50,17 +51,7 @@ pub const FileSystemEntry = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        FileSystemEntryImpl.init(instance);
-        
-        return instance;
+        return FileSystemEntryImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,10 +7,9 @@ const std = @import("std");
 const runtime = @import("runtime");
 const RTCErrorImpl = @import("impls").RTCError;
 const DOMException = @import("interfaces").DOMException;
-const unsigned long = @import("interfaces").unsigned long;
 const RTCErrorInit = @import("dictionaries").RTCErrorInit;
+const DOMString = @import("typedefs").DOMString;
 const RTCErrorDetailType = @import("enums").RTCErrorDetailType;
-const long = @import("interfaces").long;
 
 pub const RTCError = struct {
     pub const Meta = struct {
@@ -80,17 +79,7 @@ pub const RTCError = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        RTCErrorImpl.init(instance);
-        
-        return instance;
+        return RTCErrorImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -104,11 +93,11 @@ pub const RTCError = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, init: RTCErrorInit, message: DOMString) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, init_data: RTCErrorInit, message: DOMString) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try RTCErrorImpl.constructor(instance, init, message);
+        try RTCErrorImpl.constructor(instance, init_data, message);
         
         return instance;
     }
@@ -129,23 +118,23 @@ pub const RTCError = struct {
         return try RTCErrorImpl.get_errorDetail(instance);
     }
 
-    pub fn get_sdpLineNumber(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_sdpLineNumber(instance: *runtime.Instance) anyerror!i32 {
         return try RTCErrorImpl.get_sdpLineNumber(instance);
     }
 
-    pub fn get_sctpCauseCode(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_sctpCauseCode(instance: *runtime.Instance) anyerror!i32 {
         return try RTCErrorImpl.get_sctpCauseCode(instance);
     }
 
-    pub fn get_receivedAlert(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_receivedAlert(instance: *runtime.Instance) anyerror!u32 {
         return try RTCErrorImpl.get_receivedAlert(instance);
     }
 
-    pub fn get_sentAlert(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_sentAlert(instance: *runtime.Instance) anyerror!u32 {
         return try RTCErrorImpl.get_sentAlert(instance);
     }
 
-    pub fn get_httpRequestStatusCode(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_httpRequestStatusCode(instance: *runtime.Instance) anyerror!i32 {
         return try RTCErrorImpl.get_httpRequestStatusCode(instance);
     }
 

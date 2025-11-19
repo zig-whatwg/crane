@@ -1,5 +1,5 @@
 //! Generated from: translation-api.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,14 +7,12 @@ const std = @import("std");
 const runtime = @import("runtime");
 const TranslatorImpl = @import("impls").Translator;
 const DestroyableModel = @import("interfaces").DestroyableModel;
-const Promise<Translator> = @import("interfaces").Promise<Translator>;
-const Promise<DOMString> = @import("interfaces").Promise<DOMString>;
-const Promise<Availability> = @import("interfaces").Promise<Availability>;
+const TranslatorCreateOptions = @import("dictionaries").TranslatorCreateOptions;
+const Availability = @import("enums").Availability;
+const ReadableStream = @import("interfaces").ReadableStream;
 const TranslatorCreateCoreOptions = @import("dictionaries").TranslatorCreateCoreOptions;
 const TranslatorTranslateOptions = @import("dictionaries").TranslatorTranslateOptions;
-const ReadableStream = @import("interfaces").ReadableStream;
-const Promise<double> = @import("interfaces").Promise<double>;
-const TranslatorCreateOptions = @import("dictionaries").TranslatorCreateOptions;
+const DOMString = @import("typedefs").DOMString;
 
 pub const Translator = struct {
     pub const Meta = struct {
@@ -60,17 +58,7 @@ pub const Translator = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        TranslatorImpl.init(instance);
-        
-        return instance;
+        return TranslatorImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

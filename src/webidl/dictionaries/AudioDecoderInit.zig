@@ -6,5 +6,5 @@ const runtime = @import("runtime");
 
 pub const AudioDecoderInit = struct {
     output: anyopaque,
-    error: anyopaque,
+    @"error": anyopaque,
 };

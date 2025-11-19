@@ -1,5 +1,5 @@
 //! Generated from: trusted-types.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,6 +9,7 @@ const TrustedTypePolicyImpl = @import("impls").TrustedTypePolicy;
 const TrustedHTML = @import("interfaces").TrustedHTML;
 const TrustedScript = @import("interfaces").TrustedScript;
 const TrustedScriptURL = @import("interfaces").TrustedScriptURL;
+const DOMString = @import("typedefs").DOMString;
 
 pub const TrustedTypePolicy = struct {
     pub const Meta = struct {
@@ -47,17 +48,7 @@ pub const TrustedTypePolicy = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        TrustedTypePolicyImpl.init(instance);
-        
-        return instance;
+        return TrustedTypePolicyImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

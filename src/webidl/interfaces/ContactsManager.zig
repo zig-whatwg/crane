@@ -1,14 +1,13 @@
 //! Generated from: contact-picker.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const ContactsManagerImpl = @import("impls").ContactsManager;
-const Promise<sequence<ContactProperty>> = @import("interfaces").Promise<sequence<ContactProperty>>;
+const ContactProperty = @import("enums").ContactProperty;
 const ContactsSelectOptions = @import("dictionaries").ContactsSelectOptions;
-const Promise<sequence<ContactInfo>> = @import("interfaces").Promise<sequence<ContactInfo>>;
 
 pub const ContactsManager = struct {
     pub const Meta = struct {
@@ -40,17 +39,7 @@ pub const ContactsManager = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ContactsManagerImpl.init(instance);
-        
-        return instance;
+        return ContactsManagerImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

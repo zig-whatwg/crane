@@ -1,5 +1,5 @@
 //! Generated from: permissions-policy.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,6 @@ const runtime = @import("runtime");
 const PermissionsPolicyViolationReportBodyImpl = @import("impls").PermissionsPolicyViolationReportBody;
 const ReportBody = @import("dictionaries").ReportBody;
 const DOMString = @import("typedefs").DOMString;
-const long = @import("interfaces").long;
 
 pub const PermissionsPolicyViolationReportBody = struct {
     pub const Meta = struct {
@@ -54,17 +53,7 @@ pub const PermissionsPolicyViolationReportBody = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PermissionsPolicyViolationReportBodyImpl.init(instance);
-        
-        return instance;
+        return PermissionsPolicyViolationReportBodyImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -81,15 +70,15 @@ pub const PermissionsPolicyViolationReportBody = struct {
         return try PermissionsPolicyViolationReportBodyImpl.get_featureId(instance);
     }
 
-    pub fn get_sourceFile(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_sourceFile(instance: *runtime.Instance) anyerror!DOMString {
         return try PermissionsPolicyViolationReportBodyImpl.get_sourceFile(instance);
     }
 
-    pub fn get_lineNumber(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_lineNumber(instance: *runtime.Instance) anyerror!i32 {
         return try PermissionsPolicyViolationReportBodyImpl.get_lineNumber(instance);
     }
 
-    pub fn get_columnNumber(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_columnNumber(instance: *runtime.Instance) anyerror!i32 {
         return try PermissionsPolicyViolationReportBodyImpl.get_columnNumber(instance);
     }
 
@@ -97,11 +86,11 @@ pub const PermissionsPolicyViolationReportBody = struct {
         return try PermissionsPolicyViolationReportBodyImpl.get_disposition(instance);
     }
 
-    pub fn get_allowAttribute(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_allowAttribute(instance: *runtime.Instance) anyerror!DOMString {
         return try PermissionsPolicyViolationReportBodyImpl.get_allowAttribute(instance);
     }
 
-    pub fn get_srcAttribute(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcAttribute(instance: *runtime.Instance) anyerror!DOMString {
         return try PermissionsPolicyViolationReportBodyImpl.get_srcAttribute(instance);
     }
 

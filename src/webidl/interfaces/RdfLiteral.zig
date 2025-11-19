@@ -1,5 +1,5 @@
 //! Generated from: json-ld-api.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -42,17 +42,7 @@ pub const RdfLiteral = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        RdfLiteralImpl.init(instance);
-        
-        return instance;
+        return RdfLiteralImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -83,7 +73,7 @@ pub const RdfLiteral = struct {
         return try RdfLiteralImpl.get_datatype(instance);
     }
 
-    pub fn get_language(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_language(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try RdfLiteralImpl.get_language(instance);
     }
 

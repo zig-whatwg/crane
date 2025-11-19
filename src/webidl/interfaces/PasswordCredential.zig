@@ -1,5 +1,5 @@
 //! Generated from: credential-management.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,8 +8,10 @@ const runtime = @import("runtime");
 const PasswordCredentialImpl = @import("impls").PasswordCredential;
 const Credential = @import("interfaces").Credential;
 const CredentialUserData = @import("interfaces").CredentialUserData;
-const PasswordCredentialData = @import("dictionaries").PasswordCredentialData;
 const HTMLFormElement = @import("interfaces").HTMLFormElement;
+const PasswordCredentialData = @import("dictionaries").PasswordCredentialData;
+const USVString = @import("interfaces").USVString;
+const DOMString = @import("typedefs").DOMString;
 
 pub const PasswordCredential = struct {
     pub const Meta = struct {
@@ -53,17 +55,7 @@ pub const PasswordCredential = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PasswordCredentialImpl.init(instance);
-        
-        return instance;
+        return PasswordCredentialImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -82,16 +74,6 @@ pub const PasswordCredential = struct {
         errdefer deinit(instance);
         
         try PasswordCredentialImpl.constructor(instance, form);
-        
-        return instance;
-    }
-
-    /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, data: PasswordCredentialData) !*runtime.Instance {
-        const instance = try init(allocator);
-        errdefer deinit(instance);
-        
-        try PasswordCredentialImpl.constructor(instance, data);
         
         return instance;
     }

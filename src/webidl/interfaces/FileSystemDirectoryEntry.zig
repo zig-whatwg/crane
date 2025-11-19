@@ -1,5 +1,5 @@
 //! Generated from: entries-api.idl
-//! Generated at: 2025-11-18T18:28:13Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,9 +7,10 @@ const std = @import("std");
 const runtime = @import("runtime");
 const FileSystemDirectoryEntryImpl = @import("impls").FileSystemDirectoryEntry;
 const FileSystemEntry = @import("interfaces").FileSystemEntry;
-const USVString = @import("interfaces").USVString;
 const ErrorCallback = @import("callbacks").ErrorCallback;
+const FileSystem = @import("interfaces").FileSystem;
 const FileSystemEntryCallback = @import("callbacks").FileSystemEntryCallback;
+const USVString = @import("interfaces").USVString;
 const FileSystemFlags = @import("dictionaries").FileSystemFlags;
 const FileSystemDirectoryReader = @import("interfaces").FileSystemDirectoryReader;
 
@@ -50,17 +51,7 @@ pub const FileSystemDirectoryEntry = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        FileSystemDirectoryEntryImpl.init(instance);
-        
-        return instance;
+        return FileSystemDirectoryEntryImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -93,12 +84,12 @@ pub const FileSystemDirectoryEntry = struct {
         return try FileSystemDirectoryEntryImpl.get_filesystem(instance);
     }
 
-    pub fn call_getDirectory(instance: *runtime.Instance, path: anyopaque, options: FileSystemFlags, successCallback: FileSystemEntryCallback, errorCallback: ErrorCallback) anyerror!void {
+    pub fn call_getDirectory(instance: *runtime.Instance, path: runtime.USVString, options: FileSystemFlags, successCallback: FileSystemEntryCallback, errorCallback: ErrorCallback) anyerror!void {
         
         return try FileSystemDirectoryEntryImpl.call_getDirectory(instance, path, options, successCallback, errorCallback);
     }
 
-    pub fn call_getFile(instance: *runtime.Instance, path: anyopaque, options: FileSystemFlags, successCallback: FileSystemEntryCallback, errorCallback: ErrorCallback) anyerror!void {
+    pub fn call_getFile(instance: *runtime.Instance, path: runtime.USVString, options: FileSystemFlags, successCallback: FileSystemEntryCallback, errorCallback: ErrorCallback) anyerror!void {
         
         return try FileSystemDirectoryEntryImpl.call_getFile(instance, path, options, successCallback, errorCallback);
     }

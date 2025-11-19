@@ -1,5 +1,5 @@
 //! Generated from: fs.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,10 +7,14 @@ const std = @import("std");
 const runtime = @import("runtime");
 const FileSystemFileHandleImpl = @import("impls").FileSystemFileHandle;
 const FileSystemHandle = @import("interfaces").FileSystemHandle;
-const Promise<File> = @import("interfaces").Promise<File>;
+const PermissionState = @import("enums").PermissionState;
 const FileSystemCreateWritableOptions = @import("dictionaries").FileSystemCreateWritableOptions;
-const Promise<FileSystemSyncAccessHandle> = @import("interfaces").Promise<FileSystemSyncAccessHandle>;
-const Promise<FileSystemWritableFileStream> = @import("interfaces").Promise<FileSystemWritableFileStream>;
+const FileSystemHandlePermissionDescriptor = @import("dictionaries").FileSystemHandlePermissionDescriptor;
+const File = @import("interfaces").File;
+const FileSystemHandleKind = @import("enums").FileSystemHandleKind;
+const FileSystemSyncAccessHandle = @import("interfaces").FileSystemSyncAccessHandle;
+const FileSystemWritableFileStream = @import("interfaces").FileSystemWritableFileStream;
+const USVString = @import("interfaces").USVString;
 
 pub const FileSystemFileHandle = struct {
     pub const Meta = struct {
@@ -53,17 +57,7 @@ pub const FileSystemFileHandle = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        FileSystemFileHandleImpl.init(instance);
-        
-        return instance;
+        return FileSystemFileHandleImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

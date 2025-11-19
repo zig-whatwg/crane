@@ -1,5 +1,5 @@
 //! Generated from: presentation-api.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,9 +7,17 @@ const std = @import("std");
 const runtime = @import("runtime");
 const PresentationRequestImpl = @import("impls").PresentationRequest;
 const EventTarget = @import("interfaces").EventTarget;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const PresentationAvailability = @import("interfaces").PresentationAvailability;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const DOMString = @import("typedefs").DOMString;
+const Event = @import("interfaces").Event;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
+const PresentationConnection = @import("interfaces").PresentationConnection;
+const USVString = @import("interfaces").USVString;
 const EventHandler = @import("typedefs").EventHandler;
-const Promise<PresentationConnection> = @import("interfaces").Promise<PresentationConnection>;
-const Promise<PresentationAvailability> = @import("interfaces").Promise<PresentationAvailability>;
+const Observable = @import("interfaces").Observable;
 
 pub const PresentationRequest = struct {
     pub const Meta = struct {
@@ -52,17 +60,7 @@ pub const PresentationRequest = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PresentationRequestImpl.init(instance);
-        
-        return instance;
+        return PresentationRequestImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -85,16 +83,6 @@ pub const PresentationRequest = struct {
         return instance;
     }
 
-    /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, urls: anyopaque) !*runtime.Instance {
-        const instance = try init(allocator);
-        errdefer deinit(instance);
-        
-        try PresentationRequestImpl.constructor(instance, urls);
-        
-        return instance;
-    }
-
     pub fn get_onconnectionavailable(instance: *runtime.Instance) anyerror!EventHandler {
         return try PresentationRequestImpl.get_onconnectionavailable(instance);
     }
@@ -103,9 +91,9 @@ pub const PresentationRequest = struct {
         try PresentationRequestImpl.set_onconnectionavailable(instance, value);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try PresentationRequestImpl.call_when(instance, type_, options);
+        return try PresentationRequestImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_reconnect(instance: *runtime.Instance, presentationId: runtime.USVString) anyerror!anyopaque {
@@ -126,14 +114,14 @@ pub const PresentationRequest = struct {
         return try PresentationRequestImpl.call_start(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try PresentationRequestImpl.call_addEventListener(instance, type_, callback, options);
+        return try PresentationRequestImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try PresentationRequestImpl.call_removeEventListener(instance, type_, callback, options);
+        return try PresentationRequestImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

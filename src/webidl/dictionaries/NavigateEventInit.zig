@@ -16,7 +16,7 @@ pub const NavigateEventInit = struct {
     hashChange: ?bool = null,
     signal: anyopaque,
     formData: ?anyopaque = null,
-    downloadRequest: ?anyopaque = null,
+    downloadRequest: ?runtime.DOMString = null,
     info: ?anyopaque = null,
     hasUAVisualTransition: ?bool = null,
     sourceElement: ?anyopaque = null,

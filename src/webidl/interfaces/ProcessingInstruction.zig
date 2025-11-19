@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,8 +8,21 @@ const runtime = @import("runtime");
 const ProcessingInstructionImpl = @import("impls").ProcessingInstruction;
 const CharacterData = @import("interfaces").CharacterData;
 const LinkStyle = @import("interfaces").LinkStyle;
-const StyleSheet = @import("interfaces").StyleSheet;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
+const Document = @import("interfaces").Document;
+const Node = @import("interfaces").Node;
+const NodeList = @import("interfaces").NodeList;
+const USVString = @import("interfaces").USVString;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const Element = @import("interfaces").Element;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const StyleSheet = @import("interfaces").StyleSheet;
+const EventListener = @import("interfaces").EventListener;
+const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
+const DOMString = @import("typedefs").DOMString;
 
 pub const ProcessingInstruction = struct {
     pub const Meta = struct {
@@ -31,7 +44,6 @@ pub const ProcessingInstruction = struct {
         struct {
             target: runtime.DOMString = undefined,
             sheet: ?CSSStyleSheet = null,
-            sheet: StyleSheet = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -76,7 +88,6 @@ pub const ProcessingInstruction = struct {
         .get_previousElementSibling = &get_previousElementSibling,
         .get_previousSibling = &get_previousSibling,
         .get_sheet = &get_sheet,
-        .get_sheet = &get_sheet,
         .get_target = &get_target,
         .get_textContent = &get_textContent,
 
@@ -116,17 +127,7 @@ pub const ProcessingInstruction = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ProcessingInstructionImpl.init(instance);
-        
-        return instance;
+        return ProcessingInstructionImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -155,15 +156,15 @@ pub const ProcessingInstruction = struct {
         return try ProcessingInstructionImpl.get_isConnected(instance);
     }
 
-    pub fn get_ownerDocument(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ownerDocument(instance: *runtime.Instance) anyerror!Document {
         return try ProcessingInstructionImpl.get_ownerDocument(instance);
     }
 
-    pub fn get_parentNode(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_parentNode(instance: *runtime.Instance) anyerror!Node {
         return try ProcessingInstructionImpl.get_parentNode(instance);
     }
 
-    pub fn get_parentElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_parentElement(instance: *runtime.Instance) anyerror!Element {
         return try ProcessingInstructionImpl.get_parentElement(instance);
     }
 
@@ -179,29 +180,29 @@ pub const ProcessingInstruction = struct {
         return value;
     }
 
-    pub fn get_firstChild(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_firstChild(instance: *runtime.Instance) anyerror!Node {
         return try ProcessingInstructionImpl.get_firstChild(instance);
     }
 
-    pub fn get_lastChild(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_lastChild(instance: *runtime.Instance) anyerror!Node {
         return try ProcessingInstructionImpl.get_lastChild(instance);
     }
 
-    pub fn get_previousSibling(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_previousSibling(instance: *runtime.Instance) anyerror!Node {
         return try ProcessingInstructionImpl.get_previousSibling(instance);
     }
 
-    pub fn get_nextSibling(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_nextSibling(instance: *runtime.Instance) anyerror!Node {
         return try ProcessingInstructionImpl.get_nextSibling(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_nodeValue(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_nodeValue(instance: *runtime.Instance) anyerror!DOMString {
         return try ProcessingInstructionImpl.get_nodeValue(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_nodeValue(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_nodeValue(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -210,12 +211,12 @@ pub const ProcessingInstruction = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_textContent(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_textContent(instance: *runtime.Instance) anyerror!DOMString {
         return try ProcessingInstructionImpl.get_textContent(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_textContent(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_textContent(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -237,11 +238,11 @@ pub const ProcessingInstruction = struct {
         return try ProcessingInstructionImpl.get_length(instance);
     }
 
-    pub fn get_previousElementSibling(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_previousElementSibling(instance: *runtime.Instance) anyerror!Element {
         return try ProcessingInstructionImpl.get_previousElementSibling(instance);
     }
 
-    pub fn get_nextElementSibling(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_nextElementSibling(instance: *runtime.Instance) anyerror!Element {
         return try ProcessingInstructionImpl.get_nextElementSibling(instance);
     }
 
@@ -249,15 +250,11 @@ pub const ProcessingInstruction = struct {
         return try ProcessingInstructionImpl.get_target(instance);
     }
 
-    pub fn get_sheet(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_sheet(instance: *runtime.Instance) anyerror!CSSStyleSheet {
         return try ProcessingInstructionImpl.get_sheet(instance);
     }
 
-    pub fn get_sheet(instance: *runtime.Instance) anyerror!StyleSheet {
-        return try ProcessingInstructionImpl.get_sheet(instance);
-    }
-
-    pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: anyopaque) anyerror!bool {
+    pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: DOMString) anyerror!bool {
         
         return try ProcessingInstructionImpl.call_isDefaultNamespace(instance, namespace);
     }
@@ -267,7 +264,7 @@ pub const ProcessingInstruction = struct {
         return try ProcessingInstructionImpl.call_compareDocumentPosition(instance, other);
     }
 
-    pub fn call_contains(instance: *runtime.Instance, other: anyopaque) anyerror!bool {
+    pub fn call_contains(instance: *runtime.Instance, other: Node) anyerror!bool {
         
         return try ProcessingInstructionImpl.call_contains(instance, other);
     }
@@ -286,9 +283,9 @@ pub const ProcessingInstruction = struct {
         return try ProcessingInstructionImpl.call_replaceData(instance, offset, count, data);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try ProcessingInstructionImpl.call_removeEventListener(instance, type_, callback, options);
+        return try ProcessingInstructionImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
@@ -327,23 +324,23 @@ pub const ProcessingInstruction = struct {
         return try ProcessingInstructionImpl.call_replaceWith(instance, nodes);
     }
 
-    pub fn call_isSameNode(instance: *runtime.Instance, otherNode: anyopaque) anyerror!bool {
+    pub fn call_isSameNode(instance: *runtime.Instance, otherNode: Node) anyerror!bool {
         
         return try ProcessingInstructionImpl.call_isSameNode(instance, otherNode);
     }
 
-    pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: anyopaque) anyerror!anyopaque {
+    pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: DOMString) anyerror!DOMString {
         
         return try ProcessingInstructionImpl.call_lookupPrefix(instance, namespace);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try ProcessingInstructionImpl.call_when(instance, type_, options);
+        return try ProcessingInstructionImpl.call_when(instance, @"type", options);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_insertBefore(instance: *runtime.Instance, node: Node, child: anyopaque) anyerror!Node {
+    pub fn call_insertBefore(instance: *runtime.Instance, node: Node, child: Node) anyerror!Node {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -377,14 +374,14 @@ pub const ProcessingInstruction = struct {
         return try ProcessingInstructionImpl.call_appendData(instance, data);
     }
 
-    pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: anyopaque) anyerror!anyopaque {
+    pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: DOMString) anyerror!DOMString {
         
         return try ProcessingInstructionImpl.call_lookupNamespaceURI(instance, prefix);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try ProcessingInstructionImpl.call_addEventListener(instance, type_, callback, options);
+        return try ProcessingInstructionImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
     /// Extended attributes: [CEReactions]
@@ -425,7 +422,7 @@ pub const ProcessingInstruction = struct {
         return try ProcessingInstructionImpl.call_normalize(instance);
     }
 
-    pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: anyopaque) anyerror!bool {
+    pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: Node) anyerror!bool {
         
         return try ProcessingInstructionImpl.call_isEqualNode(instance, otherNode);
     }

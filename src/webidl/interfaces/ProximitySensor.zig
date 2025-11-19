@@ -1,5 +1,5 @@
 //! Generated from: proximity.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,9 +7,16 @@ const std = @import("std");
 const runtime = @import("runtime");
 const ProximitySensorImpl = @import("impls").ProximitySensor;
 const Sensor = @import("interfaces").Sensor;
-const boolean = @import("interfaces").boolean;
-const double = @import("interfaces").double;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const SensorOptions = @import("dictionaries").SensorOptions;
+const DOMString = @import("typedefs").DOMString;
+const Event = @import("interfaces").Event;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventHandler = @import("typedefs").EventHandler;
+const Observable = @import("interfaces").Observable;
 
 pub const ProximitySensor = struct {
     pub const Meta = struct {
@@ -63,17 +70,7 @@ pub const ProximitySensor = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ProximitySensorImpl.init(instance);
-        
-        return instance;
+        return ProximitySensorImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -104,7 +101,7 @@ pub const ProximitySensor = struct {
         return try ProximitySensorImpl.get_hasReading(instance);
     }
 
-    pub fn get_timestamp(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_timestamp(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
         return try ProximitySensorImpl.get_timestamp(instance);
     }
 
@@ -132,15 +129,15 @@ pub const ProximitySensor = struct {
         try ProximitySensorImpl.set_onerror(instance, value);
     }
 
-    pub fn get_distance(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_distance(instance: *runtime.Instance) anyerror!f64 {
         return try ProximitySensorImpl.get_distance(instance);
     }
 
-    pub fn get_max(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_max(instance: *runtime.Instance) anyerror!f64 {
         return try ProximitySensorImpl.get_max(instance);
     }
 
-    pub fn get_near(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_near(instance: *runtime.Instance) anyerror!bool {
         return try ProximitySensorImpl.get_near(instance);
     }
 
@@ -153,23 +150,23 @@ pub const ProximitySensor = struct {
         return try ProximitySensorImpl.call_stop(instance);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try ProximitySensorImpl.call_when(instance, type_, options);
+        return try ProximitySensorImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_start(instance: *runtime.Instance) anyerror!void {
         return try ProximitySensorImpl.call_start(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try ProximitySensorImpl.call_addEventListener(instance, type_, callback, options);
+        return try ProximitySensorImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try ProximitySensorImpl.call_removeEventListener(instance, type_, callback, options);
+        return try ProximitySensorImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

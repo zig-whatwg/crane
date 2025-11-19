@@ -1,5 +1,5 @@
 //! Generated from: webxr-depth-sensing.idl
-//! Generated at: 2025-11-18T18:28:13Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,9 @@ const std = @import("std");
 const runtime = @import("runtime");
 const XRCPUDepthInformationImpl = @import("impls").XRCPUDepthInformation;
 const XRDepthInformation = @import("interfaces").XRDepthInformation;
+const XRRigidTransform = @import("interfaces").XRRigidTransform;
 const ArrayBuffer = @import("interfaces").ArrayBuffer;
+const Float32Array = @import("interfaces").Float32Array;
 
 pub const XRCPUDepthInformation = struct {
     pub const Meta = struct {
@@ -47,17 +49,7 @@ pub const XRCPUDepthInformation = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        XRCPUDepthInformationImpl.init(instance);
-        
-        return instance;
+        return XRCPUDepthInformationImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

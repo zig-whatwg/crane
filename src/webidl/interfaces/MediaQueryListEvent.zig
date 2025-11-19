@@ -1,5 +1,5 @@
 //! Generated from: cssom-view.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,6 +9,10 @@ const MediaQueryListEventImpl = @import("impls").MediaQueryListEvent;
 const Event = @import("interfaces").Event;
 const CSSOMString = @import("interfaces").CSSOMString;
 const MediaQueryListEventInit = @import("dictionaries").MediaQueryListEventInit;
+const EventTarget = @import("interfaces").EventTarget;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
+const DOMString = @import("typedefs").DOMString;
 
 pub const MediaQueryListEvent = struct {
     pub const Meta = struct {
@@ -73,17 +77,7 @@ pub const MediaQueryListEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        MediaQueryListEventImpl.init(instance);
-        
-        return instance;
+        return MediaQueryListEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -97,11 +91,11 @@ pub const MediaQueryListEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: anyopaque, eventInitDict: MediaQueryListEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": anyopaque, eventInitDict: MediaQueryListEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try MediaQueryListEventImpl.constructor(instance, type_, eventInitDict);
+        try MediaQueryListEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -110,15 +104,15 @@ pub const MediaQueryListEvent = struct {
         return try MediaQueryListEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try MediaQueryListEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try MediaQueryListEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try MediaQueryListEventImpl.get_currentTarget(instance);
     }
 
@@ -179,9 +173,9 @@ pub const MediaQueryListEvent = struct {
         return try MediaQueryListEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try MediaQueryListEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try MediaQueryListEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_composedPath(instance: *runtime.Instance) anyerror!anyopaque {

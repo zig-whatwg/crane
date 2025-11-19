@@ -1,5 +1,5 @@
 //! Generated from: speech-api.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,8 +7,15 @@ const std = @import("std");
 const runtime = @import("runtime");
 const SpeechSynthesisUtteranceImpl = @import("impls").SpeechSynthesisUtterance;
 const EventTarget = @import("interfaces").EventTarget;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const DOMString = @import("typedefs").DOMString;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const Event = @import("interfaces").Event;
 const SpeechSynthesisVoice = @import("interfaces").SpeechSynthesisVoice;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
 const EventHandler = @import("typedefs").EventHandler;
+const Observable = @import("interfaces").Observable;
 
 pub const SpeechSynthesisUtterance = struct {
     pub const Meta = struct {
@@ -83,17 +90,7 @@ pub const SpeechSynthesisUtterance = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        SpeechSynthesisUtteranceImpl.init(instance);
-        
-        return instance;
+        return SpeechSynthesisUtteranceImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -132,11 +129,11 @@ pub const SpeechSynthesisUtterance = struct {
         try SpeechSynthesisUtteranceImpl.set_lang(instance, value);
     }
 
-    pub fn get_voice(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_voice(instance: *runtime.Instance) anyerror!SpeechSynthesisVoice {
         return try SpeechSynthesisUtteranceImpl.get_voice(instance);
     }
 
-    pub fn set_voice(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_voice(instance: *runtime.Instance, value: SpeechSynthesisVoice) anyerror!void {
         try SpeechSynthesisUtteranceImpl.set_voice(instance, value);
     }
 
@@ -225,19 +222,19 @@ pub const SpeechSynthesisUtterance = struct {
         return try SpeechSynthesisUtteranceImpl.call_dispatchEvent(instance, event);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try SpeechSynthesisUtteranceImpl.call_when(instance, type_, options);
+        return try SpeechSynthesisUtteranceImpl.call_when(instance, @"type", options);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try SpeechSynthesisUtteranceImpl.call_addEventListener(instance, type_, callback, options);
+        return try SpeechSynthesisUtteranceImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try SpeechSynthesisUtteranceImpl.call_removeEventListener(instance, type_, callback, options);
+        return try SpeechSynthesisUtteranceImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

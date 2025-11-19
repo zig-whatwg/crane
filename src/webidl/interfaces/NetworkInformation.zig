@@ -1,5 +1,5 @@
 //! Generated from: netinfo.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,11 +8,18 @@ const runtime = @import("runtime");
 const NetworkInformationImpl = @import("impls").NetworkInformation;
 const EventTarget = @import("interfaces").EventTarget;
 const NetworkInformationSaveData = @import("interfaces").NetworkInformationSaveData;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
 const Millisecond = @import("typedefs").Millisecond;
 const Megabit = @import("typedefs").Megabit;
 const ConnectionType = @import("enums").ConnectionType;
 const EffectiveConnectionType = @import("enums").EffectiveConnectionType;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
 const EventHandler = @import("typedefs").EventHandler;
+const DOMString = @import("typedefs").DOMString;
 
 pub const NetworkInformation = struct {
     pub const Meta = struct {
@@ -35,7 +42,7 @@ pub const NetworkInformation = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            type: ConnectionType = undefined,
+            @"type": ConnectionType = undefined,
             effectiveType: EffectiveConnectionType = undefined,
             downlinkMax: Megabit = undefined,
             downlink: Megabit = undefined,
@@ -68,17 +75,7 @@ pub const NetworkInformation = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        NetworkInformationImpl.init(instance);
-        
-        return instance;
+        return NetworkInformationImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -136,19 +133,19 @@ pub const NetworkInformation = struct {
         return try NetworkInformationImpl.call_dispatchEvent(instance, event);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try NetworkInformationImpl.call_when(instance, type_, options);
+        return try NetworkInformationImpl.call_when(instance, @"type", options);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try NetworkInformationImpl.call_addEventListener(instance, type_, callback, options);
+        return try NetworkInformationImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try NetworkInformationImpl.call_removeEventListener(instance, type_, callback, options);
+        return try NetworkInformationImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

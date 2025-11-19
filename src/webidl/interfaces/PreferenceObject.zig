@@ -1,5 +1,5 @@
 //! Generated from: mediaqueries-5.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,10 +7,14 @@ const std = @import("std");
 const runtime = @import("runtime");
 const PreferenceObjectImpl = @import("impls").PreferenceObject;
 const EventTarget = @import("interfaces").EventTarget;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const EventHandler = @import("typedefs").EventHandler;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
+const Event = @import("interfaces").Event;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
 const DOMString = @import("typedefs").DOMString;
-const FrozenArray<DOMString> = @import("interfaces").FrozenArray<DOMString>;
+const Observable = @import("interfaces").Observable;
 
 pub const PreferenceObject = struct {
     pub const Meta = struct {
@@ -31,7 +35,7 @@ pub const PreferenceObject = struct {
         struct {
             override: ?runtime.DOMString = null,
             value: runtime.DOMString = undefined,
-            validValues: FrozenArray<DOMString> = undefined,
+            validValues: runtime.FrozenArray(runtime.DOMString) = undefined,
             onchange: EventHandler = undefined,
         },
         Meta.BaseType,
@@ -58,17 +62,7 @@ pub const PreferenceObject = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PreferenceObjectImpl.init(instance);
-        
-        return instance;
+        return PreferenceObjectImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -81,7 +75,7 @@ pub const PreferenceObject = struct {
         deinit(instance);
     }
 
-    pub fn get_override(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_override(instance: *runtime.Instance) anyerror!DOMString {
         return try PreferenceObjectImpl.get_override(instance);
     }
 
@@ -106,28 +100,28 @@ pub const PreferenceObject = struct {
         return try PreferenceObjectImpl.call_dispatchEvent(instance, event);
     }
 
-    pub fn call_requestOverride(instance: *runtime.Instance, value: anyopaque) anyerror!anyopaque {
+    pub fn call_requestOverride(instance: *runtime.Instance, value: DOMString) anyerror!anyopaque {
         
         return try PreferenceObjectImpl.call_requestOverride(instance, value);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try PreferenceObjectImpl.call_when(instance, type_, options);
+        return try PreferenceObjectImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_clearOverride(instance: *runtime.Instance) anyerror!void {
         return try PreferenceObjectImpl.call_clearOverride(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try PreferenceObjectImpl.call_addEventListener(instance, type_, callback, options);
+        return try PreferenceObjectImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try PreferenceObjectImpl.call_removeEventListener(instance, type_, callback, options);
+        return try PreferenceObjectImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,8 +8,11 @@ const runtime = @import("runtime");
 const CSSColorImpl = @import("impls").CSSColor;
 const CSSColorValue = @import("interfaces").CSSColorValue;
 const CSSKeywordish = @import("typedefs").CSSKeywordish;
+const CSSColorPercent = @import("typedefs").CSSColorPercent;
+const CSSStyleValue = @import("interfaces").CSSStyleValue;
 const CSSNumberish = @import("typedefs").CSSNumberish;
-const ObservableArray<CSSColorPercent> = @import("interfaces").ObservableArray<CSSColorPercent>;
+const USVString = @import("interfaces").USVString;
+const DOMString = @import("typedefs").DOMString;
 
 pub const CSSColor = struct {
     pub const Meta = struct {
@@ -33,7 +36,7 @@ pub const CSSColor = struct {
     pub const State = runtime.FlattenedState(
         struct {
             colorSpace: CSSKeywordish = undefined,
-            channels: ObservableArray<CSSColorPercent> = undefined,
+            channels: runtime.ObservableArray(CSSColorPercent) = undefined,
             alpha: CSSNumberish = undefined,
         },
         Meta.BaseType,
@@ -57,17 +60,7 @@ pub const CSSColor = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        CSSColorImpl.init(instance);
-        
-        return instance;
+        return CSSColorImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -120,22 +113,10 @@ pub const CSSColor = struct {
         return try CSSColorImpl.call_parseAll(instance, property, cssText);
     }
 
-    /// Arguments for parse (WebIDL overloading)
-    pub const ParseArgs = union(enum) {
-        /// parse(property, cssText)
-        USVString_USVString: struct {
-            property: runtime.USVString,
-            cssText: runtime.USVString,
-        },
-        /// parse(cssText)
-        USVString: runtime.USVString,
-    };
-
-    pub fn call_parse(instance: *runtime.Instance, args: ParseArgs) anyerror!CSSStyleValue {
-        switch (args) {
-            .USVString_USVString => |a| return try CSSColorImpl.USVString_USVString(instance, a.property, a.cssText),
-            .USVString => |arg| return try CSSColorImpl.USVString(instance, arg),
-        }
+    /// Extended attributes: [Exposed=Window]
+    pub fn call_parse(instance: *runtime.Instance, property: runtime.USVString, cssText: runtime.USVString) anyerror!CSSStyleValue {
+        
+        return try CSSColorImpl.call_parse(instance, property, cssText);
     }
 
 };

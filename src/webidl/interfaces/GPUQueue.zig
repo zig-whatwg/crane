@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -13,9 +13,10 @@ const GPUBuffer = @import("interfaces").GPUBuffer;
 const GPUSize64 = @import("typedefs").GPUSize64;
 const GPUCopyExternalImageSourceInfo = @import("dictionaries").GPUCopyExternalImageSourceInfo;
 const GPUTexelCopyTextureInfo = @import("dictionaries").GPUTexelCopyTextureInfo;
+const GPUCommandBuffer = @import("interfaces").GPUCommandBuffer;
 const GPUCopyExternalImageDestInfo = @import("dictionaries").GPUCopyExternalImageDestInfo;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
 const GPUExtent3D = @import("typedefs").GPUExtent3D;
+const USVString = @import("interfaces").USVString;
 
 pub const GPUQueue = struct {
     pub const Meta = struct {
@@ -61,17 +62,7 @@ pub const GPUQueue = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        GPUQueueImpl.init(instance);
-        
-        return instance;
+        return GPUQueueImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

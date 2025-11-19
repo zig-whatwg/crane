@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,6 +7,8 @@ const std = @import("std");
 const runtime = @import("runtime");
 const RadioNodeListImpl = @import("impls").RadioNodeList;
 const NodeList = @import("interfaces").NodeList;
+const Node = @import("interfaces").Node;
+const DOMString = @import("typedefs").DOMString;
 
 pub const RadioNodeList = struct {
     pub const Meta = struct {
@@ -43,17 +45,7 @@ pub const RadioNodeList = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        RadioNodeListImpl.init(instance);
-        
-        return instance;
+        return RadioNodeListImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -78,7 +70,7 @@ pub const RadioNodeList = struct {
         try RadioNodeListImpl.set_value(instance, value);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!anyopaque {
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!Node {
         
         return try RadioNodeListImpl.call_item(instance, index);
     }

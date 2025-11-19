@@ -10,7 +10,7 @@ pub const RTCIceCandidateStats = struct {
     base: RTCStats,
 
     transportId: runtime.DOMString,
-    address: ?anyopaque = null,
+    address: ?runtime.DOMString = null,
     port: ?i32 = null,
     protocol: ?runtime.DOMString = null,
     candidateType: anyopaque,

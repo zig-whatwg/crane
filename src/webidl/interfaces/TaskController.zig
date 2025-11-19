@@ -1,5 +1,5 @@
 //! Generated from: scheduling-apis.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,6 +9,7 @@ const TaskControllerImpl = @import("impls").TaskController;
 const AbortController = @import("interfaces").AbortController;
 const TaskControllerInit = @import("dictionaries").TaskControllerInit;
 const TaskPriority = @import("enums").TaskPriority;
+const AbortSignal = @import("interfaces").AbortSignal;
 
 pub const TaskController = struct {
     pub const Meta = struct {
@@ -44,17 +45,7 @@ pub const TaskController = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        TaskControllerImpl.init(instance);
-        
-        return instance;
+        return TaskControllerImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -68,11 +59,11 @@ pub const TaskController = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, init: TaskControllerInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, init_data: TaskControllerInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try TaskControllerImpl.constructor(instance, init);
+        try TaskControllerImpl.constructor(instance, init_data);
         
         return instance;
     }

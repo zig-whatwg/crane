@@ -5,5 +5,5 @@
 const runtime = @import("runtime");
 
 pub const VideoEncoderEncodeOptionsForAv1 = struct {
-    quantizer: ?anyopaque = null,
+    quantizer: ?u16 = null,
 };

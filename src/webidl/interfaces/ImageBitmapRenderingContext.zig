@@ -1,12 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const ImageBitmapRenderingContextImpl = @import("impls").ImageBitmapRenderingContext;
-const (HTMLCanvasElement or OffscreenCanvas) = @import("interfaces").(HTMLCanvasElement or OffscreenCanvas);
+const HTMLCanvasElement = @import("interfaces").HTMLCanvasElement;
+const OffscreenCanvas = @import("interfaces").OffscreenCanvas;
 const ImageBitmap = @import("interfaces").ImageBitmap;
 
 pub const ImageBitmapRenderingContext = struct {
@@ -28,7 +29,10 @@ pub const ImageBitmapRenderingContext = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            canvas: (HTMLCanvasElement or OffscreenCanvas) = undefined,
+            canvas: union(enum) {
+                HTMLCanvasElement: HTMLCanvasElement,
+                OffscreenCanvas: OffscreenCanvas,
+            } = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -44,17 +48,7 @@ pub const ImageBitmapRenderingContext = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ImageBitmapRenderingContextImpl.init(instance);
-        
-        return instance;
+        return ImageBitmapRenderingContextImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -71,7 +65,7 @@ pub const ImageBitmapRenderingContext = struct {
         return try ImageBitmapRenderingContextImpl.get_canvas(instance);
     }
 
-    pub fn call_transferFromImageBitmap(instance: *runtime.Instance, bitmap: anyopaque) anyerror!void {
+    pub fn call_transferFromImageBitmap(instance: *runtime.Instance, bitmap: ImageBitmap) anyerror!void {
         
         return try ImageBitmapRenderingContextImpl.call_transferFromImageBitmap(instance, bitmap);
     }

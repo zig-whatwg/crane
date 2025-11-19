@@ -15,6 +15,6 @@ pub const WebTransportConnectionStats = struct {
     rttVariation: anyopaque,
     minRtt: anyopaque,
     datagrams: anyopaque,
-    estimatedSendRate: ?anyopaque = null,
+    estimatedSendRate: ?u64 = null,
     atSendCapacity: ?bool = null,
 };

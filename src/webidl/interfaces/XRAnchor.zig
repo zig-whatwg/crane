@@ -1,12 +1,12 @@
 //! Generated from: anchors.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const XRAnchorImpl = @import("impls").XRAnchor;
-const Promise<DOMString> = @import("interfaces").Promise<DOMString>;
+const DOMString = @import("typedefs").DOMString;
 const XRSpace = @import("interfaces").XRSpace;
 
 pub const XRAnchor = struct {
@@ -43,17 +43,7 @@ pub const XRAnchor = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        XRAnchorImpl.init(instance);
-        
-        return instance;
+        return XRAnchorImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

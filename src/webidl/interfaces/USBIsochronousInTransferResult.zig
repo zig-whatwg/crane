@@ -1,5 +1,5 @@
 //! Generated from: webusb.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const USBIsochronousInTransferResultImpl = @import("impls").USBIsochronousInTransferResult;
 const DataView = @import("interfaces").DataView;
-const FrozenArray<USBIsochronousInTransferPacket> = @import("interfaces").FrozenArray<USBIsochronousInTransferPacket>;
+const USBIsochronousInTransferPacket = @import("interfaces").USBIsochronousInTransferPacket;
 
 pub const USBIsochronousInTransferResult = struct {
     pub const Meta = struct {
@@ -30,7 +30,7 @@ pub const USBIsochronousInTransferResult = struct {
     pub const State = runtime.FlattenedState(
         struct {
             data: ?DataView = null,
-            packets: FrozenArray<USBIsochronousInTransferPacket> = undefined,
+            packets: runtime.FrozenArray(USBIsochronousInTransferPacket) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -45,17 +45,7 @@ pub const USBIsochronousInTransferResult = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        USBIsochronousInTransferResultImpl.init(instance);
-        
-        return instance;
+        return USBIsochronousInTransferResultImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

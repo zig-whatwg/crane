@@ -1,14 +1,15 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const StyleSheetImpl = @import("impls").StyleSheet;
-const (Element or ProcessingInstruction) = @import("interfaces").(Element or ProcessingInstruction);
+const Element = @import("interfaces").Element;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("interfaces").CSSOMString;
+const ProcessingInstruction = @import("interfaces").ProcessingInstruction;
 const Node = @import("interfaces").Node;
 const USVString = @import("interfaces").USVString;
 const DOMString = @import("typedefs").DOMString;
@@ -30,20 +31,16 @@ pub const StyleSheet = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            type: CSSOMString = undefined,
+            @"type": CSSOMString = undefined,
             href: ?runtime.USVString = null,
-            ownerNode: ?(Element or ProcessingInstruction) = null,
+            ownerNode: ?union(enum) {
+                Element: Element,
+                ProcessingInstruction: ProcessingInstruction,
+            } = null,
             parentStyleSheet: ?CSSStyleSheet = null,
             title: ?runtime.DOMString = null,
             media: MediaList = undefined,
             disabled: bool = undefined,
-            type: runtime.DOMString = undefined,
-            disabled: bool = undefined,
-            ownerNode: Node = undefined,
-            parentStyleSheet: StyleSheet = undefined,
-            href: runtime.DOMString = undefined,
-            title: runtime.DOMString = undefined,
-            media: MediaList = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -53,37 +50,19 @@ pub const StyleSheet = struct {
         .deinit_fn = &deinit_wrapper,
 
         .get_disabled = &get_disabled,
-        .get_disabled = &get_disabled,
-        .get_href = &get_href,
         .get_href = &get_href,
         .get_media = &get_media,
-        .get_media = &get_media,
-        .get_ownerNode = &get_ownerNode,
         .get_ownerNode = &get_ownerNode,
         .get_parentStyleSheet = &get_parentStyleSheet,
-        .get_parentStyleSheet = &get_parentStyleSheet,
         .get_title = &get_title,
-        .get_title = &get_title,
-        .get_type = &get_type,
         .get_type = &get_type,
 
-        .set_disabled = &set_disabled,
         .set_disabled = &set_disabled,
     });
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        StyleSheetImpl.init(instance);
-        
-        return instance;
+        return StyleSheetImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -100,7 +79,7 @@ pub const StyleSheet = struct {
         return try StyleSheetImpl.get_type(instance);
     }
 
-    pub fn get_href(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try StyleSheetImpl.get_href(instance);
     }
 
@@ -108,11 +87,11 @@ pub const StyleSheet = struct {
         return try StyleSheetImpl.get_ownerNode(instance);
     }
 
-    pub fn get_parentStyleSheet(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_parentStyleSheet(instance: *runtime.Instance) anyerror!CSSStyleSheet {
         return try StyleSheetImpl.get_parentStyleSheet(instance);
     }
 
-    pub fn get_title(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_title(instance: *runtime.Instance) anyerror!DOMString {
         return try StyleSheetImpl.get_title(instance);
     }
 
@@ -134,38 +113,6 @@ pub const StyleSheet = struct {
 
     pub fn set_disabled(instance: *runtime.Instance, value: bool) anyerror!void {
         try StyleSheetImpl.set_disabled(instance, value);
-    }
-
-    pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
-        return try StyleSheetImpl.get_type(instance);
-    }
-
-    pub fn get_disabled(instance: *runtime.Instance) anyerror!bool {
-        return try StyleSheetImpl.get_disabled(instance);
-    }
-
-    pub fn set_disabled(instance: *runtime.Instance, value: bool) anyerror!void {
-        try StyleSheetImpl.set_disabled(instance, value);
-    }
-
-    pub fn get_ownerNode(instance: *runtime.Instance) anyerror!Node {
-        return try StyleSheetImpl.get_ownerNode(instance);
-    }
-
-    pub fn get_parentStyleSheet(instance: *runtime.Instance) anyerror!StyleSheet {
-        return try StyleSheetImpl.get_parentStyleSheet(instance);
-    }
-
-    pub fn get_href(instance: *runtime.Instance) anyerror!DOMString {
-        return try StyleSheetImpl.get_href(instance);
-    }
-
-    pub fn get_title(instance: *runtime.Instance) anyerror!DOMString {
-        return try StyleSheetImpl.get_title(instance);
-    }
-
-    pub fn get_media(instance: *runtime.Instance) anyerror!MediaList {
-        return try StyleSheetImpl.get_media(instance);
     }
 
 };

@@ -1,5 +1,5 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,7 +9,6 @@ const EncodedVideoChunkImpl = @import("impls").EncodedVideoChunk;
 const EncodedVideoChunkType = @import("enums").EncodedVideoChunkType;
 const AllowSharedBufferSource = @import("typedefs").AllowSharedBufferSource;
 const EncodedVideoChunkInit = @import("dictionaries").EncodedVideoChunkInit;
-const unsigned long long = @import("interfaces").unsigned long long;
 
 pub const EncodedVideoChunk = struct {
     pub const Meta = struct {
@@ -31,7 +30,7 @@ pub const EncodedVideoChunk = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            type: EncodedVideoChunkType = undefined,
+            @"type": EncodedVideoChunkType = undefined,
             timestamp: i64 = undefined,
             duration: ?u64 = null,
             byteLength: u32 = undefined,
@@ -53,17 +52,7 @@ pub const EncodedVideoChunk = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        EncodedVideoChunkImpl.init(instance);
-        
-        return instance;
+        return EncodedVideoChunkImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -77,11 +66,11 @@ pub const EncodedVideoChunk = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, init: EncodedVideoChunkInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, init_data: EncodedVideoChunkInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try EncodedVideoChunkImpl.constructor(instance, init);
+        try EncodedVideoChunkImpl.constructor(instance, init_data);
         
         return instance;
     }
@@ -94,7 +83,7 @@ pub const EncodedVideoChunk = struct {
         return try EncodedVideoChunkImpl.get_timestamp(instance);
     }
 
-    pub fn get_duration(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_duration(instance: *runtime.Instance) anyerror!u64 {
         return try EncodedVideoChunkImpl.get_duration(instance);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: uievents.idl
-//! Generated at: 2025-11-18T18:28:13Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,9 +7,17 @@ const std = @import("std");
 const runtime = @import("runtime");
 const InputEventImpl = @import("impls").InputEvent;
 const UIEvent = @import("interfaces").UIEvent;
-const InputEventInit = @import("dictionaries").InputEventInit;
-const DataTransfer = @import("interfaces").DataTransfer;
+const Window = @import("interfaces").Window;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const USVString = @import("interfaces").USVString;
+const UIEventInit = @import("dictionaries").UIEventInit;
+const InputEventInit = @import("dictionaries").InputEventInit;
+const EventTarget = @import("interfaces").EventTarget;
+const InputDeviceCapabilities = @import("interfaces").InputDeviceCapabilities;
+const EventInit = @import("dictionaries").EventInit;
+const DataTransfer = @import("interfaces").DataTransfer;
+const DOMString = @import("typedefs").DOMString;
+const StaticRange = @import("interfaces").StaticRange;
 
 pub const InputEvent = struct {
     pub const Meta = struct {
@@ -84,17 +92,7 @@ pub const InputEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        InputEventImpl.init(instance);
-        
-        return instance;
+        return InputEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -108,11 +106,11 @@ pub const InputEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, eventInitDict: InputEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, eventInitDict: InputEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try InputEventImpl.constructor(instance, type_, eventInitDict);
+        try InputEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -121,15 +119,15 @@ pub const InputEvent = struct {
         return try InputEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try InputEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try InputEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try InputEventImpl.get_currentTarget(instance);
     }
 
@@ -178,7 +176,7 @@ pub const InputEvent = struct {
         return try InputEventImpl.get_timeStamp(instance);
     }
 
-    pub fn get_view(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_view(instance: *runtime.Instance) anyerror!Window {
         return try InputEventImpl.get_view(instance);
     }
 
@@ -190,11 +188,11 @@ pub const InputEvent = struct {
         return try InputEventImpl.get_which(instance);
     }
 
-    pub fn get_sourceCapabilities(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_sourceCapabilities(instance: *runtime.Instance) anyerror!InputDeviceCapabilities {
         return try InputEventImpl.get_sourceCapabilities(instance);
     }
 
-    pub fn get_data(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_data(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try InputEventImpl.get_data(instance);
     }
 
@@ -206,7 +204,7 @@ pub const InputEvent = struct {
         return try InputEventImpl.get_inputType(instance);
     }
 
-    pub fn get_dataTransfer(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_dataTransfer(instance: *runtime.Instance) anyerror!DataTransfer {
         return try InputEventImpl.get_dataTransfer(instance);
     }
 
@@ -214,12 +212,12 @@ pub const InputEvent = struct {
         return try InputEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try InputEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try InputEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
-    pub fn call_initUIEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: anyopaque, detailArg: i32) anyerror!void {
+    pub fn call_initUIEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: Window, detailArg: i32) anyerror!void {
         
         return try InputEventImpl.call_initUIEvent(instance, typeArg, bubblesArg, cancelableArg, viewArg, detailArg);
     }

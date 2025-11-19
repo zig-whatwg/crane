@@ -1,5 +1,5 @@
 //! Generated from: largest-contentful-paint.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -10,6 +10,7 @@ const PerformanceEntry = @import("interfaces").PerformanceEntry;
 const PaintTimingMixin = @import("interfaces").PaintTimingMixin;
 const Element = @import("interfaces").Element;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const DOMString = @import("typedefs").DOMString;
 
 pub const LargestContentfulPaint = struct {
     pub const Meta = struct {
@@ -49,7 +50,6 @@ pub const LargestContentfulPaint = struct {
         .get_element = &get_element,
         .get_entryType = &get_entryType,
         .get_id = &get_id,
-        .get_id = &get_id,
         .get_loadTime = &get_loadTime,
         .get_name = &get_name,
         .get_navigationId = &get_navigationId,
@@ -65,17 +65,7 @@ pub const LargestContentfulPaint = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        LargestContentfulPaintImpl.init(instance);
-        
-        return instance;
+        return LargestContentfulPaintImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -124,15 +114,11 @@ pub const LargestContentfulPaint = struct {
         return try LargestContentfulPaintImpl.get_size(instance);
     }
 
-    pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
-        return try LargestContentfulPaintImpl.get_id(instance);
-    }
-
     pub fn get_url(instance: *runtime.Instance) anyerror!DOMString {
         return try LargestContentfulPaintImpl.get_url(instance);
     }
 
-    pub fn get_element(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_element(instance: *runtime.Instance) anyerror!Element {
         return try LargestContentfulPaintImpl.get_element(instance);
     }
 
@@ -140,23 +126,13 @@ pub const LargestContentfulPaint = struct {
         return try LargestContentfulPaintImpl.get_paintTime(instance);
     }
 
-    pub fn get_presentationTime(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_presentationTime(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
         return try LargestContentfulPaintImpl.get_presentationTime(instance);
     }
 
-    /// Arguments for toJSON (WebIDL overloading)
-    pub const ToJSONArgs = union(enum) {
-        /// toJSON()
-        no_params: void,
-        /// toJSON()
-        no_params: void,
-    };
-
-    pub fn call_toJSON(instance: *runtime.Instance, args: ToJSONArgs) anyerror!anyopaque {
-        switch (args) {
-            .no_params => return try LargestContentfulPaintImpl.no_params(instance),
-            .no_params => return try LargestContentfulPaintImpl.no_params(instance),
-        }
+    /// Extended attributes: [Default]
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!anyopaque {
+        return try LargestContentfulPaintImpl.call_toJSON(instance);
     }
 
 };

@@ -1,5 +1,5 @@
 //! Generated from: webxr-hit-test.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -47,17 +47,7 @@ pub const XRRay = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        XRRayImpl.init(instance);
-        
-        return instance;
+        return XRRayImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -70,22 +60,26 @@ pub const XRRay = struct {
         deinit(instance);
     }
 
-    /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, origin: DOMPointInit, direction: XRRayDirectionInit) !*runtime.Instance {
-        const instance = try init(allocator);
-        errdefer deinit(instance);
-        
-        try XRRayImpl.constructor(instance, origin, direction);
-        
-        return instance;
-    }
+    /// Arguments for constructor (WebIDL overloading)
+    pub const ConstructorArgs = union(enum) {
+        /// constructor(origin, direction)
+        DOMPointInit_XRRayDirectionInit: struct {
+            origin: DOMPointInit,
+            direction: XRRayDirectionInit,
+        },
+        /// constructor(transform)
+        XRRigidTransform: XRRigidTransform,
+    };
 
-    /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, transform: XRRigidTransform) !*runtime.Instance {
+    /// WebIDL constructor (overloaded)
+    pub fn call_constructor(allocator: std.mem.Allocator, args: ConstructorArgs) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try XRRayImpl.constructor(instance, transform);
+        switch (args) {
+            .DOMPointInit_XRRayDirectionInit => |a| try XRRayImpl.constructor(instance, a.origin, a.direction),
+            .XRRigidTransform => |arg| try XRRayImpl.constructor(instance, arg),
+        }
         
         return instance;
     }

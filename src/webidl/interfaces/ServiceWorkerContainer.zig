@@ -1,5 +1,5 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,12 +8,18 @@ const runtime = @import("runtime");
 const ServiceWorkerContainerImpl = @import("impls").ServiceWorkerContainer;
 const EventTarget = @import("interfaces").EventTarget;
 const ServiceWorker = @import("interfaces").ServiceWorker;
-const Promise<FrozenArray<ServiceWorkerRegistration>> = @import("interfaces").Promise<FrozenArray<ServiceWorkerRegistration>>;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const USVString = @import("interfaces").USVString;
+const Observable = @import("interfaces").Observable;
+const ServiceWorkerRegistration = @import("interfaces").ServiceWorkerRegistration;
+const Event = @import("interfaces").Event;
 const RegistrationOptions = @import("dictionaries").RegistrationOptions;
-const (TrustedScriptURL or USVString) = @import("interfaces").(TrustedScriptURL or USVString);
-const Promise<ServiceWorkerRegistration> = @import("interfaces").Promise<ServiceWorkerRegistration>;
-const Promise<(ServiceWorkerRegistrationorundefined)> = @import("interfaces").Promise<(ServiceWorkerRegistrationorundefined)>;
+const TrustedScriptURL = @import("interfaces").TrustedScriptURL;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
 const EventHandler = @import("typedefs").EventHandler;
+const DOMString = @import("typedefs").DOMString;
 
 pub const ServiceWorkerContainer = struct {
     pub const Meta = struct {
@@ -36,7 +42,7 @@ pub const ServiceWorkerContainer = struct {
     pub const State = runtime.FlattenedState(
         struct {
             controller: ?ServiceWorker = null,
-            ready: Promise<ServiceWorkerRegistration> = undefined,
+            ready: runtime.Promise(ServiceWorkerRegistration) = undefined,
             oncontrollerchange: EventHandler = undefined,
             onmessage: EventHandler = undefined,
             onmessageerror: EventHandler = undefined,
@@ -70,17 +76,7 @@ pub const ServiceWorkerContainer = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ServiceWorkerContainerImpl.init(instance);
-        
-        return instance;
+        return ServiceWorkerContainerImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -93,7 +89,7 @@ pub const ServiceWorkerContainer = struct {
         deinit(instance);
     }
 
-    pub fn get_controller(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_controller(instance: *runtime.Instance) anyerror!ServiceWorker {
         return try ServiceWorkerContainerImpl.get_controller(instance);
     }
 
@@ -125,9 +121,9 @@ pub const ServiceWorkerContainer = struct {
         try ServiceWorkerContainerImpl.set_onmessageerror(instance, value);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try ServiceWorkerContainerImpl.call_removeEventListener(instance, type_, callback, options);
+        return try ServiceWorkerContainerImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
     /// Extended attributes: [NewObject]
@@ -140,9 +136,9 @@ pub const ServiceWorkerContainer = struct {
         return try ServiceWorkerContainerImpl.call_startMessages(instance);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try ServiceWorkerContainerImpl.call_when(instance, type_, options);
+        return try ServiceWorkerContainerImpl.call_when(instance, @"type", options);
     }
 
     /// Extended attributes: [NewObject]
@@ -157,9 +153,9 @@ pub const ServiceWorkerContainer = struct {
         return try ServiceWorkerContainerImpl.call_dispatchEvent(instance, event);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try ServiceWorkerContainerImpl.call_addEventListener(instance, type_, callback, options);
+        return try ServiceWorkerContainerImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
     /// Extended attributes: [NewObject]

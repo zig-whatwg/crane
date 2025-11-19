@@ -1,5 +1,5 @@
 //! Generated from: trusted-types.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -56,17 +56,7 @@ pub const TrustedTypePolicyFactory = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        TrustedTypePolicyFactoryImpl.init(instance);
-        
-        return instance;
+        return TrustedTypePolicyFactoryImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -87,7 +77,7 @@ pub const TrustedTypePolicyFactory = struct {
         return try TrustedTypePolicyFactoryImpl.get_emptyScript(instance);
     }
 
-    pub fn get_defaultPolicy(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_defaultPolicy(instance: *runtime.Instance) anyerror!TrustedTypePolicy {
         return try TrustedTypePolicyFactoryImpl.get_defaultPolicy(instance);
     }
 
@@ -106,7 +96,7 @@ pub const TrustedTypePolicyFactory = struct {
         return try TrustedTypePolicyFactoryImpl.call_isScriptURL(instance, value);
     }
 
-    pub fn call_getPropertyType(instance: *runtime.Instance, tagName: DOMString, property: DOMString, elementNs: anyopaque) anyerror!anyopaque {
+    pub fn call_getPropertyType(instance: *runtime.Instance, tagName: DOMString, property: DOMString, elementNs: DOMString) anyerror!DOMString {
         
         return try TrustedTypePolicyFactoryImpl.call_getPropertyType(instance, tagName, property, elementNs);
     }
@@ -116,7 +106,7 @@ pub const TrustedTypePolicyFactory = struct {
         return try TrustedTypePolicyFactoryImpl.call_isHTML(instance, value);
     }
 
-    pub fn call_getAttributeType(instance: *runtime.Instance, tagName: DOMString, attribute: DOMString, elementNs: anyopaque, attrNs: anyopaque) anyerror!anyopaque {
+    pub fn call_getAttributeType(instance: *runtime.Instance, tagName: DOMString, attribute: DOMString, elementNs: DOMString, attrNs: DOMString) anyerror!DOMString {
         
         return try TrustedTypePolicyFactoryImpl.call_getAttributeType(instance, tagName, attribute, elementNs, attrNs);
     }

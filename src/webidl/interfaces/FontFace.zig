@@ -1,5 +1,5 @@
 //! Generated from: css-font-loading.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,13 +7,12 @@ const std = @import("std");
 const runtime = @import("runtime");
 const FontFaceImpl = @import("impls").FontFace;
 const FontFaceLoadStatus = @import("enums").FontFaceLoadStatus;
-const Promise<FontFace> = @import("interfaces").Promise<FontFace>;
-const (CSSOMString or BufferSource) = @import("interfaces").(CSSOMString or BufferSource);
 const CSSOMString = @import("interfaces").CSSOMString;
+const BufferSource = @import("typedefs").BufferSource;
 const FontFaceVariations = @import("interfaces").FontFaceVariations;
 const FontFacePalettes = @import("interfaces").FontFacePalettes;
-const FontFaceDescriptors = @import("dictionaries").FontFaceDescriptors;
 const FontFaceFeatures = @import("interfaces").FontFaceFeatures;
+const FontFaceDescriptors = @import("dictionaries").FontFaceDescriptors;
 
 pub const FontFace = struct {
     pub const Meta = struct {
@@ -46,7 +45,7 @@ pub const FontFace = struct {
             descentOverride: CSSOMString = undefined,
             lineGapOverride: CSSOMString = undefined,
             status: FontFaceLoadStatus = undefined,
-            loaded: Promise<FontFace> = undefined,
+            loaded: runtime.Promise(FontFace) = undefined,
             features: FontFaceFeatures = undefined,
             variations: FontFaceVariations = undefined,
             palettes: FontFacePalettes = undefined,
@@ -92,17 +91,7 @@ pub const FontFace = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        FontFaceImpl.init(instance);
-        
-        return instance;
+        return FontFaceImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

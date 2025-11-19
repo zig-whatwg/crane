@@ -1,5 +1,5 @@
 //! Generated from: media-source.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,13 +7,20 @@ const std = @import("std");
 const runtime = @import("runtime");
 const SourceBufferImpl = @import("impls").SourceBuffer;
 const EventTarget = @import("interfaces").EventTarget;
-const AppendMode = @import("enums").AppendMode;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const EventHandler = @import("typedefs").EventHandler;
 const AudioTrackList = @import("interfaces").AudioTrackList;
-const BufferSource = @import("typedefs").BufferSource;
-const VideoTrackList = @import("interfaces").VideoTrackList;
 const TextTrackList = @import("interfaces").TextTrackList;
 const TimeRanges = @import("interfaces").TimeRanges;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const BufferSource = @import("typedefs").BufferSource;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
+const VideoTrackList = @import("interfaces").VideoTrackList;
+const DOMString = @import("typedefs").DOMString;
+const AppendMode = @import("enums").AppendMode;
 
 pub const SourceBuffer = struct {
     pub const Meta = struct {
@@ -93,17 +100,7 @@ pub const SourceBuffer = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        SourceBufferImpl.init(instance);
-        
-        return instance;
+        return SourceBufferImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -213,9 +210,9 @@ pub const SourceBuffer = struct {
         return try SourceBufferImpl.call_appendBuffer(instance, data);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try SourceBufferImpl.call_when(instance, type_, options);
+        return try SourceBufferImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_abort(instance: *runtime.Instance) anyerror!void {
@@ -227,9 +224,9 @@ pub const SourceBuffer = struct {
         return try SourceBufferImpl.call_dispatchEvent(instance, event);
     }
 
-    pub fn call_changeType(instance: *runtime.Instance, type_: DOMString) anyerror!void {
+    pub fn call_changeType(instance: *runtime.Instance, @"type": DOMString) anyerror!void {
         
-        return try SourceBufferImpl.call_changeType(instance, type_);
+        return try SourceBufferImpl.call_changeType(instance, @"type");
     }
 
     pub fn call_remove(instance: *runtime.Instance, start: f64, end: f64) anyerror!void {
@@ -237,14 +234,14 @@ pub const SourceBuffer = struct {
         return try SourceBufferImpl.call_remove(instance, start, end);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try SourceBufferImpl.call_addEventListener(instance, type_, callback, options);
+        return try SourceBufferImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try SourceBufferImpl.call_removeEventListener(instance, type_, callback, options);
+        return try SourceBufferImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

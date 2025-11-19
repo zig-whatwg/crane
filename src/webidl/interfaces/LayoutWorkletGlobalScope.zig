@@ -1,5 +1,5 @@
 //! Generated from: css-layout-api.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,6 +8,7 @@ const runtime = @import("runtime");
 const LayoutWorkletGlobalScopeImpl = @import("impls").LayoutWorkletGlobalScope;
 const WorkletGlobalScope = @import("interfaces").WorkletGlobalScope;
 const VoidFunction = @import("callbacks").VoidFunction;
+const DOMString = @import("typedefs").DOMString;
 
 pub const LayoutWorkletGlobalScope = struct {
     pub const Meta = struct {
@@ -38,17 +39,7 @@ pub const LayoutWorkletGlobalScope = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        LayoutWorkletGlobalScopeImpl.init(instance);
-        
-        return instance;
+        return LayoutWorkletGlobalScopeImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

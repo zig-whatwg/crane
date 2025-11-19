@@ -1,13 +1,17 @@
 //! Generated from: wasm-js-api.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const ModuleImpl = @import("impls").Module;
+const ModuleExportDescriptor = @import("dictionaries").ModuleExportDescriptor;
+const ArrayBuffer = @import("interfaces").ArrayBuffer;
 const BufferSource = @import("typedefs").BufferSource;
+const ModuleImportDescriptor = @import("dictionaries").ModuleImportDescriptor;
 const WebAssemblyCompileOptions = @import("dictionaries").WebAssemblyCompileOptions;
+const DOMString = @import("typedefs").DOMString;
 
 pub const Module = struct {
     pub const Meta = struct {
@@ -40,17 +44,7 @@ pub const Module = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ModuleImpl.init(instance);
-        
-        return instance;
+        return ModuleImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

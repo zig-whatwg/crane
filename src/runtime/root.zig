@@ -59,11 +59,35 @@ pub const VTable = @import("instance.zig").VTable;
 pub const MethodMap = @import("instance.zig").MethodMap;
 pub const Method = @import("instance.zig").Method;
 
-// WebIDL type system (delegated to webidl module for spec compliance)
-const webidl = @import("webidl");
-pub const DOMString = webidl.DOMString;
-pub const USVString = webidl.USVString;
-pub const ByteString = webidl.ByteString;
+// WebIDL string types
+pub const DOMString = @import("typedefs/DOMString.zig").DOMString;
+pub const USVString = @import("typedefs/USVString.zig").USVString;
+pub const ByteString = @import("typedefs/ByteString.zig").ByteString;
+
+// WebIDL primitive types
+const primitives = @import("typedefs/primitives.zig");
+pub const Boolean = primitives.Boolean;
+pub const Byte = primitives.Byte;
+pub const Octet = primitives.Octet;
+pub const Short = primitives.Short;
+pub const UnsignedShort = primitives.UnsignedShort;
+pub const Long = primitives.Long;
+pub const UnsignedLong = primitives.UnsignedLong;
+pub const LongLong = primitives.LongLong;
+pub const UnsignedLongLong = primitives.UnsignedLongLong;
+pub const Float = primitives.Float;
+pub const Double = primitives.Double;
+pub const UnrestrictedFloat = primitives.UnrestrictedFloat;
+pub const UnrestrictedDouble = primitives.UnrestrictedDouble;
+pub const Any = primitives.Any;
+pub const Object = primitives.Object;
+
+// WebIDL parameterized types
+pub const FrozenArray = @import("typedefs/FrozenArray.zig").FrozenArray;
+pub const sequence = @import("typedefs/sequence.zig").sequence;
+pub const Promise = @import("typedefs/Promise.zig").Promise;
+pub const ObservableArray = @import("typedefs/ObservableArray.zig").ObservableArray;
+pub const record = @import("typedefs/record.zig").record;
 
 // Memory allocators
 pub const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
@@ -138,6 +162,28 @@ test "runtime exports" {
     _ = DOMString;
     _ = USVString;
     _ = ByteString;
+
+    _ = Boolean;
+    _ = Byte;
+    _ = Octet;
+    _ = Short;
+    _ = UnsignedShort;
+    _ = Long;
+    _ = UnsignedLong;
+    _ = LongLong;
+    _ = UnsignedLongLong;
+    _ = Float;
+    _ = Double;
+    _ = UnrestrictedFloat;
+    _ = UnrestrictedDouble;
+    _ = Any;
+    _ = Object;
+
+    _ = FrozenArray;
+    _ = sequence;
+    _ = Promise;
+    _ = ObservableArray;
+    _ = record;
 
     _ = SlabAllocator;
     _ = ArenaAllocator;

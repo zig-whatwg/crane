@@ -1,5 +1,5 @@
 //! Generated from: longtasks.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,8 @@ const runtime = @import("runtime");
 const PerformanceLongTaskTimingImpl = @import("impls").PerformanceLongTaskTiming;
 const PerformanceEntry = @import("interfaces").PerformanceEntry;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
-const FrozenArray<TaskAttributionTiming> = @import("interfaces").FrozenArray<TaskAttributionTiming>;
+const TaskAttributionTiming = @import("interfaces").TaskAttributionTiming;
+const DOMString = @import("typedefs").DOMString;
 
 pub const PerformanceLongTaskTiming = struct {
     pub const Meta = struct {
@@ -30,7 +31,7 @@ pub const PerformanceLongTaskTiming = struct {
             duration: DOMHighResTimeStamp = undefined,
             name: runtime.DOMString = undefined,
             entryType: runtime.DOMString = undefined,
-            attribution: FrozenArray<TaskAttributionTiming> = undefined,
+            attribution: runtime.FrozenArray(TaskAttributionTiming) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -41,14 +42,10 @@ pub const PerformanceLongTaskTiming = struct {
 
         .get_attribution = &get_attribution,
         .get_duration = &get_duration,
-        .get_duration = &get_duration,
-        .get_entryType = &get_entryType,
         .get_entryType = &get_entryType,
         .get_id = &get_id,
         .get_name = &get_name,
-        .get_name = &get_name,
         .get_navigationId = &get_navigationId,
-        .get_startTime = &get_startTime,
         .get_startTime = &get_startTime,
 
         .call_toJSON = &call_toJSON,
@@ -56,17 +53,7 @@ pub const PerformanceLongTaskTiming = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PerformanceLongTaskTimingImpl.init(instance);
-        
-        return instance;
+        return PerformanceLongTaskTimingImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -103,39 +90,13 @@ pub const PerformanceLongTaskTiming = struct {
         return try PerformanceLongTaskTimingImpl.get_navigationId(instance);
     }
 
-    pub fn get_startTime(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
-        return try PerformanceLongTaskTimingImpl.get_startTime(instance);
-    }
-
-    pub fn get_duration(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
-        return try PerformanceLongTaskTimingImpl.get_duration(instance);
-    }
-
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
-        return try PerformanceLongTaskTimingImpl.get_name(instance);
-    }
-
-    pub fn get_entryType(instance: *runtime.Instance) anyerror!DOMString {
-        return try PerformanceLongTaskTimingImpl.get_entryType(instance);
-    }
-
     pub fn get_attribution(instance: *runtime.Instance) anyerror!anyopaque {
         return try PerformanceLongTaskTimingImpl.get_attribution(instance);
     }
 
-    /// Arguments for toJSON (WebIDL overloading)
-    pub const ToJSONArgs = union(enum) {
-        /// toJSON()
-        no_params: void,
-        /// toJSON()
-        no_params: void,
-    };
-
-    pub fn call_toJSON(instance: *runtime.Instance, args: ToJSONArgs) anyerror!anyopaque {
-        switch (args) {
-            .no_params => return try PerformanceLongTaskTimingImpl.no_params(instance),
-            .no_params => return try PerformanceLongTaskTimingImpl.no_params(instance),
-        }
+    /// Extended attributes: [Default]
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!anyopaque {
+        return try PerformanceLongTaskTimingImpl.call_toJSON(instance);
     }
 
 };

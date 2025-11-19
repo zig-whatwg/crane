@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,15 +9,19 @@ const BluetoothRemoteGATTServiceImpl = @import("impls").BluetoothRemoteGATTServi
 const EventTarget = @import("interfaces").EventTarget;
 const CharacteristicEventHandlers = @import("interfaces").CharacteristicEventHandlers;
 const ServiceEventHandlers = @import("interfaces").ServiceEventHandlers;
-const Promise<sequence<BluetoothRemoteGATTCharacteristic>> = @import("interfaces").Promise<sequence<BluetoothRemoteGATTCharacteristic>>;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const BluetoothDevice = @import("interfaces").BluetoothDevice;
 const UUID = @import("typedefs").UUID;
 const BluetoothServiceUUID = @import("typedefs").BluetoothServiceUUID;
 const BluetoothCharacteristicUUID = @import("typedefs").BluetoothCharacteristicUUID;
-const Promise<BluetoothRemoteGATTCharacteristic> = @import("interfaces").Promise<BluetoothRemoteGATTCharacteristic>;
-const Promise<sequence<BluetoothRemoteGATTService>> = @import("interfaces").Promise<sequence<BluetoothRemoteGATTService>>;
-const Promise<BluetoothRemoteGATTService> = @import("interfaces").Promise<BluetoothRemoteGATTService>;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const BluetoothRemoteGATTCharacteristic = @import("interfaces").BluetoothRemoteGATTCharacteristic;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
 const EventHandler = @import("typedefs").EventHandler;
+const DOMString = @import("typedefs").DOMString;
 
 pub const BluetoothRemoteGATTService = struct {
     pub const Meta = struct {
@@ -79,17 +83,7 @@ pub const BluetoothRemoteGATTService = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        BluetoothRemoteGATTServiceImpl.init(instance);
-        
-        return instance;
+        return BluetoothRemoteGATTServiceImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -154,14 +148,14 @@ pub const BluetoothRemoteGATTService = struct {
         try BluetoothRemoteGATTServiceImpl.set_onserviceremoved(instance, value);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try BluetoothRemoteGATTServiceImpl.call_removeEventListener(instance, type_, callback, options);
+        return try BluetoothRemoteGATTServiceImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try BluetoothRemoteGATTServiceImpl.call_when(instance, type_, options);
+        return try BluetoothRemoteGATTServiceImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_dispatchEvent(instance: *runtime.Instance, event: Event) anyerror!bool {
@@ -189,9 +183,9 @@ pub const BluetoothRemoteGATTService = struct {
         return try BluetoothRemoteGATTServiceImpl.call_getCharacteristics(instance, characteristic);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try BluetoothRemoteGATTServiceImpl.call_addEventListener(instance, type_, callback, options);
+        return try BluetoothRemoteGATTServiceImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
 };

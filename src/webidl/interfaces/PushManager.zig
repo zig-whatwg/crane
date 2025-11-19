@@ -1,16 +1,15 @@
 //! Generated from: push-api.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const PushManagerImpl = @import("impls").PushManager;
+const PermissionState = @import("enums").PermissionState;
+const PushSubscription = @import("interfaces").PushSubscription;
 const PushSubscriptionOptionsInit = @import("dictionaries").PushSubscriptionOptionsInit;
-const Promise<PermissionState> = @import("interfaces").Promise<PermissionState>;
-const Promise<PushSubscription> = @import("interfaces").Promise<PushSubscription>;
-const Promise<PushSubscription?> = @import("interfaces").Promise<PushSubscription?>;
-const FrozenArray<DOMString> = @import("interfaces").FrozenArray<DOMString>;
+const DOMString = @import("typedefs").DOMString;
 
 pub const PushManager = struct {
     pub const Meta = struct {
@@ -48,17 +47,7 @@ pub const PushManager = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PushManagerImpl.init(instance);
-        
-        return instance;
+        return PushManagerImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

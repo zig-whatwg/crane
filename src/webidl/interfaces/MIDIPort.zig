@@ -1,5 +1,5 @@
 //! Generated from: webmidi.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,12 +7,17 @@ const std = @import("std");
 const runtime = @import("runtime");
 const MIDIPortImpl = @import("impls").MIDIPort;
 const EventTarget = @import("interfaces").EventTarget;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const DOMString = @import("typedefs").DOMString;
 const MIDIPortType = @import("enums").MIDIPortType;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const MIDIPortConnectionState = @import("enums").MIDIPortConnectionState;
-const Promise<MIDIPort> = @import("interfaces").Promise<MIDIPort>;
-const MIDIPortDeviceState = @import("enums").MIDIPortDeviceState;
+const EventListener = @import("interfaces").EventListener;
 const EventHandler = @import("typedefs").EventHandler;
+const MIDIPortDeviceState = @import("enums").MIDIPortDeviceState;
 
 pub const MIDIPort = struct {
     pub const Meta = struct {
@@ -37,7 +42,7 @@ pub const MIDIPort = struct {
             id: runtime.DOMString = undefined,
             manufacturer: ?runtime.DOMString = null,
             name: ?runtime.DOMString = null,
-            type: MIDIPortType = undefined,
+            @"type": MIDIPortType = undefined,
             version: ?runtime.DOMString = null,
             state: MIDIPortDeviceState = undefined,
             connection: MIDIPortConnectionState = undefined,
@@ -71,17 +76,7 @@ pub const MIDIPort = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        MIDIPortImpl.init(instance);
-        
-        return instance;
+        return MIDIPortImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -98,11 +93,11 @@ pub const MIDIPort = struct {
         return try MIDIPortImpl.get_id(instance);
     }
 
-    pub fn get_manufacturer(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_manufacturer(instance: *runtime.Instance) anyerror!DOMString {
         return try MIDIPortImpl.get_manufacturer(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
         return try MIDIPortImpl.get_name(instance);
     }
 
@@ -110,7 +105,7 @@ pub const MIDIPort = struct {
         return try MIDIPortImpl.get_type(instance);
     }
 
-    pub fn get_version(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_version(instance: *runtime.Instance) anyerror!DOMString {
         return try MIDIPortImpl.get_version(instance);
     }
 
@@ -135,9 +130,9 @@ pub const MIDIPort = struct {
         return try MIDIPortImpl.call_dispatchEvent(instance, event);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try MIDIPortImpl.call_when(instance, type_, options);
+        return try MIDIPortImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_open(instance: *runtime.Instance) anyerror!anyopaque {
@@ -148,14 +143,14 @@ pub const MIDIPort = struct {
         return try MIDIPortImpl.call_close(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try MIDIPortImpl.call_addEventListener(instance, type_, callback, options);
+        return try MIDIPortImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try MIDIPortImpl.call_removeEventListener(instance, type_, callback, options);
+        return try MIDIPortImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

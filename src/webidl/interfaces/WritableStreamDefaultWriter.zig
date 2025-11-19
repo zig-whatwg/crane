@@ -1,13 +1,11 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const WritableStreamDefaultWriterImpl = @import("impls").WritableStreamDefaultWriter;
-const unrestricted double = @import("interfaces").unrestricted double;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
 const WritableStream = @import("interfaces").WritableStream;
 
 pub const WritableStreamDefaultWriter = struct {
@@ -26,9 +24,9 @@ pub const WritableStreamDefaultWriter = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            closed: Promise<undefined> = undefined,
+            closed: runtime.Promise(undefined) = undefined,
             desiredSize: ?f64 = null,
-            ready: Promise<undefined> = undefined,
+            ready: runtime.Promise(undefined) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -49,17 +47,7 @@ pub const WritableStreamDefaultWriter = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        WritableStreamDefaultWriterImpl.init(instance);
-        
-        return instance;
+        return WritableStreamDefaultWriterImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -86,7 +74,7 @@ pub const WritableStreamDefaultWriter = struct {
         return try WritableStreamDefaultWriterImpl.get_closed(instance);
     }
 
-    pub fn get_desiredSize(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_desiredSize(instance: *runtime.Instance) anyerror!f64 {
         return try WritableStreamDefaultWriterImpl.get_desiredSize(instance);
     }
 

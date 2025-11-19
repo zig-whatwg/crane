@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,32 +8,39 @@ const runtime = @import("runtime");
 const GPUDeviceImpl = @import("impls").GPUDevice;
 const EventTarget = @import("interfaces").EventTarget;
 const GPUObjectBase = @import("interfaces").GPUObjectBase;
-const Promise<GPUDeviceLostInfo> = @import("interfaces").Promise<GPUDeviceLostInfo>;
-const GPUErrorFilter = @import("enums").GPUErrorFilter;
+const GPURenderBundleEncoder = @import("interfaces").GPURenderBundleEncoder;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const DOMString = @import("typedefs").DOMString;
 const GPURenderPipeline = @import("interfaces").GPURenderPipeline;
 const GPUSamplerDescriptor = @import("dictionaries").GPUSamplerDescriptor;
-const GPUSupportedFeatures = @import("interfaces").GPUSupportedFeatures;
 const GPUQuerySetDescriptor = @import("dictionaries").GPUQuerySetDescriptor;
+const GPUSupportedFeatures = @import("interfaces").GPUSupportedFeatures;
+const USVString = @import("interfaces").USVString;
 const GPUBuffer = @import("interfaces").GPUBuffer;
 const GPUComputePipeline = @import("interfaces").GPUComputePipeline;
 const GPUQuerySet = @import("interfaces").GPUQuerySet;
 const GPURenderPipelineDescriptor = @import("dictionaries").GPURenderPipelineDescriptor;
-const Promise<GPURenderPipeline> = @import("interfaces").Promise<GPURenderPipeline>;
 const GPURenderBundleEncoderDescriptor = @import("dictionaries").GPURenderBundleEncoderDescriptor;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const GPUComputePipelineDescriptor = @import("dictionaries").GPUComputePipelineDescriptor;
-const Promise<GPUError?> = @import("interfaces").Promise<GPUError?>;
+const GPUDeviceLostInfo = @import("interfaces").GPUDeviceLostInfo;
+const EventListener = @import("interfaces").EventListener;
 const GPUSupportedLimits = @import("interfaces").GPUSupportedLimits;
-const GPUAdapterInfo = @import("interfaces").GPUAdapterInfo;
-const GPUSampler = @import("interfaces").GPUSampler;
-const GPUShaderModule = @import("interfaces").GPUShaderModule;
 const EventHandler = @import("typedefs").EventHandler;
+const GPUAdapterInfo = @import("interfaces").GPUAdapterInfo;
+const GPUShaderModule = @import("interfaces").GPUShaderModule;
+const GPUSampler = @import("interfaces").GPUSampler;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const GPUBindGroupDescriptor = @import("dictionaries").GPUBindGroupDescriptor;
-const Promise<GPUComputePipeline> = @import("interfaces").Promise<GPUComputePipeline>;
 const GPUBufferDescriptor = @import("dictionaries").GPUBufferDescriptor;
 const GPUShaderModuleDescriptor = @import("dictionaries").GPUShaderModuleDescriptor;
 const GPUCommandEncoderDescriptor = @import("dictionaries").GPUCommandEncoderDescriptor;
+const GPUError = @import("interfaces").GPUError;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
 const GPUBindGroupLayout = @import("interfaces").GPUBindGroupLayout;
 const GPUBindGroup = @import("interfaces").GPUBindGroup;
+const GPUErrorFilter = @import("enums").GPUErrorFilter;
 const GPUCommandEncoder = @import("interfaces").GPUCommandEncoder;
 const GPUTexture = @import("interfaces").GPUTexture;
 const GPUTextureDescriptor = @import("dictionaries").GPUTextureDescriptor;
@@ -43,7 +50,6 @@ const GPUBindGroupLayoutDescriptor = @import("dictionaries").GPUBindGroupLayoutD
 const GPUExternalTextureDescriptor = @import("dictionaries").GPUExternalTextureDescriptor;
 const GPUPipelineLayout = @import("interfaces").GPUPipelineLayout;
 const GPUQueue = @import("interfaces").GPUQueue;
-const GPURenderBundleEncoder = @import("interfaces").GPURenderBundleEncoder;
 
 pub const GPUDevice = struct {
     pub const Meta = struct {
@@ -71,7 +77,7 @@ pub const GPUDevice = struct {
             limits: GPUSupportedLimits = undefined,
             adapterInfo: GPUAdapterInfo = undefined,
             queue: GPUQueue = undefined,
-            lost: Promise<GPUDeviceLostInfo> = undefined,
+            lost: runtime.Promise(GPUDeviceLostInfo) = undefined,
             onuncapturederror: EventHandler = undefined,
             label: runtime.USVString = undefined,
         },
@@ -119,17 +125,7 @@ pub const GPUDevice = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        GPUDeviceImpl.init(instance);
-        
-        return instance;
+        return GPUDeviceImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -220,9 +216,9 @@ pub const GPUDevice = struct {
         return try GPUDeviceImpl.call_createTexture(instance, descriptor);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try GPUDeviceImpl.call_when(instance, type_, options);
+        return try GPUDeviceImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_createRenderPipeline(instance: *runtime.Instance, descriptor: GPURenderPipelineDescriptor) anyerror!GPURenderPipeline {
@@ -255,9 +251,9 @@ pub const GPUDevice = struct {
         return try GPUDeviceImpl.call_createComputePipelineAsync(instance, descriptor);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try GPUDeviceImpl.call_addEventListener(instance, type_, callback, options);
+        return try GPUDeviceImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
     pub fn call_createBindGroupLayout(instance: *runtime.Instance, descriptor: GPUBindGroupLayoutDescriptor) anyerror!GPUBindGroupLayout {
@@ -275,9 +271,9 @@ pub const GPUDevice = struct {
         return try GPUDeviceImpl.call_importExternalTexture(instance, descriptor);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try GPUDeviceImpl.call_removeEventListener(instance, type_, callback, options);
+        return try GPUDeviceImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
     pub fn call_destroy(instance: *runtime.Instance) anyerror!void {

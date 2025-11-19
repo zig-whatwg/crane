@@ -13,16 +13,25 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Initialize instance
-pub fn init(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Initialize your instance state here
+/// Initialize instance (delegates to runtime.Instance.init)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable);
+    // TODO: Add custom initialization here if needed
+    // const state = instance.getState(StateType);
+    // state.* = .{}; // Initialize fields
+    return instance;
 }
 
-/// Deinitialize instance
+/// Deinitialize instance (delegates to runtime.Instance.deinit)
 pub fn deinit(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Clean up your instance resources here
+    // TODO: Add custom cleanup here if needed
+    // const state = instance.getState(State);
+    // Clean up fields...
+    runtime.Instance.deinit(instance);
 }
 
 /// Constructor implementation
@@ -217,9 +226,9 @@ pub fn set_onbufferedchange(instance: *runtime.Instance, value: anyopaque) ImplE
 }
 
 /// Operation: addEventListener
-pub fn call_addEventListener(instance: *runtime.Instance, type: runtime.DOMString, callback: anyopaque, options: anyopaque) ImplError!void {
+pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: anyopaque, options: anyopaque) ImplError!void {
     _ = instance;
-    _ = type;
+    _ = @"type";
     _ = callback;
     _ = options;
     // TODO: Implement operation
@@ -227,9 +236,9 @@ pub fn call_addEventListener(instance: *runtime.Instance, type: runtime.DOMStrin
 }
 
 /// Operation: removeEventListener
-pub fn call_removeEventListener(instance: *runtime.Instance, type: runtime.DOMString, callback: anyopaque, options: anyopaque) ImplError!void {
+pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: anyopaque, options: anyopaque) ImplError!void {
     _ = instance;
-    _ = type;
+    _ = @"type";
     _ = callback;
     _ = options;
     // TODO: Implement operation
@@ -245,9 +254,9 @@ pub fn call_dispatchEvent(instance: *runtime.Instance, event: anyopaque) ImplErr
 }
 
 /// Operation: when
-pub fn call_when(instance: *runtime.Instance, type: runtime.DOMString, options: anyopaque) ImplError!anyopaque {
+pub fn call_when(instance: *runtime.Instance, @"type": runtime.DOMString, options: anyopaque) ImplError!anyopaque {
     _ = instance;
-    _ = type;
+    _ = @"type";
     _ = options;
     // TODO: Implement operation
     return error.NotImplemented;
@@ -269,9 +278,9 @@ pub fn call_abort(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: changeType
-pub fn call_changeType(instance: *runtime.Instance, type: runtime.DOMString) ImplError!void {
+pub fn call_changeType(instance: *runtime.Instance, @"type": runtime.DOMString) ImplError!void {
     _ = instance;
-    _ = type;
+    _ = @"type";
     // TODO: Implement operation
     return error.NotImplemented;
 }

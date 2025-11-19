@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,15 +7,23 @@ const std = @import("std");
 const runtime = @import("runtime");
 const RTCIceTransportImpl = @import("impls").RTCIceTransport;
 const EventTarget = @import("interfaces").EventTarget;
-const RTCIceComponent = @import("enums").RTCIceComponent;
-const RTCIceCandidateInit = @import("dictionaries").RTCIceCandidateInit;
-const RTCIceParameters = @import("dictionaries").RTCIceParameters;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const RTCIceGatherOptions = @import("dictionaries").RTCIceGatherOptions;
 const RTCIceRole = @import("enums").RTCIceRole;
 const RTCIceCandidatePair = @import("interfaces").RTCIceCandidatePair;
 const RTCIceTransportState = @import("enums").RTCIceTransportState;
-const EventHandler = @import("typedefs").EventHandler;
+const RTCIceCandidateInit = @import("dictionaries").RTCIceCandidateInit;
 const RTCIceGathererState = @import("enums").RTCIceGathererState;
+const RTCIceComponent = @import("enums").RTCIceComponent;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const RTCIceParameters = @import("dictionaries").RTCIceParameters;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
+const RTCIceCandidate = @import("interfaces").RTCIceCandidate;
+const EventHandler = @import("typedefs").EventHandler;
+const DOMString = @import("typedefs").DOMString;
 
 pub const RTCIceTransport = struct {
     pub const Meta = struct {
@@ -83,17 +91,7 @@ pub const RTCIceTransport = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        RTCIceTransportImpl.init(instance);
-        
-        return instance;
+        return RTCIceTransportImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -176,9 +174,9 @@ pub const RTCIceTransport = struct {
         return try RTCIceTransportImpl.call_stop(instance);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try RTCIceTransportImpl.call_when(instance, type_, options);
+        return try RTCIceTransportImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_gather(instance: *runtime.Instance, options: RTCIceGatherOptions) anyerror!void {
@@ -186,11 +184,11 @@ pub const RTCIceTransport = struct {
         return try RTCIceTransportImpl.call_gather(instance, options);
     }
 
-    pub fn call_getLocalParameters(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn call_getLocalParameters(instance: *runtime.Instance) anyerror!RTCIceParameters {
         return try RTCIceTransportImpl.call_getLocalParameters(instance);
     }
 
-    pub fn call_getSelectedCandidatePair(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn call_getSelectedCandidatePair(instance: *runtime.Instance) anyerror!RTCIceCandidatePair {
         return try RTCIceTransportImpl.call_getSelectedCandidatePair(instance);
     }
 
@@ -203,14 +201,14 @@ pub const RTCIceTransport = struct {
         return try RTCIceTransportImpl.call_start(instance, remoteParameters, role);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try RTCIceTransportImpl.call_addEventListener(instance, type_, callback, options);
+        return try RTCIceTransportImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try RTCIceTransportImpl.call_removeEventListener(instance, type_, callback, options);
+        return try RTCIceTransportImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
     pub fn call_addRemoteCandidate(instance: *runtime.Instance, remoteCandidate: RTCIceCandidateInit) anyerror!void {
@@ -218,7 +216,7 @@ pub const RTCIceTransport = struct {
         return try RTCIceTransportImpl.call_addRemoteCandidate(instance, remoteCandidate);
     }
 
-    pub fn call_getRemoteParameters(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn call_getRemoteParameters(instance: *runtime.Instance) anyerror!RTCIceParameters {
         return try RTCIceTransportImpl.call_getRemoteParameters(instance);
     }
 

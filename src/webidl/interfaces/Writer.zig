@@ -1,5 +1,5 @@
 //! Generated from: writing-assistance-apis.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,19 +7,15 @@ const std = @import("std");
 const runtime = @import("runtime");
 const WriterImpl = @import("impls").Writer;
 const DestroyableModel = @import("interfaces").DestroyableModel;
-const Promise<Availability> = @import("interfaces").Promise<Availability>;
+const DOMString = @import("typedefs").DOMString;
+const WriterCreateOptions = @import("dictionaries").WriterCreateOptions;
+const Availability = @import("enums").Availability;
+const ReadableStream = @import("interfaces").ReadableStream;
 const WriterWriteOptions = @import("dictionaries").WriterWriteOptions;
+const WriterFormat = @import("enums").WriterFormat;
 const WriterCreateCoreOptions = @import("dictionaries").WriterCreateCoreOptions;
 const WriterTone = @import("enums").WriterTone;
-const FrozenArray<DOMString> = @import("interfaces").FrozenArray<DOMString>;
-const WriterCreateOptions = @import("dictionaries").WriterCreateOptions;
-const WriterFormat = @import("enums").WriterFormat;
-const Promise<DOMString> = @import("interfaces").Promise<DOMString>;
-const Promise<Writer> = @import("interfaces").Promise<Writer>;
-const ReadableStream = @import("interfaces").ReadableStream;
-const Promise<double> = @import("interfaces").Promise<double>;
 const WriterLength = @import("enums").WriterLength;
-const DOMString = @import("typedefs").DOMString;
 
 pub const Writer = struct {
     pub const Meta = struct {
@@ -44,8 +40,8 @@ pub const Writer = struct {
             tone: WriterTone = undefined,
             format: WriterFormat = undefined,
             length: WriterLength = undefined,
-            expectedInputLanguages: ?FrozenArray<DOMString> = null,
-            expectedContextLanguages: ?FrozenArray<DOMString> = null,
+            expectedInputLanguages: ?runtime.FrozenArray(runtime.DOMString) = null,
+            expectedContextLanguages: ?runtime.FrozenArray(runtime.DOMString) = null,
             outputLanguage: ?runtime.DOMString = null,
             inputQuota: f64 = undefined,
         },
@@ -75,17 +71,7 @@ pub const Writer = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        WriterImpl.init(instance);
-        
-        return instance;
+        return WriterImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -122,7 +108,7 @@ pub const Writer = struct {
         return try WriterImpl.get_expectedContextLanguages(instance);
     }
 
-    pub fn get_outputLanguage(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_outputLanguage(instance: *runtime.Instance) anyerror!DOMString {
         return try WriterImpl.get_outputLanguage(instance);
     }
 

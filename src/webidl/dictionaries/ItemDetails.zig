@@ -8,7 +8,7 @@ pub const ItemDetails = struct {
     itemId: runtime.DOMString,
     title: runtime.DOMString,
     price: anyopaque,
-    type: ?anyopaque = null,
+    @"type": ?anyopaque = null,
     description: ?runtime.DOMString = null,
     iconURLs: ?anyopaque = null,
     subscriptionPeriod: ?runtime.DOMString = null,

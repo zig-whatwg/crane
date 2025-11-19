@@ -10,5 +10,5 @@ pub const RTCLocalIceCandidateInit = struct {
     base: RTCIceCandidateInit,
 
     relayProtocol: ?anyopaque = null,
-    url: ?anyopaque = null,
+    url: ?runtime.DOMString = null,
 };

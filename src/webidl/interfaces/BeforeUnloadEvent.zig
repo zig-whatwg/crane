@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,6 +7,10 @@ const std = @import("std");
 const runtime = @import("runtime");
 const BeforeUnloadEventImpl = @import("impls").BeforeUnloadEvent;
 const Event = @import("interfaces").Event;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
+const EventTarget = @import("interfaces").EventTarget;
+const DOMString = @import("typedefs").DOMString;
 
 pub const BeforeUnloadEvent = struct {
     pub const Meta = struct {
@@ -51,14 +55,12 @@ pub const BeforeUnloadEvent = struct {
         .get_eventPhase = &get_eventPhase,
         .get_isTrusted = &get_isTrusted,
         .get_returnValue = &get_returnValue,
-        .get_returnValue = &get_returnValue,
         .get_srcElement = &get_srcElement,
         .get_target = &get_target,
         .get_timeStamp = &get_timeStamp,
         .get_type = &get_type,
 
         .set_cancelBubble = &set_cancelBubble,
-        .set_returnValue = &set_returnValue,
         .set_returnValue = &set_returnValue,
 
         .call_composedPath = &call_composedPath,
@@ -70,17 +72,7 @@ pub const BeforeUnloadEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        BeforeUnloadEventImpl.init(instance);
-        
-        return instance;
+        return BeforeUnloadEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -97,15 +89,15 @@ pub const BeforeUnloadEvent = struct {
         return try BeforeUnloadEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try BeforeUnloadEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try BeforeUnloadEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try BeforeUnloadEventImpl.get_currentTarget(instance);
     }
 
@@ -154,21 +146,13 @@ pub const BeforeUnloadEvent = struct {
         return try BeforeUnloadEventImpl.get_timeStamp(instance);
     }
 
-    pub fn get_returnValue(instance: *runtime.Instance) anyerror!DOMString {
-        return try BeforeUnloadEventImpl.get_returnValue(instance);
-    }
-
-    pub fn set_returnValue(instance: *runtime.Instance, value: DOMString) anyerror!void {
-        try BeforeUnloadEventImpl.set_returnValue(instance, value);
-    }
-
     pub fn call_stopImmediatePropagation(instance: *runtime.Instance) anyerror!void {
         return try BeforeUnloadEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try BeforeUnloadEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try BeforeUnloadEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_composedPath(instance: *runtime.Instance) anyerror!anyopaque {

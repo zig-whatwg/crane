@@ -5,7 +5,7 @@
 const runtime = @import("runtime");
 
 pub const SummarizerCreateCoreOptions = struct {
-    type: ?anyopaque = null,
+    @"type": ?anyopaque = null,
     format: ?anyopaque = null,
     length: ?anyopaque = null,
     expectedInputLanguages: ?anyopaque = null,

@@ -1,15 +1,13 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const XRRenderStateImpl = @import("impls").XRRenderState;
-const boolean = @import("interfaces").boolean;
 const XRWebGLLayer = @import("interfaces").XRWebGLLayer;
-const FrozenArray<XRLayer> = @import("interfaces").FrozenArray<XRLayer>;
-const double = @import("interfaces").double;
+const XRLayer = @import("interfaces").XRLayer;
 
 pub const XRRenderState = struct {
     pub const Meta = struct {
@@ -33,7 +31,7 @@ pub const XRRenderState = struct {
             passthroughFullyObscured: ?bool = null,
             inlineVerticalFieldOfView: ?f64 = null,
             baseLayer: ?XRWebGLLayer = null,
-            layers: FrozenArray<XRLayer> = undefined,
+            layers: runtime.FrozenArray(XRLayer) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -52,17 +50,7 @@ pub const XRRenderState = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        XRRenderStateImpl.init(instance);
-        
-        return instance;
+        return XRRenderStateImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -83,15 +71,15 @@ pub const XRRenderState = struct {
         return try XRRenderStateImpl.get_depthFar(instance);
     }
 
-    pub fn get_passthroughFullyObscured(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_passthroughFullyObscured(instance: *runtime.Instance) anyerror!bool {
         return try XRRenderStateImpl.get_passthroughFullyObscured(instance);
     }
 
-    pub fn get_inlineVerticalFieldOfView(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_inlineVerticalFieldOfView(instance: *runtime.Instance) anyerror!f64 {
         return try XRRenderStateImpl.get_inlineVerticalFieldOfView(instance);
     }
 
-    pub fn get_baseLayer(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_baseLayer(instance: *runtime.Instance) anyerror!XRWebGLLayer {
         return try XRRenderStateImpl.get_baseLayer(instance);
     }
 

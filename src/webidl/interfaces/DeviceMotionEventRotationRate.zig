@@ -1,12 +1,11 @@
 //! Generated from: orientation-event.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const DeviceMotionEventRotationRateImpl = @import("impls").DeviceMotionEventRotationRate;
-const double = @import("interfaces").double;
 
 pub const DeviceMotionEventRotationRate = struct {
     pub const Meta = struct {
@@ -43,17 +42,7 @@ pub const DeviceMotionEventRotationRate = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        DeviceMotionEventRotationRateImpl.init(instance);
-        
-        return instance;
+        return DeviceMotionEventRotationRateImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -66,15 +55,15 @@ pub const DeviceMotionEventRotationRate = struct {
         deinit(instance);
     }
 
-    pub fn get_alpha(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_alpha(instance: *runtime.Instance) anyerror!f64 {
         return try DeviceMotionEventRotationRateImpl.get_alpha(instance);
     }
 
-    pub fn get_beta(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_beta(instance: *runtime.Instance) anyerror!f64 {
         return try DeviceMotionEventRotationRateImpl.get_beta(instance);
     }
 
-    pub fn get_gamma(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_gamma(instance: *runtime.Instance) anyerror!f64 {
         return try DeviceMotionEventRotationRateImpl.get_gamma(instance);
     }
 

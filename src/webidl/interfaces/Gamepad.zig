@@ -1,20 +1,19 @@
 //! Generated from: gamepad.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const GamepadImpl = @import("impls").Gamepad;
-const FrozenArray<GamepadTouch> = @import("interfaces").FrozenArray<GamepadTouch>;
 const GamepadHapticActuator = @import("interfaces").GamepadHapticActuator;
-const FrozenArray<GamepadHapticActuator> = @import("interfaces").FrozenArray<GamepadHapticActuator>;
 const GamepadPose = @import("interfaces").GamepadPose;
-const FrozenArray<GamepadButton> = @import("interfaces").FrozenArray<GamepadButton>;
+const GamepadButton = @import("interfaces").GamepadButton;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const GamepadMappingType = @import("enums").GamepadMappingType;
-const FrozenArray<double> = @import("interfaces").FrozenArray<double>;
 const GamepadHand = @import("enums").GamepadHand;
+const DOMString = @import("typedefs").DOMString;
+const GamepadTouch = @import("dictionaries").GamepadTouch;
 
 pub const Gamepad = struct {
     pub const Meta = struct {
@@ -37,12 +36,12 @@ pub const Gamepad = struct {
             connected: bool = undefined,
             timestamp: DOMHighResTimeStamp = undefined,
             mapping: GamepadMappingType = undefined,
-            axes: FrozenArray<double> = undefined,
-            buttons: FrozenArray<GamepadButton> = undefined,
-            touches: FrozenArray<GamepadTouch> = undefined,
+            axes: runtime.FrozenArray(f64) = undefined,
+            buttons: runtime.FrozenArray(GamepadButton) = undefined,
+            touches: runtime.FrozenArray(GamepadTouch) = undefined,
             vibrationActuator: GamepadHapticActuator = undefined,
             hand: GamepadHand = undefined,
-            hapticActuators: FrozenArray<GamepadHapticActuator> = undefined,
+            hapticActuators: runtime.FrozenArray(GamepadHapticActuator) = undefined,
             pose: ?GamepadPose = null,
         },
         Meta.BaseType,
@@ -68,17 +67,7 @@ pub const Gamepad = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        GamepadImpl.init(instance);
-        
-        return instance;
+        return GamepadImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -143,7 +132,7 @@ pub const Gamepad = struct {
         return try GamepadImpl.get_hapticActuators(instance);
     }
 
-    pub fn get_pose(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_pose(instance: *runtime.Instance) anyerror!GamepadPose {
         return try GamepadImpl.get_pose(instance);
     }
 

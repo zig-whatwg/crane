@@ -1,15 +1,15 @@
 //! Generated from: webrtc-encoded-transform.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const RTCEncodedVideoFrameImpl = @import("impls").RTCEncodedVideoFrame;
-const RTCEncodedVideoFrameType = @import("enums").RTCEncodedVideoFrameType;
+const RTCEncodedVideoFrameOptions = @import("dictionaries").RTCEncodedVideoFrameOptions;
 const ArrayBuffer = @import("interfaces").ArrayBuffer;
 const RTCEncodedVideoFrameMetadata = @import("dictionaries").RTCEncodedVideoFrameMetadata;
-const RTCEncodedVideoFrameOptions = @import("dictionaries").RTCEncodedVideoFrameOptions;
+const RTCEncodedVideoFrameType = @import("enums").RTCEncodedVideoFrameType;
 
 pub const RTCEncodedVideoFrame = struct {
     pub const Meta = struct {
@@ -31,7 +31,7 @@ pub const RTCEncodedVideoFrame = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            type: RTCEncodedVideoFrameType = undefined,
+            @"type": RTCEncodedVideoFrameType = undefined,
             data: ArrayBuffer = undefined,
         },
         Meta.BaseType,
@@ -51,17 +51,7 @@ pub const RTCEncodedVideoFrame = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        RTCEncodedVideoFrameImpl.init(instance);
-        
-        return instance;
+        return RTCEncodedVideoFrameImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

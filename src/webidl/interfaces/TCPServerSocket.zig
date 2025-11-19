@@ -1,14 +1,14 @@
 //! Generated from: direct-sockets.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const TCPServerSocketImpl = @import("impls").TCPServerSocket;
-const Promise<TCPServerSocketOpenInfo> = @import("interfaces").Promise<TCPServerSocketOpenInfo>;
 const TCPServerSocketOptions = @import("dictionaries").TCPServerSocketOptions;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
+const DOMString = @import("typedefs").DOMString;
+const TCPServerSocketOpenInfo = @import("dictionaries").TCPServerSocketOpenInfo;
 
 pub const TCPServerSocket = struct {
     pub const Meta = struct {
@@ -31,8 +31,8 @@ pub const TCPServerSocket = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            opened: Promise<TCPServerSocketOpenInfo> = undefined,
-            closed: Promise<undefined> = undefined,
+            opened: runtime.Promise(TCPServerSocketOpenInfo) = undefined,
+            closed: runtime.Promise(undefined) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -49,17 +49,7 @@ pub const TCPServerSocket = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        TCPServerSocketImpl.init(instance);
-        
-        return instance;
+        return TCPServerSocketImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

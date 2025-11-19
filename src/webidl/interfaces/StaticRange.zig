@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,6 +7,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const StaticRangeImpl = @import("impls").StaticRange;
 const AbstractRange = @import("interfaces").AbstractRange;
+const Node = @import("interfaces").Node;
 const StaticRangeInit = @import("dictionaries").StaticRangeInit;
 
 pub const StaticRange = struct {
@@ -41,17 +42,7 @@ pub const StaticRange = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        StaticRangeImpl.init(instance);
-        
-        return instance;
+        return StaticRangeImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -65,11 +56,11 @@ pub const StaticRange = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, init: StaticRangeInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, init_data: StaticRangeInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try StaticRangeImpl.constructor(instance, init);
+        try StaticRangeImpl.constructor(instance, init_data);
         
         return instance;
     }

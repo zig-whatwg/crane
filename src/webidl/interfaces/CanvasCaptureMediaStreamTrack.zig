@@ -1,5 +1,5 @@
 //! Generated from: mediacapture-fromelement.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,6 +7,20 @@ const std = @import("std");
 const runtime = @import("runtime");
 const CanvasCaptureMediaStreamTrackImpl = @import("impls").CanvasCaptureMediaStreamTrack;
 const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const CaptureHandle = @import("dictionaries").CaptureHandle;
+const DOMString = @import("typedefs").DOMString;
+const MediaTrackSettings = @import("dictionaries").MediaTrackSettings;
+const MediaTrackConstraints = @import("dictionaries").MediaTrackConstraints;
+const MediaStreamTrackState = @import("enums").MediaStreamTrackState;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const CaptureAction = @import("enums").CaptureAction;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const MediaTrackCapabilities = @import("dictionaries").MediaTrackCapabilities;
+const EventListener = @import("interfaces").EventListener;
+const EventHandler = @import("typedefs").EventHandler;
 const HTMLCanvasElement = @import("interfaces").HTMLCanvasElement;
 
 pub const CanvasCaptureMediaStreamTrack = struct {
@@ -75,17 +89,7 @@ pub const CanvasCaptureMediaStreamTrack = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        CanvasCaptureMediaStreamTrackImpl.init(instance);
-        
-        return instance;
+        return CanvasCaptureMediaStreamTrackImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -190,9 +194,9 @@ pub const CanvasCaptureMediaStreamTrack = struct {
         return try CanvasCaptureMediaStreamTrackImpl.call_stop(instance);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try CanvasCaptureMediaStreamTrackImpl.call_when(instance, type_, options);
+        return try CanvasCaptureMediaStreamTrackImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_getCapabilities(instance: *runtime.Instance) anyerror!MediaTrackCapabilities {
@@ -204,9 +208,9 @@ pub const CanvasCaptureMediaStreamTrack = struct {
         return try CanvasCaptureMediaStreamTrackImpl.call_sendCaptureAction(instance, action);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try CanvasCaptureMediaStreamTrackImpl.call_addEventListener(instance, type_, callback, options);
+        return try CanvasCaptureMediaStreamTrackImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
     pub fn call_applyConstraints(instance: *runtime.Instance, constraints: MediaTrackConstraints) anyerror!anyopaque {
@@ -214,12 +218,12 @@ pub const CanvasCaptureMediaStreamTrack = struct {
         return try CanvasCaptureMediaStreamTrackImpl.call_applyConstraints(instance, constraints);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try CanvasCaptureMediaStreamTrackImpl.call_removeEventListener(instance, type_, callback, options);
+        return try CanvasCaptureMediaStreamTrackImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_getCaptureHandle(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn call_getCaptureHandle(instance: *runtime.Instance) anyerror!CaptureHandle {
         return try CanvasCaptureMediaStreamTrackImpl.call_getCaptureHandle(instance);
     }
 

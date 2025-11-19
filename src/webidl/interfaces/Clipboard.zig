@@ -1,5 +1,5 @@
 //! Generated from: clipboard-apis.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,11 +7,15 @@ const std = @import("std");
 const runtime = @import("runtime");
 const ClipboardImpl = @import("impls").Clipboard;
 const EventTarget = @import("interfaces").EventTarget;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const ClipboardUnsanitizedFormats = @import("dictionaries").ClipboardUnsanitizedFormats;
-const Promise<DOMString> = @import("interfaces").Promise<DOMString>;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
+const Event = @import("interfaces").Event;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
 const ClipboardItems = @import("typedefs").ClipboardItems;
-const Promise<ClipboardItems> = @import("interfaces").Promise<ClipboardItems>;
+const DOMString = @import("typedefs").DOMString;
+const Observable = @import("interfaces").Observable;
 
 pub const Clipboard = struct {
     pub const Meta = struct {
@@ -49,17 +53,7 @@ pub const Clipboard = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ClipboardImpl.init(instance);
-        
-        return instance;
+        return ClipboardImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -72,9 +66,9 @@ pub const Clipboard = struct {
         deinit(instance);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try ClipboardImpl.call_removeEventListener(instance, type_, callback, options);
+        return try ClipboardImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
     pub fn call_writeText(instance: *runtime.Instance, data: DOMString) anyerror!anyopaque {
@@ -82,9 +76,9 @@ pub const Clipboard = struct {
         return try ClipboardImpl.call_writeText(instance, data);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try ClipboardImpl.call_when(instance, type_, options);
+        return try ClipboardImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_dispatchEvent(instance: *runtime.Instance, event: Event) anyerror!bool {
@@ -106,9 +100,9 @@ pub const Clipboard = struct {
         return try ClipboardImpl.call_readText(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try ClipboardImpl.call_addEventListener(instance, type_, callback, options);
+        return try ClipboardImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
 };

@@ -1,12 +1,12 @@
 //! Generated from: web-bluetooth-scanning.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const BluetoothLEScanImpl = @import("impls").BluetoothLEScan;
-const FrozenArray<BluetoothLEScanFilter> = @import("interfaces").FrozenArray<BluetoothLEScanFilter>;
+const BluetoothLEScanFilter = @import("interfaces").BluetoothLEScanFilter;
 
 pub const BluetoothLEScan = struct {
     pub const Meta = struct {
@@ -25,7 +25,7 @@ pub const BluetoothLEScan = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            filters: FrozenArray<BluetoothLEScanFilter> = undefined,
+            filters: runtime.FrozenArray(BluetoothLEScanFilter) = undefined,
             keepRepeatedDevices: bool = undefined,
             acceptAllAdvertisements: bool = undefined,
             active: bool = undefined,
@@ -47,17 +47,7 @@ pub const BluetoothLEScan = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        BluetoothLEScanImpl.init(instance);
-        
-        return instance;
+        return BluetoothLEScanImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

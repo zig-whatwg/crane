@@ -1,11 +1,13 @@
 //! Generated from: fenced-frame.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const FencedFrameConfigImpl = @import("impls").FencedFrameConfig;
+const USVString = @import("interfaces").USVString;
+const DOMString = @import("typedefs").DOMString;
 
 pub const FencedFrameConfig = struct {
     pub const Meta = struct {
@@ -36,17 +38,7 @@ pub const FencedFrameConfig = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        FencedFrameConfigImpl.init(instance);
-        
-        return instance;
+        return FencedFrameConfigImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

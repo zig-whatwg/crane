@@ -5,5 +5,5 @@
 const runtime = @import("runtime");
 
 pub const AuctionRealTimeReportingConfig = struct {
-    type: runtime.DOMString,
+    @"type": runtime.DOMString,
 };

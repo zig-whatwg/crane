@@ -1,5 +1,5 @@
 //! Generated from: mediasession.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,8 +7,8 @@ const std = @import("std");
 const runtime = @import("runtime");
 const MediaMetadataImpl = @import("impls").MediaMetadata;
 const MediaMetadataInit = @import("dictionaries").MediaMetadataInit;
-const FrozenArray<object> = @import("interfaces").FrozenArray<object>;
-const FrozenArray<ChapterInformation> = @import("interfaces").FrozenArray<ChapterInformation>;
+const ChapterInformation = @import("interfaces").ChapterInformation;
+const DOMString = @import("typedefs").DOMString;
 
 pub const MediaMetadata = struct {
     pub const Meta = struct {
@@ -29,8 +29,8 @@ pub const MediaMetadata = struct {
             title: runtime.DOMString = undefined,
             artist: runtime.DOMString = undefined,
             album: runtime.DOMString = undefined,
-            artwork: FrozenArray<object> = undefined,
-            chapterInfo: FrozenArray<ChapterInformation> = undefined,
+            artwork: runtime.FrozenArray(anyopaque) = undefined,
+            chapterInfo: runtime.FrozenArray(ChapterInformation) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -53,17 +53,7 @@ pub const MediaMetadata = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        MediaMetadataImpl.init(instance);
-        
-        return instance;
+        return MediaMetadataImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -77,11 +67,11 @@ pub const MediaMetadata = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, init: MediaMetadataInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, init_data: MediaMetadataInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try MediaMetadataImpl.constructor(instance, init);
+        try MediaMetadataImpl.constructor(instance, init_data);
         
         return instance;
     }

@@ -1,5 +1,5 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,13 +7,20 @@ const std = @import("std");
 const runtime = @import("runtime");
 const IDBTransactionImpl = @import("impls").IDBTransaction;
 const EventTarget = @import("interfaces").EventTarget;
-const DOMStringList = @import("interfaces").DOMStringList;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const IDBDatabase = @import("interfaces").IDBDatabase;
 const IDBTransactionDurability = @import("enums").IDBTransactionDurability;
+const IDBObjectStore = @import("interfaces").IDBObjectStore;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const DOMStringList = @import("interfaces").DOMStringList;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
 const IDBTransactionMode = @import("enums").IDBTransactionMode;
 const DOMException = @import("interfaces").DOMException;
 const EventHandler = @import("typedefs").EventHandler;
-const IDBObjectStore = @import("interfaces").IDBObjectStore;
+const DOMString = @import("typedefs").DOMString;
 
 pub const IDBTransaction = struct {
     pub const Meta = struct {
@@ -38,7 +45,7 @@ pub const IDBTransaction = struct {
             mode: IDBTransactionMode = undefined,
             durability: IDBTransactionDurability = undefined,
             db: IDBDatabase = undefined,
-            error: ?DOMException = null,
+            @"error": ?DOMException = null,
             onabort: EventHandler = undefined,
             oncomplete: EventHandler = undefined,
             onerror: EventHandler = undefined,
@@ -74,17 +81,7 @@ pub const IDBTransaction = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        IDBTransactionImpl.init(instance);
-        
-        return instance;
+        return IDBTransactionImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -121,7 +118,7 @@ pub const IDBTransaction = struct {
         return value;
     }
 
-    pub fn get_error(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_error(instance: *runtime.Instance) anyerror!DOMException {
         return try IDBTransactionImpl.get_error(instance);
     }
 
@@ -154,9 +151,9 @@ pub const IDBTransaction = struct {
         return try IDBTransactionImpl.call_objectStore(instance, name);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try IDBTransactionImpl.call_when(instance, type_, options);
+        return try IDBTransactionImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_abort(instance: *runtime.Instance) anyerror!void {
@@ -172,14 +169,14 @@ pub const IDBTransaction = struct {
         return try IDBTransactionImpl.call_commit(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try IDBTransactionImpl.call_addEventListener(instance, type_, callback, options);
+        return try IDBTransactionImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try IDBTransactionImpl.call_removeEventListener(instance, type_, callback, options);
+        return try IDBTransactionImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

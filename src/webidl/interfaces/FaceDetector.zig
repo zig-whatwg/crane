@@ -1,5 +1,5 @@
 //! Generated from: shape-detection-api.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,6 @@ const runtime = @import("runtime");
 const FaceDetectorImpl = @import("impls").FaceDetector;
 const FaceDetectorOptions = @import("dictionaries").FaceDetectorOptions;
 const ImageBitmapSource = @import("typedefs").ImageBitmapSource;
-const Promise<sequence<DetectedFace>> = @import("interfaces").Promise<sequence<DetectedFace>>;
 
 pub const FaceDetector = struct {
     pub const Meta = struct {
@@ -42,17 +41,7 @@ pub const FaceDetector = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        FaceDetectorImpl.init(instance);
-        
-        return instance;
+        return FaceDetectorImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

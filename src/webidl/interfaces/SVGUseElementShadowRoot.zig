@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,6 +7,29 @@ const std = @import("std");
 const runtime = @import("runtime");
 const SVGUseElementShadowRootImpl = @import("impls").SVGUseElementShadowRoot;
 const ShadowRoot = @import("interfaces").ShadowRoot;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const Document = @import("interfaces").Document;
+const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
+const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
+const HTMLCollection = @import("interfaces").HTMLCollection;
+const SlotAssignmentMode = @import("enums").SlotAssignmentMode;
+const TrustedHTML = @import("interfaces").TrustedHTML;
+const Node = @import("interfaces").Node;
+const NodeList = @import("interfaces").NodeList;
+const USVString = @import("interfaces").USVString;
+const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const Element = @import("interfaces").Element;
+const Animation = @import("interfaces").Animation;
+const ShadowRootMode = @import("enums").ShadowRootMode;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
+const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
+const StyleSheetList = @import("interfaces").StyleSheetList;
+const EventHandler = @import("typedefs").EventHandler;
+const DOMString = @import("typedefs").DOMString;
 
 pub const SVGUseElementShadowRoot = struct {
     pub const Meta = struct {
@@ -122,17 +145,7 @@ pub const SVGUseElementShadowRoot = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        SVGUseElementShadowRootImpl.init(instance);
-        
-        return instance;
+        return SVGUseElementShadowRootImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -161,15 +174,15 @@ pub const SVGUseElementShadowRoot = struct {
         return try SVGUseElementShadowRootImpl.get_isConnected(instance);
     }
 
-    pub fn get_ownerDocument(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ownerDocument(instance: *runtime.Instance) anyerror!Document {
         return try SVGUseElementShadowRootImpl.get_ownerDocument(instance);
     }
 
-    pub fn get_parentNode(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_parentNode(instance: *runtime.Instance) anyerror!Node {
         return try SVGUseElementShadowRootImpl.get_parentNode(instance);
     }
 
-    pub fn get_parentElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_parentElement(instance: *runtime.Instance) anyerror!Element {
         return try SVGUseElementShadowRootImpl.get_parentElement(instance);
     }
 
@@ -185,29 +198,29 @@ pub const SVGUseElementShadowRoot = struct {
         return value;
     }
 
-    pub fn get_firstChild(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_firstChild(instance: *runtime.Instance) anyerror!Node {
         return try SVGUseElementShadowRootImpl.get_firstChild(instance);
     }
 
-    pub fn get_lastChild(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_lastChild(instance: *runtime.Instance) anyerror!Node {
         return try SVGUseElementShadowRootImpl.get_lastChild(instance);
     }
 
-    pub fn get_previousSibling(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_previousSibling(instance: *runtime.Instance) anyerror!Node {
         return try SVGUseElementShadowRootImpl.get_previousSibling(instance);
     }
 
-    pub fn get_nextSibling(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_nextSibling(instance: *runtime.Instance) anyerror!Node {
         return try SVGUseElementShadowRootImpl.get_nextSibling(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_nodeValue(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_nodeValue(instance: *runtime.Instance) anyerror!DOMString {
         return try SVGUseElementShadowRootImpl.get_nodeValue(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_nodeValue(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_nodeValue(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -216,12 +229,12 @@ pub const SVGUseElementShadowRoot = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_textContent(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_textContent(instance: *runtime.Instance) anyerror!DOMString {
         return try SVGUseElementShadowRootImpl.get_textContent(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_textContent(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_textContent(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -241,11 +254,11 @@ pub const SVGUseElementShadowRoot = struct {
         return value;
     }
 
-    pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!Element {
         return try SVGUseElementShadowRootImpl.get_firstElementChild(instance);
     }
 
-    pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!Element {
         return try SVGUseElementShadowRootImpl.get_lastElementChild(instance);
     }
 
@@ -299,20 +312,20 @@ pub const SVGUseElementShadowRoot = struct {
         try SVGUseElementShadowRootImpl.set_innerHTML(instance, value);
     }
 
-    pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!CustomElementRegistry {
         return try SVGUseElementShadowRootImpl.get_customElementRegistry(instance);
     }
 
     /// Extended attributes: [LegacyLenientSetter]
-    pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!Element {
         return try SVGUseElementShadowRootImpl.get_fullscreenElement(instance);
     }
 
-    pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!Element {
         return try SVGUseElementShadowRootImpl.get_pictureInPictureElement(instance);
     }
 
-    pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!Element {
         return try SVGUseElementShadowRootImpl.get_pointerLockElement(instance);
     }
 
@@ -336,16 +349,16 @@ pub const SVGUseElementShadowRoot = struct {
         try SVGUseElementShadowRootImpl.set_adoptedStyleSheets(instance, value);
     }
 
-    pub fn get_activeElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_activeElement(instance: *runtime.Instance) anyerror!Element {
         return try SVGUseElementShadowRootImpl.get_activeElement(instance);
     }
 
-    pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: anyopaque) anyerror!bool {
+    pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: DOMString) anyerror!bool {
         
         return try SVGUseElementShadowRootImpl.call_isDefaultNamespace(instance, namespace);
     }
 
-    pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!anyopaque {
+    pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!Element {
         
         return try SVGUseElementShadowRootImpl.call_querySelector(instance, selectors);
     }
@@ -355,19 +368,19 @@ pub const SVGUseElementShadowRoot = struct {
         return try SVGUseElementShadowRootImpl.call_compareDocumentPosition(instance, other);
     }
 
-    pub fn call_contains(instance: *runtime.Instance, other: anyopaque) anyerror!bool {
+    pub fn call_contains(instance: *runtime.Instance, other: Node) anyerror!bool {
         
         return try SVGUseElementShadowRootImpl.call_contains(instance, other);
     }
 
-    pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!anyopaque {
+    pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!Element {
         
         return try SVGUseElementShadowRootImpl.call_getElementById(instance, elementId);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try SVGUseElementShadowRootImpl.call_removeEventListener(instance, type_, callback, options);
+        return try SVGUseElementShadowRootImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
@@ -392,7 +405,7 @@ pub const SVGUseElementShadowRoot = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_moveBefore(instance: *runtime.Instance, node: Node, child: anyopaque) anyerror!void {
+    pub fn call_moveBefore(instance: *runtime.Instance, node: Node, child: Node) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -426,7 +439,7 @@ pub const SVGUseElementShadowRoot = struct {
         return try SVGUseElementShadowRootImpl.call_getHTML(instance, options);
     }
 
-    pub fn call_isSameNode(instance: *runtime.Instance, otherNode: anyopaque) anyerror!bool {
+    pub fn call_isSameNode(instance: *runtime.Instance, otherNode: Node) anyerror!bool {
         
         return try SVGUseElementShadowRootImpl.call_isSameNode(instance, otherNode);
     }
@@ -441,18 +454,18 @@ pub const SVGUseElementShadowRoot = struct {
         return try SVGUseElementShadowRootImpl.call_setHTMLUnsafe(instance, html);
     }
 
-    pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: anyopaque) anyerror!anyopaque {
+    pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: DOMString) anyerror!DOMString {
         
         return try SVGUseElementShadowRootImpl.call_lookupPrefix(instance, namespace);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try SVGUseElementShadowRootImpl.call_when(instance, type_, options);
+        return try SVGUseElementShadowRootImpl.call_when(instance, @"type", options);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_insertBefore(instance: *runtime.Instance, node: Node, child: anyopaque) anyerror!Node {
+    pub fn call_insertBefore(instance: *runtime.Instance, node: Node, child: Node) anyerror!Node {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -461,14 +474,14 @@ pub const SVGUseElementShadowRoot = struct {
         return try SVGUseElementShadowRootImpl.call_insertBefore(instance, node, child);
     }
 
-    pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: anyopaque) anyerror!anyopaque {
+    pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: DOMString) anyerror!DOMString {
         
         return try SVGUseElementShadowRootImpl.call_lookupNamespaceURI(instance, prefix);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try SVGUseElementShadowRootImpl.call_addEventListener(instance, type_, callback, options);
+        return try SVGUseElementShadowRootImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
     /// Extended attributes: [CEReactions]
@@ -514,7 +527,7 @@ pub const SVGUseElementShadowRoot = struct {
         return try SVGUseElementShadowRootImpl.call_normalize(instance);
     }
 
-    pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: anyopaque) anyerror!bool {
+    pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: Node) anyerror!bool {
         
         return try SVGUseElementShadowRootImpl.call_isEqualNode(instance, otherNode);
     }

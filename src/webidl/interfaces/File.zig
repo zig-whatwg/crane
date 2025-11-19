@@ -1,5 +1,5 @@
 //! Generated from: FileAPI.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,14 @@ const std = @import("std");
 const runtime = @import("runtime");
 const FileImpl = @import("impls").File;
 const Blob = @import("interfaces").Blob;
+const Uint8Array = @import("interfaces").Uint8Array;
+const ArrayBuffer = @import("interfaces").ArrayBuffer;
 const FilePropertyBag = @import("dictionaries").FilePropertyBag;
+const BlobPart = @import("typedefs").BlobPart;
+const ReadableStream = @import("interfaces").ReadableStream;
+const USVString = @import("interfaces").USVString;
+const DOMString = @import("typedefs").DOMString;
+const BlobPropertyBag = @import("dictionaries").BlobPropertyBag;
 
 pub const File = struct {
     pub const Meta = struct {
@@ -55,17 +62,7 @@ pub const File = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        FileImpl.init(instance);
-        
-        return instance;
+        return FileImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

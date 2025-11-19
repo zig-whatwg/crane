@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -25,16 +25,15 @@ const Serial = @import("interfaces").Serial;
 const SmartCardResourceManager = @import("interfaces").SmartCardResourceManager;
 const HID = @import("interfaces").HID;
 const NetworkInformation = @import("interfaces").NetworkInformation;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
 const ML = @import("interfaces").ML;
 const NavigatorUAData = @import("interfaces").NavigatorUAData;
 const GPU = @import("interfaces").GPU;
 const StorageBucketManager = @import("interfaces").StorageBucketManager;
 const USB = @import("interfaces").USB;
 const StorageManager = @import("interfaces").StorageManager;
-const FrozenArray<DOMString> = @import("interfaces").FrozenArray<DOMString>;
 const ServiceWorkerContainer = @import("interfaces").ServiceWorkerContainer;
 const MediaCapabilities = @import("interfaces").MediaCapabilities;
+const DOMString = @import("typedefs").DOMString;
 const Permissions = @import("interfaces").Permissions;
 
 pub const WorkerNavigator = struct {
@@ -61,6 +60,7 @@ pub const WorkerNavigator = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Worker" } },
             .{ .name = "SecureContext" },
+            .{ .name = "IsolatedContext" },
         };
         
         /// Global contexts where this interface is exposed
@@ -95,7 +95,7 @@ pub const WorkerNavigator = struct {
             vendorSub: runtime.DOMString = undefined,
             oscpu: runtime.DOMString = undefined,
             language: runtime.DOMString = undefined,
-            languages: FrozenArray<DOMString> = undefined,
+            languages: runtime.FrozenArray(runtime.DOMString) = undefined,
             onLine: bool = undefined,
             hardwareConcurrency: u64 = undefined,
             userAgentData: NavigatorUAData = undefined,
@@ -145,17 +145,7 @@ pub const WorkerNavigator = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        WorkerNavigatorImpl.init(instance);
-        
-        return instance;
+        return WorkerNavigatorImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

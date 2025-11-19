@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,14 +7,21 @@ const std = @import("std");
 const runtime = @import("runtime");
 const RTCDataChannelImpl = @import("impls").RTCDataChannel;
 const EventTarget = @import("interfaces").EventTarget;
-const ArrayBuffer = @import("interfaces").ArrayBuffer;
-const unsigned short = @import("interfaces").unsigned short;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const Blob = @import("interfaces").Blob;
-const RTCPriorityType = @import("enums").RTCPriorityType;
 const RTCDataChannelState = @import("enums").RTCDataChannelState;
 const ArrayBufferView = @import("typedefs").ArrayBufferView;
 const BinaryType = @import("enums").BinaryType;
+const USVString = @import("interfaces").USVString;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const ArrayBuffer = @import("interfaces").ArrayBuffer;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const RTCPriorityType = @import("enums").RTCPriorityType;
+const EventListener = @import("interfaces").EventListener;
 const EventHandler = @import("typedefs").EventHandler;
+const DOMString = @import("typedefs").DOMString;
 
 pub const RTCDataChannel = struct {
     pub const Meta = struct {
@@ -100,17 +107,7 @@ pub const RTCDataChannel = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        RTCDataChannelImpl.init(instance);
-        
-        return instance;
+        return RTCDataChannelImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -131,11 +128,11 @@ pub const RTCDataChannel = struct {
         return try RTCDataChannelImpl.get_ordered(instance);
     }
 
-    pub fn get_maxPacketLifeTime(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_maxPacketLifeTime(instance: *runtime.Instance) anyerror!u16 {
         return try RTCDataChannelImpl.get_maxPacketLifeTime(instance);
     }
 
-    pub fn get_maxRetransmits(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_maxRetransmits(instance: *runtime.Instance) anyerror!u16 {
         return try RTCDataChannelImpl.get_maxRetransmits(instance);
     }
 
@@ -147,7 +144,7 @@ pub const RTCDataChannel = struct {
         return try RTCDataChannelImpl.get_negotiated(instance);
     }
 
-    pub fn get_id(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_id(instance: *runtime.Instance) anyerror!u16 {
         return try RTCDataChannelImpl.get_id(instance);
     }
 
@@ -229,49 +226,33 @@ pub const RTCDataChannel = struct {
         return try RTCDataChannelImpl.get_priority(instance);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
-        
-        return try RTCDataChannelImpl.call_when(instance, type_, options);
-    }
-
-    /// Arguments for send (WebIDL overloading)
-    pub const SendArgs = union(enum) {
-        /// send(data)
-        USVString: runtime.USVString,
-        /// send(data)
-        Blob: Blob,
-        /// send(data)
-        ArrayBuffer: anyopaque,
-        /// send(data)
-        ArrayBufferView: ArrayBufferView,
-    };
-
-    pub fn call_send(instance: *runtime.Instance, args: SendArgs) anyerror!void {
-        switch (args) {
-            .USVString => |arg| return try RTCDataChannelImpl.USVString(instance, arg),
-            .Blob => |arg| return try RTCDataChannelImpl.Blob(instance, arg),
-            .ArrayBuffer => |arg| return try RTCDataChannelImpl.ArrayBuffer(instance, arg),
-            .ArrayBufferView => |arg| return try RTCDataChannelImpl.ArrayBufferView(instance, arg),
-        }
-    }
-
     pub fn call_dispatchEvent(instance: *runtime.Instance, event: Event) anyerror!bool {
         
         return try RTCDataChannelImpl.call_dispatchEvent(instance, event);
+    }
+
+    pub fn call_send(instance: *runtime.Instance, data: runtime.USVString) anyerror!void {
+        
+        return try RTCDataChannelImpl.call_send(instance, data);
+    }
+
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+        
+        return try RTCDataChannelImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_close(instance: *runtime.Instance) anyerror!void {
         return try RTCDataChannelImpl.call_close(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try RTCDataChannelImpl.call_addEventListener(instance, type_, callback, options);
+        return try RTCDataChannelImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try RTCDataChannelImpl.call_removeEventListener(instance, type_, callback, options);
+        return try RTCDataChannelImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

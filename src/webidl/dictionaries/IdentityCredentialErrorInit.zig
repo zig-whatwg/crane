@@ -5,6 +5,6 @@
 const runtime = @import("runtime");
 
 pub const IdentityCredentialErrorInit = struct {
-    error: ?runtime.DOMString = null,
+    @"error": ?runtime.DOMString = null,
     url: ?runtime.DOMString = null,
 };

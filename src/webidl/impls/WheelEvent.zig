@@ -13,22 +13,31 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Initialize instance
-pub fn init(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Initialize your instance state here
+/// Initialize instance (delegates to runtime.Instance.init)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable);
+    // TODO: Add custom initialization here if needed
+    // const state = instance.getState(StateType);
+    // state.* = .{}; // Initialize fields
+    return instance;
 }
 
-/// Deinitialize instance
+/// Deinitialize instance (delegates to runtime.Instance.deinit)
 pub fn deinit(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Clean up your instance resources here
+    // TODO: Add custom cleanup here if needed
+    // const state = instance.getState(State);
+    // Clean up fields...
+    runtime.Instance.deinit(instance);
 }
 
 /// Constructor implementation
-pub fn constructor(instance: *runtime.Instance, type: runtime.DOMString, eventInitDict: anyopaque) !void {
+pub fn constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: anyopaque) !void {
     _ = instance;
-    _ = type;
+    _ = @"type";
     _ = eventInitDict;
     // TODO: Implement constructor logic
 }
@@ -257,20 +266,6 @@ pub fn get_movementY(instance: *runtime.Instance) ImplError!f64 {
     return error.NotImplemented;
 }
 
-/// Getter for screenX
-pub fn get_screenX(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for screenY
-pub fn get_screenY(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
 /// Getter for pageX
 pub fn get_pageX(instance: *runtime.Instance) ImplError!f64 {
     _ = instance;
@@ -280,20 +275,6 @@ pub fn get_pageX(instance: *runtime.Instance) ImplError!f64 {
 
 /// Getter for pageY
 pub fn get_pageY(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for clientX
-pub fn get_clientX(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for clientY
-pub fn get_clientY(instance: *runtime.Instance) ImplError!f64 {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -400,9 +381,9 @@ pub fn call_preventDefault(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: initEvent
-pub fn call_initEvent(instance: *runtime.Instance, type: runtime.DOMString, bubbles: bool, cancelable: bool) ImplError!void {
+pub fn call_initEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: bool, cancelable: bool) ImplError!void {
     _ = instance;
-    _ = type;
+    _ = @"type";
     _ = bubbles;
     _ = cancelable;
     // TODO: Implement operation

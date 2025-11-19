@@ -117,7 +117,7 @@ pub fn build(b: *std.Build) void {
     // ========================================================================
 
     const interfaces_mod = b.addModule("interfaces", .{
-        .root_source_file = b.path("src/interfaces/root.zig"),
+        .root_source_file = b.path("src/webidl/interfaces/root.zig"),
         .target = target,
     });
     interfaces_mod.addImport("runtime", runtime_mod);
@@ -127,7 +127,7 @@ pub fn build(b: *std.Build) void {
     // ========================================================================
 
     const impls_mod = b.addModule("impls", .{
-        .root_source_file = b.path("src/impls/root.zig"),
+        .root_source_file = b.path("src/webidl/impls/root.zig"),
         .target = target,
     });
     impls_mod.addImport("runtime", runtime_mod);

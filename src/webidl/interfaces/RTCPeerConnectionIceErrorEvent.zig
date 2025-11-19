@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,10 @@ const runtime = @import("runtime");
 const RTCPeerConnectionIceErrorEventImpl = @import("impls").RTCPeerConnectionIceErrorEvent;
 const Event = @import("interfaces").Event;
 const RTCPeerConnectionIceErrorEventInit = @import("dictionaries").RTCPeerConnectionIceErrorEventInit;
-const unsigned short = @import("interfaces").unsigned short;
+const EventTarget = @import("interfaces").EventTarget;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
+const USVString = @import("interfaces").USVString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const RTCPeerConnectionIceErrorEvent = struct {
@@ -80,17 +83,7 @@ pub const RTCPeerConnectionIceErrorEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        RTCPeerConnectionIceErrorEventImpl.init(instance);
-        
-        return instance;
+        return RTCPeerConnectionIceErrorEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -104,11 +97,11 @@ pub const RTCPeerConnectionIceErrorEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, eventInitDict: RTCPeerConnectionIceErrorEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, eventInitDict: RTCPeerConnectionIceErrorEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try RTCPeerConnectionIceErrorEventImpl.constructor(instance, type_, eventInitDict);
+        try RTCPeerConnectionIceErrorEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -117,15 +110,15 @@ pub const RTCPeerConnectionIceErrorEvent = struct {
         return try RTCPeerConnectionIceErrorEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try RTCPeerConnectionIceErrorEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try RTCPeerConnectionIceErrorEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try RTCPeerConnectionIceErrorEventImpl.get_currentTarget(instance);
     }
 
@@ -174,11 +167,11 @@ pub const RTCPeerConnectionIceErrorEvent = struct {
         return try RTCPeerConnectionIceErrorEventImpl.get_timeStamp(instance);
     }
 
-    pub fn get_address(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_address(instance: *runtime.Instance) anyerror!DOMString {
         return try RTCPeerConnectionIceErrorEventImpl.get_address(instance);
     }
 
-    pub fn get_port(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_port(instance: *runtime.Instance) anyerror!u16 {
         return try RTCPeerConnectionIceErrorEventImpl.get_port(instance);
     }
 
@@ -198,9 +191,9 @@ pub const RTCPeerConnectionIceErrorEvent = struct {
         return try RTCPeerConnectionIceErrorEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try RTCPeerConnectionIceErrorEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try RTCPeerConnectionIceErrorEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_composedPath(instance: *runtime.Instance) anyerror!anyopaque {

@@ -1,5 +1,5 @@
 //! Generated from: remote-playback.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,11 +7,16 @@ const std = @import("std");
 const runtime = @import("runtime");
 const RemotePlaybackImpl = @import("impls").RemotePlayback;
 const EventTarget = @import("interfaces").EventTarget;
-const Promise<long> = @import("interfaces").Promise<long>;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const DOMString = @import("typedefs").DOMString;
+const Event = @import("interfaces").Event;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
 const RemotePlaybackState = @import("enums").RemotePlaybackState;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
 const RemotePlaybackAvailabilityCallback = @import("callbacks").RemotePlaybackAvailabilityCallback;
 const EventHandler = @import("typedefs").EventHandler;
+const Observable = @import("interfaces").Observable;
 
 pub const RemotePlayback = struct {
     pub const Meta = struct {
@@ -61,17 +66,7 @@ pub const RemotePlayback = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        RemotePlaybackImpl.init(instance);
-        
-        return instance;
+        return RemotePlaybackImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -112,14 +107,14 @@ pub const RemotePlayback = struct {
         try RemotePlaybackImpl.set_ondisconnect(instance, value);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try RemotePlaybackImpl.call_removeEventListener(instance, type_, callback, options);
+        return try RemotePlaybackImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try RemotePlaybackImpl.call_when(instance, type_, options);
+        return try RemotePlaybackImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_watchAvailability(instance: *runtime.Instance, callback: RemotePlaybackAvailabilityCallback) anyerror!anyopaque {
@@ -141,9 +136,9 @@ pub const RemotePlayback = struct {
         return try RemotePlaybackImpl.call_cancelWatchAvailability(instance, id);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try RemotePlaybackImpl.call_addEventListener(instance, type_, callback, options);
+        return try RemotePlaybackImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
 };

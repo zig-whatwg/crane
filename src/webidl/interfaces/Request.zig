@@ -1,5 +1,5 @@
 //! Generated from: fetch.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,25 +7,26 @@ const std = @import("std");
 const runtime = @import("runtime");
 const RequestImpl = @import("impls").Request;
 const Body = @import("interfaces").Body;
+const RequestDestination = @import("enums").RequestDestination;
 const RequestCredentials = @import("enums").RequestCredentials;
-const Promise<Blob> = @import("interfaces").Promise<Blob>;
+const ByteString = @import("interfaces").ByteString;
 const RequestMode = @import("enums").RequestMode;
 const RequestInfo = @import("typedefs").RequestInfo;
-const Promise<FormData> = @import("interfaces").Promise<FormData>;
+const Blob = @import("interfaces").Blob;
 const ReferrerPolicy = @import("enums").ReferrerPolicy;
 const RequestInit = @import("dictionaries").RequestInit;
 const RequestRedirect = @import("enums").RequestRedirect;
+const USVString = @import("interfaces").USVString;
 const RequestDuplex = @import("enums").RequestDuplex;
-const IPAddressSpace = @import("enums").IPAddressSpace;
 const RequestCache = @import("enums").RequestCache;
-const Promise<any> = @import("interfaces").Promise<any>;
-const Promise<ArrayBuffer> = @import("interfaces").Promise<ArrayBuffer>;
+const IPAddressSpace = @import("enums").IPAddressSpace;
+const Uint8Array = @import("interfaces").Uint8Array;
+const ArrayBuffer = @import("interfaces").ArrayBuffer;
 const ReadableStream = @import("interfaces").ReadableStream;
 const AbortSignal = @import("interfaces").AbortSignal;
-const Promise<USVString> = @import("interfaces").Promise<USVString>;
-const Promise<Uint8Array> = @import("interfaces").Promise<Uint8Array>;
+const FormData = @import("interfaces").FormData;
+const DOMString = @import("typedefs").DOMString;
 const Headers = @import("interfaces").Headers;
-const RequestDestination = @import("enums").RequestDestination;
 
 pub const Request = struct {
     pub const Meta = struct {
@@ -106,17 +107,7 @@ pub const Request = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        RequestImpl.init(instance);
-        
-        return instance;
+        return RequestImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -130,11 +121,11 @@ pub const Request = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, input: RequestInfo, init: RequestInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, input: RequestInfo, init_data: RequestInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try RequestImpl.constructor(instance, input, init);
+        try RequestImpl.constructor(instance, input, init_data);
         
         return instance;
     }
@@ -215,7 +206,7 @@ pub const Request = struct {
         return try RequestImpl.get_targetAddressSpace(instance);
     }
 
-    pub fn get_body(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_body(instance: *runtime.Instance) anyerror!ReadableStream {
         return try RequestImpl.get_body(instance);
     }
 

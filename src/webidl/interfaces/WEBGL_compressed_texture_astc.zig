@@ -1,11 +1,13 @@
 //! Generated from: WEBGL_compressed_texture_astc.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const WEBGL_compressed_texture_astcImpl = @import("impls").WEBGL_compressed_texture_astc;
+const GLenum = @import("typedefs").GLenum;
+const DOMString = @import("typedefs").DOMString;
 
 pub const WEBGL_compressed_texture_astc = struct {
     pub const Meta = struct {
@@ -212,17 +214,7 @@ pub const WEBGL_compressed_texture_astc = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        WEBGL_compressed_texture_astcImpl.init(instance);
-        
-        return instance;
+        return WEBGL_compressed_texture_astcImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

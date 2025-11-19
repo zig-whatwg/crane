@@ -1,5 +1,5 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,13 +7,19 @@ const std = @import("std");
 const runtime = @import("runtime");
 const VideoDecoderImpl = @import("impls").VideoDecoder;
 const EventTarget = @import("interfaces").EventTarget;
-const EncodedVideoChunk = @import("interfaces").EncodedVideoChunk;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const VideoDecoderSupport = @import("dictionaries").VideoDecoderSupport;
 const CodecState = @import("enums").CodecState;
+const Event = @import("interfaces").Event;
+const EncodedVideoChunk = @import("interfaces").EncodedVideoChunk;
+const Observable = @import("interfaces").Observable;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const VideoDecoderConfig = @import("dictionaries").VideoDecoderConfig;
 const VideoDecoderInit = @import("dictionaries").VideoDecoderInit;
-const Promise<VideoDecoderSupport> = @import("interfaces").Promise<VideoDecoderSupport>;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
+const EventListener = @import("interfaces").EventListener;
 const EventHandler = @import("typedefs").EventHandler;
+const DOMString = @import("typedefs").DOMString;
 
 pub const VideoDecoder = struct {
     pub const Meta = struct {
@@ -66,17 +72,7 @@ pub const VideoDecoder = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        VideoDecoderImpl.init(instance);
-        
-        return instance;
+        return VideoDecoderImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -90,11 +86,11 @@ pub const VideoDecoder = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, init: VideoDecoderInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, init_data: VideoDecoderInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try VideoDecoderImpl.constructor(instance, init);
+        try VideoDecoderImpl.constructor(instance, init_data);
         
         return instance;
     }
@@ -120,9 +116,9 @@ pub const VideoDecoder = struct {
         return try VideoDecoderImpl.call_decode(instance, chunk);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try VideoDecoderImpl.call_when(instance, type_, options);
+        return try VideoDecoderImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_dispatchEvent(instance: *runtime.Instance, event: Event) anyerror!bool {
@@ -152,14 +148,14 @@ pub const VideoDecoder = struct {
         return try VideoDecoderImpl.call_close(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try VideoDecoderImpl.call_addEventListener(instance, type_, callback, options);
+        return try VideoDecoderImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try VideoDecoderImpl.call_removeEventListener(instance, type_, callback, options);
+        return try VideoDecoderImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

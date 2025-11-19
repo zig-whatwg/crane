@@ -13,41 +13,29 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Initialize instance
-pub fn init(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Initialize your instance state here
+/// Initialize instance (delegates to runtime.Instance.init)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable);
+    // TODO: Add custom initialization here if needed
+    // const state = instance.getState(StateType);
+    // state.* = .{}; // Initialize fields
+    return instance;
 }
 
-/// Deinitialize instance
+/// Deinitialize instance (delegates to runtime.Instance.deinit)
 pub fn deinit(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Clean up your instance resources here
+    // TODO: Add custom cleanup here if needed
+    // const state = instance.getState(State);
+    // Clean up fields...
+    runtime.Instance.deinit(instance);
 }
 
 /// Getter for cssText
 pub fn get_cssText(instance: *runtime.Instance) ImplError!anyopaque {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for length
-pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for parentRule
-pub fn get_parentRule(instance: *runtime.Instance) ImplError!anyopaque {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for cssText
-pub fn get_cssText(instance: *runtime.Instance) ImplError!runtime.DOMString {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -145,70 +133,70 @@ pub fn get_marginInlineEnd(instance: *runtime.Instance) ImplError!anyopaque {
 }
 
 /// Getter for margin-top
-pub fn get_margin-top(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_margin_top(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for margin-right
-pub fn get_margin-right(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_margin_right(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for margin-bottom
-pub fn get_margin-bottom(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_margin_bottom(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for margin-left
-pub fn get_margin-left(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_margin_left(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for margin-block
-pub fn get_margin-block(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_margin_block(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for margin-block-start
-pub fn get_margin-block-start(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_margin_block_start(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for margin-block-end
-pub fn get_margin-block-end(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_margin_block_end(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for margin-inline
-pub fn get_margin-inline(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_margin_inline(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for margin-inline-start
-pub fn get_margin-inline-start(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_margin_inline_start(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for margin-inline-end
-pub fn get_margin-inline-end(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_margin_inline_end(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -292,42 +280,42 @@ pub fn get_bottom(instance: *runtime.Instance) ImplError!anyopaque {
 }
 
 /// Getter for inset-block
-pub fn get_inset-block(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_inset_block(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for inset-block-start
-pub fn get_inset-block-start(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_inset_block_start(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for inset-block-end
-pub fn get_inset-block-end(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_inset_block_end(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for inset-inline
-pub fn get_inset-inline(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_inset_inline(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for inset-inline-start
-pub fn get_inset-inline-start(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_inset_inline_start(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for inset-inline-end
-pub fn get_inset-inline-end(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_inset_inline_end(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -418,70 +406,70 @@ pub fn get_maxInlineSize(instance: *runtime.Instance) ImplError!anyopaque {
 }
 
 /// Getter for min-width
-pub fn get_min-width(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_min_width(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for max-width
-pub fn get_max-width(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_max_width(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for min-height
-pub fn get_min-height(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_min_height(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for max-height
-pub fn get_max-height(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_max_height(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for block-size
-pub fn get_block-size(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_block_size(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for min-block-size
-pub fn get_min-block-size(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_min_block_size(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for max-block-size
-pub fn get_max-block-size(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_max_block_size(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for inline-size
-pub fn get_inline-size(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_inline_size(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for min-inline-size
-pub fn get_min-inline-size(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_min_inline_size(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for max-inline-size
-pub fn get_max-inline-size(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_max_inline_size(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -509,21 +497,21 @@ pub fn get_justifySelf(instance: *runtime.Instance) ImplError!anyopaque {
 }
 
 /// Getter for place-self
-pub fn get_place-self(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_place_self(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for align-self
-pub fn get_align-self(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_align_self(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for justify-self
-pub fn get_justify-self(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_justify_self(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -537,7 +525,7 @@ pub fn get_positionAnchor(instance: *runtime.Instance) ImplError!anyopaque {
 }
 
 /// Getter for position-anchor
-pub fn get_position-anchor(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_position_anchor(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -551,7 +539,7 @@ pub fn get_positionArea(instance: *runtime.Instance) ImplError!anyopaque {
 }
 
 /// Getter for position-area
-pub fn get_position-area(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_position_area(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -559,14 +547,6 @@ pub fn get_position-area(instance: *runtime.Instance) ImplError!anyopaque {
 
 /// Setter for cssText
 pub fn set_cssText(instance: *runtime.Instance, value: anyopaque) ImplError!void {
-    _ = instance;
-    _ = value;
-    // TODO: Implement setter
-    return error.NotImplemented;
-}
-
-/// Setter for cssText
-pub fn set_cssText(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -662,7 +642,7 @@ pub fn set_marginInlineEnd(instance: *runtime.Instance, value: anyopaque) ImplEr
 }
 
 /// Setter for margin-top
-pub fn set_margin-top(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_margin_top(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -670,7 +650,7 @@ pub fn set_margin-top(instance: *runtime.Instance, value: anyopaque) ImplError!v
 }
 
 /// Setter for margin-right
-pub fn set_margin-right(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_margin_right(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -678,7 +658,7 @@ pub fn set_margin-right(instance: *runtime.Instance, value: anyopaque) ImplError
 }
 
 /// Setter for margin-bottom
-pub fn set_margin-bottom(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_margin_bottom(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -686,7 +666,7 @@ pub fn set_margin-bottom(instance: *runtime.Instance, value: anyopaque) ImplErro
 }
 
 /// Setter for margin-left
-pub fn set_margin-left(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_margin_left(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -694,7 +674,7 @@ pub fn set_margin-left(instance: *runtime.Instance, value: anyopaque) ImplError!
 }
 
 /// Setter for margin-block
-pub fn set_margin-block(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_margin_block(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -702,7 +682,7 @@ pub fn set_margin-block(instance: *runtime.Instance, value: anyopaque) ImplError
 }
 
 /// Setter for margin-block-start
-pub fn set_margin-block-start(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_margin_block_start(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -710,7 +690,7 @@ pub fn set_margin-block-start(instance: *runtime.Instance, value: anyopaque) Imp
 }
 
 /// Setter for margin-block-end
-pub fn set_margin-block-end(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_margin_block_end(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -718,7 +698,7 @@ pub fn set_margin-block-end(instance: *runtime.Instance, value: anyopaque) ImplE
 }
 
 /// Setter for margin-inline
-pub fn set_margin-inline(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_margin_inline(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -726,7 +706,7 @@ pub fn set_margin-inline(instance: *runtime.Instance, value: anyopaque) ImplErro
 }
 
 /// Setter for margin-inline-start
-pub fn set_margin-inline-start(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_margin_inline_start(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -734,7 +714,7 @@ pub fn set_margin-inline-start(instance: *runtime.Instance, value: anyopaque) Im
 }
 
 /// Setter for margin-inline-end
-pub fn set_margin-inline-end(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_margin_inline_end(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -830,7 +810,7 @@ pub fn set_bottom(instance: *runtime.Instance, value: anyopaque) ImplError!void 
 }
 
 /// Setter for inset-block
-pub fn set_inset-block(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_inset_block(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -838,7 +818,7 @@ pub fn set_inset-block(instance: *runtime.Instance, value: anyopaque) ImplError!
 }
 
 /// Setter for inset-block-start
-pub fn set_inset-block-start(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_inset_block_start(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -846,7 +826,7 @@ pub fn set_inset-block-start(instance: *runtime.Instance, value: anyopaque) Impl
 }
 
 /// Setter for inset-block-end
-pub fn set_inset-block-end(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_inset_block_end(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -854,7 +834,7 @@ pub fn set_inset-block-end(instance: *runtime.Instance, value: anyopaque) ImplEr
 }
 
 /// Setter for inset-inline
-pub fn set_inset-inline(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_inset_inline(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -862,7 +842,7 @@ pub fn set_inset-inline(instance: *runtime.Instance, value: anyopaque) ImplError
 }
 
 /// Setter for inset-inline-start
-pub fn set_inset-inline-start(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_inset_inline_start(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -870,7 +850,7 @@ pub fn set_inset-inline-start(instance: *runtime.Instance, value: anyopaque) Imp
 }
 
 /// Setter for inset-inline-end
-pub fn set_inset-inline-end(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_inset_inline_end(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -974,7 +954,7 @@ pub fn set_maxInlineSize(instance: *runtime.Instance, value: anyopaque) ImplErro
 }
 
 /// Setter for min-width
-pub fn set_min-width(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_min_width(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -982,7 +962,7 @@ pub fn set_min-width(instance: *runtime.Instance, value: anyopaque) ImplError!vo
 }
 
 /// Setter for max-width
-pub fn set_max-width(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_max_width(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -990,7 +970,7 @@ pub fn set_max-width(instance: *runtime.Instance, value: anyopaque) ImplError!vo
 }
 
 /// Setter for min-height
-pub fn set_min-height(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_min_height(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -998,7 +978,7 @@ pub fn set_min-height(instance: *runtime.Instance, value: anyopaque) ImplError!v
 }
 
 /// Setter for max-height
-pub fn set_max-height(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_max_height(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -1006,7 +986,7 @@ pub fn set_max-height(instance: *runtime.Instance, value: anyopaque) ImplError!v
 }
 
 /// Setter for block-size
-pub fn set_block-size(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_block_size(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -1014,7 +994,7 @@ pub fn set_block-size(instance: *runtime.Instance, value: anyopaque) ImplError!v
 }
 
 /// Setter for min-block-size
-pub fn set_min-block-size(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_min_block_size(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -1022,7 +1002,7 @@ pub fn set_min-block-size(instance: *runtime.Instance, value: anyopaque) ImplErr
 }
 
 /// Setter for max-block-size
-pub fn set_max-block-size(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_max_block_size(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -1030,7 +1010,7 @@ pub fn set_max-block-size(instance: *runtime.Instance, value: anyopaque) ImplErr
 }
 
 /// Setter for inline-size
-pub fn set_inline-size(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_inline_size(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -1038,7 +1018,7 @@ pub fn set_inline-size(instance: *runtime.Instance, value: anyopaque) ImplError!
 }
 
 /// Setter for min-inline-size
-pub fn set_min-inline-size(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_min_inline_size(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -1046,7 +1026,7 @@ pub fn set_min-inline-size(instance: *runtime.Instance, value: anyopaque) ImplEr
 }
 
 /// Setter for max-inline-size
-pub fn set_max-inline-size(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_max_inline_size(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -1078,7 +1058,7 @@ pub fn set_justifySelf(instance: *runtime.Instance, value: anyopaque) ImplError!
 }
 
 /// Setter for place-self
-pub fn set_place-self(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_place_self(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -1086,7 +1066,7 @@ pub fn set_place-self(instance: *runtime.Instance, value: anyopaque) ImplError!v
 }
 
 /// Setter for align-self
-pub fn set_align-self(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_align_self(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -1094,7 +1074,7 @@ pub fn set_align-self(instance: *runtime.Instance, value: anyopaque) ImplError!v
 }
 
 /// Setter for justify-self
-pub fn set_justify-self(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_justify_self(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -1110,7 +1090,7 @@ pub fn set_positionAnchor(instance: *runtime.Instance, value: anyopaque) ImplErr
 }
 
 /// Setter for position-anchor
-pub fn set_position-anchor(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_position_anchor(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -1126,7 +1106,7 @@ pub fn set_positionArea(instance: *runtime.Instance, value: anyopaque) ImplError
 }
 
 /// Setter for position-area
-pub fn set_position-area(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_position_area(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -1175,52 +1155,10 @@ pub fn call_removeProperty(instance: *runtime.Instance, property: anyopaque) Imp
     return error.NotImplemented;
 }
 
-/// Operation: getPropertyValue
-pub fn call_getPropertyValue(instance: *runtime.Instance, propertyName: runtime.DOMString) ImplError!runtime.DOMString {
-    _ = instance;
-    _ = propertyName;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
 /// Operation: getPropertyCSSValue
 pub fn call_getPropertyCSSValue(instance: *runtime.Instance, propertyName: runtime.DOMString) ImplError!anyopaque {
     _ = instance;
     _ = propertyName;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: removeProperty
-pub fn call_removeProperty(instance: *runtime.Instance, propertyName: runtime.DOMString) ImplError!runtime.DOMString {
-    _ = instance;
-    _ = propertyName;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: getPropertyPriority
-pub fn call_getPropertyPriority(instance: *runtime.Instance, propertyName: runtime.DOMString) ImplError!runtime.DOMString {
-    _ = instance;
-    _ = propertyName;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: setProperty
-pub fn call_setProperty(instance: *runtime.Instance, propertyName: runtime.DOMString, value: runtime.DOMString, priority: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = propertyName;
-    _ = value;
-    _ = priority;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: item
-pub fn call_item(instance: *runtime.Instance, index: u32) ImplError!runtime.DOMString {
-    _ = instance;
-    _ = index;
     // TODO: Implement operation
     return error.NotImplemented;
 }

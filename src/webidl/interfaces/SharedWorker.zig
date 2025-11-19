@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,10 +8,18 @@ const runtime = @import("runtime");
 const SharedWorkerImpl = @import("impls").SharedWorker;
 const EventTarget = @import("interfaces").EventTarget;
 const AbstractWorker = @import("interfaces").AbstractWorker;
-const EventHandler = @import("typedefs").EventHandler;
-const (DOMString or WorkerOptions) = @import("interfaces").(DOMString or WorkerOptions);
-const (TrustedScriptURL or USVString) = @import("interfaces").(TrustedScriptURL or USVString);
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const USVString = @import("interfaces").USVString;
+const WorkerOptions = @import("dictionaries").WorkerOptions;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const TrustedScriptURL = @import("interfaces").TrustedScriptURL;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
 const MessagePort = @import("interfaces").MessagePort;
+const DOMString = @import("typedefs").DOMString;
+const EventHandler = @import("typedefs").EventHandler;
 
 pub const SharedWorker = struct {
     pub const Meta = struct {
@@ -54,17 +62,7 @@ pub const SharedWorker = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        SharedWorkerImpl.init(instance);
-        
-        return instance;
+        return SharedWorkerImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -104,19 +102,19 @@ pub const SharedWorker = struct {
         return try SharedWorkerImpl.call_dispatchEvent(instance, event);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try SharedWorkerImpl.call_when(instance, type_, options);
+        return try SharedWorkerImpl.call_when(instance, @"type", options);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try SharedWorkerImpl.call_addEventListener(instance, type_, callback, options);
+        return try SharedWorkerImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try SharedWorkerImpl.call_removeEventListener(instance, type_, callback, options);
+        return try SharedWorkerImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

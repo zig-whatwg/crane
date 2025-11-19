@@ -1,5 +1,5 @@
 //! Generated from: css-animation-worklet.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,6 @@ const std = @import("std");
 const runtime = @import("runtime");
 const WorkletAnimationEffectImpl = @import("impls").WorkletAnimationEffect;
 const ComputedEffectTiming = @import("dictionaries").ComputedEffectTiming;
-const double = @import("interfaces").double;
 const EffectTiming = @import("dictionaries").EffectTiming;
 
 pub const WorkletAnimationEffect = struct {
@@ -45,17 +44,7 @@ pub const WorkletAnimationEffect = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        WorkletAnimationEffectImpl.init(instance);
-        
-        return instance;
+        return WorkletAnimationEffectImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -68,11 +57,11 @@ pub const WorkletAnimationEffect = struct {
         deinit(instance);
     }
 
-    pub fn get_localTime(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_localTime(instance: *runtime.Instance) anyerror!f64 {
         return try WorkletAnimationEffectImpl.get_localTime(instance);
     }
 
-    pub fn set_localTime(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_localTime(instance: *runtime.Instance, value: f64) anyerror!void {
         try WorkletAnimationEffectImpl.set_localTime(instance, value);
     }
 

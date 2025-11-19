@@ -6,5 +6,5 @@ const runtime = @import("runtime");
 
 pub const JsonLdError = struct {
     code: ?anyopaque = null,
-    message: ?anyopaque = null,
+    message: ?runtime.DOMString = null,
 };

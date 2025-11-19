@@ -1,5 +1,5 @@
 //! Generated from: css-layout-api.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,6 @@ const std = @import("std");
 const runtime = @import("runtime");
 const LayoutConstraintsImpl = @import("impls").LayoutConstraints;
 const BlockFragmentationType = @import("enums").BlockFragmentationType;
-const double = @import("interfaces").double;
 
 pub const LayoutConstraints = struct {
     pub const Meta = struct {
@@ -55,17 +54,7 @@ pub const LayoutConstraints = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        LayoutConstraintsImpl.init(instance);
-        
-        return instance;
+        return LayoutConstraintsImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -86,11 +75,11 @@ pub const LayoutConstraints = struct {
         return try LayoutConstraintsImpl.get_availableBlockSize(instance);
     }
 
-    pub fn get_fixedInlineSize(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_fixedInlineSize(instance: *runtime.Instance) anyerror!f64 {
         return try LayoutConstraintsImpl.get_fixedInlineSize(instance);
     }
 
-    pub fn get_fixedBlockSize(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_fixedBlockSize(instance: *runtime.Instance) anyerror!f64 {
         return try LayoutConstraintsImpl.get_fixedBlockSize(instance);
     }
 
@@ -102,7 +91,7 @@ pub const LayoutConstraints = struct {
         return try LayoutConstraintsImpl.get_percentageBlockSize(instance);
     }
 
-    pub fn get_blockFragmentationOffset(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_blockFragmentationOffset(instance: *runtime.Instance) anyerror!f64 {
         return try LayoutConstraintsImpl.get_blockFragmentationOffset(instance);
     }
 

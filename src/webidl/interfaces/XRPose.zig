@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -46,17 +46,7 @@ pub const XRPose = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        XRPoseImpl.init(instance);
-        
-        return instance;
+        return XRPoseImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -82,7 +72,7 @@ pub const XRPose = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_linearVelocity(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_linearVelocity(instance: *runtime.Instance) anyerror!DOMPointReadOnly {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.cached_linearVelocity) |cached| {
@@ -94,7 +84,7 @@ pub const XRPose = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_angularVelocity(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_angularVelocity(instance: *runtime.Instance) anyerror!DOMPointReadOnly {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.cached_angularVelocity) |cached| {

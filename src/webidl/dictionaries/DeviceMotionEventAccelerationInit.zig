@@ -5,7 +5,7 @@
 const runtime = @import("runtime");
 
 pub const DeviceMotionEventAccelerationInit = struct {
-    x: ?anyopaque = null,
-    y: ?anyopaque = null,
-    z: ?anyopaque = null,
+    x: ?f64 = null,
+    y: ?f64 = null,
+    z: ?f64 = null,
 };

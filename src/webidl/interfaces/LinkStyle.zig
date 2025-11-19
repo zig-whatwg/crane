@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -21,7 +21,6 @@ pub const LinkStyle = struct {
     pub const State = runtime.FlattenedState(
         struct {
             sheet: ?CSSStyleSheet = null,
-            sheet: StyleSheet = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -31,22 +30,11 @@ pub const LinkStyle = struct {
         .deinit_fn = &deinit_wrapper,
 
         .get_sheet = &get_sheet,
-        .get_sheet = &get_sheet,
     });
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        LinkStyleImpl.init(instance);
-        
-        return instance;
+        return LinkStyleImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -59,11 +47,7 @@ pub const LinkStyle = struct {
         deinit(instance);
     }
 
-    pub fn get_sheet(instance: *runtime.Instance) anyerror!anyopaque {
-        return try LinkStyleImpl.get_sheet(instance);
-    }
-
-    pub fn get_sheet(instance: *runtime.Instance) anyerror!StyleSheet {
+    pub fn get_sheet(instance: *runtime.Instance) anyerror!CSSStyleSheet {
         return try LinkStyleImpl.get_sheet(instance);
     }
 

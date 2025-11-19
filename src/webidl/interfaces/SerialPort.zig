@@ -1,5 +1,5 @@
 //! Generated from: serial.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,13 +8,19 @@ const runtime = @import("runtime");
 const SerialPortImpl = @import("impls").SerialPort;
 const EventTarget = @import("interfaces").EventTarget;
 const SerialOutputSignals = @import("dictionaries").SerialOutputSignals;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const SerialInputSignals = @import("dictionaries").SerialInputSignals;
+const Event = @import("interfaces").Event;
+const Observable = @import("interfaces").Observable;
 const ReadableStream = @import("interfaces").ReadableStream;
 const SerialPortInfo = @import("dictionaries").SerialPortInfo;
-const Promise<SerialInputSignals> = @import("interfaces").Promise<SerialInputSignals>;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
-const WritableStream = @import("interfaces").WritableStream;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
 const SerialOptions = @import("dictionaries").SerialOptions;
+const WritableStream = @import("interfaces").WritableStream;
 const EventHandler = @import("typedefs").EventHandler;
+const DOMString = @import("typedefs").DOMString;
 
 pub const SerialPort = struct {
     pub const Meta = struct {
@@ -72,17 +78,7 @@ pub const SerialPort = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        SerialPortImpl.init(instance);
-        
-        return instance;
+        return SerialPortImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -123,9 +119,9 @@ pub const SerialPort = struct {
         return try SerialPortImpl.get_writable(instance);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try SerialPortImpl.call_when(instance, type_, options);
+        return try SerialPortImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_open(instance: *runtime.Instance, options: SerialOptions) anyerror!anyopaque {
@@ -159,14 +155,14 @@ pub const SerialPort = struct {
         return try SerialPortImpl.call_close(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try SerialPortImpl.call_addEventListener(instance, type_, callback, options);
+        return try SerialPortImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try SerialPortImpl.call_removeEventListener(instance, type_, callback, options);
+        return try SerialPortImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

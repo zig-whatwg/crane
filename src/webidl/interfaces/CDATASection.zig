@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,6 +7,28 @@ const std = @import("std");
 const runtime = @import("runtime");
 const CDATASectionImpl = @import("impls").CDATASection;
 const Text = @import("interfaces").Text;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const Document = @import("interfaces").Document;
+const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
+const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
+const DOMQuad = @import("interfaces").DOMQuad;
+const DOMQuadInit = @import("dictionaries").DOMQuadInit;
+const DOMPointInit = @import("dictionaries").DOMPointInit;
+const Node = @import("interfaces").Node;
+const NodeList = @import("interfaces").NodeList;
+const USVString = @import("interfaces").USVString;
+const GeometryNode = @import("typedefs").GeometryNode;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const Element = @import("interfaces").Element;
+const DOMPoint = @import("interfaces").DOMPoint;
+const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
+const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
+const DOMString = @import("typedefs").DOMString;
+const ConvertCoordinateOptions = @import("dictionaries").ConvertCoordinateOptions;
 
 pub const CDATASection = struct {
     pub const Meta = struct {
@@ -111,17 +133,7 @@ pub const CDATASection = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        CDATASectionImpl.init(instance);
-        
-        return instance;
+        return CDATASectionImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -150,15 +162,15 @@ pub const CDATASection = struct {
         return try CDATASectionImpl.get_isConnected(instance);
     }
 
-    pub fn get_ownerDocument(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ownerDocument(instance: *runtime.Instance) anyerror!Document {
         return try CDATASectionImpl.get_ownerDocument(instance);
     }
 
-    pub fn get_parentNode(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_parentNode(instance: *runtime.Instance) anyerror!Node {
         return try CDATASectionImpl.get_parentNode(instance);
     }
 
-    pub fn get_parentElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_parentElement(instance: *runtime.Instance) anyerror!Element {
         return try CDATASectionImpl.get_parentElement(instance);
     }
 
@@ -174,29 +186,29 @@ pub const CDATASection = struct {
         return value;
     }
 
-    pub fn get_firstChild(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_firstChild(instance: *runtime.Instance) anyerror!Node {
         return try CDATASectionImpl.get_firstChild(instance);
     }
 
-    pub fn get_lastChild(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_lastChild(instance: *runtime.Instance) anyerror!Node {
         return try CDATASectionImpl.get_lastChild(instance);
     }
 
-    pub fn get_previousSibling(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_previousSibling(instance: *runtime.Instance) anyerror!Node {
         return try CDATASectionImpl.get_previousSibling(instance);
     }
 
-    pub fn get_nextSibling(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_nextSibling(instance: *runtime.Instance) anyerror!Node {
         return try CDATASectionImpl.get_nextSibling(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_nodeValue(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_nodeValue(instance: *runtime.Instance) anyerror!DOMString {
         return try CDATASectionImpl.get_nodeValue(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_nodeValue(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_nodeValue(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -205,12 +217,12 @@ pub const CDATASection = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_textContent(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_textContent(instance: *runtime.Instance) anyerror!DOMString {
         return try CDATASectionImpl.get_textContent(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_textContent(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_textContent(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -232,11 +244,11 @@ pub const CDATASection = struct {
         return try CDATASectionImpl.get_length(instance);
     }
 
-    pub fn get_previousElementSibling(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_previousElementSibling(instance: *runtime.Instance) anyerror!Element {
         return try CDATASectionImpl.get_previousElementSibling(instance);
     }
 
-    pub fn get_nextElementSibling(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_nextElementSibling(instance: *runtime.Instance) anyerror!Element {
         return try CDATASectionImpl.get_nextElementSibling(instance);
     }
 
@@ -244,11 +256,11 @@ pub const CDATASection = struct {
         return try CDATASectionImpl.get_wholeText(instance);
     }
 
-    pub fn get_assignedSlot(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_assignedSlot(instance: *runtime.Instance) anyerror!HTMLSlotElement {
         return try CDATASectionImpl.get_assignedSlot(instance);
     }
 
-    pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: anyopaque) anyerror!bool {
+    pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: DOMString) anyerror!bool {
         
         return try CDATASectionImpl.call_isDefaultNamespace(instance, namespace);
     }
@@ -258,7 +270,7 @@ pub const CDATASection = struct {
         return try CDATASectionImpl.call_compareDocumentPosition(instance, other);
     }
 
-    pub fn call_contains(instance: *runtime.Instance, other: anyopaque) anyerror!bool {
+    pub fn call_contains(instance: *runtime.Instance, other: Node) anyerror!bool {
         
         return try CDATASectionImpl.call_contains(instance, other);
     }
@@ -277,9 +289,9 @@ pub const CDATASection = struct {
         return try CDATASectionImpl.call_replaceData(instance, offset, count, data);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try CDATASectionImpl.call_removeEventListener(instance, type_, callback, options);
+        return try CDATASectionImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
     pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: DOMRectReadOnly, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!DOMQuad {
@@ -330,7 +342,7 @@ pub const CDATASection = struct {
         return try CDATASectionImpl.call_splitText(instance, offset);
     }
 
-    pub fn call_isSameNode(instance: *runtime.Instance, otherNode: anyopaque) anyerror!bool {
+    pub fn call_isSameNode(instance: *runtime.Instance, otherNode: Node) anyerror!bool {
         
         return try CDATASectionImpl.call_isSameNode(instance, otherNode);
     }
@@ -340,18 +352,18 @@ pub const CDATASection = struct {
         return try CDATASectionImpl.call_convertQuadFromNode(instance, quad, from, options);
     }
 
-    pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: anyopaque) anyerror!anyopaque {
+    pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: DOMString) anyerror!DOMString {
         
         return try CDATASectionImpl.call_lookupPrefix(instance, namespace);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try CDATASectionImpl.call_when(instance, type_, options);
+        return try CDATASectionImpl.call_when(instance, @"type", options);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_insertBefore(instance: *runtime.Instance, node: Node, child: anyopaque) anyerror!Node {
+    pub fn call_insertBefore(instance: *runtime.Instance, node: Node, child: Node) anyerror!Node {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -385,14 +397,14 @@ pub const CDATASection = struct {
         return try CDATASectionImpl.call_appendData(instance, data);
     }
 
-    pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: anyopaque) anyerror!anyopaque {
+    pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: DOMString) anyerror!DOMString {
         
         return try CDATASectionImpl.call_lookupNamespaceURI(instance, prefix);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try CDATASectionImpl.call_addEventListener(instance, type_, callback, options);
+        return try CDATASectionImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
     /// Extended attributes: [CEReactions]
@@ -438,7 +450,7 @@ pub const CDATASection = struct {
         return try CDATASectionImpl.call_normalize(instance);
     }
 
-    pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: anyopaque) anyerror!bool {
+    pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: Node) anyerror!bool {
         
         return try CDATASectionImpl.call_isEqualNode(instance, otherNode);
     }

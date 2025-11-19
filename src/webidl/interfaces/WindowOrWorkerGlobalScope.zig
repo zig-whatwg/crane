@@ -1,26 +1,29 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const WindowOrWorkerGlobalScopeImpl = @import("impls").WindowOrWorkerGlobalScope;
-const Promise<ImageBitmap> = @import("interfaces").Promise<ImageBitmap>;
+const ByteString = @import("interfaces").ByteString;
+const Performance = @import("interfaces").Performance;
+const CacheStorage = @import("interfaces").CacheStorage;
 const VoidFunction = @import("callbacks").VoidFunction;
 const StructuredSerializeOptions = @import("dictionaries").StructuredSerializeOptions;
 const IDBFactory = @import("interfaces").IDBFactory;
-const Performance = @import("interfaces").Performance;
-const CacheStorage = @import("interfaces").CacheStorage;
 const ImageBitmapSource = @import("typedefs").ImageBitmapSource;
 const TrustedTypePolicyFactory = @import("interfaces").TrustedTypePolicyFactory;
 const TimerHandler = @import("typedefs").TimerHandler;
-const Promise<Response> = @import("interfaces").Promise<Response>;
+const USVString = @import("interfaces").USVString;
 const RequestInfo = @import("typedefs").RequestInfo;
 const RequestInit = @import("dictionaries").RequestInit;
 const Scheduler = @import("interfaces").Scheduler;
 const Crypto = @import("interfaces").Crypto;
 const ImageBitmapOptions = @import("dictionaries").ImageBitmapOptions;
+const Response = @import("interfaces").Response;
+const DOMString = @import("typedefs").DOMString;
+const ImageBitmap = @import("interfaces").ImageBitmap;
 
 pub const WindowOrWorkerGlobalScope = struct {
     pub const Meta = struct {
@@ -75,17 +78,7 @@ pub const WindowOrWorkerGlobalScope = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        WindowOrWorkerGlobalScopeImpl.init(instance);
-        
-        return instance;
+        return WindowOrWorkerGlobalScopeImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -181,29 +174,9 @@ pub const WindowOrWorkerGlobalScope = struct {
         return try WindowOrWorkerGlobalScopeImpl.call_btoa(instance, data);
     }
 
-    /// Arguments for createImageBitmap (WebIDL overloading)
-    pub const CreateImageBitmapArgs = union(enum) {
-        /// createImageBitmap(image, options)
-        ImageBitmapSource_ImageBitmapOptions: struct {
-            image: ImageBitmapSource,
-            options: ImageBitmapOptions,
-        },
-        /// createImageBitmap(image, sx, sy, sw, sh, options)
-        ImageBitmapSource_long_long_long_long_ImageBitmapOptions: struct {
-            image: ImageBitmapSource,
-            sx: i32,
-            sy: i32,
-            sw: i32,
-            sh: i32,
-            options: ImageBitmapOptions,
-        },
-    };
-
-    pub fn call_createImageBitmap(instance: *runtime.Instance, args: CreateImageBitmapArgs) anyerror!anyopaque {
-        switch (args) {
-            .ImageBitmapSource_ImageBitmapOptions => |a| return try WindowOrWorkerGlobalScopeImpl.ImageBitmapSource_ImageBitmapOptions(instance, a.image, a.options),
-            .ImageBitmapSource_long_long_long_long_ImageBitmapOptions => |a| return try WindowOrWorkerGlobalScopeImpl.ImageBitmapSource_long_long_long_long_ImageBitmapOptions(instance, a.image, a.sx, a.sy, a.sw, a.sh, a.options),
-        }
+    pub fn call_createImageBitmap(instance: *runtime.Instance, image: ImageBitmapSource, options: ImageBitmapOptions) anyerror!anyopaque {
+        
+        return try WindowOrWorkerGlobalScopeImpl.call_createImageBitmap(instance, image, options);
     }
 
     pub fn call_clearInterval(instance: *runtime.Instance, id: i32) anyerror!void {
@@ -232,10 +205,10 @@ pub const WindowOrWorkerGlobalScope = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_fetch(instance: *runtime.Instance, input: RequestInfo, init: RequestInit) anyerror!anyopaque {
+    pub fn call_fetch(instance: *runtime.Instance, input: RequestInfo, init_data: RequestInit) anyerror!anyopaque {
         // [NewObject] - Caller owns the returned object
         
-        return try WindowOrWorkerGlobalScopeImpl.call_fetch(instance, input, init);
+        return try WindowOrWorkerGlobalScopeImpl.call_fetch(instance, input, init_data);
     }
 
 };

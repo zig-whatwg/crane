@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,10 +7,41 @@ const std = @import("std");
 const runtime = @import("runtime");
 const OfflineAudioContextImpl = @import("impls").OfflineAudioContext;
 const BaseAudioContext = @import("interfaces").BaseAudioContext;
-const Promise<AudioBuffer> = @import("interfaces").Promise<AudioBuffer>;
-const OfflineAudioContextOptions = @import("dictionaries").OfflineAudioContextOptions;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
+const DynamicsCompressorNode = @import("interfaces").DynamicsCompressorNode;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const OscillatorNode = @import("interfaces").OscillatorNode;
+const ScriptProcessorNode = @import("interfaces").ScriptProcessorNode;
+const DelayNode = @import("interfaces").DelayNode;
+const DecodeErrorCallback = @import("callbacks").DecodeErrorCallback;
+const AudioDestinationNode = @import("interfaces").AudioDestinationNode;
+const ConvolverNode = @import("interfaces").ConvolverNode;
+const AudioContextState = @import("enums").AudioContextState;
+const ArrayBuffer = @import("interfaces").ArrayBuffer;
+const PannerNode = @import("interfaces").PannerNode;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const AudioBufferSourceNode = @import("interfaces").AudioBufferSourceNode;
+const WaveShaperNode = @import("interfaces").WaveShaperNode;
+const EventListener = @import("interfaces").EventListener;
+const IIRFilterNode = @import("interfaces").IIRFilterNode;
+const AudioBuffer = @import("interfaces").AudioBuffer;
 const EventHandler = @import("typedefs").EventHandler;
+const AudioListener = @import("interfaces").AudioListener;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const DecodeSuccessCallback = @import("callbacks").DecodeSuccessCallback;
+const AnalyserNode = @import("interfaces").AnalyserNode;
+const StereoPannerNode = @import("interfaces").StereoPannerNode;
+const GainNode = @import("interfaces").GainNode;
+const ChannelSplitterNode = @import("interfaces").ChannelSplitterNode;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const ConstantSourceNode = @import("interfaces").ConstantSourceNode;
+const ChannelMergerNode = @import("interfaces").ChannelMergerNode;
+const PeriodicWave = @import("interfaces").PeriodicWave;
+const AudioWorklet = @import("interfaces").AudioWorklet;
+const OfflineAudioContextOptions = @import("dictionaries").OfflineAudioContextOptions;
+const BiquadFilterNode = @import("interfaces").BiquadFilterNode;
+const PeriodicWaveConstraints = @import("dictionaries").PeriodicWaveConstraints;
+const DOMString = @import("typedefs").DOMString;
 
 pub const OfflineAudioContext = struct {
     pub const Meta = struct {
@@ -82,17 +113,7 @@ pub const OfflineAudioContext = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        OfflineAudioContextImpl.init(instance);
-        
-        return instance;
+        return OfflineAudioContextImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -105,22 +126,27 @@ pub const OfflineAudioContext = struct {
         deinit(instance);
     }
 
-    /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, contextOptions: OfflineAudioContextOptions) !*runtime.Instance {
-        const instance = try init(allocator);
-        errdefer deinit(instance);
-        
-        try OfflineAudioContextImpl.constructor(instance, contextOptions);
-        
-        return instance;
-    }
+    /// Arguments for constructor (WebIDL overloading)
+    pub const ConstructorArgs = union(enum) {
+        /// constructor(contextOptions)
+        OfflineAudioContextOptions: OfflineAudioContextOptions,
+        /// constructor(numberOfChannels, length, sampleRate)
+        unsigned_long_unsigned_long_float: struct {
+            numberOfChannels: u32,
+            length: u32,
+            sampleRate: f32,
+        },
+    };
 
-    /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, numberOfChannels: u32, length: u32, sampleRate: f32) !*runtime.Instance {
+    /// WebIDL constructor (overloaded)
+    pub fn call_constructor(allocator: std.mem.Allocator, args: ConstructorArgs) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try OfflineAudioContextImpl.constructor(instance, numberOfChannels, length, sampleRate);
+        switch (args) {
+            .OfflineAudioContextOptions => |arg| try OfflineAudioContextImpl.constructor(instance, arg),
+            .unsigned_long_unsigned_long_float => |a| try OfflineAudioContextImpl.constructor(instance, a.numberOfChannels, a.length, a.sampleRate),
+        }
         
         return instance;
     }
@@ -198,9 +224,9 @@ pub const OfflineAudioContext = struct {
         return try OfflineAudioContextImpl.call_createWaveShaper(instance);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try OfflineAudioContextImpl.call_removeEventListener(instance, type_, callback, options);
+        return try OfflineAudioContextImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
     pub fn call_createConstantSource(instance: *runtime.Instance) anyerror!ConstantSourceNode {
@@ -230,9 +256,9 @@ pub const OfflineAudioContext = struct {
         return try OfflineAudioContextImpl.call_createPanner(instance);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try OfflineAudioContextImpl.call_when(instance, type_, options);
+        return try OfflineAudioContextImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_suspend(instance: *runtime.Instance, suspendTime: f64) anyerror!anyopaque {
@@ -257,9 +283,9 @@ pub const OfflineAudioContext = struct {
         return try OfflineAudioContextImpl.call_createStereoPanner(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try OfflineAudioContextImpl.call_addEventListener(instance, type_, callback, options);
+        return try OfflineAudioContextImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
     pub fn call_createGain(instance: *runtime.Instance) anyerror!GainNode {
@@ -293,7 +319,7 @@ pub const OfflineAudioContext = struct {
         return try OfflineAudioContextImpl.call_createChannelSplitter(instance, numberOfOutputs);
     }
 
-    pub fn call_decodeAudioData(instance: *runtime.Instance, audioData: anyopaque, successCallback: anyopaque, errorCallback: anyopaque) anyerror!anyopaque {
+    pub fn call_decodeAudioData(instance: *runtime.Instance, audioData: anyopaque, successCallback: DecodeSuccessCallback, errorCallback: DecodeErrorCallback) anyerror!anyopaque {
         
         return try OfflineAudioContextImpl.call_decodeAudioData(instance, audioData, successCallback, errorCallback);
     }

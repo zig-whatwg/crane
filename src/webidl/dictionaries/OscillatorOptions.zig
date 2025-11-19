@@ -9,7 +9,7 @@ pub const OscillatorOptions = struct {
     // Inherited from AudioNodeOptions
     base: AudioNodeOptions,
 
-    type: ?anyopaque = null,
+    @"type": ?anyopaque = null,
     frequency: ?f32 = null,
     detune: ?f32 = null,
     periodicWave: ?anyopaque = null,

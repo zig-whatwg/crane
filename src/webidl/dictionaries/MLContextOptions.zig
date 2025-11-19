@@ -6,4 +6,5 @@ const runtime = @import("runtime");
 
 pub const MLContextOptions = struct {
     powerPreference: ?anyopaque = null,
+    accelerated: ?bool = null,
 };

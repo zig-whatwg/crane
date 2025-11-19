@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,11 +7,11 @@ const std = @import("std");
 const runtime = @import("runtime");
 const XRInputSourceImpl = @import("impls").XRInputSource;
 const XRHandedness = @import("enums").XRHandedness;
-const XRHand = @import("interfaces").XRHand;
-const XRTargetRayMode = @import("enums").XRTargetRayMode;
-const FrozenArray<DOMString> = @import("interfaces").FrozenArray<DOMString>;
 const Gamepad = @import("interfaces").Gamepad;
 const XRSpace = @import("interfaces").XRSpace;
+const XRHand = @import("interfaces").XRHand;
+const XRTargetRayMode = @import("enums").XRTargetRayMode;
+const DOMString = @import("typedefs").DOMString;
 
 pub const XRInputSource = struct {
     pub const Meta = struct {
@@ -34,7 +34,7 @@ pub const XRInputSource = struct {
             targetRayMode: XRTargetRayMode = undefined,
             targetRaySpace: XRSpace = undefined,
             gripSpace: ?XRSpace = null,
-            profiles: FrozenArray<DOMString> = undefined,
+            profiles: runtime.FrozenArray(runtime.DOMString) = undefined,
             skipRendering: bool = undefined,
             gamepad: ?Gamepad = null,
             hand: ?XRHand = null,
@@ -58,17 +58,7 @@ pub const XRInputSource = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        XRInputSourceImpl.init(instance);
-        
-        return instance;
+        return XRInputSourceImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -102,7 +92,7 @@ pub const XRInputSource = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_gripSpace(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_gripSpace(instance: *runtime.Instance) anyerror!XRSpace {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.cached_gripSpace) |cached| {
@@ -130,7 +120,7 @@ pub const XRInputSource = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_gamepad(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_gamepad(instance: *runtime.Instance) anyerror!Gamepad {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.cached_gamepad) |cached| {
@@ -142,7 +132,7 @@ pub const XRInputSource = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_hand(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_hand(instance: *runtime.Instance) anyerror!XRHand {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.cached_hand) |cached| {

@@ -13,16 +13,25 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Initialize instance
-pub fn init(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Initialize your instance state here
+/// Initialize instance (delegates to runtime.Instance.init)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable);
+    // TODO: Add custom initialization here if needed
+    // const state = instance.getState(StateType);
+    // state.* = .{}; // Initialize fields
+    return instance;
 }
 
-/// Deinitialize instance
+/// Deinitialize instance (delegates to runtime.Instance.deinit)
 pub fn deinit(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Clean up your instance resources here
+    // TODO: Add custom cleanup here if needed
+    // const state = instance.getState(State);
+    // Clean up fields...
+    runtime.Instance.deinit(instance);
 }
 
 /// Operation: createExpression
@@ -43,12 +52,12 @@ pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: anyopaqu
 }
 
 /// Operation: evaluate
-pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString, contextNode: anyopaque, resolver: anyopaque, type: u16, result: anyopaque) ImplError!anyopaque {
+pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString, contextNode: anyopaque, resolver: anyopaque, @"type": u16, result: anyopaque) ImplError!anyopaque {
     _ = instance;
     _ = expression;
     _ = contextNode;
     _ = resolver;
-    _ = type;
+    _ = @"type";
     _ = result;
     // TODO: Implement operation
     return error.NotImplemented;

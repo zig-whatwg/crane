@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,9 +9,10 @@ const RangeImpl = @import("impls").Range;
 const AbstractRange = @import("interfaces").AbstractRange;
 const DocumentFragment = @import("interfaces").DocumentFragment;
 const DOMRect = @import("interfaces").DOMRect;
+const TrustedHTML = @import("interfaces").TrustedHTML;
 const Node = @import("interfaces").Node;
 const DOMRectList = @import("interfaces").DOMRectList;
-const (TrustedHTML or DOMString) = @import("interfaces").(TrustedHTML or DOMString);
+const DOMString = @import("typedefs").DOMString;
 
 pub const Range = struct {
     pub const Meta = struct {
@@ -100,17 +101,7 @@ pub const Range = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        RangeImpl.init(instance);
-        
-        return instance;
+        return RangeImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

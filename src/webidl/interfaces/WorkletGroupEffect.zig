@@ -1,11 +1,12 @@
 //! Generated from: css-animation-worklet.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const WorkletGroupEffectImpl = @import("impls").WorkletGroupEffect;
+const WorkletAnimationEffect = @import("interfaces").WorkletAnimationEffect;
 
 pub const WorkletGroupEffect = struct {
     pub const Meta = struct {
@@ -35,17 +36,7 @@ pub const WorkletGroupEffect = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        WorkletGroupEffectImpl.init(instance);
-        
-        return instance;
+        return WorkletGroupEffectImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

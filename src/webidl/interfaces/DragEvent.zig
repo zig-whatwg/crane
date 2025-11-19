@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,8 +7,16 @@ const std = @import("std");
 const runtime = @import("runtime");
 const DragEventImpl = @import("impls").DragEvent;
 const MouseEvent = @import("interfaces").MouseEvent;
+const UIEventInit = @import("dictionaries").UIEventInit;
+const Window = @import("interfaces").Window;
+const EventTarget = @import("interfaces").EventTarget;
+const InputDeviceCapabilities = @import("interfaces").InputDeviceCapabilities;
 const DragEventInit = @import("dictionaries").DragEventInit;
 const DataTransfer = @import("interfaces").DataTransfer;
+const MouseEventInit = @import("dictionaries").MouseEventInit;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const DOMString = @import("typedefs").DOMString;
+const EventInit = @import("dictionaries").EventInit;
 
 pub const DragEvent = struct {
     pub const Meta = struct {
@@ -51,8 +59,6 @@ pub const DragEvent = struct {
         .get_cancelBubble = &get_cancelBubble,
         .get_cancelable = &get_cancelable,
         .get_clientX = &get_clientX,
-        .get_clientX = &get_clientX,
-        .get_clientY = &get_clientY,
         .get_clientY = &get_clientY,
         .get_composed = &get_composed,
         .get_ctrlKey = &get_ctrlKey,
@@ -74,8 +80,6 @@ pub const DragEvent = struct {
         .get_relatedTarget = &get_relatedTarget,
         .get_returnValue = &get_returnValue,
         .get_screenX = &get_screenX,
-        .get_screenX = &get_screenX,
-        .get_screenY = &get_screenY,
         .get_screenY = &get_screenY,
         .get_shiftKey = &get_shiftKey,
         .get_sourceCapabilities = &get_sourceCapabilities,
@@ -103,17 +107,7 @@ pub const DragEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        DragEventImpl.init(instance);
-        
-        return instance;
+        return DragEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -127,11 +121,11 @@ pub const DragEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, eventInitDict: DragEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, eventInitDict: DragEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try DragEventImpl.constructor(instance, type_, eventInitDict);
+        try DragEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -140,15 +134,15 @@ pub const DragEvent = struct {
         return try DragEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try DragEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try DragEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try DragEventImpl.get_currentTarget(instance);
     }
 
@@ -197,7 +191,7 @@ pub const DragEvent = struct {
         return try DragEventImpl.get_timeStamp(instance);
     }
 
-    pub fn get_view(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_view(instance: *runtime.Instance) anyerror!Window {
         return try DragEventImpl.get_view(instance);
     }
 
@@ -209,7 +203,7 @@ pub const DragEvent = struct {
         return try DragEventImpl.get_which(instance);
     }
 
-    pub fn get_sourceCapabilities(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_sourceCapabilities(instance: *runtime.Instance) anyerror!InputDeviceCapabilities {
         return try DragEventImpl.get_sourceCapabilities(instance);
     }
 
@@ -261,7 +255,7 @@ pub const DragEvent = struct {
         return try DragEventImpl.get_buttons(instance);
     }
 
-    pub fn get_relatedTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_relatedTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try DragEventImpl.get_relatedTarget(instance);
     }
 
@@ -273,28 +267,12 @@ pub const DragEvent = struct {
         return try DragEventImpl.get_movementY(instance);
     }
 
-    pub fn get_screenX(instance: *runtime.Instance) anyerror!f64 {
-        return try DragEventImpl.get_screenX(instance);
-    }
-
-    pub fn get_screenY(instance: *runtime.Instance) anyerror!f64 {
-        return try DragEventImpl.get_screenY(instance);
-    }
-
     pub fn get_pageX(instance: *runtime.Instance) anyerror!f64 {
         return try DragEventImpl.get_pageX(instance);
     }
 
     pub fn get_pageY(instance: *runtime.Instance) anyerror!f64 {
         return try DragEventImpl.get_pageY(instance);
-    }
-
-    pub fn get_clientX(instance: *runtime.Instance) anyerror!f64 {
-        return try DragEventImpl.get_clientX(instance);
-    }
-
-    pub fn get_clientY(instance: *runtime.Instance) anyerror!f64 {
-        return try DragEventImpl.get_clientY(instance);
     }
 
     pub fn get_x(instance: *runtime.Instance) anyerror!f64 {
@@ -313,7 +291,7 @@ pub const DragEvent = struct {
         return try DragEventImpl.get_offsetY(instance);
     }
 
-    pub fn get_dataTransfer(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_dataTransfer(instance: *runtime.Instance) anyerror!DataTransfer {
         return try DragEventImpl.get_dataTransfer(instance);
     }
 
@@ -321,12 +299,12 @@ pub const DragEvent = struct {
         return try DragEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try DragEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try DragEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
-    pub fn call_initMouseEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: anyopaque, detailArg: i32, screenXArg: i32, screenYArg: i32, clientXArg: i32, clientYArg: i32, ctrlKeyArg: bool, altKeyArg: bool, shiftKeyArg: bool, metaKeyArg: bool, buttonArg: i16, relatedTargetArg: anyopaque) anyerror!void {
+    pub fn call_initMouseEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: Window, detailArg: i32, screenXArg: i32, screenYArg: i32, clientXArg: i32, clientYArg: i32, ctrlKeyArg: bool, altKeyArg: bool, shiftKeyArg: bool, metaKeyArg: bool, buttonArg: i16, relatedTargetArg: EventTarget) anyerror!void {
         
         return try DragEventImpl.call_initMouseEvent(instance, typeArg, bubblesArg, cancelableArg, viewArg, detailArg, screenXArg, screenYArg, clientXArg, clientYArg, ctrlKeyArg, altKeyArg, shiftKeyArg, metaKeyArg, buttonArg, relatedTargetArg);
     }
@@ -336,7 +314,7 @@ pub const DragEvent = struct {
         return try DragEventImpl.call_getModifierState(instance, keyArg);
     }
 
-    pub fn call_initUIEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: anyopaque, detailArg: i32) anyerror!void {
+    pub fn call_initUIEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: Window, detailArg: i32) anyerror!void {
         
         return try DragEventImpl.call_initUIEvent(instance, typeArg, bubblesArg, cancelableArg, viewArg, detailArg);
     }

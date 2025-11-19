@@ -1,5 +1,5 @@
 //! Generated from: FileAPI.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,9 +7,16 @@ const std = @import("std");
 const runtime = @import("runtime");
 const FileReaderImpl = @import("impls").FileReader;
 const EventTarget = @import("interfaces").EventTarget;
-const (DOMString or ArrayBuffer) = @import("interfaces").(DOMString or ArrayBuffer);
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const Observable = @import("interfaces").Observable;
+const ArrayBuffer = @import("interfaces").ArrayBuffer;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const Blob = @import("interfaces").Blob;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const Event = @import("interfaces").Event;
+const EventListener = @import("interfaces").EventListener;
 const DOMException = @import("interfaces").DOMException;
+const DOMString = @import("typedefs").DOMString;
 const EventHandler = @import("typedefs").EventHandler;
 
 pub const FileReader = struct {
@@ -32,8 +39,11 @@ pub const FileReader = struct {
     pub const State = runtime.FlattenedState(
         struct {
             readyState: u16 = undefined,
-            result: ?(DOMString or ArrayBuffer) = null,
-            error: ?DOMException = null,
+            result: ?union(enum) {
+                DOMString: runtime.DOMString,
+                ArrayBuffer: ArrayBuffer,
+            } = null,
+            @"error": ?DOMException = null,
             onloadstart: EventHandler = undefined,
             onprogress: EventHandler = undefined,
             onload: EventHandler = undefined,
@@ -100,17 +110,7 @@ pub const FileReader = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        FileReaderImpl.init(instance);
-        
-        return instance;
+        return FileReaderImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -141,7 +141,7 @@ pub const FileReader = struct {
         return try FileReaderImpl.get_result(instance);
     }
 
-    pub fn get_error(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_error(instance: *runtime.Instance) anyerror!DOMException {
         return try FileReaderImpl.get_error(instance);
     }
 
@@ -198,9 +198,9 @@ pub const FileReader = struct {
         return try FileReaderImpl.call_readAsDataURL(instance, blob);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try FileReaderImpl.call_when(instance, type_, options);
+        return try FileReaderImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_readAsBinaryString(instance: *runtime.Instance, blob: Blob) anyerror!void {
@@ -227,14 +227,14 @@ pub const FileReader = struct {
         return try FileReaderImpl.call_readAsArrayBuffer(instance, blob);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try FileReaderImpl.call_addEventListener(instance, type_, callback, options);
+        return try FileReaderImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try FileReaderImpl.call_removeEventListener(instance, type_, callback, options);
+        return try FileReaderImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

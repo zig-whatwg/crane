@@ -1,13 +1,16 @@
 //! Generated from: url.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const URLImpl = @import("impls").URL;
-const (Blob or MediaSource) = @import("interfaces").(Blob or MediaSource);
 const URLSearchParams = @import("interfaces").URLSearchParams;
+const Blob = @import("interfaces").Blob;
+const USVString = @import("interfaces").USVString;
+const DOMString = @import("typedefs").DOMString;
+const MediaSource = @import("interfaces").MediaSource;
 
 pub const URL = struct {
     pub const Meta = struct {
@@ -83,17 +86,7 @@ pub const URL = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        URLImpl.init(instance);
-        
-        return instance;
+        return URLImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -226,7 +219,7 @@ pub const URL = struct {
         return try URLImpl.call_canParse(instance, url, base);
     }
 
-    pub fn call_parse(instance: *runtime.Instance, url: runtime.USVString, base: runtime.USVString) anyerror!anyopaque {
+    pub fn call_parse(instance: *runtime.Instance, url: runtime.USVString, base: runtime.USVString) anyerror!URL {
         
         return try URLImpl.call_parse(instance, url, base);
     }

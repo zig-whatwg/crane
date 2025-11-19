@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,8 @@ const std = @import("std");
 const runtime = @import("runtime");
 const DOMParserImpl = @import("impls").DOMParser;
 const Document = @import("interfaces").Document;
-const (TrustedHTML or DOMString) = @import("interfaces").(TrustedHTML or DOMString);
+const TrustedHTML = @import("interfaces").TrustedHTML;
+const DOMString = @import("typedefs").DOMString;
 const DOMParserSupportedType = @import("enums").DOMParserSupportedType;
 
 pub const DOMParser = struct {
@@ -38,17 +39,7 @@ pub const DOMParser = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        DOMParserImpl.init(instance);
-        
-        return instance;
+        return DOMParserImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -72,10 +63,10 @@ pub const DOMParser = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_parseFromString(instance: *runtime.Instance, string: anyopaque, type_: DOMParserSupportedType) anyerror!Document {
+    pub fn call_parseFromString(instance: *runtime.Instance, string: anyopaque, @"type": DOMParserSupportedType) anyerror!Document {
         // [NewObject] - Caller owns the returned object
         
-        return try DOMParserImpl.call_parseFromString(instance, string, type_);
+        return try DOMParserImpl.call_parseFromString(instance, string, @"type");
     }
 
 };

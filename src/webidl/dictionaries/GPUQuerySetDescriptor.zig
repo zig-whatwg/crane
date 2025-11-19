@@ -9,6 +9,6 @@ pub const GPUQuerySetDescriptor = struct {
     // Inherited from GPUObjectDescriptorBase
     base: GPUObjectDescriptorBase,
 
-    type: anyopaque,
+    @"type": anyopaque,
     count: anyopaque,
 };

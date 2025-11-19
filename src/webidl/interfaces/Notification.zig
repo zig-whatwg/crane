@@ -1,5 +1,5 @@
 //! Generated from: notifications.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,16 +7,22 @@ const std = @import("std");
 const runtime = @import("runtime");
 const NotificationImpl = @import("impls").Notification;
 const EventTarget = @import("interfaces").EventTarget;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const NotificationAction = @import("dictionaries").NotificationAction;
+const NotificationOptions = @import("dictionaries").NotificationOptions;
+const unsignedlong = @import("interfaces").unsignedlong;
+const USVString = @import("interfaces").USVString;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
 const EpochTimeStamp = @import("typedefs").EpochTimeStamp;
 const NotificationPermissionCallback = @import("callbacks").NotificationPermissionCallback;
 const NotificationDirection = @import("enums").NotificationDirection;
-const FrozenArray<NotificationAction> = @import("interfaces").FrozenArray<NotificationAction>;
-const NotificationOptions = @import("dictionaries").NotificationOptions;
-const boolean = @import("interfaces").boolean;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
 const NotificationPermission = @import("enums").NotificationPermission;
-const Promise<NotificationPermission> = @import("interfaces").Promise<NotificationPermission>;
+const DOMString = @import("typedefs").DOMString;
 const EventHandler = @import("typedefs").EventHandler;
-const FrozenArray<unsignedlong> = @import("interfaces").FrozenArray<unsignedlong>;
 
 pub const Notification = struct {
     pub const Meta = struct {
@@ -50,13 +56,13 @@ pub const Notification = struct {
             image: runtime.USVString = undefined,
             icon: runtime.USVString = undefined,
             badge: runtime.USVString = undefined,
-            vibrate: FrozenArray<unsignedlong> = undefined,
+            vibrate: runtime.FrozenArray(unsignedlong) = undefined,
             timestamp: EpochTimeStamp = undefined,
             renotify: bool = undefined,
             silent: ?bool = null,
             requireInteraction: bool = undefined,
             data: anyopaque = undefined,
-            actions: FrozenArray<NotificationAction> = undefined,
+            actions: runtime.FrozenArray(NotificationAction) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -103,17 +109,7 @@ pub const Notification = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        NotificationImpl.init(instance);
-        
-        return instance;
+        return NotificationImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -232,7 +228,7 @@ pub const Notification = struct {
         return try NotificationImpl.get_renotify(instance);
     }
 
-    pub fn get_silent(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_silent(instance: *runtime.Instance) anyerror!bool {
         return try NotificationImpl.get_silent(instance);
     }
 
@@ -275,23 +271,23 @@ pub const Notification = struct {
         return try NotificationImpl.call_requestPermission(instance, deprecatedCallback);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try NotificationImpl.call_when(instance, type_, options);
+        return try NotificationImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_close(instance: *runtime.Instance) anyerror!void {
         return try NotificationImpl.call_close(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try NotificationImpl.call_addEventListener(instance, type_, callback, options);
+        return try NotificationImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try NotificationImpl.call_removeEventListener(instance, type_, callback, options);
+        return try NotificationImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

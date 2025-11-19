@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,6 +8,9 @@ const runtime = @import("runtime");
 const CSSStylePropertiesImpl = @import("impls").CSSStyleProperties;
 const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
 const CSSOMString = @import("interfaces").CSSOMString;
+const CSSRule = @import("interfaces").CSSRule;
+const DOMString = @import("typedefs").DOMString;
+const CSSValue = @import("interfaces").CSSValue;
 
 pub const CSSStyleProperties = struct {
     pub const Meta = struct {
@@ -36,14 +39,10 @@ pub const CSSStyleProperties = struct {
 
         .get_cssFloat = &get_cssFloat,
         .get_cssText = &get_cssText,
-        .get_cssText = &get_cssText,
         .get_length = &get_length,
-        .get_length = &get_length,
-        .get_parentRule = &get_parentRule,
         .get_parentRule = &get_parentRule,
 
         .set_cssFloat = &set_cssFloat,
-        .set_cssText = &set_cssText,
         .set_cssText = &set_cssText,
 
         .call_getPropertyCSSValue = &call_getPropertyCSSValue,
@@ -56,17 +55,7 @@ pub const CSSStyleProperties = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        CSSStylePropertiesImpl.init(instance);
-        
-        return instance;
+        return CSSStylePropertiesImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -97,22 +86,6 @@ pub const CSSStyleProperties = struct {
         return try CSSStylePropertiesImpl.get_length(instance);
     }
 
-    pub fn get_parentRule(instance: *runtime.Instance) anyerror!anyopaque {
-        return try CSSStylePropertiesImpl.get_parentRule(instance);
-    }
-
-    pub fn get_cssText(instance: *runtime.Instance) anyerror!DOMString {
-        return try CSSStylePropertiesImpl.get_cssText(instance);
-    }
-
-    pub fn set_cssText(instance: *runtime.Instance, value: DOMString) anyerror!void {
-        try CSSStylePropertiesImpl.set_cssText(instance, value);
-    }
-
-    pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
-        return try CSSStylePropertiesImpl.get_length(instance);
-    }
-
     pub fn get_parentRule(instance: *runtime.Instance) anyerror!CSSRule {
         return try CSSStylePropertiesImpl.get_parentRule(instance);
     }
@@ -131,72 +104,19 @@ pub const CSSStyleProperties = struct {
         try CSSStylePropertiesImpl.set_cssFloat(instance, value);
     }
 
-    /// Arguments for item (WebIDL overloading)
-    pub const ItemArgs = union(enum) {
-        /// item(index)
-        long: u32,
-        /// item(index)
-        long: u32,
-    };
-
-    pub fn call_item(instance: *runtime.Instance, args: ItemArgs) anyerror!anyopaque {
-        switch (args) {
-            .long => |arg| return try CSSStylePropertiesImpl.long(instance, arg),
-            .long => |arg| return try CSSStylePropertiesImpl.long(instance, arg),
-        }
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!anyopaque {
+        
+        return try CSSStylePropertiesImpl.call_item(instance, index);
     }
 
-    /// Arguments for removeProperty (WebIDL overloading)
-    pub const RemovePropertyArgs = union(enum) {
-        /// removeProperty(property)
-        CSSOMString: anyopaque,
-        /// removeProperty(propertyName)
-        string: DOMString,
-    };
-
-    pub fn call_removeProperty(instance: *runtime.Instance, args: RemovePropertyArgs) anyerror!anyopaque {
-        switch (args) {
-            .CSSOMString => |arg| return try CSSStylePropertiesImpl.CSSOMString(instance, arg),
-            .string => |arg| return try CSSStylePropertiesImpl.string(instance, arg),
-        }
-    }
-
-    /// Arguments for getPropertyPriority (WebIDL overloading)
-    pub const GetPropertyPriorityArgs = union(enum) {
-        /// getPropertyPriority(property)
-        CSSOMString: anyopaque,
-        /// getPropertyPriority(propertyName)
-        string: DOMString,
-    };
-
-    pub fn call_getPropertyPriority(instance: *runtime.Instance, args: GetPropertyPriorityArgs) anyerror!anyopaque {
-        switch (args) {
-            .CSSOMString => |arg| return try CSSStylePropertiesImpl.CSSOMString(instance, arg),
-            .string => |arg| return try CSSStylePropertiesImpl.string(instance, arg),
-        }
-    }
-
-    /// Arguments for setProperty (WebIDL overloading)
-    pub const SetPropertyArgs = union(enum) {
-        /// setProperty(property, value, priority)
-        CSSOMString_CSSOMString_CSSOMString: struct {
-            property: anyopaque,
-            value: anyopaque,
-            priority: anyopaque,
-        },
-        /// setProperty(propertyName, value, priority)
-        string_string_string: struct {
-            propertyName: DOMString,
-            value: DOMString,
-            priority: DOMString,
-        },
-    };
-
-    pub fn call_setProperty(instance: *runtime.Instance, args: SetPropertyArgs) anyerror!void {
-        switch (args) {
-            .CSSOMString_CSSOMString_CSSOMString => |a| return try CSSStylePropertiesImpl.CSSOMString_CSSOMString_CSSOMString(instance, a.property, a.value, a.priority),
-            .string_string_string => |a| return try CSSStylePropertiesImpl.string_string_string(instance, a.propertyName, a.value, a.priority),
-        }
+    /// Extended attributes: [CEReactions]
+    pub fn call_removeProperty(instance: *runtime.Instance, property: anyopaque) anyerror!anyopaque {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try CSSStylePropertiesImpl.call_removeProperty(instance, property);
     }
 
     pub fn call_getPropertyCSSValue(instance: *runtime.Instance, propertyName: DOMString) anyerror!CSSValue {
@@ -204,19 +124,24 @@ pub const CSSStyleProperties = struct {
         return try CSSStylePropertiesImpl.call_getPropertyCSSValue(instance, propertyName);
     }
 
-    /// Arguments for getPropertyValue (WebIDL overloading)
-    pub const GetPropertyValueArgs = union(enum) {
-        /// getPropertyValue(property)
-        CSSOMString: anyopaque,
-        /// getPropertyValue(propertyName)
-        string: DOMString,
-    };
+    pub fn call_getPropertyPriority(instance: *runtime.Instance, property: anyopaque) anyerror!anyopaque {
+        
+        return try CSSStylePropertiesImpl.call_getPropertyPriority(instance, property);
+    }
 
-    pub fn call_getPropertyValue(instance: *runtime.Instance, args: GetPropertyValueArgs) anyerror!anyopaque {
-        switch (args) {
-            .CSSOMString => |arg| return try CSSStylePropertiesImpl.CSSOMString(instance, arg),
-            .string => |arg| return try CSSStylePropertiesImpl.string(instance, arg),
-        }
+    /// Extended attributes: [CEReactions]
+    pub fn call_setProperty(instance: *runtime.Instance, property: anyopaque, value: anyopaque, priority: anyopaque) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try CSSStylePropertiesImpl.call_setProperty(instance, property, value, priority);
+    }
+
+    pub fn call_getPropertyValue(instance: *runtime.Instance, property: anyopaque) anyerror!anyopaque {
+        
+        return try CSSStylePropertiesImpl.call_getPropertyValue(instance, property);
     }
 
 };

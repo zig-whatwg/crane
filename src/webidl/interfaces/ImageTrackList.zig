@@ -1,5 +1,5 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,6 @@ const std = @import("std");
 const runtime = @import("runtime");
 const ImageTrackListImpl = @import("impls").ImageTrackList;
 const ImageTrack = @import("interfaces").ImageTrack;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
 
 pub const ImageTrackList = struct {
     pub const Meta = struct {
@@ -17,6 +16,7 @@ pub const ImageTrackList = struct {
         pub const MixinTypes = .{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "DedicatedWorker" } } },
+            .{ .name = "SecureContext" },
         };
         
         /// Global contexts where this interface is exposed
@@ -28,7 +28,7 @@ pub const ImageTrackList = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            ready: Promise<undefined> = undefined,
+            ready: runtime.Promise(undefined) = undefined,
             length: u32 = undefined,
             selectedIndex: i32 = undefined,
             selectedTrack: ?ImageTrack = null,
@@ -48,17 +48,7 @@ pub const ImageTrackList = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ImageTrackListImpl.init(instance);
-        
-        return instance;
+        return ImageTrackListImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -83,7 +73,7 @@ pub const ImageTrackList = struct {
         return try ImageTrackListImpl.get_selectedIndex(instance);
     }
 
-    pub fn get_selectedTrack(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_selectedTrack(instance: *runtime.Instance) anyerror!ImageTrack {
         return try ImageTrackListImpl.get_selectedTrack(instance);
     }
 

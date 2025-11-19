@@ -1,5 +1,5 @@
 //! Generated from: translation-api.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,13 +8,10 @@ const runtime = @import("runtime");
 const LanguageDetectorImpl = @import("impls").LanguageDetector;
 const DestroyableModel = @import("interfaces").DestroyableModel;
 const LanguageDetectorDetectOptions = @import("dictionaries").LanguageDetectorDetectOptions;
-const Promise<Availability> = @import("interfaces").Promise<Availability>;
-const LanguageDetectorCreateCoreOptions = @import("dictionaries").LanguageDetectorCreateCoreOptions;
+const Availability = @import("enums").Availability;
 const LanguageDetectorCreateOptions = @import("dictionaries").LanguageDetectorCreateOptions;
-const Promise<double> = @import("interfaces").Promise<double>;
-const Promise<LanguageDetector> = @import("interfaces").Promise<LanguageDetector>;
-const FrozenArray<DOMString> = @import("interfaces").FrozenArray<DOMString>;
-const Promise<sequence<LanguageDetectionResult>> = @import("interfaces").Promise<sequence<LanguageDetectionResult>>;
+const LanguageDetectorCreateCoreOptions = @import("dictionaries").LanguageDetectorCreateCoreOptions;
+const DOMString = @import("typedefs").DOMString;
 
 pub const LanguageDetector = struct {
     pub const Meta = struct {
@@ -35,7 +32,7 @@ pub const LanguageDetector = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            expectedInputLanguages: ?FrozenArray<DOMString> = null,
+            expectedInputLanguages: ?runtime.FrozenArray(runtime.DOMString) = null,
             inputQuota: f64 = undefined,
         },
         Meta.BaseType,
@@ -57,17 +54,7 @@ pub const LanguageDetector = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        LanguageDetectorImpl.init(instance);
-        
-        return instance;
+        return LanguageDetectorImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

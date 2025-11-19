@@ -1,5 +1,5 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -12,10 +12,8 @@ const VideoFrameInit = @import("dictionaries").VideoFrameInit;
 const VideoFrameCopyToOptions = @import("dictionaries").VideoFrameCopyToOptions;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const VideoColorSpace = @import("interfaces").VideoColorSpace;
-const Promise<sequence<PlaneLayout>> = @import("interfaces").Promise<sequence<PlaneLayout>>;
 const CanvasImageSource = @import("typedefs").CanvasImageSource;
 const VideoFrameBufferInit = @import("dictionaries").VideoFrameBufferInit;
-const unsigned long long = @import("interfaces").unsigned long long;
 const VideoPixelFormat = @import("enums").VideoPixelFormat;
 
 pub const VideoFrame = struct {
@@ -81,17 +79,7 @@ pub const VideoFrame = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        VideoFrameImpl.init(instance);
-        
-        return instance;
+        return VideoFrameImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -105,26 +93,16 @@ pub const VideoFrame = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, image: CanvasImageSource, init: VideoFrameInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, image: CanvasImageSource, init_data: VideoFrameInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try VideoFrameImpl.constructor(instance, image, init);
+        try VideoFrameImpl.constructor(instance, image, init_data);
         
         return instance;
     }
 
-    /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, data: AllowSharedBufferSource, init: VideoFrameBufferInit) !*runtime.Instance {
-        const instance = try init(allocator);
-        errdefer deinit(instance);
-        
-        try VideoFrameImpl.constructor(instance, data, init);
-        
-        return instance;
-    }
-
-    pub fn get_format(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_format(instance: *runtime.Instance) anyerror!VideoPixelFormat {
         return try VideoFrameImpl.get_format(instance);
     }
 
@@ -136,11 +114,11 @@ pub const VideoFrame = struct {
         return try VideoFrameImpl.get_codedHeight(instance);
     }
 
-    pub fn get_codedRect(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_codedRect(instance: *runtime.Instance) anyerror!DOMRectReadOnly {
         return try VideoFrameImpl.get_codedRect(instance);
     }
 
-    pub fn get_visibleRect(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_visibleRect(instance: *runtime.Instance) anyerror!DOMRectReadOnly {
         return try VideoFrameImpl.get_visibleRect(instance);
     }
 
@@ -160,7 +138,7 @@ pub const VideoFrame = struct {
         return try VideoFrameImpl.get_displayHeight(instance);
     }
 
-    pub fn get_duration(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_duration(instance: *runtime.Instance) anyerror!u64 {
         return try VideoFrameImpl.get_duration(instance);
     }
 

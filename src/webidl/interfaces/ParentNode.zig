@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -10,7 +10,7 @@ const Element = @import("interfaces").Element;
 const Node = @import("interfaces").Node;
 const NodeList = @import("interfaces").NodeList;
 const HTMLCollection = @import("interfaces").HTMLCollection;
-const (Node or DOMString) = @import("interfaces").(Node or DOMString);
+const DOMString = @import("typedefs").DOMString;
 
 pub const ParentNode = struct {
     pub const Meta = struct {
@@ -50,17 +50,7 @@ pub const ParentNode = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ParentNodeImpl.init(instance);
-        
-        return instance;
+        return ParentNodeImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -85,11 +75,11 @@ pub const ParentNode = struct {
         return value;
     }
 
-    pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!Element {
         return try ParentNodeImpl.get_firstElementChild(instance);
     }
 
-    pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!Element {
         return try ParentNodeImpl.get_lastElementChild(instance);
     }
 
@@ -125,7 +115,7 @@ pub const ParentNode = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_moveBefore(instance: *runtime.Instance, node: Node, child: anyopaque) anyerror!void {
+    pub fn call_moveBefore(instance: *runtime.Instance, node: Node, child: Node) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -144,7 +134,7 @@ pub const ParentNode = struct {
         return try ParentNodeImpl.call_prepend(instance, nodes);
     }
 
-    pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!anyopaque {
+    pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!Element {
         
         return try ParentNodeImpl.call_querySelector(instance, selectors);
     }

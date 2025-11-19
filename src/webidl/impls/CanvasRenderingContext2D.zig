@@ -13,16 +13,25 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Initialize instance
-pub fn init(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Initialize your instance state here
+/// Initialize instance (delegates to runtime.Instance.init)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable);
+    // TODO: Add custom initialization here if needed
+    // const state = instance.getState(StateType);
+    // state.* = .{}; // Initialize fields
+    return instance;
 }
 
-/// Deinitialize instance
+/// Deinitialize instance (delegates to runtime.Instance.deinit)
 pub fn deinit(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Clean up your instance resources here
+    // TODO: Add custom cleanup here if needed
+    // const state = instance.getState(State);
+    // Clean up fields...
+    runtime.Instance.deinit(instance);
 }
 
 /// Getter for canvas
@@ -531,14 +540,6 @@ pub fn call_setTransform(instance: *runtime.Instance, a: f64, b: f64, c: f64, d:
     return error.NotImplemented;
 }
 
-/// Operation: setTransform
-pub fn call_setTransform(instance: *runtime.Instance, transform: anyopaque) ImplError!void {
-    _ = instance;
-    _ = transform;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
 /// Operation: resetTransform
 pub fn call_resetTransform(instance: *runtime.Instance) ImplError!void {
     _ = instance;
@@ -637,26 +638,9 @@ pub fn call_fill(instance: *runtime.Instance, fillRule: anyopaque) ImplError!voi
     return error.NotImplemented;
 }
 
-/// Operation: fill
-pub fn call_fill(instance: *runtime.Instance, path: anyopaque, fillRule: anyopaque) ImplError!void {
-    _ = instance;
-    _ = path;
-    _ = fillRule;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
 /// Operation: stroke
 pub fn call_stroke(instance: *runtime.Instance) ImplError!void {
     _ = instance;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: stroke
-pub fn call_stroke(instance: *runtime.Instance, path: anyopaque) ImplError!void {
-    _ = instance;
-    _ = path;
     // TODO: Implement operation
     return error.NotImplemented;
 }
@@ -669,29 +653,9 @@ pub fn call_clip(instance: *runtime.Instance, fillRule: anyopaque) ImplError!voi
     return error.NotImplemented;
 }
 
-/// Operation: clip
-pub fn call_clip(instance: *runtime.Instance, path: anyopaque, fillRule: anyopaque) ImplError!void {
-    _ = instance;
-    _ = path;
-    _ = fillRule;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
 /// Operation: isPointInPath
 pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule: anyopaque) ImplError!bool {
     _ = instance;
-    _ = x;
-    _ = y;
-    _ = fillRule;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: isPointInPath
-pub fn call_isPointInPath(instance: *runtime.Instance, path: anyopaque, x: f64, y: f64, fillRule: anyopaque) ImplError!bool {
-    _ = instance;
-    _ = path;
     _ = x;
     _ = y;
     _ = fillRule;
@@ -708,28 +672,9 @@ pub fn call_isPointInStroke(instance: *runtime.Instance, x: f64, y: f64) ImplErr
     return error.NotImplemented;
 }
 
-/// Operation: isPointInStroke
-pub fn call_isPointInStroke(instance: *runtime.Instance, path: anyopaque, x: f64, y: f64) ImplError!bool {
-    _ = instance;
-    _ = path;
-    _ = x;
-    _ = y;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
 /// Operation: drawFocusIfNeeded
 pub fn call_drawFocusIfNeeded(instance: *runtime.Instance, element: anyopaque) ImplError!void {
     _ = instance;
-    _ = element;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: drawFocusIfNeeded
-pub fn call_drawFocusIfNeeded(instance: *runtime.Instance, path: anyopaque, element: anyopaque) ImplError!void {
-    _ = instance;
-    _ = path;
     _ = element;
     // TODO: Implement operation
     return error.NotImplemented;
@@ -775,48 +720,12 @@ pub fn call_drawImage(instance: *runtime.Instance, image: anyopaque, dx: f64, dy
     return error.NotImplemented;
 }
 
-/// Operation: drawImage
-pub fn call_drawImage(instance: *runtime.Instance, image: anyopaque, dx: f64, dy: f64, dw: f64, dh: f64) ImplError!void {
-    _ = instance;
-    _ = image;
-    _ = dx;
-    _ = dy;
-    _ = dw;
-    _ = dh;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: drawImage
-pub fn call_drawImage(instance: *runtime.Instance, image: anyopaque, sx: f64, sy: f64, sw: f64, sh: f64, dx: f64, dy: f64, dw: f64, dh: f64) ImplError!void {
-    _ = instance;
-    _ = image;
-    _ = sx;
-    _ = sy;
-    _ = sw;
-    _ = sh;
-    _ = dx;
-    _ = dy;
-    _ = dw;
-    _ = dh;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
 /// Operation: createImageData
 pub fn call_createImageData(instance: *runtime.Instance, sw: i32, sh: i32, settings: anyopaque) ImplError!anyopaque {
     _ = instance;
     _ = sw;
     _ = sh;
     _ = settings;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: createImageData
-pub fn call_createImageData(instance: *runtime.Instance, imageData: anyopaque) ImplError!anyopaque {
-    _ = instance;
-    _ = imageData;
     // TODO: Implement operation
     return error.NotImplemented;
 }
@@ -839,20 +748,6 @@ pub fn call_putImageData(instance: *runtime.Instance, imageData: anyopaque, dx: 
     _ = imageData;
     _ = dx;
     _ = dy;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: putImageData
-pub fn call_putImageData(instance: *runtime.Instance, imageData: anyopaque, dx: i32, dy: i32, dirtyX: i32, dirtyY: i32, dirtyWidth: i32, dirtyHeight: i32) ImplError!void {
-    _ = instance;
-    _ = imageData;
-    _ = dx;
-    _ = dy;
-    _ = dirtyX;
-    _ = dirtyY;
-    _ = dirtyWidth;
-    _ = dirtyHeight;
     // TODO: Implement operation
     return error.NotImplemented;
 }

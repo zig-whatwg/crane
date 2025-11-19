@@ -9,5 +9,5 @@ pub const SpeechSynthesisErrorEventInit = struct {
     // Inherited from SpeechSynthesisEventInit
     base: SpeechSynthesisEventInit,
 
-    error: anyopaque,
+    @"error": anyopaque,
 };

@@ -168,6 +168,7 @@ pub const CSSStyleProperties = @import("CSSStyleProperties.zig").CSSStylePropert
 pub const CSSStyleRule = @import("CSSStyleRule.zig").CSSStyleRuleImpl;
 pub const CSSStyleSheet = @import("CSSStyleSheet.zig").CSSStyleSheetImpl;
 pub const CSSStyleValue = @import("CSSStyleValue.zig").CSSStyleValueImpl;
+pub const CSSSupportsConditionRule = @import("CSSSupportsConditionRule.zig").CSSSupportsConditionRuleImpl;
 pub const CSSSupportsRule = @import("CSSSupportsRule.zig").CSSSupportsRuleImpl;
 pub const CSSTransformComponent = @import("CSSTransformComponent.zig").CSSTransformComponentImpl;
 pub const CSSTransformValue = @import("CSSTransformValue.zig").CSSTransformValueImpl;

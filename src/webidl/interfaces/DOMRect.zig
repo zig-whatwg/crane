@@ -1,5 +1,5 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-11-18T18:28:13Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -44,15 +44,11 @@ pub const DOMRect = struct {
 
         .get_bottom = &get_bottom,
         .get_height = &get_height,
-        .get_height = &get_height,
         .get_left = &get_left,
         .get_right = &get_right,
         .get_top = &get_top,
         .get_width = &get_width,
-        .get_width = &get_width,
         .get_x = &get_x,
-        .get_x = &get_x,
-        .get_y = &get_y,
         .get_y = &get_y,
 
         .call_fromRect = &call_fromRect,
@@ -61,17 +57,7 @@ pub const DOMRect = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        DOMRectImpl.init(instance);
-        
-        return instance;
+        return DOMRectImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -126,35 +112,11 @@ pub const DOMRect = struct {
         return try DOMRectImpl.get_left(instance);
     }
 
-    pub fn get_x(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMRectImpl.get_x(instance);
-    }
-
-    pub fn get_y(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMRectImpl.get_y(instance);
-    }
-
-    pub fn get_width(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMRectImpl.get_width(instance);
-    }
-
-    pub fn get_height(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMRectImpl.get_height(instance);
-    }
-
-    /// Arguments for fromRect (WebIDL overloading)
-    pub const FromRectArgs = union(enum) {
-        /// fromRect(other)
-        DOMRectInit: DOMRectInit,
-        /// fromRect(other)
-        DOMRectInit: DOMRectInit,
-    };
-
-    pub fn call_fromRect(instance: *runtime.Instance, args: FromRectArgs) anyerror!DOMRectReadOnly {
-        switch (args) {
-            .DOMRectInit => |arg| return try DOMRectImpl.DOMRectInit(instance, arg),
-            .DOMRectInit => |arg| return try DOMRectImpl.DOMRectInit(instance, arg),
-        }
+    /// Extended attributes: [NewObject]
+    pub fn call_fromRect(instance: *runtime.Instance, other: DOMRectInit) anyerror!DOMRectReadOnly {
+        // [NewObject] - Caller owns the returned object
+        
+        return try DOMRectImpl.call_fromRect(instance, other);
     }
 
     /// Extended attributes: [Default]

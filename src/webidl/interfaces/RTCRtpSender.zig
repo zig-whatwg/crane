@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,15 +7,15 @@ const std = @import("std");
 const runtime = @import("runtime");
 const RTCRtpSenderImpl = @import("impls").RTCRtpSender;
 const RTCRtpCapabilities = @import("dictionaries").RTCRtpCapabilities;
-const Promise<RTCStatsReport> = @import("interfaces").Promise<RTCStatsReport>;
 const RTCSetParameterOptions = @import("dictionaries").RTCSetParameterOptions;
 const MediaStream = @import("interfaces").MediaStream;
 const RTCRtpSendParameters = @import("dictionaries").RTCRtpSendParameters;
-const RTCRtpTransform = @import("typedefs").RTCRtpTransform;
+const RTCStatsReport = @import("interfaces").RTCStatsReport;
 const RTCDtlsTransport = @import("interfaces").RTCDtlsTransport;
 const RTCDTMFSender = @import("interfaces").RTCDTMFSender;
 const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
+const RTCRtpTransform = @import("typedefs").RTCRtpTransform;
+const DOMString = @import("typedefs").DOMString;
 
 pub const RTCRtpSender = struct {
     pub const Meta = struct {
@@ -62,17 +62,7 @@ pub const RTCRtpSender = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        RTCRtpSenderImpl.init(instance);
-        
-        return instance;
+        return RTCRtpSenderImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -85,32 +75,32 @@ pub const RTCRtpSender = struct {
         deinit(instance);
     }
 
-    pub fn get_track(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_track(instance: *runtime.Instance) anyerror!MediaStreamTrack {
         return try RTCRtpSenderImpl.get_track(instance);
     }
 
-    pub fn get_transport(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_transport(instance: *runtime.Instance) anyerror!RTCDtlsTransport {
         return try RTCRtpSenderImpl.get_transport(instance);
     }
 
-    pub fn get_dtmf(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_dtmf(instance: *runtime.Instance) anyerror!RTCDTMFSender {
         return try RTCRtpSenderImpl.get_dtmf(instance);
     }
 
-    pub fn get_transform(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_transform(instance: *runtime.Instance) anyerror!RTCRtpTransform {
         return try RTCRtpSenderImpl.get_transform(instance);
     }
 
-    pub fn set_transform(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_transform(instance: *runtime.Instance, value: RTCRtpTransform) anyerror!void {
         try RTCRtpSenderImpl.set_transform(instance, value);
     }
 
-    pub fn call_replaceTrack(instance: *runtime.Instance, withTrack: anyopaque) anyerror!anyopaque {
+    pub fn call_replaceTrack(instance: *runtime.Instance, withTrack: MediaStreamTrack) anyerror!anyopaque {
         
         return try RTCRtpSenderImpl.call_replaceTrack(instance, withTrack);
     }
 
-    pub fn call_getCapabilities(instance: *runtime.Instance, kind: DOMString) anyerror!anyopaque {
+    pub fn call_getCapabilities(instance: *runtime.Instance, kind: DOMString) anyerror!RTCRtpCapabilities {
         
         return try RTCRtpSenderImpl.call_getCapabilities(instance, kind);
     }

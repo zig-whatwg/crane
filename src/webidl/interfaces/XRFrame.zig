@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -12,19 +12,21 @@ const XRHitTestSource = @import("interfaces").XRHitTestSource;
 const XRReferenceSpace = @import("interfaces").XRReferenceSpace;
 const XRView = @import("interfaces").XRView;
 const XRMetadata = @import("dictionaries").XRMetadata;
-const XRJointPose = @import("interfaces").XRJointPose;
+const XRTransientInputHitTestResult = @import("interfaces").XRTransientInputHitTestResult;
 const XRSession = @import("interfaces").XRSession;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const XRPose = @import("interfaces").XRPose;
 const XRCPUDepthInformation = @import("interfaces").XRCPUDepthInformation;
 const XRRigidTransform = @import("interfaces").XRRigidTransform;
-const Promise<XRAnchor> = @import("interfaces").Promise<XRAnchor>;
+const XRJointPose = @import("interfaces").XRJointPose;
 const XRBody = @import("interfaces").XRBody;
+const XRHitTestResult = @import("interfaces").XRHitTestResult;
 const XRAnchorSet = @import("interfaces").XRAnchorSet;
-const XRMeshSet = @import("interfaces").XRMeshSet;
 const XRSpace = @import("interfaces").XRSpace;
 const XRViewerPose = @import("interfaces").XRViewerPose;
 const XRLightProbe = @import("interfaces").XRLightProbe;
+const XRAnchor = @import("interfaces").XRAnchor;
+const XRMeshSet = @import("interfaces").XRMeshSet;
 const XRJointSpace = @import("interfaces").XRJointSpace;
 const XRLightEstimate = @import("interfaces").XRLightEstimate;
 const XRPlaneSet = @import("interfaces").XRPlaneSet;
@@ -83,17 +85,7 @@ pub const XRFrame = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        XRFrameImpl.init(instance);
-        
-        return instance;
+        return XRFrameImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -123,7 +115,7 @@ pub const XRFrame = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_body(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_body(instance: *runtime.Instance) anyerror!XRBody {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.cached_body) |cached| {
@@ -163,7 +155,7 @@ pub const XRFrame = struct {
         return try XRFrameImpl.call_createAnchor(instance, pose, space);
     }
 
-    pub fn call_getViewerPose(instance: *runtime.Instance, referenceSpace: XRReferenceSpace) anyerror!anyopaque {
+    pub fn call_getViewerPose(instance: *runtime.Instance, referenceSpace: XRReferenceSpace) anyerror!XRViewerPose {
         
         return try XRFrameImpl.call_getViewerPose(instance, referenceSpace);
     }
@@ -173,12 +165,12 @@ pub const XRFrame = struct {
         return try XRFrameImpl.call_getHitTestResults(instance, hitTestSource);
     }
 
-    pub fn call_getLightEstimate(instance: *runtime.Instance, lightProbe: XRLightProbe) anyerror!anyopaque {
+    pub fn call_getLightEstimate(instance: *runtime.Instance, lightProbe: XRLightProbe) anyerror!XRLightEstimate {
         
         return try XRFrameImpl.call_getLightEstimate(instance, lightProbe);
     }
 
-    pub fn call_getPose(instance: *runtime.Instance, space: XRSpace, baseSpace: XRSpace) anyerror!anyopaque {
+    pub fn call_getPose(instance: *runtime.Instance, space: XRSpace, baseSpace: XRSpace) anyerror!XRPose {
         
         return try XRFrameImpl.call_getPose(instance, space, baseSpace);
     }
@@ -193,7 +185,7 @@ pub const XRFrame = struct {
         return try XRFrameImpl.call_fillPoses(instance, spaces, baseSpace, transforms);
     }
 
-    pub fn call_getJointPose(instance: *runtime.Instance, joint: XRJointSpace, baseSpace: XRSpace) anyerror!anyopaque {
+    pub fn call_getJointPose(instance: *runtime.Instance, joint: XRJointSpace, baseSpace: XRSpace) anyerror!XRJointPose {
         
         return try XRFrameImpl.call_getJointPose(instance, joint, baseSpace);
     }
@@ -203,7 +195,7 @@ pub const XRFrame = struct {
         return try XRFrameImpl.call_fillJointRadii(instance, jointSpaces, radii);
     }
 
-    pub fn call_getDepthInformation(instance: *runtime.Instance, view: XRView) anyerror!anyopaque {
+    pub fn call_getDepthInformation(instance: *runtime.Instance, view: XRView) anyerror!XRCPUDepthInformation {
         
         return try XRFrameImpl.call_getDepthInformation(instance, view);
     }

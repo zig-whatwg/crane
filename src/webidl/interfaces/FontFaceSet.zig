@@ -1,5 +1,5 @@
 //! Generated from: css-font-loading.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,12 +7,17 @@ const std = @import("std");
 const runtime = @import("runtime");
 const FontFaceSetImpl = @import("impls").FontFaceSet;
 const EventTarget = @import("interfaces").EventTarget;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const CSSOMString = @import("interfaces").CSSOMString;
-const Promise<sequence<FontFace>> = @import("interfaces").Promise<sequence<FontFace>>;
-const Promise<FontFaceSet> = @import("interfaces").Promise<FontFaceSet>;
 const FontFace = @import("interfaces").FontFace;
-const EventHandler = @import("typedefs").EventHandler;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
 const FontFaceSetLoadStatus = @import("enums").FontFaceSetLoadStatus;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
+const EventHandler = @import("typedefs").EventHandler;
+const DOMString = @import("typedefs").DOMString;
 
 pub const FontFaceSet = struct {
     pub const Meta = struct {
@@ -36,7 +41,7 @@ pub const FontFaceSet = struct {
             onloading: EventHandler = undefined,
             onloadingdone: EventHandler = undefined,
             onloadingerror: EventHandler = undefined,
-            ready: Promise<FontFaceSet> = undefined,
+            ready: runtime.Promise(FontFaceSet) = undefined,
             status: FontFaceSetLoadStatus = undefined,
         },
         Meta.BaseType,
@@ -79,17 +84,7 @@ pub const FontFaceSet = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        FontFaceSetImpl.init(instance);
-        
-        return instance;
+        return FontFaceSetImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -139,9 +134,9 @@ pub const FontFaceSet = struct {
         return try FontFaceSetImpl.call_delete(instance, font);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try FontFaceSetImpl.call_when(instance, type_, options);
+        return try FontFaceSetImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_load(instance: *runtime.Instance, font: anyopaque, text: anyopaque) anyerror!anyopaque {
@@ -168,14 +163,14 @@ pub const FontFaceSet = struct {
         return try FontFaceSetImpl.call_check(instance, font, text);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try FontFaceSetImpl.call_addEventListener(instance, type_, callback, options);
+        return try FontFaceSetImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try FontFaceSetImpl.call_removeEventListener(instance, type_, callback, options);
+        return try FontFaceSetImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

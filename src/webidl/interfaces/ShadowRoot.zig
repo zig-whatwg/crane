@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,15 +8,29 @@ const runtime = @import("runtime");
 const ShadowRootImpl = @import("impls").ShadowRoot;
 const DocumentFragment = @import("interfaces").DocumentFragment;
 const DocumentOrShadowRoot = @import("interfaces").DocumentOrShadowRoot;
-const Element = @import("interfaces").Element;
-const (TrustedHTML or DOMString) = @import("interfaces").(TrustedHTML or DOMString);
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
+const Document = @import("interfaces").Document;
+const HTMLCollection = @import("interfaces").HTMLCollection;
+const USVString = @import("interfaces").USVString;
+const Element = @import("interfaces").Element;
 const ShadowRootMode = @import("enums").ShadowRootMode;
-const ObservableArray<CSSStyleSheet> = @import("interfaces").ObservableArray<CSSStyleSheet>;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
 const StyleSheetList = @import("interfaces").StyleSheetList;
-const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
-const SlotAssignmentMode = @import("enums").SlotAssignmentMode;
 const EventHandler = @import("typedefs").EventHandler;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
+const TrustedHTML = @import("interfaces").TrustedHTML;
+const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
+const Animation = @import("interfaces").Animation;
+const Node = @import("interfaces").Node;
+const NodeList = @import("interfaces").NodeList;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
+const SlotAssignmentMode = @import("enums").SlotAssignmentMode;
+const DOMString = @import("typedefs").DOMString;
 
 pub const ShadowRoot = struct {
     pub const Meta = struct {
@@ -43,13 +57,16 @@ pub const ShadowRoot = struct {
             serializable: bool = undefined,
             host: Element = undefined,
             onslotchange: EventHandler = undefined,
-            innerHTML: (TrustedHTML or DOMString) = undefined,
+            innerHTML: union(enum) {
+                TrustedHTML: TrustedHTML,
+                DOMString: runtime.DOMString,
+            } = undefined,
             customElementRegistry: ?CustomElementRegistry = null,
             fullscreenElement: ?Element = null,
             pictureInPictureElement: ?Element = null,
             pointerLockElement: ?Element = null,
             styleSheets: StyleSheetList = undefined,
-            adoptedStyleSheets: ObservableArray<CSSStyleSheet> = undefined,
+            adoptedStyleSheets: runtime.ObservableArray(CSSStyleSheet) = undefined,
             activeElement: ?Element = null,
         },
         Meta.BaseType,
@@ -150,17 +167,7 @@ pub const ShadowRoot = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ShadowRootImpl.init(instance);
-        
-        return instance;
+        return ShadowRootImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -189,15 +196,15 @@ pub const ShadowRoot = struct {
         return try ShadowRootImpl.get_isConnected(instance);
     }
 
-    pub fn get_ownerDocument(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ownerDocument(instance: *runtime.Instance) anyerror!Document {
         return try ShadowRootImpl.get_ownerDocument(instance);
     }
 
-    pub fn get_parentNode(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_parentNode(instance: *runtime.Instance) anyerror!Node {
         return try ShadowRootImpl.get_parentNode(instance);
     }
 
-    pub fn get_parentElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_parentElement(instance: *runtime.Instance) anyerror!Element {
         return try ShadowRootImpl.get_parentElement(instance);
     }
 
@@ -213,29 +220,29 @@ pub const ShadowRoot = struct {
         return value;
     }
 
-    pub fn get_firstChild(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_firstChild(instance: *runtime.Instance) anyerror!Node {
         return try ShadowRootImpl.get_firstChild(instance);
     }
 
-    pub fn get_lastChild(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_lastChild(instance: *runtime.Instance) anyerror!Node {
         return try ShadowRootImpl.get_lastChild(instance);
     }
 
-    pub fn get_previousSibling(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_previousSibling(instance: *runtime.Instance) anyerror!Node {
         return try ShadowRootImpl.get_previousSibling(instance);
     }
 
-    pub fn get_nextSibling(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_nextSibling(instance: *runtime.Instance) anyerror!Node {
         return try ShadowRootImpl.get_nextSibling(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_nodeValue(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_nodeValue(instance: *runtime.Instance) anyerror!DOMString {
         return try ShadowRootImpl.get_nodeValue(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_nodeValue(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_nodeValue(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -244,12 +251,12 @@ pub const ShadowRoot = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_textContent(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_textContent(instance: *runtime.Instance) anyerror!DOMString {
         return try ShadowRootImpl.get_textContent(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_textContent(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_textContent(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -269,11 +276,11 @@ pub const ShadowRoot = struct {
         return value;
     }
 
-    pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!Element {
         return try ShadowRootImpl.get_firstElementChild(instance);
     }
 
-    pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!Element {
         return try ShadowRootImpl.get_lastElementChild(instance);
     }
 
@@ -327,20 +334,20 @@ pub const ShadowRoot = struct {
         try ShadowRootImpl.set_innerHTML(instance, value);
     }
 
-    pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!CustomElementRegistry {
         return try ShadowRootImpl.get_customElementRegistry(instance);
     }
 
     /// Extended attributes: [LegacyLenientSetter]
-    pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!Element {
         return try ShadowRootImpl.get_fullscreenElement(instance);
     }
 
-    pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!Element {
         return try ShadowRootImpl.get_pictureInPictureElement(instance);
     }
 
-    pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!Element {
         return try ShadowRootImpl.get_pointerLockElement(instance);
     }
 
@@ -364,16 +371,16 @@ pub const ShadowRoot = struct {
         try ShadowRootImpl.set_adoptedStyleSheets(instance, value);
     }
 
-    pub fn get_activeElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_activeElement(instance: *runtime.Instance) anyerror!Element {
         return try ShadowRootImpl.get_activeElement(instance);
     }
 
-    pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: anyopaque) anyerror!bool {
+    pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: DOMString) anyerror!bool {
         
         return try ShadowRootImpl.call_isDefaultNamespace(instance, namespace);
     }
 
-    pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!anyopaque {
+    pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!Element {
         
         return try ShadowRootImpl.call_querySelector(instance, selectors);
     }
@@ -383,19 +390,19 @@ pub const ShadowRoot = struct {
         return try ShadowRootImpl.call_compareDocumentPosition(instance, other);
     }
 
-    pub fn call_contains(instance: *runtime.Instance, other: anyopaque) anyerror!bool {
+    pub fn call_contains(instance: *runtime.Instance, other: Node) anyerror!bool {
         
         return try ShadowRootImpl.call_contains(instance, other);
     }
 
-    pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!anyopaque {
+    pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!Element {
         
         return try ShadowRootImpl.call_getElementById(instance, elementId);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try ShadowRootImpl.call_removeEventListener(instance, type_, callback, options);
+        return try ShadowRootImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
@@ -420,7 +427,7 @@ pub const ShadowRoot = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_moveBefore(instance: *runtime.Instance, node: Node, child: anyopaque) anyerror!void {
+    pub fn call_moveBefore(instance: *runtime.Instance, node: Node, child: Node) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -454,7 +461,7 @@ pub const ShadowRoot = struct {
         return try ShadowRootImpl.call_getHTML(instance, options);
     }
 
-    pub fn call_isSameNode(instance: *runtime.Instance, otherNode: anyopaque) anyerror!bool {
+    pub fn call_isSameNode(instance: *runtime.Instance, otherNode: Node) anyerror!bool {
         
         return try ShadowRootImpl.call_isSameNode(instance, otherNode);
     }
@@ -469,18 +476,18 @@ pub const ShadowRoot = struct {
         return try ShadowRootImpl.call_setHTMLUnsafe(instance, html);
     }
 
-    pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: anyopaque) anyerror!anyopaque {
+    pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: DOMString) anyerror!DOMString {
         
         return try ShadowRootImpl.call_lookupPrefix(instance, namespace);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try ShadowRootImpl.call_when(instance, type_, options);
+        return try ShadowRootImpl.call_when(instance, @"type", options);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_insertBefore(instance: *runtime.Instance, node: Node, child: anyopaque) anyerror!Node {
+    pub fn call_insertBefore(instance: *runtime.Instance, node: Node, child: Node) anyerror!Node {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -489,14 +496,14 @@ pub const ShadowRoot = struct {
         return try ShadowRootImpl.call_insertBefore(instance, node, child);
     }
 
-    pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: anyopaque) anyerror!anyopaque {
+    pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: DOMString) anyerror!DOMString {
         
         return try ShadowRootImpl.call_lookupNamespaceURI(instance, prefix);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try ShadowRootImpl.call_addEventListener(instance, type_, callback, options);
+        return try ShadowRootImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
     /// Extended attributes: [CEReactions]
@@ -542,7 +549,7 @@ pub const ShadowRoot = struct {
         return try ShadowRootImpl.call_normalize(instance);
     }
 
-    pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: anyopaque) anyerror!bool {
+    pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: Node) anyerror!bool {
         
         return try ShadowRootImpl.call_isEqualNode(instance, otherNode);
     }

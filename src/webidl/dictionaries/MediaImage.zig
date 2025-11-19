@@ -7,5 +7,5 @@ const runtime = @import("runtime");
 pub const MediaImage = struct {
     src: runtime.DOMString,
     sizes: ?runtime.DOMString = null,
-    type: ?runtime.DOMString = null,
+    @"type": ?runtime.DOMString = null,
 };

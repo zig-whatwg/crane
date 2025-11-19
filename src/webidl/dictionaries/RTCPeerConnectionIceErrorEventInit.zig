@@ -9,8 +9,8 @@ pub const RTCPeerConnectionIceErrorEventInit = struct {
     // Inherited from EventInit
     base: EventInit,
 
-    address: ?anyopaque = null,
-    port: ?anyopaque = null,
+    address: ?runtime.DOMString = null,
+    port: ?u16 = null,
     url: ?runtime.DOMString = null,
     errorCode: u16,
     errorText: ?runtime.DOMString = null,

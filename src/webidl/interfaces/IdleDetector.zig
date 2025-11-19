@@ -1,5 +1,5 @@
 //! Generated from: idle-detection.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,12 +7,18 @@ const std = @import("std");
 const runtime = @import("runtime");
 const IdleDetectorImpl = @import("impls").IdleDetector;
 const EventTarget = @import("interfaces").EventTarget;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const IdleOptions = @import("dictionaries").IdleOptions;
 const ScreenIdleState = @import("enums").ScreenIdleState;
-const Promise<PermissionState> = @import("interfaces").Promise<PermissionState>;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
-const EventHandler = @import("typedefs").EventHandler;
 const UserIdleState = @import("enums").UserIdleState;
+const Observable = @import("interfaces").Observable;
+const PermissionState = @import("enums").PermissionState;
+const Event = @import("interfaces").Event;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
+const DOMString = @import("typedefs").DOMString;
+const EventHandler = @import("typedefs").EventHandler;
 
 pub const IdleDetector = struct {
     pub const Meta = struct {
@@ -61,17 +67,7 @@ pub const IdleDetector = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        IdleDetectorImpl.init(instance);
-        
-        return instance;
+        return IdleDetectorImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -94,11 +90,11 @@ pub const IdleDetector = struct {
         return instance;
     }
 
-    pub fn get_userState(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_userState(instance: *runtime.Instance) anyerror!UserIdleState {
         return try IdleDetectorImpl.get_userState(instance);
     }
 
-    pub fn get_screenState(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_screenState(instance: *runtime.Instance) anyerror!ScreenIdleState {
         return try IdleDetectorImpl.get_screenState(instance);
     }
 
@@ -120,9 +116,9 @@ pub const IdleDetector = struct {
         return try IdleDetectorImpl.call_requestPermission(instance);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try IdleDetectorImpl.call_when(instance, type_, options);
+        return try IdleDetectorImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_start(instance: *runtime.Instance, options: IdleOptions) anyerror!anyopaque {
@@ -130,14 +126,14 @@ pub const IdleDetector = struct {
         return try IdleDetectorImpl.call_start(instance, options);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try IdleDetectorImpl.call_addEventListener(instance, type_, callback, options);
+        return try IdleDetectorImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try IdleDetectorImpl.call_removeEventListener(instance, type_, callback, options);
+        return try IdleDetectorImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

@@ -1,5 +1,5 @@
 //! Generated from: WEBGL_draw_instanced_base_vertex_base_instance.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -45,17 +45,7 @@ pub const WEBGL_draw_instanced_base_vertex_base_instance = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        WEBGL_draw_instanced_base_vertex_base_instanceImpl.init(instance);
-        
-        return instance;
+        return WEBGL_draw_instanced_base_vertex_base_instanceImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -73,9 +63,9 @@ pub const WEBGL_draw_instanced_base_vertex_base_instance = struct {
         return try WEBGL_draw_instanced_base_vertex_base_instanceImpl.call_drawArraysInstancedBaseInstanceWEBGL(instance, mode, first, count, instanceCount, baseInstance);
     }
 
-    pub fn call_drawElementsInstancedBaseVertexBaseInstanceWEBGL(instance: *runtime.Instance, mode: GLenum, count: GLsizei, type_: GLenum, offset: GLintptr, instanceCount: GLsizei, baseVertex: GLint, baseInstance: GLuint) anyerror!void {
+    pub fn call_drawElementsInstancedBaseVertexBaseInstanceWEBGL(instance: *runtime.Instance, mode: GLenum, count: GLsizei, @"type": GLenum, offset: GLintptr, instanceCount: GLsizei, baseVertex: GLint, baseInstance: GLuint) anyerror!void {
         
-        return try WEBGL_draw_instanced_base_vertex_base_instanceImpl.call_drawElementsInstancedBaseVertexBaseInstanceWEBGL(instance, mode, count, type_, offset, instanceCount, baseVertex, baseInstance);
+        return try WEBGL_draw_instanced_base_vertex_base_instanceImpl.call_drawElementsInstancedBaseVertexBaseInstanceWEBGL(instance, mode, count, @"type", offset, instanceCount, baseVertex, baseInstance);
     }
 
 };

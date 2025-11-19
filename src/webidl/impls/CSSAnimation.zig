@@ -13,16 +13,25 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Initialize instance
-pub fn init(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Initialize your instance state here
+/// Initialize instance (delegates to runtime.Instance.init)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable);
+    // TODO: Add custom initialization here if needed
+    // const state = instance.getState(StateType);
+    // state.* = .{}; // Initialize fields
+    return instance;
 }
 
-/// Deinitialize instance
+/// Deinitialize instance (delegates to runtime.Instance.deinit)
 pub fn deinit(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Clean up your instance resources here
+    // TODO: Add custom cleanup here if needed
+    // const state = instance.getState(State);
+    // Clean up fields...
+    runtime.Instance.deinit(instance);
 }
 
 /// Constructor implementation
@@ -53,14 +62,14 @@ pub fn get_timeline(instance: *runtime.Instance) ImplError!anyopaque {
 }
 
 /// Getter for startTime
-pub fn get_startTime(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_startTime(instance: *runtime.Instance) ImplError!f64 {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for currentTime
-pub fn get_currentTime(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_currentTime(instance: *runtime.Instance) ImplError!f64 {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -129,20 +138,6 @@ pub fn get_onremove(instance: *runtime.Instance) ImplError!anyopaque {
     return error.NotImplemented;
 }
 
-/// Getter for startTime
-pub fn get_startTime(instance: *runtime.Instance) ImplError!anyopaque {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
-/// Getter for currentTime
-pub fn get_currentTime(instance: *runtime.Instance) ImplError!anyopaque {
-    _ = instance;
-    // TODO: Implement getter
-    return error.NotImplemented;
-}
-
 /// Getter for trigger
 pub fn get_trigger(instance: *runtime.Instance) ImplError!anyopaque {
     _ = instance;
@@ -165,7 +160,7 @@ pub fn get_rangeEnd(instance: *runtime.Instance) ImplError!anyopaque {
 }
 
 /// Getter for overallProgress
-pub fn get_overallProgress(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_overallProgress(instance: *runtime.Instance) ImplError!f64 {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -203,7 +198,7 @@ pub fn set_timeline(instance: *runtime.Instance, value: anyopaque) ImplError!voi
 }
 
 /// Setter for startTime
-pub fn set_startTime(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_startTime(instance: *runtime.Instance, value: f64) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -211,7 +206,7 @@ pub fn set_startTime(instance: *runtime.Instance, value: anyopaque) ImplError!vo
 }
 
 /// Setter for currentTime
-pub fn set_currentTime(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_currentTime(instance: *runtime.Instance, value: f64) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -250,22 +245,6 @@ pub fn set_onremove(instance: *runtime.Instance, value: anyopaque) ImplError!voi
     return error.NotImplemented;
 }
 
-/// Setter for startTime
-pub fn set_startTime(instance: *runtime.Instance, value: anyopaque) ImplError!void {
-    _ = instance;
-    _ = value;
-    // TODO: Implement setter
-    return error.NotImplemented;
-}
-
-/// Setter for currentTime
-pub fn set_currentTime(instance: *runtime.Instance, value: anyopaque) ImplError!void {
-    _ = instance;
-    _ = value;
-    // TODO: Implement setter
-    return error.NotImplemented;
-}
-
 /// Setter for trigger
 pub fn set_trigger(instance: *runtime.Instance, value: anyopaque) ImplError!void {
     _ = instance;
@@ -291,9 +270,9 @@ pub fn set_rangeEnd(instance: *runtime.Instance, value: anyopaque) ImplError!voi
 }
 
 /// Operation: addEventListener
-pub fn call_addEventListener(instance: *runtime.Instance, type: runtime.DOMString, callback: anyopaque, options: anyopaque) ImplError!void {
+pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: anyopaque, options: anyopaque) ImplError!void {
     _ = instance;
-    _ = type;
+    _ = @"type";
     _ = callback;
     _ = options;
     // TODO: Implement operation
@@ -301,9 +280,9 @@ pub fn call_addEventListener(instance: *runtime.Instance, type: runtime.DOMStrin
 }
 
 /// Operation: removeEventListener
-pub fn call_removeEventListener(instance: *runtime.Instance, type: runtime.DOMString, callback: anyopaque, options: anyopaque) ImplError!void {
+pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: anyopaque, options: anyopaque) ImplError!void {
     _ = instance;
-    _ = type;
+    _ = @"type";
     _ = callback;
     _ = options;
     // TODO: Implement operation
@@ -319,9 +298,9 @@ pub fn call_dispatchEvent(instance: *runtime.Instance, event: anyopaque) ImplErr
 }
 
 /// Operation: when
-pub fn call_when(instance: *runtime.Instance, type: runtime.DOMString, options: anyopaque) ImplError!anyopaque {
+pub fn call_when(instance: *runtime.Instance, @"type": runtime.DOMString, options: anyopaque) ImplError!anyopaque {
     _ = instance;
-    _ = type;
+    _ = @"type";
     _ = options;
     // TODO: Implement operation
     return error.NotImplemented;

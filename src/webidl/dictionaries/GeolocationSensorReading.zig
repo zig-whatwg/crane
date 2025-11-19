@@ -6,11 +6,11 @@ const runtime = @import("runtime");
 
 pub const GeolocationSensorReading = struct {
     timestamp: ?anyopaque = null,
-    latitude: ?anyopaque = null,
-    longitude: ?anyopaque = null,
-    altitude: ?anyopaque = null,
-    accuracy: ?anyopaque = null,
-    altitudeAccuracy: ?anyopaque = null,
-    heading: ?anyopaque = null,
-    speed: ?anyopaque = null,
+    latitude: ?f64 = null,
+    longitude: ?f64 = null,
+    altitude: ?f64 = null,
+    accuracy: ?f64 = null,
+    altitudeAccuracy: ?f64 = null,
+    heading: ?f64 = null,
+    speed: ?f64 = null,
 };

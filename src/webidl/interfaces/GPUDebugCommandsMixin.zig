@@ -1,11 +1,12 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-18T18:28:13Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const GPUDebugCommandsMixinImpl = @import("impls").GPUDebugCommandsMixin;
+const USVString = @import("interfaces").USVString;
 
 pub const GPUDebugCommandsMixin = struct {
     pub const Meta = struct {
@@ -32,17 +33,7 @@ pub const GPUDebugCommandsMixin = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        GPUDebugCommandsMixinImpl.init(instance);
-        
-        return instance;
+        return GPUDebugCommandsMixinImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

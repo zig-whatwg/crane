@@ -1,12 +1,11 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const TransformStreamDefaultControllerImpl = @import("impls").TransformStreamDefaultController;
-const unrestricted double = @import("interfaces").unrestricted double;
 
 pub const TransformStreamDefaultController = struct {
     pub const Meta = struct {
@@ -42,17 +41,7 @@ pub const TransformStreamDefaultController = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        TransformStreamDefaultControllerImpl.init(instance);
-        
-        return instance;
+        return TransformStreamDefaultControllerImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -65,7 +54,7 @@ pub const TransformStreamDefaultController = struct {
         deinit(instance);
     }
 
-    pub fn get_desiredSize(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_desiredSize(instance: *runtime.Instance) anyerror!f64 {
         return try TransformStreamDefaultControllerImpl.get_desiredSize(instance);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: DOM-Style.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,11 @@ const std = @import("std");
 const runtime = @import("runtime");
 const DOMImplementationCSSImpl = @import("impls").DOMImplementationCSS;
 const DOMImplementation = @import("interfaces").DOMImplementation;
+const Document = @import("interfaces").Document;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
+const DocumentType = @import("interfaces").DocumentType;
+const XMLDocument = @import("interfaces").XMLDocument;
+const DOMString = @import("typedefs").DOMString;
 
 pub const DOMImplementationCSS = struct {
     pub const Meta = struct {
@@ -36,17 +40,7 @@ pub const DOMImplementationCSS = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        DOMImplementationCSSImpl.init(instance);
-        
-        return instance;
+        return DOMImplementationCSSImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -60,7 +54,7 @@ pub const DOMImplementationCSS = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createDocument(instance: *runtime.Instance, namespace: anyopaque, qualifiedName: DOMString, doctype: anyopaque) anyerror!XMLDocument {
+    pub fn call_createDocument(instance: *runtime.Instance, namespace: DOMString, qualifiedName: DOMString, doctype: DocumentType) anyerror!XMLDocument {
         // [NewObject] - Caller owns the returned object
         
         return try DOMImplementationCSSImpl.call_createDocument(instance, namespace, qualifiedName, doctype);

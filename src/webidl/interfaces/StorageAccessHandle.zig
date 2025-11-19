@@ -1,21 +1,24 @@
 //! Generated from: saa-non-cookie-storage.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const StorageAccessHandleImpl = @import("impls").StorageAccessHandle;
-const Promise<FileSystemDirectoryHandle> = @import("interfaces").Promise<FileSystemDirectoryHandle>;
 const LockManager = @import("interfaces").LockManager;
-const Promise<StorageEstimate> = @import("interfaces").Promise<StorageEstimate>;
-const BroadcastChannel = @import("interfaces").BroadcastChannel;
-const (DOMString or SharedWorkerOptions) = @import("interfaces").(DOMString or SharedWorkerOptions);
+const FileSystemDirectoryHandle = @import("interfaces").FileSystemDirectoryHandle;
+const Blob = @import("interfaces").Blob;
 const CacheStorage = @import("interfaces").CacheStorage;
 const SharedWorker = @import("interfaces").SharedWorker;
 const IDBFactory = @import("interfaces").IDBFactory;
-const (Blob or MediaSource) = @import("interfaces").(Blob or MediaSource);
+const StorageEstimate = @import("dictionaries").StorageEstimate;
+const USVString = @import("interfaces").USVString;
 const Storage = @import("interfaces").Storage;
+const BroadcastChannel = @import("interfaces").BroadcastChannel;
+const SharedWorkerOptions = @import("dictionaries").SharedWorkerOptions;
+const DOMString = @import("typedefs").DOMString;
+const MediaSource = @import("interfaces").MediaSource;
 
 pub const StorageAccessHandle = struct {
     pub const Meta = struct {
@@ -62,17 +65,7 @@ pub const StorageAccessHandle = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        StorageAccessHandleImpl.init(instance);
-        
-        return instance;
+        return StorageAccessHandleImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

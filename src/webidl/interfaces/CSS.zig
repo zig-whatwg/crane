@@ -1,22 +1,22 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const CSSImpl = @import("impls").CSS;
-const Worklet = @import("interfaces").Worklet;
-const CSSParserDeclaration = @import("interfaces").CSSParserDeclaration;
+const CSSToken = @import("typedefs").CSSToken;
 const CSSUnitValue = @import("interfaces").CSSUnitValue;
 const CSSOMString = @import("interfaces").CSSOMString;
 const PropertyDefinition = @import("dictionaries").PropertyDefinition;
-const CSSToken = @import("typedefs").CSSToken;
-const CSSStringSource = @import("typedefs").CSSStringSource;
-const HighlightRegistry = @import("interfaces").HighlightRegistry;
-const Promise<sequence<CSSParserRule>> = @import("interfaces").Promise<sequence<CSSParserRule>>;
 const CSSParserOptions = @import("dictionaries").CSSParserOptions;
-const Promise<CSSParserRule> = @import("interfaces").Promise<CSSParserRule>;
+const HighlightRegistry = @import("interfaces").HighlightRegistry;
+const Worklet = @import("interfaces").Worklet;
+const CSSParserDeclaration = @import("interfaces").CSSParserDeclaration;
+const CSSStringSource = @import("typedefs").CSSStringSource;
+const CSSParserRule = @import("interfaces").CSSParserRule;
+const DOMString = @import("typedefs").DOMString;
 
 pub const CSS = struct {
     pub const Meta = struct {
@@ -131,17 +131,7 @@ pub const CSS = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        CSSImpl.init(instance);
-        
-        return instance;
+        return CSSImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -511,22 +501,9 @@ pub const CSS = struct {
         return try CSSImpl.call_parseRule(instance, css, options);
     }
 
-    /// Arguments for supports (WebIDL overloading)
-    pub const SupportsArgs = union(enum) {
-        /// supports(property, value)
-        CSSOMString_CSSOMString: struct {
-            property: anyopaque,
-            value: anyopaque,
-        },
-        /// supports(conditionText)
-        CSSOMString: anyopaque,
-    };
-
-    pub fn call_supports(instance: *runtime.Instance, args: SupportsArgs) anyerror!bool {
-        switch (args) {
-            .CSSOMString_CSSOMString => |a| return try CSSImpl.CSSOMString_CSSOMString(instance, a.property, a.value),
-            .CSSOMString => |arg| return try CSSImpl.CSSOMString(instance, arg),
-        }
+    pub fn call_supports(instance: *runtime.Instance, property: anyopaque, value: anyopaque) anyerror!bool {
+        
+        return try CSSImpl.call_supports(instance, property, value);
     }
 
     pub fn call_rlh(instance: *runtime.Instance, value: f64) anyerror!CSSUnitValue {

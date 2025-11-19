@@ -1,13 +1,14 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const RTCSessionDescriptionImpl = @import("impls").RTCSessionDescription;
-const RTCSdpType = @import("enums").RTCSdpType;
 const RTCSessionDescriptionInit = @import("dictionaries").RTCSessionDescriptionInit;
+const DOMString = @import("typedefs").DOMString;
+const RTCSdpType = @import("enums").RTCSdpType;
 
 pub const RTCSessionDescription = struct {
     pub const Meta = struct {
@@ -25,7 +26,7 @@ pub const RTCSessionDescription = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            type: RTCSdpType = undefined,
+            @"type": RTCSdpType = undefined,
             sdp: runtime.DOMString = undefined,
         },
         Meta.BaseType,
@@ -43,17 +44,7 @@ pub const RTCSessionDescription = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        RTCSessionDescriptionImpl.init(instance);
-        
-        return instance;
+        return RTCSessionDescriptionImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

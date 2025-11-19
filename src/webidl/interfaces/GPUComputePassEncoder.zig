@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -11,12 +11,14 @@ const GPUCommandsMixin = @import("interfaces").GPUCommandsMixin;
 const GPUDebugCommandsMixin = @import("interfaces").GPUDebugCommandsMixin;
 const GPUBindingCommandsMixin = @import("interfaces").GPUBindingCommandsMixin;
 const GPUIndex32 = @import("typedefs").GPUIndex32;
+const Uint32Array = @import("interfaces").Uint32Array;
+const GPUBufferDynamicOffset = @import("typedefs").GPUBufferDynamicOffset;
+const GPUSize32 = @import("typedefs").GPUSize32;
+const USVString = @import("interfaces").USVString;
 const GPUBuffer = @import("interfaces").GPUBuffer;
 const GPUComputePipeline = @import("interfaces").GPUComputePipeline;
 const GPUSize64 = @import("typedefs").GPUSize64;
-const GPUSize32 = @import("typedefs").GPUSize32;
 const GPUBindGroup = @import("interfaces").GPUBindGroup;
-const Uint32Array = @import("interfaces").Uint32Array;
 
 pub const GPUComputePassEncoder = struct {
     pub const Meta = struct {
@@ -68,17 +70,7 @@ pub const GPUComputePassEncoder = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        GPUComputePassEncoderImpl.init(instance);
-        
-        return instance;
+        return GPUComputePassEncoderImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -108,29 +100,9 @@ pub const GPUComputePassEncoder = struct {
         return try GPUComputePassEncoderImpl.call_popDebugGroup(instance);
     }
 
-    /// Arguments for setBindGroup (WebIDL overloading)
-    pub const SetBindGroupArgs = union(enum) {
-        /// setBindGroup(index, bindGroup, dynamicOffsets)
-        GPUIndex32_GPUBindGroup?_sequence: struct {
-            index: GPUIndex32,
-            bindGroup: anyopaque,
-            dynamicOffsets: anyopaque,
-        },
-        /// setBindGroup(index, bindGroup, dynamicOffsetsData, dynamicOffsetsDataStart, dynamicOffsetsDataLength)
-        GPUIndex32_GPUBindGroup?_Uint32Array_GPUSize64_GPUSize32: struct {
-            index: GPUIndex32,
-            bindGroup: anyopaque,
-            dynamicOffsetsData: anyopaque,
-            dynamicOffsetsDataStart: GPUSize64,
-            dynamicOffsetsDataLength: GPUSize32,
-        },
-    };
-
-    pub fn call_setBindGroup(instance: *runtime.Instance, args: SetBindGroupArgs) anyerror!void {
-        switch (args) {
-            .GPUIndex32_GPUBindGroup?_sequence => |a| return try GPUComputePassEncoderImpl.GPUIndex32_GPUBindGroup?_sequence(instance, a.index, a.bindGroup, a.dynamicOffsets),
-            .GPUIndex32_GPUBindGroup?_Uint32Array_GPUSize64_GPUSize32 => |a| return try GPUComputePassEncoderImpl.GPUIndex32_GPUBindGroup?_Uint32Array_GPUSize64_GPUSize32(instance, a.index, a.bindGroup, a.dynamicOffsetsData, a.dynamicOffsetsDataStart, a.dynamicOffsetsDataLength),
-        }
+    pub fn call_setBindGroup(instance: *runtime.Instance, index: GPUIndex32, bindGroup: GPUBindGroup, dynamicOffsets: anyopaque) anyerror!void {
+        
+        return try GPUComputePassEncoderImpl.call_setBindGroup(instance, index, bindGroup, dynamicOffsets);
     }
 
     pub fn call_dispatchWorkgroupsIndirect(instance: *runtime.Instance, indirectBuffer: GPUBuffer, indirectOffset: GPUSize64) anyerror!void {

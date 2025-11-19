@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,6 +7,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const GPUCompilationMessageImpl = @import("impls").GPUCompilationMessage;
 const GPUCompilationMessageType = @import("enums").GPUCompilationMessageType;
+const DOMString = @import("typedefs").DOMString;
 
 pub const GPUCompilationMessage = struct {
     pub const Meta = struct {
@@ -30,7 +31,7 @@ pub const GPUCompilationMessage = struct {
     pub const State = runtime.FlattenedState(
         struct {
             message: runtime.DOMString = undefined,
-            type: GPUCompilationMessageType = undefined,
+            @"type": GPUCompilationMessageType = undefined,
             lineNum: u64 = undefined,
             linePos: u64 = undefined,
             offset: u64 = undefined,
@@ -53,17 +54,7 @@ pub const GPUCompilationMessage = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        GPUCompilationMessageImpl.init(instance);
-        
-        return instance;
+        return GPUCompilationMessageImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

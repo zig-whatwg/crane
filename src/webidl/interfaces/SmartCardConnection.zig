@@ -1,18 +1,17 @@
 //! Generated from: web-smart-card.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const SmartCardConnectionImpl = @import("impls").SmartCardConnection;
-const Promise<ArrayBuffer> = @import("interfaces").Promise<ArrayBuffer>;
-const Promise<SmartCardConnectionStatus> = @import("interfaces").Promise<SmartCardConnectionStatus>;
+const ArrayBuffer = @import("interfaces").ArrayBuffer;
 const SmartCardTransactionOptions = @import("dictionaries").SmartCardTransactionOptions;
 const SmartCardTransactionCallback = @import("callbacks").SmartCardTransactionCallback;
-const BufferSource = @import("typedefs").BufferSource;
 const SmartCardDisposition = @import("enums").SmartCardDisposition;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
+const BufferSource = @import("typedefs").BufferSource;
+const SmartCardConnectionStatus = @import("dictionaries").SmartCardConnectionStatus;
 const SmartCardTransmitOptions = @import("dictionaries").SmartCardTransmitOptions;
 
 pub const SmartCardConnection = struct {
@@ -24,6 +23,7 @@ pub const SmartCardConnection = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "DedicatedWorker", "SharedWorker", "Window" } } },
             .{ .name = "SecureContext" },
+            .{ .name = "IsolatedContext" },
         };
         
         /// Global contexts where this interface is exposed
@@ -54,17 +54,7 @@ pub const SmartCardConnection = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        SmartCardConnectionImpl.init(instance);
-        
-        return instance;
+        return SmartCardConnectionImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

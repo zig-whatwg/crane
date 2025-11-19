@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,6 +9,8 @@ const CSSRotateImpl = @import("impls").CSSRotate;
 const CSSTransformComponent = @import("interfaces").CSSTransformComponent;
 const CSSNumericValue = @import("interfaces").CSSNumericValue;
 const CSSNumberish = @import("typedefs").CSSNumberish;
+const DOMMatrix = @import("interfaces").DOMMatrix;
+const DOMString = @import("typedefs").DOMString;
 
 pub const CSSRotate = struct {
     pub const Meta = struct {
@@ -60,17 +62,7 @@ pub const CSSRotate = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        CSSRotateImpl.init(instance);
-        
-        return instance;
+        return CSSRotateImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -83,22 +75,28 @@ pub const CSSRotate = struct {
         deinit(instance);
     }
 
-    /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, angle: CSSNumericValue) !*runtime.Instance {
-        const instance = try init(allocator);
-        errdefer deinit(instance);
-        
-        try CSSRotateImpl.constructor(instance, angle);
-        
-        return instance;
-    }
+    /// Arguments for constructor (WebIDL overloading)
+    pub const ConstructorArgs = union(enum) {
+        /// constructor(angle)
+        CSSNumericValue: CSSNumericValue,
+        /// constructor(x, y, z, angle)
+        CSSNumberish_CSSNumberish_CSSNumberish_CSSNumericValue: struct {
+            x: CSSNumberish,
+            y: CSSNumberish,
+            z: CSSNumberish,
+            angle: CSSNumericValue,
+        },
+    };
 
-    /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, x: CSSNumberish, y: CSSNumberish, z: CSSNumberish, angle: CSSNumericValue) !*runtime.Instance {
+    /// WebIDL constructor (overloaded)
+    pub fn call_constructor(allocator: std.mem.Allocator, args: ConstructorArgs) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try CSSRotateImpl.constructor(instance, x, y, z, angle);
+        switch (args) {
+            .CSSNumericValue => |arg| try CSSRotateImpl.constructor(instance, arg),
+            .CSSNumberish_CSSNumberish_CSSNumberish_CSSNumericValue => |a| try CSSRotateImpl.constructor(instance, a.x, a.y, a.z, a.angle),
+        }
         
         return instance;
     }

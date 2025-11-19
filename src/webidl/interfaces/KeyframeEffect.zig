@@ -1,5 +1,5 @@
 //! Generated from: web-animations.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,11 +8,14 @@ const runtime = @import("runtime");
 const KeyframeEffectImpl = @import("impls").KeyframeEffect;
 const AnimationEffect = @import("interfaces").AnimationEffect;
 const Element = @import("interfaces").Element;
-const (unrestricted double or KeyframeEffectOptions) = @import("interfaces").(unrestricted double or KeyframeEffectOptions);
-const CSSOMString = @import("interfaces").CSSOMString;
 const IterationCompositeOperation = @import("enums").IterationCompositeOperation;
-const object = @import("interfaces").object;
+const CSSOMString = @import("interfaces").CSSOMString;
+const GroupEffect = @import("interfaces").GroupEffect;
+const EffectTiming = @import("dictionaries").EffectTiming;
+const KeyframeEffectOptions = @import("dictionaries").KeyframeEffectOptions;
+const ComputedEffectTiming = @import("dictionaries").ComputedEffectTiming;
 const CompositeOperation = @import("enums").CompositeOperation;
+const OptionalEffectTiming = @import("dictionaries").OptionalEffectTiming;
 
 pub const KeyframeEffect = struct {
     pub const Meta = struct {
@@ -68,17 +71,7 @@ pub const KeyframeEffect = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        KeyframeEffectImpl.init(instance);
-        
-        return instance;
+        return KeyframeEffectImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -91,43 +84,48 @@ pub const KeyframeEffect = struct {
         deinit(instance);
     }
 
-    /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, target: anyopaque, keyframes: anyopaque, options: anyopaque) !*runtime.Instance {
+    /// Arguments for constructor (WebIDL overloading)
+    pub const ConstructorArgs = union(enum) {
+        /// constructor(target, keyframes, options)
+        Element_object_union: struct {
+            target: Element,
+            keyframes: anyopaque,
+            options: anyopaque,
+        },
+        /// constructor(source)
+        KeyframeEffect: KeyframeEffect,
+    };
+
+    /// WebIDL constructor (overloaded)
+    pub fn call_constructor(allocator: std.mem.Allocator, args: ConstructorArgs) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try KeyframeEffectImpl.constructor(instance, target, keyframes, options);
+        switch (args) {
+            .Element_object_union => |a| try KeyframeEffectImpl.constructor(instance, a.target, a.keyframes, a.options),
+            .KeyframeEffect => |arg| try KeyframeEffectImpl.constructor(instance, arg),
+        }
         
         return instance;
     }
 
-    /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, source: KeyframeEffect) !*runtime.Instance {
-        const instance = try init(allocator);
-        errdefer deinit(instance);
-        
-        try KeyframeEffectImpl.constructor(instance, source);
-        
-        return instance;
-    }
-
-    pub fn get_parent(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_parent(instance: *runtime.Instance) anyerror!GroupEffect {
         return try KeyframeEffectImpl.get_parent(instance);
     }
 
-    pub fn get_previousSibling(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_previousSibling(instance: *runtime.Instance) anyerror!AnimationEffect {
         return try KeyframeEffectImpl.get_previousSibling(instance);
     }
 
-    pub fn get_nextSibling(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_nextSibling(instance: *runtime.Instance) anyerror!AnimationEffect {
         return try KeyframeEffectImpl.get_nextSibling(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!Element {
         return try KeyframeEffectImpl.get_target(instance);
     }
 
-    pub fn set_target(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_target(instance: *runtime.Instance, value: Element) anyerror!void {
         try KeyframeEffectImpl.set_target(instance, value);
     }
 

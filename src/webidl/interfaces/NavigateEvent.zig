@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,12 +7,15 @@ const std = @import("std");
 const runtime = @import("runtime");
 const NavigateEventImpl = @import("impls").NavigateEvent;
 const Event = @import("interfaces").Event;
-const Element = @import("interfaces").Element;
 const NavigationType = @import("enums").NavigationType;
-const NavigateEventInit = @import("dictionaries").NavigateEventInit;
-const AbortSignal = @import("interfaces").AbortSignal;
-const NavigationInterceptOptions = @import("dictionaries").NavigationInterceptOptions;
 const NavigationDestination = @import("interfaces").NavigationDestination;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const Element = @import("interfaces").Element;
+const AbortSignal = @import("interfaces").AbortSignal;
+const NavigateEventInit = @import("dictionaries").NavigateEventInit;
+const NavigationInterceptOptions = @import("dictionaries").NavigationInterceptOptions;
+const EventTarget = @import("interfaces").EventTarget;
+const EventInit = @import("dictionaries").EventInit;
 const FormData = @import("interfaces").FormData;
 const DOMString = @import("typedefs").DOMString;
 
@@ -99,17 +102,7 @@ pub const NavigateEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        NavigateEventImpl.init(instance);
-        
-        return instance;
+        return NavigateEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -123,11 +116,11 @@ pub const NavigateEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, eventInitDict: NavigateEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, eventInitDict: NavigateEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try NavigateEventImpl.constructor(instance, type_, eventInitDict);
+        try NavigateEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -136,15 +129,15 @@ pub const NavigateEvent = struct {
         return try NavigateEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try NavigateEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try NavigateEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try NavigateEventImpl.get_currentTarget(instance);
     }
 
@@ -217,11 +210,11 @@ pub const NavigateEvent = struct {
         return try NavigateEventImpl.get_signal(instance);
     }
 
-    pub fn get_formData(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_formData(instance: *runtime.Instance) anyerror!FormData {
         return try NavigateEventImpl.get_formData(instance);
     }
 
-    pub fn get_downloadRequest(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_downloadRequest(instance: *runtime.Instance) anyerror!DOMString {
         return try NavigateEventImpl.get_downloadRequest(instance);
     }
 
@@ -233,7 +226,7 @@ pub const NavigateEvent = struct {
         return try NavigateEventImpl.get_hasUAVisualTransition(instance);
     }
 
-    pub fn get_sourceElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_sourceElement(instance: *runtime.Instance) anyerror!Element {
         return try NavigateEventImpl.get_sourceElement(instance);
     }
 
@@ -241,9 +234,9 @@ pub const NavigateEvent = struct {
         return try NavigateEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try NavigateEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try NavigateEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_scroll(instance: *runtime.Instance) anyerror!void {

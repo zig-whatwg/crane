@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,6 +8,8 @@ const runtime = @import("runtime");
 const CSSSkewImpl = @import("impls").CSSSkew;
 const CSSTransformComponent = @import("interfaces").CSSTransformComponent;
 const CSSNumericValue = @import("interfaces").CSSNumericValue;
+const DOMMatrix = @import("interfaces").DOMMatrix;
+const DOMString = @import("typedefs").DOMString;
 
 pub const CSSSkew = struct {
     pub const Meta = struct {
@@ -53,17 +55,7 @@ pub const CSSSkew = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        CSSSkewImpl.init(instance);
-        
-        return instance;
+        return CSSSkewImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

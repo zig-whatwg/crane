@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -13,10 +13,11 @@ const GPURenderPassDescriptor = @import("dictionaries").GPURenderPassDescriptor;
 const GPUSize32 = @import("typedefs").GPUSize32;
 const GPUCommandBuffer = @import("interfaces").GPUCommandBuffer;
 const GPUExtent3D = @import("typedefs").GPUExtent3D;
+const USVString = @import("interfaces").USVString;
 const GPURenderPassEncoder = @import("interfaces").GPURenderPassEncoder;
+const GPUComputePassEncoder = @import("interfaces").GPUComputePassEncoder;
 const GPUCommandBufferDescriptor = @import("dictionaries").GPUCommandBufferDescriptor;
 const GPUComputePassDescriptor = @import("dictionaries").GPUComputePassDescriptor;
-const GPUComputePassEncoder = @import("interfaces").GPUComputePassEncoder;
 const GPUBuffer = @import("interfaces").GPUBuffer;
 const GPUSize64 = @import("typedefs").GPUSize64;
 const GPUTexelCopyTextureInfo = @import("dictionaries").GPUTexelCopyTextureInfo;
@@ -76,17 +77,7 @@ pub const GPUCommandEncoder = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        GPUCommandEncoderImpl.init(instance);
-        
-        return instance;
+        return GPUCommandEncoderImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -107,29 +98,9 @@ pub const GPUCommandEncoder = struct {
         try GPUCommandEncoderImpl.set_label(instance, value);
     }
 
-    /// Arguments for copyBufferToBuffer (WebIDL overloading)
-    pub const CopyBufferToBufferArgs = union(enum) {
-        /// copyBufferToBuffer(source, destination, size)
-        GPUBuffer_GPUBuffer_GPUSize64: struct {
-            source: GPUBuffer,
-            destination: GPUBuffer,
-            size: GPUSize64,
-        },
-        /// copyBufferToBuffer(source, sourceOffset, destination, destinationOffset, size)
-        GPUBuffer_GPUSize64_GPUBuffer_GPUSize64_GPUSize64: struct {
-            source: GPUBuffer,
-            sourceOffset: GPUSize64,
-            destination: GPUBuffer,
-            destinationOffset: GPUSize64,
-            size: GPUSize64,
-        },
-    };
-
-    pub fn call_copyBufferToBuffer(instance: *runtime.Instance, args: CopyBufferToBufferArgs) anyerror!void {
-        switch (args) {
-            .GPUBuffer_GPUBuffer_GPUSize64 => |a| return try GPUCommandEncoderImpl.GPUBuffer_GPUBuffer_GPUSize64(instance, a.source, a.destination, a.size),
-            .GPUBuffer_GPUSize64_GPUBuffer_GPUSize64_GPUSize64 => |a| return try GPUCommandEncoderImpl.GPUBuffer_GPUSize64_GPUBuffer_GPUSize64_GPUSize64(instance, a.source, a.sourceOffset, a.destination, a.destinationOffset, a.size),
-        }
+    pub fn call_copyBufferToBuffer(instance: *runtime.Instance, source: GPUBuffer, destination: GPUBuffer, size: GPUSize64) anyerror!void {
+        
+        return try GPUCommandEncoderImpl.call_copyBufferToBuffer(instance, source, destination, size);
     }
 
     pub fn call_copyTextureToBuffer(instance: *runtime.Instance, source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyBufferInfo, copySize: GPUExtent3D) anyerror!void {

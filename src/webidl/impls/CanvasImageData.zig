@@ -13,16 +13,25 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Initialize instance
-pub fn init(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Initialize your instance state here
+/// Initialize instance (delegates to runtime.Instance.init)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable);
+    // TODO: Add custom initialization here if needed
+    // const state = instance.getState(StateType);
+    // state.* = .{}; // Initialize fields
+    return instance;
 }
 
-/// Deinitialize instance
+/// Deinitialize instance (delegates to runtime.Instance.deinit)
 pub fn deinit(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Clean up your instance resources here
+    // TODO: Add custom cleanup here if needed
+    // const state = instance.getState(State);
+    // Clean up fields...
+    runtime.Instance.deinit(instance);
 }
 
 /// Operation: createImageData
@@ -31,14 +40,6 @@ pub fn call_createImageData(instance: *runtime.Instance, sw: i32, sh: i32, setti
     _ = sw;
     _ = sh;
     _ = settings;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: createImageData
-pub fn call_createImageData(instance: *runtime.Instance, imageData: anyopaque) ImplError!anyopaque {
-    _ = instance;
-    _ = imageData;
     // TODO: Implement operation
     return error.NotImplemented;
 }
@@ -61,20 +62,6 @@ pub fn call_putImageData(instance: *runtime.Instance, imageData: anyopaque, dx: 
     _ = imageData;
     _ = dx;
     _ = dy;
-    // TODO: Implement operation
-    return error.NotImplemented;
-}
-
-/// Operation: putImageData
-pub fn call_putImageData(instance: *runtime.Instance, imageData: anyopaque, dx: i32, dy: i32, dirtyX: i32, dirtyY: i32, dirtyWidth: i32, dirtyHeight: i32) ImplError!void {
-    _ = instance;
-    _ = imageData;
-    _ = dx;
-    _ = dy;
-    _ = dirtyX;
-    _ = dirtyY;
-    _ = dirtyWidth;
-    _ = dirtyHeight;
     // TODO: Implement operation
     return error.NotImplemented;
 }

@@ -1,5 +1,5 @@
 //! Generated from: gyroscope.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,8 +7,16 @@ const std = @import("std");
 const runtime = @import("runtime");
 const GyroscopeImpl = @import("impls").Gyroscope;
 const Sensor = @import("interfaces").Sensor;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const GyroscopeSensorOptions = @import("dictionaries").GyroscopeSensorOptions;
-const double = @import("interfaces").double;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const DOMString = @import("typedefs").DOMString;
+const Event = @import("interfaces").Event;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventHandler = @import("typedefs").EventHandler;
+const Observable = @import("interfaces").Observable;
 
 pub const Gyroscope = struct {
     pub const Meta = struct {
@@ -62,17 +70,7 @@ pub const Gyroscope = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        GyroscopeImpl.init(instance);
-        
-        return instance;
+        return GyroscopeImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -103,7 +101,7 @@ pub const Gyroscope = struct {
         return try GyroscopeImpl.get_hasReading(instance);
     }
 
-    pub fn get_timestamp(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_timestamp(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
         return try GyroscopeImpl.get_timestamp(instance);
     }
 
@@ -131,15 +129,15 @@ pub const Gyroscope = struct {
         try GyroscopeImpl.set_onerror(instance, value);
     }
 
-    pub fn get_x(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_x(instance: *runtime.Instance) anyerror!f64 {
         return try GyroscopeImpl.get_x(instance);
     }
 
-    pub fn get_y(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_y(instance: *runtime.Instance) anyerror!f64 {
         return try GyroscopeImpl.get_y(instance);
     }
 
-    pub fn get_z(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_z(instance: *runtime.Instance) anyerror!f64 {
         return try GyroscopeImpl.get_z(instance);
     }
 
@@ -152,23 +150,23 @@ pub const Gyroscope = struct {
         return try GyroscopeImpl.call_stop(instance);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try GyroscopeImpl.call_when(instance, type_, options);
+        return try GyroscopeImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_start(instance: *runtime.Instance) anyerror!void {
         return try GyroscopeImpl.call_start(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try GyroscopeImpl.call_addEventListener(instance, type_, callback, options);
+        return try GyroscopeImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try GyroscopeImpl.call_removeEventListener(instance, type_, callback, options);
+        return try GyroscopeImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

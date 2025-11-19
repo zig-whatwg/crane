@@ -1,5 +1,5 @@
 //! Generated from: web-animations.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,16 +7,23 @@ const std = @import("std");
 const runtime = @import("runtime");
 const AnimationImpl = @import("impls").Animation;
 const EventTarget = @import("interfaces").EventTarget;
-const EventHandler = @import("typedefs").EventHandler;
-const AnimationEffect = @import("interfaces").AnimationEffect;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const AnimationPlayState = @import("enums").AnimationPlayState;
-const (TimelineRangeOffset or CSSNumericValue or CSSKeywordValue or DOMString) = @import("interfaces").(TimelineRangeOffset or CSSNumericValue or CSSKeywordValue or DOMString);
-const AnimationReplaceState = @import("enums").AnimationReplaceState;
+const TimelineRangeOffset = @import("dictionaries").TimelineRangeOffset;
+const CSSKeywordValue = @import("interfaces").CSSKeywordValue;
 const AnimationTrigger = @import("interfaces").AnimationTrigger;
-const CSSNumberish = @import("typedefs").CSSNumberish;
 const AnimationTimeline = @import("interfaces").AnimationTimeline;
-const double = @import("interfaces").double;
-const Promise<Animation> = @import("interfaces").Promise<Animation>;
+const Observable = @import("interfaces").Observable;
+const CSSNumericValue = @import("interfaces").CSSNumericValue;
+const Event = @import("interfaces").Event;
+const AnimationEffect = @import("interfaces").AnimationEffect;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const AnimationReplaceState = @import("enums").AnimationReplaceState;
+const EventListener = @import("interfaces").EventListener;
+const CSSNumberish = @import("typedefs").CSSNumberish;
+const DOMString = @import("typedefs").DOMString;
+const EventHandler = @import("typedefs").EventHandler;
 
 pub const Animation = struct {
     pub const Meta = struct {
@@ -43,16 +50,24 @@ pub const Animation = struct {
             playState: AnimationPlayState = undefined,
             replaceState: AnimationReplaceState = undefined,
             pending: bool = undefined,
-            ready: Promise<Animation> = undefined,
-            finished: Promise<Animation> = undefined,
+            ready: runtime.Promise(Animation) = undefined,
+            finished: runtime.Promise(Animation) = undefined,
             onfinish: EventHandler = undefined,
             oncancel: EventHandler = undefined,
             onremove: EventHandler = undefined,
-            startTime: ?CSSNumberish = null,
-            currentTime: ?CSSNumberish = null,
             trigger: ?AnimationTrigger = null,
-            rangeStart: (TimelineRangeOffset or CSSNumericValue or CSSKeywordValue or DOMString) = undefined,
-            rangeEnd: (TimelineRangeOffset or CSSNumericValue or CSSKeywordValue or DOMString) = undefined,
+            rangeStart: union(enum) {
+                TimelineRangeOffset: TimelineRangeOffset,
+                CSSNumericValue: CSSNumericValue,
+                CSSKeywordValue: CSSKeywordValue,
+                DOMString: runtime.DOMString,
+            } = undefined,
+            rangeEnd: union(enum) {
+                TimelineRangeOffset: TimelineRangeOffset,
+                CSSNumericValue: CSSNumericValue,
+                CSSKeywordValue: CSSKeywordValue,
+                DOMString: runtime.DOMString,
+            } = undefined,
             overallProgress: ?f64 = null,
         },
         Meta.BaseType,
@@ -62,7 +77,6 @@ pub const Animation = struct {
     pub const vtable = runtime.buildVTable(Animation, .{
         .deinit_fn = &deinit_wrapper,
 
-        .get_currentTime = &get_currentTime,
         .get_currentTime = &get_currentTime,
         .get_effect = &get_effect,
         .get_finished = &get_finished,
@@ -79,11 +93,9 @@ pub const Animation = struct {
         .get_ready = &get_ready,
         .get_replaceState = &get_replaceState,
         .get_startTime = &get_startTime,
-        .get_startTime = &get_startTime,
         .get_timeline = &get_timeline,
         .get_trigger = &get_trigger,
 
-        .set_currentTime = &set_currentTime,
         .set_currentTime = &set_currentTime,
         .set_effect = &set_effect,
         .set_id = &set_id,
@@ -93,7 +105,6 @@ pub const Animation = struct {
         .set_playbackRate = &set_playbackRate,
         .set_rangeEnd = &set_rangeEnd,
         .set_rangeStart = &set_rangeStart,
-        .set_startTime = &set_startTime,
         .set_startTime = &set_startTime,
         .set_timeline = &set_timeline,
         .set_trigger = &set_trigger,
@@ -114,17 +125,7 @@ pub const Animation = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        AnimationImpl.init(instance);
-        
-        return instance;
+        return AnimationImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -138,7 +139,7 @@ pub const Animation = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, effect: anyopaque, timeline: anyopaque) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, effect: AnimationEffect, timeline: AnimationTimeline) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
@@ -155,35 +156,35 @@ pub const Animation = struct {
         try AnimationImpl.set_id(instance, value);
     }
 
-    pub fn get_effect(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_effect(instance: *runtime.Instance) anyerror!AnimationEffect {
         return try AnimationImpl.get_effect(instance);
     }
 
-    pub fn set_effect(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_effect(instance: *runtime.Instance, value: AnimationEffect) anyerror!void {
         try AnimationImpl.set_effect(instance, value);
     }
 
-    pub fn get_timeline(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_timeline(instance: *runtime.Instance) anyerror!AnimationTimeline {
         return try AnimationImpl.get_timeline(instance);
     }
 
-    pub fn set_timeline(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_timeline(instance: *runtime.Instance, value: AnimationTimeline) anyerror!void {
         try AnimationImpl.set_timeline(instance, value);
     }
 
-    pub fn get_startTime(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_startTime(instance: *runtime.Instance) anyerror!f64 {
         return try AnimationImpl.get_startTime(instance);
     }
 
-    pub fn set_startTime(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_startTime(instance: *runtime.Instance, value: f64) anyerror!void {
         try AnimationImpl.set_startTime(instance, value);
     }
 
-    pub fn get_currentTime(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTime(instance: *runtime.Instance) anyerror!f64 {
         return try AnimationImpl.get_currentTime(instance);
     }
 
-    pub fn set_currentTime(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_currentTime(instance: *runtime.Instance, value: f64) anyerror!void {
         try AnimationImpl.set_currentTime(instance, value);
     }
 
@@ -239,27 +240,11 @@ pub const Animation = struct {
         try AnimationImpl.set_onremove(instance, value);
     }
 
-    pub fn get_startTime(instance: *runtime.Instance) anyerror!anyopaque {
-        return try AnimationImpl.get_startTime(instance);
-    }
-
-    pub fn set_startTime(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try AnimationImpl.set_startTime(instance, value);
-    }
-
-    pub fn get_currentTime(instance: *runtime.Instance) anyerror!anyopaque {
-        return try AnimationImpl.get_currentTime(instance);
-    }
-
-    pub fn set_currentTime(instance: *runtime.Instance, value: anyopaque) anyerror!void {
-        try AnimationImpl.set_currentTime(instance, value);
-    }
-
-    pub fn get_trigger(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_trigger(instance: *runtime.Instance) anyerror!AnimationTrigger {
         return try AnimationImpl.get_trigger(instance);
     }
 
-    pub fn set_trigger(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_trigger(instance: *runtime.Instance, value: AnimationTrigger) anyerror!void {
         try AnimationImpl.set_trigger(instance, value);
     }
 
@@ -279,7 +264,7 @@ pub const Animation = struct {
         try AnimationImpl.set_rangeEnd(instance, value);
     }
 
-    pub fn get_overallProgress(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_overallProgress(instance: *runtime.Instance) anyerror!f64 {
         return try AnimationImpl.get_overallProgress(instance);
     }
 
@@ -296,9 +281,9 @@ pub const Animation = struct {
         return try AnimationImpl.call_persist(instance);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try AnimationImpl.call_when(instance, type_, options);
+        return try AnimationImpl.call_when(instance, @"type", options);
     }
 
     /// Extended attributes: [CEReactions]
@@ -331,14 +316,14 @@ pub const Animation = struct {
         return try AnimationImpl.call_finish(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try AnimationImpl.call_addEventListener(instance, type_, callback, options);
+        return try AnimationImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try AnimationImpl.call_removeEventListener(instance, type_, callback, options);
+        return try AnimationImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

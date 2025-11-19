@@ -1,13 +1,12 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const NotRestoredReasonsImpl = @import("impls").NotRestoredReasons;
-const FrozenArray<NotRestoredReasonDetails> = @import("interfaces").FrozenArray<NotRestoredReasonDetails>;
-const FrozenArray<NotRestoredReasons> = @import("interfaces").FrozenArray<NotRestoredReasons>;
+const NotRestoredReasonDetails = @import("interfaces").NotRestoredReasonDetails;
 const USVString = @import("interfaces").USVString;
 const DOMString = @import("typedefs").DOMString;
 
@@ -31,8 +30,8 @@ pub const NotRestoredReasons = struct {
             id: ?runtime.DOMString = null,
             name: ?runtime.DOMString = null,
             url: ?runtime.USVString = null,
-            reasons: ?FrozenArray<NotRestoredReasonDetails> = null,
-            children: ?FrozenArray<NotRestoredReasons> = null,
+            reasons: ?runtime.FrozenArray(NotRestoredReasonDetails) = null,
+            children: ?runtime.FrozenArray(NotRestoredReasons) = null,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -53,17 +52,7 @@ pub const NotRestoredReasons = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        NotRestoredReasonsImpl.init(instance);
-        
-        return instance;
+        return NotRestoredReasonsImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -76,19 +65,19 @@ pub const NotRestoredReasons = struct {
         deinit(instance);
     }
 
-    pub fn get_src(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try NotRestoredReasonsImpl.get_src(instance);
     }
 
-    pub fn get_id(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
         return try NotRestoredReasonsImpl.get_id(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
         return try NotRestoredReasonsImpl.get_name(instance);
     }
 
-    pub fn get_url(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_url(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try NotRestoredReasonsImpl.get_url(instance);
     }
 

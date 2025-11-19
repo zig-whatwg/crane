@@ -1,12 +1,11 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const NavigationTransitionImpl = @import("impls").NavigationTransition;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
 const NavigationType = @import("enums").NavigationType;
 const NavigationHistoryEntry = @import("interfaces").NavigationHistoryEntry;
 
@@ -28,8 +27,8 @@ pub const NavigationTransition = struct {
         struct {
             navigationType: NavigationType = undefined,
             from: NavigationHistoryEntry = undefined,
-            committed: Promise<undefined> = undefined,
-            finished: Promise<undefined> = undefined,
+            committed: runtime.Promise(undefined) = undefined,
+            finished: runtime.Promise(undefined) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -46,17 +45,7 @@ pub const NavigationTransition = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        NavigationTransitionImpl.init(instance);
-        
-        return instance;
+        return NavigationTransitionImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

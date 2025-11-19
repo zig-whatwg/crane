@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,8 @@ const std = @import("std");
 const runtime = @import("runtime");
 const GPUShaderModuleImpl = @import("impls").GPUShaderModule;
 const GPUObjectBase = @import("interfaces").GPUObjectBase;
-const Promise<GPUCompilationInfo> = @import("interfaces").Promise<GPUCompilationInfo>;
+const GPUCompilationInfo = @import("interfaces").GPUCompilationInfo;
+const USVString = @import("interfaces").USVString;
 
 pub const GPUShaderModule = struct {
     pub const Meta = struct {
@@ -49,17 +50,7 @@ pub const GPUShaderModule = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        GPUShaderModuleImpl.init(instance);
-        
-        return instance;
+        return GPUShaderModuleImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

@@ -1,5 +1,5 @@
 //! Generated from: web-animations.idl
-//! Generated at: 2025-11-18T18:28:13Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,7 +9,6 @@ const AnimationTimelineImpl = @import("impls").AnimationTimeline;
 const AnimationEffect = @import("interfaces").AnimationEffect;
 const CSSNumberish = @import("typedefs").CSSNumberish;
 const Animation = @import("interfaces").Animation;
-const double = @import("interfaces").double;
 
 pub const AnimationTimeline = struct {
     pub const Meta = struct {
@@ -28,7 +27,6 @@ pub const AnimationTimeline = struct {
     pub const State = runtime.FlattenedState(
         struct {
             currentTime: ?f64 = null,
-            currentTime: ?CSSNumberish = null,
             duration: ?CSSNumberish = null,
         },
         Meta.BaseType,
@@ -39,7 +37,6 @@ pub const AnimationTimeline = struct {
         .deinit_fn = &deinit_wrapper,
 
         .get_currentTime = &get_currentTime,
-        .get_currentTime = &get_currentTime,
         .get_duration = &get_duration,
 
         .call_play = &call_play,
@@ -47,17 +44,7 @@ pub const AnimationTimeline = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        AnimationTimelineImpl.init(instance);
-        
-        return instance;
+        return AnimationTimelineImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -70,19 +57,15 @@ pub const AnimationTimeline = struct {
         deinit(instance);
     }
 
-    pub fn get_currentTime(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTime(instance: *runtime.Instance) anyerror!f64 {
         return try AnimationTimelineImpl.get_currentTime(instance);
     }
 
-    pub fn get_currentTime(instance: *runtime.Instance) anyerror!anyopaque {
-        return try AnimationTimelineImpl.get_currentTime(instance);
-    }
-
-    pub fn get_duration(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_duration(instance: *runtime.Instance) anyerror!CSSNumberish {
         return try AnimationTimelineImpl.get_duration(instance);
     }
 
-    pub fn call_play(instance: *runtime.Instance, effect: anyopaque) anyerror!Animation {
+    pub fn call_play(instance: *runtime.Instance, effect: AnimationEffect) anyerror!Animation {
         
         return try AnimationTimelineImpl.call_play(instance, effect);
     }

@@ -4,4 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const EffectCallback = *const fn (progress: anyopaque, currentTarget: anyopaque, animation: anyopaque) void;
+pub const EffectCallback = *const fn (progress: f64, currentTarget: anyopaque, animation: anyopaque) void;

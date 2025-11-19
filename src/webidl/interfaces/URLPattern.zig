@@ -1,5 +1,5 @@
 //! Generated from: urlpattern.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,6 +7,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const URLPatternImpl = @import("impls").URLPattern;
 const URLPatternOptions = @import("dictionaries").URLPatternOptions;
+const USVString = @import("interfaces").USVString;
 const URLPatternResult = @import("dictionaries").URLPatternResult;
 const URLPatternInput = @import("typedefs").URLPatternInput;
 
@@ -62,17 +63,7 @@ pub const URLPattern = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        URLPatternImpl.init(instance);
-        
-        return instance;
+        return URLPatternImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -85,22 +76,30 @@ pub const URLPattern = struct {
         deinit(instance);
     }
 
-    /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, input: URLPatternInput, baseURL: runtime.USVString, options: URLPatternOptions) !*runtime.Instance {
-        const instance = try init(allocator);
-        errdefer deinit(instance);
-        
-        try URLPatternImpl.constructor(instance, input, baseURL, options);
-        
-        return instance;
-    }
+    /// Arguments for constructor (WebIDL overloading)
+    pub const ConstructorArgs = union(enum) {
+        /// constructor(input, baseURL, options)
+        URLPatternInput_USVString_URLPatternOptions: struct {
+            input: URLPatternInput,
+            baseURL: runtime.USVString,
+            options: URLPatternOptions,
+        },
+        /// constructor(input, options)
+        URLPatternInput_URLPatternOptions: struct {
+            input: URLPatternInput,
+            options: URLPatternOptions,
+        },
+    };
 
-    /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, input: URLPatternInput, options: URLPatternOptions) !*runtime.Instance {
+    /// WebIDL constructor (overloaded)
+    pub fn call_constructor(allocator: std.mem.Allocator, args: ConstructorArgs) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try URLPatternImpl.constructor(instance, input, options);
+        switch (args) {
+            .URLPatternInput_USVString_URLPatternOptions => |a| try URLPatternImpl.constructor(instance, a.input, a.baseURL, a.options),
+            .URLPatternInput_URLPatternOptions => |a| try URLPatternImpl.constructor(instance, a.input, a.options),
+        }
         
         return instance;
     }
@@ -146,7 +145,7 @@ pub const URLPattern = struct {
         return try URLPatternImpl.call_test(instance, input, baseURL);
     }
 
-    pub fn call_exec(instance: *runtime.Instance, input: URLPatternInput, baseURL: runtime.USVString) anyerror!anyopaque {
+    pub fn call_exec(instance: *runtime.Instance, input: URLPatternInput, baseURL: runtime.USVString) anyerror!URLPatternResult {
         
         return try URLPatternImpl.call_exec(instance, input, baseURL);
     }

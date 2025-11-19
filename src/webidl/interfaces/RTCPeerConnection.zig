@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,40 +7,43 @@ const std = @import("std");
 const runtime = @import("runtime");
 const RTCPeerConnectionImpl = @import("impls").RTCPeerConnection;
 const EventTarget = @import("interfaces").EventTarget;
-const DOMString = @import("typedefs").DOMString;
+const RTCRtpTransceiver = @import("interfaces").RTCRtpTransceiver;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const RTCPeerConnectionErrorCallback = @import("callbacks").RTCPeerConnectionErrorCallback;
 const RTCDataChannelInit = @import("dictionaries").RTCDataChannelInit;
 const RTCRtpSender = @import("interfaces").RTCRtpSender;
 const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
 const RTCIceGatheringState = @import("enums").RTCIceGatheringState;
-const RTCSignalingState = @import("enums").RTCSignalingState;
-const RTCIceCandidateInit = @import("dictionaries").RTCIceCandidateInit;
-const RTCPeerConnectionState = @import("enums").RTCPeerConnectionState;
 const AlgorithmIdentifier = @import("typedefs").AlgorithmIdentifier;
-const (MediaStreamTrack or DOMString) = @import("interfaces").(MediaStreamTrack or DOMString);
+const RTCIceCandidateInit = @import("dictionaries").RTCIceCandidateInit;
+const USVString = @import("interfaces").USVString;
+const RTCSignalingState = @import("enums").RTCSignalingState;
+const RTCPeerConnectionState = @import("enums").RTCPeerConnectionState;
 const RTCDataChannel = @import("interfaces").RTCDataChannel;
-const Promise<RTCStatsReport> = @import("interfaces").Promise<RTCStatsReport>;
-const RTCIdentityProviderOptions = @import("dictionaries").RTCIdentityProviderOptions;
+const RTCCertificate = @import("interfaces").RTCCertificate;
+const RTCRtpReceiver = @import("interfaces").RTCRtpReceiver;
 const MediaStream = @import("interfaces").MediaStream;
-const Promise<DOMString> = @import("interfaces").Promise<DOMString>;
+const RTCIdentityProviderOptions = @import("dictionaries").RTCIdentityProviderOptions;
 const RTCSctpTransport = @import("interfaces").RTCSctpTransport;
-const Promise<RTCIdentityAssertion> = @import("interfaces").Promise<RTCIdentityAssertion>;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
 const RTCIceConnectionState = @import("enums").RTCIceConnectionState;
 const RTCSessionDescriptionCallback = @import("callbacks").RTCSessionDescriptionCallback;
 const RTCLocalSessionDescriptionInit = @import("dictionaries").RTCLocalSessionDescriptionInit;
 const EventHandler = @import("typedefs").EventHandler;
-const Promise<RTCSessionDescriptionInit> = @import("interfaces").Promise<RTCSessionDescriptionInit>;
-const Promise<RTCCertificate> = @import("interfaces").Promise<RTCCertificate>;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const VoidFunction = @import("callbacks").VoidFunction;
+const RTCStatsReport = @import("interfaces").RTCStatsReport;
 const RTCSessionDescriptionInit = @import("dictionaries").RTCSessionDescriptionInit;
 const RTCSessionDescription = @import("interfaces").RTCSessionDescription;
+const RTCIdentityAssertion = @import("interfaces").RTCIdentityAssertion;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
 const RTCConfiguration = @import("dictionaries").RTCConfiguration;
 const RTCOfferOptions = @import("dictionaries").RTCOfferOptions;
 const RTCRtpTransceiverInit = @import("dictionaries").RTCRtpTransceiverInit;
-const boolean = @import("interfaces").boolean;
 const RTCAnswerOptions = @import("dictionaries").RTCAnswerOptions;
-const RTCRtpTransceiver = @import("interfaces").RTCRtpTransceiver;
+const DOMString = @import("typedefs").DOMString;
 
 pub const RTCPeerConnection = struct {
     pub const Meta = struct {
@@ -79,7 +82,7 @@ pub const RTCPeerConnection = struct {
             ontrack: EventHandler = undefined,
             sctp: ?RTCSctpTransport = null,
             ondatachannel: EventHandler = undefined,
-            peerIdentity: Promise<RTCIdentityAssertion> = undefined,
+            peerIdentity: runtime.Promise(RTCIdentityAssertion) = undefined,
             idpLoginUrl: ?runtime.DOMString = null,
             idpErrorInfo: ?runtime.DOMString = null,
         },
@@ -153,17 +156,7 @@ pub const RTCPeerConnection = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        RTCPeerConnectionImpl.init(instance);
-        
-        return instance;
+        return RTCPeerConnectionImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -186,27 +179,27 @@ pub const RTCPeerConnection = struct {
         return instance;
     }
 
-    pub fn get_localDescription(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_localDescription(instance: *runtime.Instance) anyerror!RTCSessionDescription {
         return try RTCPeerConnectionImpl.get_localDescription(instance);
     }
 
-    pub fn get_currentLocalDescription(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentLocalDescription(instance: *runtime.Instance) anyerror!RTCSessionDescription {
         return try RTCPeerConnectionImpl.get_currentLocalDescription(instance);
     }
 
-    pub fn get_pendingLocalDescription(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_pendingLocalDescription(instance: *runtime.Instance) anyerror!RTCSessionDescription {
         return try RTCPeerConnectionImpl.get_pendingLocalDescription(instance);
     }
 
-    pub fn get_remoteDescription(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_remoteDescription(instance: *runtime.Instance) anyerror!RTCSessionDescription {
         return try RTCPeerConnectionImpl.get_remoteDescription(instance);
     }
 
-    pub fn get_currentRemoteDescription(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentRemoteDescription(instance: *runtime.Instance) anyerror!RTCSessionDescription {
         return try RTCPeerConnectionImpl.get_currentRemoteDescription(instance);
     }
 
-    pub fn get_pendingRemoteDescription(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_pendingRemoteDescription(instance: *runtime.Instance) anyerror!RTCSessionDescription {
         return try RTCPeerConnectionImpl.get_pendingRemoteDescription(instance);
     }
 
@@ -226,7 +219,7 @@ pub const RTCPeerConnection = struct {
         return try RTCPeerConnectionImpl.get_connectionState(instance);
     }
 
-    pub fn get_canTrickleIceCandidates(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_canTrickleIceCandidates(instance: *runtime.Instance) anyerror!bool {
         return try RTCPeerConnectionImpl.get_canTrickleIceCandidates(instance);
     }
 
@@ -294,7 +287,7 @@ pub const RTCPeerConnection = struct {
         try RTCPeerConnectionImpl.set_ontrack(instance, value);
     }
 
-    pub fn get_sctp(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_sctp(instance: *runtime.Instance) anyerror!RTCSctpTransport {
         return try RTCPeerConnectionImpl.get_sctp(instance);
     }
 
@@ -310,17 +303,17 @@ pub const RTCPeerConnection = struct {
         return try RTCPeerConnectionImpl.get_peerIdentity(instance);
     }
 
-    pub fn get_idpLoginUrl(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_idpLoginUrl(instance: *runtime.Instance) anyerror!DOMString {
         return try RTCPeerConnectionImpl.get_idpLoginUrl(instance);
     }
 
-    pub fn get_idpErrorInfo(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_idpErrorInfo(instance: *runtime.Instance) anyerror!DOMString {
         return try RTCPeerConnectionImpl.get_idpErrorInfo(instance);
     }
 
-    pub fn call_addTransceiver(instance: *runtime.Instance, trackOrKind: anyopaque, init: RTCRtpTransceiverInit) anyerror!RTCRtpTransceiver {
+    pub fn call_addTransceiver(instance: *runtime.Instance, trackOrKind: anyopaque, init_data: RTCRtpTransceiverInit) anyerror!RTCRtpTransceiver {
         
-        return try RTCPeerConnectionImpl.call_addTransceiver(instance, trackOrKind, init);
+        return try RTCPeerConnectionImpl.call_addTransceiver(instance, trackOrKind, init_data);
     }
 
     pub fn call_setIdentityProvider(instance: *runtime.Instance, provider: DOMString, options: RTCIdentityProviderOptions) anyerror!void {
@@ -328,9 +321,9 @@ pub const RTCPeerConnection = struct {
         return try RTCPeerConnectionImpl.call_setIdentityProvider(instance, provider, options);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try RTCPeerConnectionImpl.call_when(instance, type_, options);
+        return try RTCPeerConnectionImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_setConfiguration(instance: *runtime.Instance, configuration: RTCConfiguration) anyerror!void {
@@ -338,61 +331,19 @@ pub const RTCPeerConnection = struct {
         return try RTCPeerConnectionImpl.call_setConfiguration(instance, configuration);
     }
 
-    /// Arguments for setRemoteDescription (WebIDL overloading)
-    pub const SetRemoteDescriptionArgs = union(enum) {
-        /// setRemoteDescription(description)
-        RTCSessionDescriptionInit: RTCSessionDescriptionInit,
-        /// setRemoteDescription(description, successCallback, failureCallback)
-        RTCSessionDescriptionInit_VoidFunction_RTCPeerConnectionErrorCallback: struct {
-            description: RTCSessionDescriptionInit,
-            successCallback: VoidFunction,
-            failureCallback: RTCPeerConnectionErrorCallback,
-        },
-    };
-
-    pub fn call_setRemoteDescription(instance: *runtime.Instance, args: SetRemoteDescriptionArgs) anyerror!anyopaque {
-        switch (args) {
-            .RTCSessionDescriptionInit => |arg| return try RTCPeerConnectionImpl.RTCSessionDescriptionInit(instance, arg),
-            .RTCSessionDescriptionInit_VoidFunction_RTCPeerConnectionErrorCallback => |a| return try RTCPeerConnectionImpl.RTCSessionDescriptionInit_VoidFunction_RTCPeerConnectionErrorCallback(instance, a.description, a.successCallback, a.failureCallback),
-        }
+    pub fn call_setRemoteDescription(instance: *runtime.Instance, description: RTCSessionDescriptionInit) anyerror!anyopaque {
+        
+        return try RTCPeerConnectionImpl.call_setRemoteDescription(instance, description);
     }
 
-    /// Arguments for addIceCandidate (WebIDL overloading)
-    pub const AddIceCandidateArgs = union(enum) {
-        /// addIceCandidate(candidate)
-        RTCIceCandidateInit: RTCIceCandidateInit,
-        /// addIceCandidate(candidate, successCallback, failureCallback)
-        RTCIceCandidateInit_VoidFunction_RTCPeerConnectionErrorCallback: struct {
-            candidate: RTCIceCandidateInit,
-            successCallback: VoidFunction,
-            failureCallback: RTCPeerConnectionErrorCallback,
-        },
-    };
-
-    pub fn call_addIceCandidate(instance: *runtime.Instance, args: AddIceCandidateArgs) anyerror!anyopaque {
-        switch (args) {
-            .RTCIceCandidateInit => |arg| return try RTCPeerConnectionImpl.RTCIceCandidateInit(instance, arg),
-            .RTCIceCandidateInit_VoidFunction_RTCPeerConnectionErrorCallback => |a| return try RTCPeerConnectionImpl.RTCIceCandidateInit_VoidFunction_RTCPeerConnectionErrorCallback(instance, a.candidate, a.successCallback, a.failureCallback),
-        }
+    pub fn call_addIceCandidate(instance: *runtime.Instance, candidate: RTCIceCandidateInit) anyerror!anyopaque {
+        
+        return try RTCPeerConnectionImpl.call_addIceCandidate(instance, candidate);
     }
 
-    /// Arguments for setLocalDescription (WebIDL overloading)
-    pub const SetLocalDescriptionArgs = union(enum) {
-        /// setLocalDescription(description)
-        RTCLocalSessionDescriptionInit: RTCLocalSessionDescriptionInit,
-        /// setLocalDescription(description, successCallback, failureCallback)
-        RTCLocalSessionDescriptionInit_VoidFunction_RTCPeerConnectionErrorCallback: struct {
-            description: RTCLocalSessionDescriptionInit,
-            successCallback: VoidFunction,
-            failureCallback: RTCPeerConnectionErrorCallback,
-        },
-    };
-
-    pub fn call_setLocalDescription(instance: *runtime.Instance, args: SetLocalDescriptionArgs) anyerror!anyopaque {
-        switch (args) {
-            .RTCLocalSessionDescriptionInit => |arg| return try RTCPeerConnectionImpl.RTCLocalSessionDescriptionInit(instance, arg),
-            .RTCLocalSessionDescriptionInit_VoidFunction_RTCPeerConnectionErrorCallback => |a| return try RTCPeerConnectionImpl.RTCLocalSessionDescriptionInit_VoidFunction_RTCPeerConnectionErrorCallback(instance, a.description, a.successCallback, a.failureCallback),
-        }
+    pub fn call_setLocalDescription(instance: *runtime.Instance, description: RTCLocalSessionDescriptionInit) anyerror!anyopaque {
+        
+        return try RTCPeerConnectionImpl.call_setLocalDescription(instance, description);
     }
 
     pub fn call_getSenders(instance: *runtime.Instance) anyerror!anyopaque {
@@ -417,14 +368,14 @@ pub const RTCPeerConnection = struct {
         return try RTCPeerConnectionImpl.call_getIdentityAssertion(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try RTCPeerConnectionImpl.call_addEventListener(instance, type_, callback, options);
+        return try RTCPeerConnectionImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try RTCPeerConnectionImpl.call_removeEventListener(instance, type_, callback, options);
+        return try RTCPeerConnectionImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
     pub fn call_generateCertificate(instance: *runtime.Instance, keygenAlgorithm: AlgorithmIdentifier) anyerror!anyopaque {
@@ -441,7 +392,7 @@ pub const RTCPeerConnection = struct {
         return try RTCPeerConnectionImpl.call_createDataChannel(instance, label, dataChannelDict);
     }
 
-    pub fn call_getStats(instance: *runtime.Instance, selector: anyopaque) anyerror!anyopaque {
+    pub fn call_getStats(instance: *runtime.Instance, selector: MediaStreamTrack) anyerror!anyopaque {
         
         return try RTCPeerConnectionImpl.call_getStats(instance, selector);
     }
@@ -455,41 +406,14 @@ pub const RTCPeerConnection = struct {
         return try RTCPeerConnectionImpl.call_dispatchEvent(instance, event);
     }
 
-    /// Arguments for createOffer (WebIDL overloading)
-    pub const CreateOfferArgs = union(enum) {
-        /// createOffer(options)
-        RTCOfferOptions: RTCOfferOptions,
-        /// createOffer(successCallback, failureCallback, options)
-        RTCSessionDescriptionCallback_RTCPeerConnectionErrorCallback_RTCOfferOptions: struct {
-            successCallback: RTCSessionDescriptionCallback,
-            failureCallback: RTCPeerConnectionErrorCallback,
-            options: RTCOfferOptions,
-        },
-    };
-
-    pub fn call_createOffer(instance: *runtime.Instance, args: CreateOfferArgs) anyerror!anyopaque {
-        switch (args) {
-            .RTCOfferOptions => |arg| return try RTCPeerConnectionImpl.RTCOfferOptions(instance, arg),
-            .RTCSessionDescriptionCallback_RTCPeerConnectionErrorCallback_RTCOfferOptions => |a| return try RTCPeerConnectionImpl.RTCSessionDescriptionCallback_RTCPeerConnectionErrorCallback_RTCOfferOptions(instance, a.successCallback, a.failureCallback, a.options),
-        }
+    pub fn call_createOffer(instance: *runtime.Instance, options: RTCOfferOptions) anyerror!anyopaque {
+        
+        return try RTCPeerConnectionImpl.call_createOffer(instance, options);
     }
 
-    /// Arguments for createAnswer (WebIDL overloading)
-    pub const CreateAnswerArgs = union(enum) {
-        /// createAnswer(options)
-        RTCAnswerOptions: RTCAnswerOptions,
-        /// createAnswer(successCallback, failureCallback)
-        RTCSessionDescriptionCallback_RTCPeerConnectionErrorCallback: struct {
-            successCallback: RTCSessionDescriptionCallback,
-            failureCallback: RTCPeerConnectionErrorCallback,
-        },
-    };
-
-    pub fn call_createAnswer(instance: *runtime.Instance, args: CreateAnswerArgs) anyerror!anyopaque {
-        switch (args) {
-            .RTCAnswerOptions => |arg| return try RTCPeerConnectionImpl.RTCAnswerOptions(instance, arg),
-            .RTCSessionDescriptionCallback_RTCPeerConnectionErrorCallback => |a| return try RTCPeerConnectionImpl.RTCSessionDescriptionCallback_RTCPeerConnectionErrorCallback(instance, a.successCallback, a.failureCallback),
-        }
+    pub fn call_createAnswer(instance: *runtime.Instance, options: RTCAnswerOptions) anyerror!anyopaque {
+        
+        return try RTCPeerConnectionImpl.call_createAnswer(instance, options);
     }
 
     pub fn call_close(instance: *runtime.Instance) anyerror!void {

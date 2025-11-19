@@ -1,5 +1,5 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -15,6 +15,7 @@ pub const ImageTrack = struct {
         pub const MixinTypes = .{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "DedicatedWorker" } } },
+            .{ .name = "SecureContext" },
         };
         
         /// Global contexts where this interface is exposed
@@ -48,17 +49,7 @@ pub const ImageTrack = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ImageTrackImpl.init(instance);
-        
-        return instance;
+        return ImageTrackImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

@@ -1,17 +1,16 @@
 //! Generated from: image-capture.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const ImageCaptureImpl = @import("impls").ImageCapture;
-const Promise<ImageBitmap> = @import("interfaces").Promise<ImageBitmap>;
 const PhotoSettings = @import("dictionaries").PhotoSettings;
-const Promise<PhotoCapabilities> = @import("interfaces").Promise<PhotoCapabilities>;
-const Promise<Blob> = @import("interfaces").Promise<Blob>;
 const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
-const Promise<PhotoSettings> = @import("interfaces").Promise<PhotoSettings>;
+const PhotoCapabilities = @import("dictionaries").PhotoCapabilities;
+const Blob = @import("interfaces").Blob;
+const ImageBitmap = @import("interfaces").ImageBitmap;
 
 pub const ImageCapture = struct {
     pub const Meta = struct {
@@ -49,17 +48,7 @@ pub const ImageCapture = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ImageCaptureImpl.init(instance);
-        
-        return instance;
+        return ImageCaptureImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

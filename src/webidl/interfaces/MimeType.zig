@@ -1,11 +1,12 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const MimeTypeImpl = @import("impls").MimeType;
+const DOMString = @import("typedefs").DOMString;
 const Plugin = @import("interfaces").Plugin;
 
 pub const MimeType = struct {
@@ -24,7 +25,7 @@ pub const MimeType = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            type: runtime.DOMString = undefined,
+            @"type": runtime.DOMString = undefined,
             description: runtime.DOMString = undefined,
             suffixes: runtime.DOMString = undefined,
             enabledPlugin: Plugin = undefined,
@@ -44,17 +45,7 @@ pub const MimeType = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        MimeTypeImpl.init(instance);
-        
-        return instance;
+        return MimeTypeImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

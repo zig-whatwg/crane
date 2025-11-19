@@ -1,5 +1,5 @@
 //! Generated from: hr-time.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,16 +7,23 @@ const std = @import("std");
 const runtime = @import("runtime");
 const PerformanceImpl = @import("impls").Performance;
 const EventTarget = @import("interfaces").EventTarget;
-const PerformanceMark = @import("interfaces").PerformanceMark;
-const PerformanceMeasure = @import("interfaces").PerformanceMeasure;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const PerformanceEntryList = @import("typedefs").PerformanceEntryList;
-const PerformanceMarkOptions = @import("dictionaries").PerformanceMarkOptions;
-const PerformanceNavigation = @import("interfaces").PerformanceNavigation;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
-const Promise<MemoryMeasurement> = @import("interfaces").Promise<MemoryMeasurement>;
-const (DOMString or PerformanceMeasureOptions) = @import("interfaces").(DOMString or PerformanceMeasureOptions);
-const EventCounts = @import("interfaces").EventCounts;
+const PerformanceMeasureOptions = @import("dictionaries").PerformanceMeasureOptions;
 const PerformanceTiming = @import("interfaces").PerformanceTiming;
+const EventCounts = @import("interfaces").EventCounts;
+const MemoryMeasurement = @import("dictionaries").MemoryMeasurement;
+const PerformanceMeasure = @import("interfaces").PerformanceMeasure;
+const PerformanceMarkOptions = @import("dictionaries").PerformanceMarkOptions;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const PerformanceNavigation = @import("interfaces").PerformanceNavigation;
+const EventListener = @import("interfaces").EventListener;
+const PerformanceMark = @import("interfaces").PerformanceMark;
+const DOMString = @import("typedefs").DOMString;
 const EventHandler = @import("typedefs").EventHandler;
 
 pub const Performance = struct {
@@ -81,17 +88,7 @@ pub const Performance = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PerformanceImpl.init(instance);
-        
-        return instance;
+        return PerformanceImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -165,9 +162,9 @@ pub const Performance = struct {
         return try PerformanceImpl.call_clearMeasures(instance, measureName);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try PerformanceImpl.call_when(instance, type_, options);
+        return try PerformanceImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_setResourceTimingBufferSize(instance: *runtime.Instance, maxSize: u32) anyerror!void {
@@ -189,14 +186,14 @@ pub const Performance = struct {
         return try PerformanceImpl.call_measureUserAgentSpecificMemory(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try PerformanceImpl.call_addEventListener(instance, type_, callback, options);
+        return try PerformanceImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try PerformanceImpl.call_removeEventListener(instance, type_, callback, options);
+        return try PerformanceImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
     pub fn call_clearMarks(instance: *runtime.Instance, markName: DOMString) anyerror!void {
@@ -204,9 +201,9 @@ pub const Performance = struct {
         return try PerformanceImpl.call_clearMarks(instance, markName);
     }
 
-    pub fn call_getEntriesByType(instance: *runtime.Instance, type_: DOMString) anyerror!PerformanceEntryList {
+    pub fn call_getEntriesByType(instance: *runtime.Instance, @"type": DOMString) anyerror!PerformanceEntryList {
         
-        return try PerformanceImpl.call_getEntriesByType(instance, type_);
+        return try PerformanceImpl.call_getEntriesByType(instance, @"type");
     }
 
     pub fn call_mark(instance: *runtime.Instance, markName: DOMString, markOptions: PerformanceMarkOptions) anyerror!PerformanceMark {
@@ -228,9 +225,9 @@ pub const Performance = struct {
         return try PerformanceImpl.call_measure(instance, measureName, startOrMeasureOptions, endMark);
     }
 
-    pub fn call_getEntriesByName(instance: *runtime.Instance, name: DOMString, type_: DOMString) anyerror!PerformanceEntryList {
+    pub fn call_getEntriesByName(instance: *runtime.Instance, name: DOMString, @"type": DOMString) anyerror!PerformanceEntryList {
         
-        return try PerformanceImpl.call_getEntriesByName(instance, name, type_);
+        return try PerformanceImpl.call_getEntriesByName(instance, name, @"type");
     }
 
 };

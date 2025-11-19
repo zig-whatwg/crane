@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,33 +7,36 @@ const std = @import("std");
 const runtime = @import("runtime");
 const XRSessionImpl = @import("impls").XRSession;
 const EventTarget = @import("interfaces").EventTarget;
-const Promise<XRTransientInputHitTestSource> = @import("interfaces").Promise<XRTransientInputHitTestSource>;
+const XRTransientInputHitTestSource = @import("interfaces").XRTransientInputHitTestSource;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const XRHitTestSource = @import("interfaces").XRHitTestSource;
 const XRDepthDataFormat = @import("enums").XRDepthDataFormat;
 const XRDOMOverlayState = @import("dictionaries").XRDOMOverlayState;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
 const XRFrameRequestCallback = @import("callbacks").XRFrameRequestCallback;
-const Promise<XRAnchor> = @import("interfaces").Promise<XRAnchor>;
 const XRRenderStateInit = @import("dictionaries").XRRenderStateInit;
-const float = @import("interfaces").float;
 const XRDepthUsage = @import("enums").XRDepthUsage;
-const Promise<XRLightProbe> = @import("interfaces").Promise<XRLightProbe>;
 const XREnvironmentBlendMode = @import("enums").XREnvironmentBlendMode;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const XRVisibilityState = @import("enums").XRVisibilityState;
 const XRInputSourceArray = @import("interfaces").XRInputSourceArray;
-const XRHitTestOptionsInit = @import("dictionaries").XRHitTestOptionsInit;
+const XRAnchor = @import("interfaces").XRAnchor;
+const EventListener = @import("interfaces").EventListener;
 const EventHandler = @import("typedefs").EventHandler;
+const XRHitTestOptionsInit = @import("dictionaries").XRHitTestOptionsInit;
 const XRReferenceSpaceType = @import("enums").XRReferenceSpaceType;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const Float32Array = @import("interfaces").Float32Array;
 const XRTransientInputHitTestOptionsInit = @import("dictionaries").XRTransientInputHitTestOptionsInit;
+const XRReferenceSpace = @import("interfaces").XRReferenceSpace;
 const XRLightProbeInit = @import("dictionaries").XRLightProbeInit;
-const FrozenArray<DOMString> = @import("interfaces").FrozenArray<DOMString>;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
 const XRDepthType = @import("enums").XRDepthType;
 const XRRenderState = @import("interfaces").XRRenderState;
 const XRReflectionFormat = @import("enums").XRReflectionFormat;
-const Promise<XRHitTestSource> = @import("interfaces").Promise<XRHitTestSource>;
-const boolean = @import("interfaces").boolean;
+const XRLightProbe = @import("interfaces").XRLightProbe;
 const XRInteractionMode = @import("enums").XRInteractionMode;
-const Promise<XRReferenceSpace> = @import("interfaces").Promise<XRReferenceSpace>;
+const DOMString = @import("typedefs").DOMString;
 
 pub const XRSession = struct {
     pub const Meta = struct {
@@ -58,7 +61,7 @@ pub const XRSession = struct {
             renderState: XRRenderState = undefined,
             inputSources: XRInputSourceArray = undefined,
             trackedSources: XRInputSourceArray = undefined,
-            enabledFeatures: FrozenArray<DOMString> = undefined,
+            enabledFeatures: runtime.FrozenArray(runtime.DOMString) = undefined,
             isSystemKeyboardSupported: bool = undefined,
             onend: EventHandler = undefined,
             oninputsourceschange: EventHandler = undefined,
@@ -75,7 +78,7 @@ pub const XRSession = struct {
             depthDataFormat: XRDepthDataFormat = undefined,
             depthType: ?XRDepthType = null,
             depthActive: ?bool = null,
-            persistentAnchors: FrozenArray<DOMString> = undefined,
+            persistentAnchors: runtime.FrozenArray(runtime.DOMString) = undefined,
             preferredReflectionFormat: XRReflectionFormat = undefined,
             environmentBlendMode: XREnvironmentBlendMode = undefined,
             interactionMode: XRInteractionMode = undefined,
@@ -148,17 +151,7 @@ pub const XRSession = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        XRSessionImpl.init(instance);
-        
-        return instance;
+        return XRSessionImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -175,7 +168,7 @@ pub const XRSession = struct {
         return try XRSessionImpl.get_visibilityState(instance);
     }
 
-    pub fn get_frameRate(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_frameRate(instance: *runtime.Instance) anyerror!f32 {
         return try XRSessionImpl.get_frameRate(instance);
     }
 
@@ -307,7 +300,7 @@ pub const XRSession = struct {
         try XRSessionImpl.set_onframeratechange(instance, value);
     }
 
-    pub fn get_domOverlayState(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_domOverlayState(instance: *runtime.Instance) anyerror!XRDOMOverlayState {
         return try XRSessionImpl.get_domOverlayState(instance);
     }
 
@@ -319,11 +312,11 @@ pub const XRSession = struct {
         return try XRSessionImpl.get_depthDataFormat(instance);
     }
 
-    pub fn get_depthType(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_depthType(instance: *runtime.Instance) anyerror!XRDepthType {
         return try XRSessionImpl.get_depthType(instance);
     }
 
-    pub fn get_depthActive(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_depthActive(instance: *runtime.Instance) anyerror!bool {
         return try XRSessionImpl.get_depthActive(instance);
     }
 
@@ -343,9 +336,9 @@ pub const XRSession = struct {
         return try XRSessionImpl.get_interactionMode(instance);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try XRSessionImpl.call_when(instance, type_, options);
+        return try XRSessionImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_deletePersistentAnchor(instance: *runtime.Instance, uuid: DOMString) anyerror!anyopaque {
@@ -359,10 +352,10 @@ pub const XRSession = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_requestReferenceSpace(instance: *runtime.Instance, type_: XRReferenceSpaceType) anyerror!anyopaque {
+    pub fn call_requestReferenceSpace(instance: *runtime.Instance, @"type": XRReferenceSpaceType) anyerror!anyopaque {
         // [NewObject] - Caller owns the returned object
         
-        return try XRSessionImpl.call_requestReferenceSpace(instance, type_);
+        return try XRSessionImpl.call_requestReferenceSpace(instance, @"type");
     }
 
     pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) anyerror!void {
@@ -379,14 +372,14 @@ pub const XRSession = struct {
         return try XRSessionImpl.call_end(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try XRSessionImpl.call_addEventListener(instance, type_, callback, options);
+        return try XRSessionImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try XRSessionImpl.call_removeEventListener(instance, type_, callback, options);
+        return try XRSessionImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
     pub fn call_initiateRoomCapture(instance: *runtime.Instance) anyerror!anyopaque {

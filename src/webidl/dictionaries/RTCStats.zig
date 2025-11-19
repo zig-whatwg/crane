@@ -6,6 +6,6 @@ const runtime = @import("runtime");
 
 pub const RTCStats = struct {
     timestamp: anyopaque,
-    type: anyopaque,
+    @"type": anyopaque,
     id: runtime.DOMString,
 };

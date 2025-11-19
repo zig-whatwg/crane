@@ -1,5 +1,5 @@
 //! Generated from: EXT_disjoint_timer_query.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -95,17 +95,7 @@ pub const EXT_disjoint_timer_query = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        EXT_disjoint_timer_queryImpl.init(instance);
-        
-        return instance;
+        return EXT_disjoint_timer_queryImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -133,7 +123,7 @@ pub const EXT_disjoint_timer_query = struct {
     }
 
     /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_isQueryEXT(instance: *runtime.Instance, query: anyopaque) anyerror!bool {
+    pub fn call_isQueryEXT(instance: *runtime.Instance, query: WebGLTimerQueryEXT) anyerror!bool {
         
         return try EXT_disjoint_timer_queryImpl.call_isQueryEXT(instance, query);
     }
@@ -153,7 +143,7 @@ pub const EXT_disjoint_timer_query = struct {
         return try EXT_disjoint_timer_queryImpl.call_getQueryEXT(instance, target, pname);
     }
 
-    pub fn call_deleteQueryEXT(instance: *runtime.Instance, query: anyopaque) anyerror!void {
+    pub fn call_deleteQueryEXT(instance: *runtime.Instance, query: WebGLTimerQueryEXT) anyerror!void {
         
         return try EXT_disjoint_timer_queryImpl.call_deleteQueryEXT(instance, query);
     }

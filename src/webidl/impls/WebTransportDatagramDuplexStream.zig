@@ -13,16 +13,25 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Initialize instance
-pub fn init(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Initialize your instance state here
+/// Initialize instance (delegates to runtime.Instance.init)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable);
+    // TODO: Add custom initialization here if needed
+    // const state = instance.getState(StateType);
+    // state.* = .{}; // Initialize fields
+    return instance;
 }
 
-/// Deinitialize instance
+/// Deinitialize instance (delegates to runtime.Instance.deinit)
 pub fn deinit(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Clean up your instance resources here
+    // TODO: Add custom cleanup here if needed
+    // const state = instance.getState(State);
+    // Clean up fields...
+    runtime.Instance.deinit(instance);
 }
 
 /// Getter for readable
@@ -40,14 +49,14 @@ pub fn get_maxDatagramSize(instance: *runtime.Instance) ImplError!u32 {
 }
 
 /// Getter for incomingMaxAge
-pub fn get_incomingMaxAge(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_incomingMaxAge(instance: *runtime.Instance) ImplError!f64 {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
 }
 
 /// Getter for outgoingMaxAge
-pub fn get_outgoingMaxAge(instance: *runtime.Instance) ImplError!anyopaque {
+pub fn get_outgoingMaxAge(instance: *runtime.Instance) ImplError!f64 {
     _ = instance;
     // TODO: Implement getter
     return error.NotImplemented;
@@ -68,7 +77,7 @@ pub fn get_outgoingHighWaterMark(instance: *runtime.Instance) ImplError!f64 {
 }
 
 /// Setter for incomingMaxAge
-pub fn set_incomingMaxAge(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_incomingMaxAge(instance: *runtime.Instance, value: f64) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter
@@ -76,7 +85,7 @@ pub fn set_incomingMaxAge(instance: *runtime.Instance, value: anyopaque) ImplErr
 }
 
 /// Setter for outgoingMaxAge
-pub fn set_outgoingMaxAge(instance: *runtime.Instance, value: anyopaque) ImplError!void {
+pub fn set_outgoingMaxAge(instance: *runtime.Instance, value: f64) ImplError!void {
     _ = instance;
     _ = value;
     // TODO: Implement setter

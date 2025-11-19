@@ -13,16 +13,25 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Initialize instance
-pub fn init(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Initialize your instance state here
+/// Initialize instance (delegates to runtime.Instance.init)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable);
+    // TODO: Add custom initialization here if needed
+    // const state = instance.getState(StateType);
+    // state.* = .{}; // Initialize fields
+    return instance;
 }
 
-/// Deinitialize instance
+/// Deinitialize instance (delegates to runtime.Instance.deinit)
 pub fn deinit(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Clean up your instance resources here
+    // TODO: Add custom cleanup here if needed
+    // const state = instance.getState(State);
+    // Clean up fields...
+    runtime.Instance.deinit(instance);
 }
 
 /// Operation: multiDrawArraysWEBGL
@@ -39,12 +48,12 @@ pub fn call_multiDrawArraysWEBGL(instance: *runtime.Instance, mode: anyopaque, f
 }
 
 /// Operation: multiDrawElementsWEBGL
-pub fn call_multiDrawElementsWEBGL(instance: *runtime.Instance, mode: anyopaque, countsList: anyopaque, countsOffset: u64, type: anyopaque, offsetsList: anyopaque, offsetsOffset: u64, drawcount: anyopaque) ImplError!void {
+pub fn call_multiDrawElementsWEBGL(instance: *runtime.Instance, mode: anyopaque, countsList: anyopaque, countsOffset: u64, @"type": anyopaque, offsetsList: anyopaque, offsetsOffset: u64, drawcount: anyopaque) ImplError!void {
     _ = instance;
     _ = mode;
     _ = countsList;
     _ = countsOffset;
-    _ = type;
+    _ = @"type";
     _ = offsetsList;
     _ = offsetsOffset;
     _ = drawcount;
@@ -68,12 +77,12 @@ pub fn call_multiDrawArraysInstancedWEBGL(instance: *runtime.Instance, mode: any
 }
 
 /// Operation: multiDrawElementsInstancedWEBGL
-pub fn call_multiDrawElementsInstancedWEBGL(instance: *runtime.Instance, mode: anyopaque, countsList: anyopaque, countsOffset: u64, type: anyopaque, offsetsList: anyopaque, offsetsOffset: u64, instanceCountsList: anyopaque, instanceCountsOffset: u64, drawcount: anyopaque) ImplError!void {
+pub fn call_multiDrawElementsInstancedWEBGL(instance: *runtime.Instance, mode: anyopaque, countsList: anyopaque, countsOffset: u64, @"type": anyopaque, offsetsList: anyopaque, offsetsOffset: u64, instanceCountsList: anyopaque, instanceCountsOffset: u64, drawcount: anyopaque) ImplError!void {
     _ = instance;
     _ = mode;
     _ = countsList;
     _ = countsOffset;
-    _ = type;
+    _ = @"type";
     _ = offsetsList;
     _ = offsetsOffset;
     _ = instanceCountsList;

@@ -1,5 +1,5 @@
 //! Generated from: cookiestore.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,12 @@ const std = @import("std");
 const runtime = @import("runtime");
 const ExtendableCookieChangeEventImpl = @import("impls").ExtendableCookieChangeEvent;
 const ExtendableEvent = @import("interfaces").ExtendableEvent;
-const FrozenArray<CookieListItem> = @import("interfaces").FrozenArray<CookieListItem>;
+const DOMString = @import("typedefs").DOMString;
+const ExtendableEventInit = @import("dictionaries").ExtendableEventInit;
+const EventTarget = @import("interfaces").EventTarget;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
+const CookieListItem = @import("dictionaries").CookieListItem;
 const ExtendableCookieChangeEventInit = @import("dictionaries").ExtendableCookieChangeEventInit;
 
 pub const ExtendableCookieChangeEvent = struct {
@@ -31,8 +36,8 @@ pub const ExtendableCookieChangeEvent = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            changed: FrozenArray<CookieListItem> = undefined,
-            deleted: FrozenArray<CookieListItem> = undefined,
+            changed: runtime.FrozenArray(CookieListItem) = undefined,
+            deleted: runtime.FrozenArray(CookieListItem) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -74,17 +79,7 @@ pub const ExtendableCookieChangeEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ExtendableCookieChangeEventImpl.init(instance);
-        
-        return instance;
+        return ExtendableCookieChangeEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -98,11 +93,11 @@ pub const ExtendableCookieChangeEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, eventInitDict: ExtendableCookieChangeEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, eventInitDict: ExtendableCookieChangeEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try ExtendableCookieChangeEventImpl.constructor(instance, type_, eventInitDict);
+        try ExtendableCookieChangeEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -111,15 +106,15 @@ pub const ExtendableCookieChangeEvent = struct {
         return try ExtendableCookieChangeEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try ExtendableCookieChangeEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try ExtendableCookieChangeEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try ExtendableCookieChangeEventImpl.get_currentTarget(instance);
     }
 
@@ -196,9 +191,9 @@ pub const ExtendableCookieChangeEvent = struct {
         return try ExtendableCookieChangeEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try ExtendableCookieChangeEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try ExtendableCookieChangeEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_composedPath(instance: *runtime.Instance) anyerror!anyopaque {

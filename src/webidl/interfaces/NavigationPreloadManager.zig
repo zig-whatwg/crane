@@ -1,13 +1,13 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const NavigationPreloadManagerImpl = @import("impls").NavigationPreloadManager;
-const Promise<NavigationPreloadState> = @import("interfaces").Promise<NavigationPreloadState>;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
+const ByteString = @import("interfaces").ByteString;
+const NavigationPreloadState = @import("dictionaries").NavigationPreloadState;
 
 pub const NavigationPreloadManager = struct {
     pub const Meta = struct {
@@ -44,17 +44,7 @@ pub const NavigationPreloadManager = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        NavigationPreloadManagerImpl.init(instance);
-        
-        return instance;
+        return NavigationPreloadManagerImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

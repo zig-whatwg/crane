@@ -1,5 +1,5 @@
 //! Generated from: encrypted-media.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,12 +7,17 @@ const std = @import("std");
 const runtime = @import("runtime");
 const MediaKeySessionImpl = @import("impls").MediaKeySession;
 const EventTarget = @import("interfaces").EventTarget;
-const Promise<MediaKeySessionClosedReason> = @import("interfaces").Promise<MediaKeySessionClosedReason>;
-const Promise<boolean> = @import("interfaces").Promise<boolean>;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const Observable = @import("interfaces").Observable;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const Event = @import("interfaces").Event;
 const BufferSource = @import("typedefs").BufferSource;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
 const MediaKeyStatusMap = @import("interfaces").MediaKeyStatusMap;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
+const MediaKeySessionClosedReason = @import("enums").MediaKeySessionClosedReason;
 const EventHandler = @import("typedefs").EventHandler;
+const DOMString = @import("typedefs").DOMString;
 
 pub const MediaKeySession = struct {
     pub const Meta = struct {
@@ -33,7 +38,7 @@ pub const MediaKeySession = struct {
         struct {
             sessionId: runtime.DOMString = undefined,
             expiration: f64 = undefined,
-            closed: Promise<MediaKeySessionClosedReason> = undefined,
+            closed: runtime.Promise(MediaKeySessionClosedReason) = undefined,
             keyStatuses: MediaKeyStatusMap = undefined,
             onkeystatuseschange: EventHandler = undefined,
             onmessage: EventHandler = undefined,
@@ -68,17 +73,7 @@ pub const MediaKeySession = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        MediaKeySessionImpl.init(instance);
-        
-        return instance;
+        return MediaKeySessionImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -128,9 +123,9 @@ pub const MediaKeySession = struct {
         return try MediaKeySessionImpl.call_update(instance, response);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try MediaKeySessionImpl.call_when(instance, type_, options);
+        return try MediaKeySessionImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_load(instance: *runtime.Instance, sessionId: DOMString) anyerror!anyopaque {
@@ -156,14 +151,14 @@ pub const MediaKeySession = struct {
         return try MediaKeySessionImpl.call_close(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try MediaKeySessionImpl.call_addEventListener(instance, type_, callback, options);
+        return try MediaKeySessionImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try MediaKeySessionImpl.call_removeEventListener(instance, type_, callback, options);
+        return try MediaKeySessionImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

@@ -1,5 +1,5 @@
 //! Generated from: intervention-reporting.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,6 @@ const std = @import("std");
 const runtime = @import("runtime");
 const InterventionReportBodyImpl = @import("impls").InterventionReportBody;
 const ReportBody = @import("dictionaries").ReportBody;
-const unsigned long = @import("interfaces").unsigned long;
 const DOMString = @import("typedefs").DOMString;
 
 pub const InterventionReportBody = struct {
@@ -53,17 +52,7 @@ pub const InterventionReportBody = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        InterventionReportBodyImpl.init(instance);
-        
-        return instance;
+        return InterventionReportBodyImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -84,15 +73,15 @@ pub const InterventionReportBody = struct {
         return try InterventionReportBodyImpl.get_message(instance);
     }
 
-    pub fn get_sourceFile(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_sourceFile(instance: *runtime.Instance) anyerror!DOMString {
         return try InterventionReportBodyImpl.get_sourceFile(instance);
     }
 
-    pub fn get_lineNumber(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_lineNumber(instance: *runtime.Instance) anyerror!u32 {
         return try InterventionReportBodyImpl.get_lineNumber(instance);
     }
 
-    pub fn get_columnNumber(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_columnNumber(instance: *runtime.Instance) anyerror!u32 {
         return try InterventionReportBodyImpl.get_columnNumber(instance);
     }
 

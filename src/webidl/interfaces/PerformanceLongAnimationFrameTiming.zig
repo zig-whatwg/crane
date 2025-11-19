@@ -1,5 +1,5 @@
 //! Generated from: long-animation-frames.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,7 +9,8 @@ const PerformanceLongAnimationFrameTimingImpl = @import("impls").PerformanceLong
 const PerformanceEntry = @import("interfaces").PerformanceEntry;
 const PaintTimingMixin = @import("interfaces").PaintTimingMixin;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
-const FrozenArray<PerformanceScriptTiming> = @import("interfaces").FrozenArray<PerformanceScriptTiming>;
+const PerformanceScriptTiming = @import("interfaces").PerformanceScriptTiming;
+const DOMString = @import("typedefs").DOMString;
 
 pub const PerformanceLongAnimationFrameTiming = struct {
     pub const Meta = struct {
@@ -37,7 +38,7 @@ pub const PerformanceLongAnimationFrameTiming = struct {
             styleAndLayoutStart: DOMHighResTimeStamp = undefined,
             blockingDuration: DOMHighResTimeStamp = undefined,
             firstUIEventTimestamp: DOMHighResTimeStamp = undefined,
-            scripts: FrozenArray<PerformanceScriptTiming> = undefined,
+            scripts: runtime.FrozenArray(PerformanceScriptTiming) = undefined,
             paintTime: DOMHighResTimeStamp = undefined,
             presentationTime: ?DOMHighResTimeStamp = null,
         },
@@ -50,19 +51,15 @@ pub const PerformanceLongAnimationFrameTiming = struct {
 
         .get_blockingDuration = &get_blockingDuration,
         .get_duration = &get_duration,
-        .get_duration = &get_duration,
-        .get_entryType = &get_entryType,
         .get_entryType = &get_entryType,
         .get_firstUIEventTimestamp = &get_firstUIEventTimestamp,
         .get_id = &get_id,
-        .get_name = &get_name,
         .get_name = &get_name,
         .get_navigationId = &get_navigationId,
         .get_paintTime = &get_paintTime,
         .get_presentationTime = &get_presentationTime,
         .get_renderStart = &get_renderStart,
         .get_scripts = &get_scripts,
-        .get_startTime = &get_startTime,
         .get_startTime = &get_startTime,
         .get_styleAndLayoutStart = &get_styleAndLayoutStart,
 
@@ -71,17 +68,7 @@ pub const PerformanceLongAnimationFrameTiming = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PerformanceLongAnimationFrameTimingImpl.init(instance);
-        
-        return instance;
+        return PerformanceLongAnimationFrameTimingImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -118,22 +105,6 @@ pub const PerformanceLongAnimationFrameTiming = struct {
         return try PerformanceLongAnimationFrameTimingImpl.get_navigationId(instance);
     }
 
-    pub fn get_startTime(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
-        return try PerformanceLongAnimationFrameTimingImpl.get_startTime(instance);
-    }
-
-    pub fn get_duration(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
-        return try PerformanceLongAnimationFrameTimingImpl.get_duration(instance);
-    }
-
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
-        return try PerformanceLongAnimationFrameTimingImpl.get_name(instance);
-    }
-
-    pub fn get_entryType(instance: *runtime.Instance) anyerror!DOMString {
-        return try PerformanceLongAnimationFrameTimingImpl.get_entryType(instance);
-    }
-
     pub fn get_renderStart(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
         return try PerformanceLongAnimationFrameTimingImpl.get_renderStart(instance);
     }
@@ -166,23 +137,13 @@ pub const PerformanceLongAnimationFrameTiming = struct {
         return try PerformanceLongAnimationFrameTimingImpl.get_paintTime(instance);
     }
 
-    pub fn get_presentationTime(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_presentationTime(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
         return try PerformanceLongAnimationFrameTimingImpl.get_presentationTime(instance);
     }
 
-    /// Arguments for toJSON (WebIDL overloading)
-    pub const ToJSONArgs = union(enum) {
-        /// toJSON()
-        no_params: void,
-        /// toJSON()
-        no_params: void,
-    };
-
-    pub fn call_toJSON(instance: *runtime.Instance, args: ToJSONArgs) anyerror!anyopaque {
-        switch (args) {
-            .no_params => return try PerformanceLongAnimationFrameTimingImpl.no_params(instance),
-            .no_params => return try PerformanceLongAnimationFrameTimingImpl.no_params(instance),
-        }
+    /// Extended attributes: [Default]
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!anyopaque {
+        return try PerformanceLongAnimationFrameTimingImpl.call_toJSON(instance);
     }
 
 };

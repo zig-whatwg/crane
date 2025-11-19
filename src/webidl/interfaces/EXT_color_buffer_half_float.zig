@@ -1,11 +1,12 @@
 //! Generated from: EXT_color_buffer_half_float.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const EXT_color_buffer_half_floatImpl = @import("impls").EXT_color_buffer_half_float;
+const GLenum = @import("typedefs").GLenum;
 
 pub const EXT_color_buffer_half_float = struct {
     pub const Meta = struct {
@@ -66,17 +67,7 @@ pub const EXT_color_buffer_half_float = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        EXT_color_buffer_half_floatImpl.init(instance);
-        
-        return instance;
+        return EXT_color_buffer_half_floatImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

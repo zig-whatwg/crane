@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,11 +7,18 @@ const std = @import("std");
 const runtime = @import("runtime");
 const OffscreenCanvasImpl = @import("impls").OffscreenCanvas;
 const EventTarget = @import("interfaces").EventTarget;
-const EventHandler = @import("typedefs").EventHandler;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const DOMString = @import("typedefs").DOMString;
 const OffscreenRenderingContextId = @import("enums").OffscreenRenderingContextId;
-const Promise<Blob> = @import("interfaces").Promise<Blob>;
+const Blob = @import("interfaces").Blob;
 const ImageEncodeOptions = @import("dictionaries").ImageEncodeOptions;
 const OffscreenRenderingContext = @import("typedefs").OffscreenRenderingContext;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
+const EventHandler = @import("typedefs").EventHandler;
 const ImageBitmap = @import("interfaces").ImageBitmap;
 
 pub const OffscreenCanvas = struct {
@@ -67,17 +74,7 @@ pub const OffscreenCanvas = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        OffscreenCanvasImpl.init(instance);
-        
-        return instance;
+        return OffscreenCanvasImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -141,9 +138,9 @@ pub const OffscreenCanvas = struct {
         return try OffscreenCanvasImpl.call_convertToBlob(instance, options);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try OffscreenCanvasImpl.call_when(instance, type_, options);
+        return try OffscreenCanvasImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_dispatchEvent(instance: *runtime.Instance, event: Event) anyerror!bool {
@@ -151,7 +148,7 @@ pub const OffscreenCanvas = struct {
         return try OffscreenCanvasImpl.call_dispatchEvent(instance, event);
     }
 
-    pub fn call_getContext(instance: *runtime.Instance, contextId: OffscreenRenderingContextId, options: anyopaque) anyerror!anyopaque {
+    pub fn call_getContext(instance: *runtime.Instance, contextId: OffscreenRenderingContextId, options: anyopaque) anyerror!OffscreenRenderingContext {
         
         return try OffscreenCanvasImpl.call_getContext(instance, contextId, options);
     }
@@ -160,14 +157,14 @@ pub const OffscreenCanvas = struct {
         return try OffscreenCanvasImpl.call_transferToImageBitmap(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try OffscreenCanvasImpl.call_addEventListener(instance, type_, callback, options);
+        return try OffscreenCanvasImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try OffscreenCanvasImpl.call_removeEventListener(instance, type_, callback, options);
+        return try OffscreenCanvasImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

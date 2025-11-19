@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,8 +7,12 @@ const std = @import("std");
 const runtime = @import("runtime");
 const RTCDataChannelEventImpl = @import("impls").RTCDataChannelEvent;
 const Event = @import("interfaces").Event;
-const RTCDataChannelEventInit = @import("dictionaries").RTCDataChannelEventInit;
 const RTCDataChannel = @import("interfaces").RTCDataChannel;
+const EventTarget = @import("interfaces").EventTarget;
+const RTCDataChannelEventInit = @import("dictionaries").RTCDataChannelEventInit;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
+const DOMString = @import("typedefs").DOMString;
 
 pub const RTCDataChannelEvent = struct {
     pub const Meta = struct {
@@ -71,17 +75,7 @@ pub const RTCDataChannelEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        RTCDataChannelEventImpl.init(instance);
-        
-        return instance;
+        return RTCDataChannelEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -95,11 +89,11 @@ pub const RTCDataChannelEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, eventInitDict: RTCDataChannelEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, eventInitDict: RTCDataChannelEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try RTCDataChannelEventImpl.constructor(instance, type_, eventInitDict);
+        try RTCDataChannelEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -108,15 +102,15 @@ pub const RTCDataChannelEvent = struct {
         return try RTCDataChannelEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try RTCDataChannelEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try RTCDataChannelEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try RTCDataChannelEventImpl.get_currentTarget(instance);
     }
 
@@ -173,9 +167,9 @@ pub const RTCDataChannelEvent = struct {
         return try RTCDataChannelEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try RTCDataChannelEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try RTCDataChannelEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_composedPath(instance: *runtime.Instance) anyerror!anyopaque {

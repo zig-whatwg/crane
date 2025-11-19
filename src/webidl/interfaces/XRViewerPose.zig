@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,9 @@ const std = @import("std");
 const runtime = @import("runtime");
 const XRViewerPoseImpl = @import("impls").XRViewerPose;
 const XRPose = @import("interfaces").XRPose;
-const FrozenArray<XRView> = @import("interfaces").FrozenArray<XRView>;
+const XRRigidTransform = @import("interfaces").XRRigidTransform;
+const XRView = @import("interfaces").XRView;
+const DOMPointReadOnly = @import("interfaces").DOMPointReadOnly;
 
 pub const XRViewerPose = struct {
     pub const Meta = struct {
@@ -26,7 +28,7 @@ pub const XRViewerPose = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            views: FrozenArray<XRView> = undefined,
+            views: runtime.FrozenArray(XRView) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -44,17 +46,7 @@ pub const XRViewerPose = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        XRViewerPoseImpl.init(instance);
-        
-        return instance;
+        return XRViewerPoseImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -80,7 +72,7 @@ pub const XRViewerPose = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_linearVelocity(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_linearVelocity(instance: *runtime.Instance) anyerror!DOMPointReadOnly {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.cached_linearVelocity) |cached| {
@@ -92,7 +84,7 @@ pub const XRViewerPose = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_angularVelocity(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_angularVelocity(instance: *runtime.Instance) anyerror!DOMPointReadOnly {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.cached_angularVelocity) |cached| {

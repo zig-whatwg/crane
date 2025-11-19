@@ -7,6 +7,6 @@ const runtime = @import("runtime");
 pub const PaymentValidationErrors = struct {
     payer: ?anyopaque = null,
     shippingAddress: ?anyopaque = null,
-    error: ?runtime.DOMString = null,
+    @"error": ?runtime.DOMString = null,
     paymentMethod: ?anyopaque = null,
 };

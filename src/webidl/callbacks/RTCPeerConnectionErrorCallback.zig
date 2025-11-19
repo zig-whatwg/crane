@@ -4,4 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const RTCPeerConnectionErrorCallback = *const fn (error: anyopaque) void;
+pub const RTCPeerConnectionErrorCallback = *const fn (@"error": anyopaque) void;

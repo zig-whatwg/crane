@@ -1,5 +1,5 @@
 //! Generated from: background-fetch.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,9 +7,14 @@ const std = @import("std");
 const runtime = @import("runtime");
 const BackgroundFetchUpdateUIEventImpl = @import("impls").BackgroundFetchUpdateUIEvent;
 const BackgroundFetchEvent = @import("interfaces").BackgroundFetchEvent;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
+const BackgroundFetchRegistration = @import("interfaces").BackgroundFetchRegistration;
 const BackgroundFetchEventInit = @import("dictionaries").BackgroundFetchEventInit;
+const ExtendableEventInit = @import("dictionaries").ExtendableEventInit;
 const BackgroundFetchUIOptions = @import("dictionaries").BackgroundFetchUIOptions;
+const EventTarget = @import("interfaces").EventTarget;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
+const DOMString = @import("typedefs").DOMString;
 
 pub const BackgroundFetchUpdateUIEvent = struct {
     pub const Meta = struct {
@@ -72,17 +77,7 @@ pub const BackgroundFetchUpdateUIEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        BackgroundFetchUpdateUIEventImpl.init(instance);
-        
-        return instance;
+        return BackgroundFetchUpdateUIEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -96,11 +91,11 @@ pub const BackgroundFetchUpdateUIEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, init: BackgroundFetchEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, init_data: BackgroundFetchEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try BackgroundFetchUpdateUIEventImpl.constructor(instance, type_, init);
+        try BackgroundFetchUpdateUIEventImpl.constructor(instance, @"type", init_data);
         
         return instance;
     }
@@ -109,15 +104,15 @@ pub const BackgroundFetchUpdateUIEvent = struct {
         return try BackgroundFetchUpdateUIEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try BackgroundFetchUpdateUIEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try BackgroundFetchUpdateUIEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try BackgroundFetchUpdateUIEventImpl.get_currentTarget(instance);
     }
 
@@ -174,9 +169,9 @@ pub const BackgroundFetchUpdateUIEvent = struct {
         return try BackgroundFetchUpdateUIEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try BackgroundFetchUpdateUIEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try BackgroundFetchUpdateUIEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_waitUntil(instance: *runtime.Instance, f: anyopaque) anyerror!void {

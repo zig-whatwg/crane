@@ -1,5 +1,5 @@
 //! Generated from: webhid.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,11 +7,17 @@ const std = @import("std");
 const runtime = @import("runtime");
 const HIDDeviceImpl = @import("impls").HIDDevice;
 const EventTarget = @import("interfaces").EventTarget;
-const Promise<DataView> = @import("interfaces").Promise<DataView>;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
-const FrozenArray<HIDCollectionInfo> = @import("interfaces").FrozenArray<HIDCollectionInfo>;
-const EventHandler = @import("typedefs").EventHandler;
+const HIDCollectionInfo = @import("dictionaries").HIDCollectionInfo;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const Observable = @import("interfaces").Observable;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const Event = @import("interfaces").Event;
 const BufferSource = @import("typedefs").BufferSource;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const DataView = @import("interfaces").DataView;
+const EventListener = @import("interfaces").EventListener;
+const DOMString = @import("typedefs").DOMString;
+const EventHandler = @import("typedefs").EventHandler;
 
 pub const HIDDevice = struct {
     pub const Meta = struct {
@@ -39,7 +45,7 @@ pub const HIDDevice = struct {
             vendorId: u16 = undefined,
             productId: u16 = undefined,
             productName: runtime.DOMString = undefined,
-            collections: FrozenArray<HIDCollectionInfo> = undefined,
+            collections: runtime.FrozenArray(HIDCollectionInfo) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -71,17 +77,7 @@ pub const HIDDevice = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        HIDDeviceImpl.init(instance);
-        
-        return instance;
+        return HIDDeviceImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -129,9 +125,9 @@ pub const HIDDevice = struct {
         return try HIDDeviceImpl.call_receiveFeatureReport(instance, reportId);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try HIDDeviceImpl.call_when(instance, type_, options);
+        return try HIDDeviceImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_open(instance: *runtime.Instance) anyerror!anyopaque {
@@ -165,14 +161,14 @@ pub const HIDDevice = struct {
         return try HIDDeviceImpl.call_close(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try HIDDeviceImpl.call_addEventListener(instance, type_, callback, options);
+        return try HIDDeviceImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try HIDDeviceImpl.call_removeEventListener(instance, type_, callback, options);
+        return try HIDDeviceImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

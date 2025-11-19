@@ -1,5 +1,5 @@
 //! Generated from: wai-aria.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,6 @@ const runtime = @import("runtime");
 const ARIAMixinImpl = @import("impls").ARIAMixin;
 const Element = @import("interfaces").Element;
 const DOMString = @import("typedefs").DOMString;
-const FrozenArray<Element> = @import("interfaces").FrozenArray<Element>;
 
 pub const ARIAMixin = struct {
     pub const Meta = struct {
@@ -33,28 +32,28 @@ pub const ARIAMixin = struct {
             ariaColIndex: ?runtime.DOMString = null,
             ariaColIndexText: ?runtime.DOMString = null,
             ariaColSpan: ?runtime.DOMString = null,
-            ariaControlsElements: ?FrozenArray<Element> = null,
+            ariaControlsElements: ?runtime.FrozenArray(Element) = null,
             ariaCurrent: ?runtime.DOMString = null,
-            ariaDescribedByElements: ?FrozenArray<Element> = null,
+            ariaDescribedByElements: ?runtime.FrozenArray(Element) = null,
             ariaDescription: ?runtime.DOMString = null,
-            ariaDetailsElements: ?FrozenArray<Element> = null,
+            ariaDetailsElements: ?runtime.FrozenArray(Element) = null,
             ariaDisabled: ?runtime.DOMString = null,
-            ariaErrorMessageElements: ?FrozenArray<Element> = null,
+            ariaErrorMessageElements: ?runtime.FrozenArray(Element) = null,
             ariaExpanded: ?runtime.DOMString = null,
-            ariaFlowToElements: ?FrozenArray<Element> = null,
+            ariaFlowToElements: ?runtime.FrozenArray(Element) = null,
             ariaHasPopup: ?runtime.DOMString = null,
             ariaHidden: ?runtime.DOMString = null,
             ariaInvalid: ?runtime.DOMString = null,
             ariaKeyShortcuts: ?runtime.DOMString = null,
             ariaLabel: ?runtime.DOMString = null,
-            ariaLabelledByElements: ?FrozenArray<Element> = null,
+            ariaLabelledByElements: ?runtime.FrozenArray(Element) = null,
             ariaLevel: ?runtime.DOMString = null,
             ariaLive: ?runtime.DOMString = null,
             ariaModal: ?runtime.DOMString = null,
             ariaMultiLine: ?runtime.DOMString = null,
             ariaMultiSelectable: ?runtime.DOMString = null,
             ariaOrientation: ?runtime.DOMString = null,
-            ariaOwnsElements: ?FrozenArray<Element> = null,
+            ariaOwnsElements: ?runtime.FrozenArray(Element) = null,
             ariaPlaceholder: ?runtime.DOMString = null,
             ariaPosInSet: ?runtime.DOMString = null,
             ariaPressed: ?runtime.DOMString = null,
@@ -190,17 +189,7 @@ pub const ARIAMixin = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ARIAMixinImpl.init(instance);
-        
-        return instance;
+        return ARIAMixinImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -214,12 +203,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_role(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_role(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_role(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_role(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_role(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -228,12 +217,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-activedescendant"]
-    pub fn get_ariaActiveDescendantElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaActiveDescendantElement(instance: *runtime.Instance) anyerror!Element {
         return try ARIAMixinImpl.get_ariaActiveDescendantElement(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-activedescendant"]
-    pub fn set_ariaActiveDescendantElement(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaActiveDescendantElement(instance: *runtime.Instance, value: Element) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -242,12 +231,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-atomic"]
-    pub fn get_ariaAtomic(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaAtomic(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaAtomic(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-atomic"]
-    pub fn set_ariaAtomic(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaAtomic(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -256,12 +245,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-autocomplete"]
-    pub fn get_ariaAutoComplete(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaAutoComplete(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaAutoComplete(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-autocomplete"]
-    pub fn set_ariaAutoComplete(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaAutoComplete(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -270,12 +259,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-braillelabel"]
-    pub fn get_ariaBrailleLabel(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaBrailleLabel(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaBrailleLabel(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-braillelabel"]
-    pub fn set_ariaBrailleLabel(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaBrailleLabel(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -284,12 +273,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-brailleroledescription"]
-    pub fn get_ariaBrailleRoleDescription(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaBrailleRoleDescription(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaBrailleRoleDescription(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-brailleroledescription"]
-    pub fn set_ariaBrailleRoleDescription(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaBrailleRoleDescription(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -298,12 +287,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-busy"]
-    pub fn get_ariaBusy(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaBusy(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaBusy(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-busy"]
-    pub fn set_ariaBusy(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaBusy(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -312,12 +301,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-checked"]
-    pub fn get_ariaChecked(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaChecked(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaChecked(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-checked"]
-    pub fn set_ariaChecked(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaChecked(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -326,12 +315,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colcount"]
-    pub fn get_ariaColCount(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaColCount(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaColCount(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colcount"]
-    pub fn set_ariaColCount(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaColCount(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -340,12 +329,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colindex"]
-    pub fn get_ariaColIndex(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaColIndex(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaColIndex(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colindex"]
-    pub fn set_ariaColIndex(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaColIndex(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -354,12 +343,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colindextext"]
-    pub fn get_ariaColIndexText(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaColIndexText(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaColIndexText(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colindextext"]
-    pub fn set_ariaColIndexText(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaColIndexText(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -368,12 +357,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colspan"]
-    pub fn get_ariaColSpan(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaColSpan(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaColSpan(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colspan"]
-    pub fn set_ariaColSpan(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaColSpan(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -396,12 +385,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-current"]
-    pub fn get_ariaCurrent(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaCurrent(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaCurrent(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-current"]
-    pub fn set_ariaCurrent(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaCurrent(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -424,12 +413,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-description"]
-    pub fn get_ariaDescription(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaDescription(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaDescription(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-description"]
-    pub fn set_ariaDescription(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaDescription(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -452,12 +441,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-disabled"]
-    pub fn get_ariaDisabled(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaDisabled(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaDisabled(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-disabled"]
-    pub fn set_ariaDisabled(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaDisabled(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -480,12 +469,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-expanded"]
-    pub fn get_ariaExpanded(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaExpanded(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaExpanded(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-expanded"]
-    pub fn set_ariaExpanded(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaExpanded(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -508,12 +497,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-haspopup"]
-    pub fn get_ariaHasPopup(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaHasPopup(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaHasPopup(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-haspopup"]
-    pub fn set_ariaHasPopup(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaHasPopup(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -522,12 +511,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-hidden"]
-    pub fn get_ariaHidden(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaHidden(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaHidden(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-hidden"]
-    pub fn set_ariaHidden(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaHidden(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -536,12 +525,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-invalid"]
-    pub fn get_ariaInvalid(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaInvalid(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaInvalid(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-invalid"]
-    pub fn set_ariaInvalid(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaInvalid(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -550,12 +539,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-keyshortcuts"]
-    pub fn get_ariaKeyShortcuts(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaKeyShortcuts(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaKeyShortcuts(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-keyshortcuts"]
-    pub fn set_ariaKeyShortcuts(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaKeyShortcuts(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -564,12 +553,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-label"]
-    pub fn get_ariaLabel(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaLabel(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaLabel(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-label"]
-    pub fn set_ariaLabel(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaLabel(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -592,12 +581,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-level"]
-    pub fn get_ariaLevel(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaLevel(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaLevel(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-level"]
-    pub fn set_ariaLevel(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaLevel(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -606,12 +595,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-live"]
-    pub fn get_ariaLive(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaLive(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaLive(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-live"]
-    pub fn set_ariaLive(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaLive(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -620,12 +609,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-modal"]
-    pub fn get_ariaModal(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaModal(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaModal(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-modal"]
-    pub fn set_ariaModal(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaModal(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -634,12 +623,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-multiline"]
-    pub fn get_ariaMultiLine(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaMultiLine(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaMultiLine(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-multiline"]
-    pub fn set_ariaMultiLine(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaMultiLine(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -648,12 +637,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-multiselectable"]
-    pub fn get_ariaMultiSelectable(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaMultiSelectable(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaMultiSelectable(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-multiselectable"]
-    pub fn set_ariaMultiSelectable(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaMultiSelectable(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -662,12 +651,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-orientation"]
-    pub fn get_ariaOrientation(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaOrientation(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaOrientation(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-orientation"]
-    pub fn set_ariaOrientation(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaOrientation(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -690,12 +679,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-placeholder"]
-    pub fn get_ariaPlaceholder(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaPlaceholder(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaPlaceholder(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-placeholder"]
-    pub fn set_ariaPlaceholder(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaPlaceholder(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -704,12 +693,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-posinset"]
-    pub fn get_ariaPosInSet(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaPosInSet(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaPosInSet(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-posinset"]
-    pub fn set_ariaPosInSet(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaPosInSet(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -718,12 +707,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-pressed"]
-    pub fn get_ariaPressed(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaPressed(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaPressed(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-pressed"]
-    pub fn set_ariaPressed(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaPressed(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -732,12 +721,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-readonly"]
-    pub fn get_ariaReadOnly(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaReadOnly(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaReadOnly(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-readonly"]
-    pub fn set_ariaReadOnly(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaReadOnly(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -746,12 +735,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-relevant"]
-    pub fn get_ariaRelevant(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaRelevant(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaRelevant(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-relevant"]
-    pub fn set_ariaRelevant(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaRelevant(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -760,12 +749,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-required"]
-    pub fn get_ariaRequired(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaRequired(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaRequired(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-required"]
-    pub fn set_ariaRequired(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaRequired(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -774,12 +763,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-roledescription"]
-    pub fn get_ariaRoleDescription(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaRoleDescription(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaRoleDescription(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-roledescription"]
-    pub fn set_ariaRoleDescription(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaRoleDescription(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -788,12 +777,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowcount"]
-    pub fn get_ariaRowCount(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaRowCount(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaRowCount(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowcount"]
-    pub fn set_ariaRowCount(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaRowCount(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -802,12 +791,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowindex"]
-    pub fn get_ariaRowIndex(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaRowIndex(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaRowIndex(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowindex"]
-    pub fn set_ariaRowIndex(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaRowIndex(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -816,12 +805,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowindextext"]
-    pub fn get_ariaRowIndexText(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaRowIndexText(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaRowIndexText(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowindextext"]
-    pub fn set_ariaRowIndexText(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaRowIndexText(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -830,12 +819,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowspan"]
-    pub fn get_ariaRowSpan(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaRowSpan(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaRowSpan(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowspan"]
-    pub fn set_ariaRowSpan(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaRowSpan(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -844,12 +833,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-selected"]
-    pub fn get_ariaSelected(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaSelected(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaSelected(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-selected"]
-    pub fn set_ariaSelected(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaSelected(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -858,12 +847,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-setsize"]
-    pub fn get_ariaSetSize(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaSetSize(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaSetSize(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-setsize"]
-    pub fn set_ariaSetSize(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaSetSize(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -872,12 +861,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-sort"]
-    pub fn get_ariaSort(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaSort(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaSort(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-sort"]
-    pub fn set_ariaSort(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaSort(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -886,12 +875,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuemax"]
-    pub fn get_ariaValueMax(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaValueMax(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaValueMax(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuemax"]
-    pub fn set_ariaValueMax(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaValueMax(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -900,12 +889,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuemin"]
-    pub fn get_ariaValueMin(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaValueMin(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaValueMin(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuemin"]
-    pub fn set_ariaValueMin(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaValueMin(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -914,12 +903,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuenow"]
-    pub fn get_ariaValueNow(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaValueNow(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaValueNow(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuenow"]
-    pub fn set_ariaValueNow(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaValueNow(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -928,12 +917,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuetext"]
-    pub fn get_ariaValueText(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_ariaValueText(instance: *runtime.Instance) anyerror!DOMString {
         return try ARIAMixinImpl.get_ariaValueText(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuetext"]
-    pub fn set_ariaValueText(instance: *runtime.Instance, value: anyopaque) anyerror!void {
+    pub fn set_ariaValueText(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

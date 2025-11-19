@@ -1,5 +1,5 @@
 //! Generated from: fetch.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,17 +7,17 @@ const std = @import("std");
 const runtime = @import("runtime");
 const ResponseImpl = @import("impls").Response;
 const Body = @import("interfaces").Body;
-const Promise<Blob> = @import("interfaces").Promise<Blob>;
-const Promise<FormData> = @import("interfaces").Promise<FormData>;
+const ByteString = @import("interfaces").ByteString;
+const Blob = @import("interfaces").Blob;
 const ResponseType = @import("enums").ResponseType;
-const Promise<any> = @import("interfaces").Promise<any>;
-const Promise<ArrayBuffer> = @import("interfaces").Promise<ArrayBuffer>;
+const USVString = @import("interfaces").USVString;
+const Uint8Array = @import("interfaces").Uint8Array;
+const ArrayBuffer = @import("interfaces").ArrayBuffer;
 const ReadableStream = @import("interfaces").ReadableStream;
 const BodyInit = @import("typedefs").BodyInit;
 const ResponseInit = @import("dictionaries").ResponseInit;
-const Promise<Uint8Array> = @import("interfaces").Promise<Uint8Array>;
+const FormData = @import("interfaces").FormData;
 const Headers = @import("interfaces").Headers;
-const Promise<USVString> = @import("interfaces").Promise<USVString>;
 
 pub const Response = struct {
     pub const Meta = struct {
@@ -40,7 +40,7 @@ pub const Response = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            type: ResponseType = undefined,
+            @"type": ResponseType = undefined,
             url: runtime.USVString = undefined,
             redirected: bool = undefined,
             status: u16 = undefined,
@@ -80,17 +80,7 @@ pub const Response = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ResponseImpl.init(instance);
-        
-        return instance;
+        return ResponseImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -104,11 +94,11 @@ pub const Response = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, body: anyopaque, init: ResponseInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, body: BodyInit, init_data: ResponseInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try ResponseImpl.constructor(instance, body, init);
+        try ResponseImpl.constructor(instance, body, init_data);
         
         return instance;
     }
@@ -149,7 +139,7 @@ pub const Response = struct {
         return value;
     }
 
-    pub fn get_body(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_body(instance: *runtime.Instance) anyerror!ReadableStream {
         return try ResponseImpl.get_body(instance);
     }
 
@@ -200,22 +190,11 @@ pub const Response = struct {
         return try ResponseImpl.call_redirect(instance, url, status);
     }
 
-    /// Arguments for json (WebIDL overloading)
-    pub const JsonArgs = union(enum) {
-        /// json(data, init)
-        any_ResponseInit: struct {
-            data: anyopaque,
-            init: ResponseInit,
-        },
-        /// json()
-        no_params: void,
-    };
-
-    pub fn call_json(instance: *runtime.Instance, args: JsonArgs) anyerror!Response {
-        switch (args) {
-            .any_ResponseInit => |a| return try ResponseImpl.any_ResponseInit(instance, a.data, a.init),
-            .no_params => return try ResponseImpl.no_params(instance),
-        }
+    /// Extended attributes: [NewObject]
+    pub fn call_json(instance: *runtime.Instance, data: anyopaque, init_data: ResponseInit) anyerror!Response {
+        // [NewObject] - Caller owns the returned object
+        
+        return try ResponseImpl.call_json(instance, data, init_data);
     }
 
     /// Extended attributes: [NewObject]

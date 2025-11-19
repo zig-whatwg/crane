@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,11 +7,20 @@ const std = @import("std");
 const runtime = @import("runtime");
 const PannerNodeImpl = @import("impls").PannerNode;
 const AudioNode = @import("interfaces").AudioNode;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const BaseAudioContext = @import("interfaces").BaseAudioContext;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const DistanceModelType = @import("enums").DistanceModelType;
+const ChannelCountMode = @import("enums").ChannelCountMode;
+const Event = @import("interfaces").Event;
+const Observable = @import("interfaces").Observable;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const AudioParam = @import("interfaces").AudioParam;
 const PanningModelType = @import("enums").PanningModelType;
 const PannerOptions = @import("dictionaries").PannerOptions;
-const AudioParam = @import("interfaces").AudioParam;
-const DistanceModelType = @import("enums").DistanceModelType;
+const EventListener = @import("interfaces").EventListener;
+const ChannelInterpretation = @import("enums").ChannelInterpretation;
+const DOMString = @import("typedefs").DOMString;
 
 pub const PannerNode = struct {
     pub const Meta = struct {
@@ -96,17 +105,7 @@ pub const PannerNode = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        PannerNodeImpl.init(instance);
-        
-        return instance;
+        return PannerNodeImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -253,9 +252,9 @@ pub const PannerNode = struct {
         try PannerNodeImpl.set_coneOuterGain(instance, value);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try PannerNodeImpl.call_removeEventListener(instance, type_, callback, options);
+        return try PannerNodeImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
     pub fn call_setPosition(instance: *runtime.Instance, x: f32, y: f32, z: f32) anyerror!void {
@@ -263,9 +262,9 @@ pub const PannerNode = struct {
         return try PannerNodeImpl.call_setPosition(instance, x, y, z);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try PannerNodeImpl.call_when(instance, type_, options);
+        return try PannerNodeImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_setOrientation(instance: *runtime.Instance, x: f32, y: f32, z: f32) anyerror!void {
@@ -278,71 +277,18 @@ pub const PannerNode = struct {
         return try PannerNodeImpl.call_dispatchEvent(instance, event);
     }
 
-    /// Arguments for disconnect (WebIDL overloading)
-    pub const DisconnectArgs = union(enum) {
-        /// disconnect()
-        no_params: void,
-        /// disconnect(output)
-        long: u32,
-        /// disconnect(destinationNode)
-        AudioNode: AudioNode,
-        /// disconnect(destinationNode, output)
-        AudioNode_long: struct {
-            destinationNode: AudioNode,
-            output: u32,
-        },
-        /// disconnect(destinationNode, output, input)
-        AudioNode_long_long: struct {
-            destinationNode: AudioNode,
-            output: u32,
-            input: u32,
-        },
-        /// disconnect(destinationParam)
-        AudioParam: AudioParam,
-        /// disconnect(destinationParam, output)
-        AudioParam_long: struct {
-            destinationParam: AudioParam,
-            output: u32,
-        },
-    };
-
-    pub fn call_disconnect(instance: *runtime.Instance, args: DisconnectArgs) anyerror!void {
-        switch (args) {
-            .no_params => return try PannerNodeImpl.no_params(instance),
-            .long => |arg| return try PannerNodeImpl.long(instance, arg),
-            .AudioNode => |arg| return try PannerNodeImpl.AudioNode(instance, arg),
-            .AudioNode_long => |a| return try PannerNodeImpl.AudioNode_long(instance, a.destinationNode, a.output),
-            .AudioNode_long_long => |a| return try PannerNodeImpl.AudioNode_long_long(instance, a.destinationNode, a.output, a.input),
-            .AudioParam => |arg| return try PannerNodeImpl.AudioParam(instance, arg),
-            .AudioParam_long => |a| return try PannerNodeImpl.AudioParam_long(instance, a.destinationParam, a.output),
-        }
+    pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
+        return try PannerNodeImpl.call_disconnect(instance);
     }
 
-    /// Arguments for connect (WebIDL overloading)
-    pub const ConnectArgs = union(enum) {
-        /// connect(destinationNode, output, input)
-        AudioNode_long_long: struct {
-            destinationNode: AudioNode,
-            output: u32,
-            input: u32,
-        },
-        /// connect(destinationParam, output)
-        AudioParam_long: struct {
-            destinationParam: AudioParam,
-            output: u32,
-        },
-    };
-
-    pub fn call_connect(instance: *runtime.Instance, args: ConnectArgs) anyerror!AudioNode {
-        switch (args) {
-            .AudioNode_long_long => |a| return try PannerNodeImpl.AudioNode_long_long(instance, a.destinationNode, a.output, a.input),
-            .AudioParam_long => |a| return try PannerNodeImpl.AudioParam_long(instance, a.destinationParam, a.output),
-        }
-    }
-
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_connect(instance: *runtime.Instance, destinationNode: AudioNode, output: u32, input: u32) anyerror!AudioNode {
         
-        return try PannerNodeImpl.call_addEventListener(instance, type_, callback, options);
+        return try PannerNodeImpl.call_connect(instance, destinationNode, output, input);
+    }
+
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
+        
+        return try PannerNodeImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
 };

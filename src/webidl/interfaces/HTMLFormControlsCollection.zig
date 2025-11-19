@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,9 @@ const std = @import("std");
 const runtime = @import("runtime");
 const HTMLFormControlsCollectionImpl = @import("impls").HTMLFormControlsCollection;
 const HTMLCollection = @import("interfaces").HTMLCollection;
-const (RadioNodeList or Element) = @import("interfaces").(RadioNodeList or Element);
+const Element = @import("interfaces").Element;
+const RadioNodeList = @import("interfaces").RadioNodeList;
+const DOMString = @import("typedefs").DOMString;
 
 pub const HTMLFormControlsCollection = struct {
     pub const Meta = struct {
@@ -40,17 +42,7 @@ pub const HTMLFormControlsCollection = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        HTMLFormControlsCollectionImpl.init(instance);
-        
-        return instance;
+        return HTMLFormControlsCollectionImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -67,24 +59,14 @@ pub const HTMLFormControlsCollection = struct {
         return try HTMLFormControlsCollectionImpl.get_length(instance);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!anyopaque {
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!Element {
         
         return try HTMLFormControlsCollectionImpl.call_item(instance, index);
     }
 
-    /// Arguments for namedItem (WebIDL overloading)
-    pub const NamedItemArgs = union(enum) {
-        /// namedItem(name)
-        string: DOMString,
-        /// namedItem(name)
-        string: DOMString,
-    };
-
-    pub fn call_namedItem(instance: *runtime.Instance, args: NamedItemArgs) anyerror!anyopaque {
-        switch (args) {
-            .string => |arg| return try HTMLFormControlsCollectionImpl.string(instance, arg),
-            .string => |arg| return try HTMLFormControlsCollectionImpl.string(instance, arg),
-        }
+    pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!Element {
+        
+        return try HTMLFormControlsCollectionImpl.call_namedItem(instance, name);
     }
 
 };

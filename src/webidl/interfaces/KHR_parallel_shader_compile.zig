@@ -1,11 +1,12 @@
 //! Generated from: KHR_parallel_shader_compile.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const KHR_parallel_shader_compileImpl = @import("impls").KHR_parallel_shader_compile;
+const GLenum = @import("typedefs").GLenum;
 
 pub const KHR_parallel_shader_compile = struct {
     pub const Meta = struct {
@@ -48,17 +49,7 @@ pub const KHR_parallel_shader_compile = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        KHR_parallel_shader_compileImpl.init(instance);
-        
-        return instance;
+        return KHR_parallel_shader_compileImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

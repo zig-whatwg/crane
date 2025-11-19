@@ -9,6 +9,6 @@ pub const AnimationPlaybackEventInit = struct {
     // Inherited from EventInit
     base: EventInit,
 
-    currentTime: ?anyopaque = null,
-    timelineTime: ?anyopaque = null,
+    currentTime: ?f64 = null,
+    timelineTime: ?f64 = null,
 };

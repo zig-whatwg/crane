@@ -1,17 +1,16 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const ImageDecoderImpl = @import("impls").ImageDecoder;
-const Promise<boolean> = @import("interfaces").Promise<boolean>;
 const ImageDecodeOptions = @import("dictionaries").ImageDecodeOptions;
 const ImageDecoderInit = @import("dictionaries").ImageDecoderInit;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
 const ImageTrackList = @import("interfaces").ImageTrackList;
-const Promise<ImageDecodeResult> = @import("interfaces").Promise<ImageDecodeResult>;
+const ImageDecodeResult = @import("dictionaries").ImageDecodeResult;
+const DOMString = @import("typedefs").DOMString;
 
 pub const ImageDecoder = struct {
     pub const Meta = struct {
@@ -33,9 +32,9 @@ pub const ImageDecoder = struct {
 
     pub const State = runtime.FlattenedState(
         struct {
-            type: runtime.DOMString = undefined,
+            @"type": runtime.DOMString = undefined,
             complete: bool = undefined,
-            completed: Promise<undefined> = undefined,
+            completed: runtime.Promise(undefined) = undefined,
             tracks: ImageTrackList = undefined,
         },
         Meta.BaseType,
@@ -58,17 +57,7 @@ pub const ImageDecoder = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ImageDecoderImpl.init(instance);
-        
-        return instance;
+        return ImageDecoderImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -82,11 +71,11 @@ pub const ImageDecoder = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, init: ImageDecoderInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, init_data: ImageDecoderInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try ImageDecoderImpl.constructor(instance, init);
+        try ImageDecoderImpl.constructor(instance, init_data);
         
         return instance;
     }
@@ -116,9 +105,9 @@ pub const ImageDecoder = struct {
         return try ImageDecoderImpl.call_reset(instance);
     }
 
-    pub fn call_isTypeSupported(instance: *runtime.Instance, type_: DOMString) anyerror!anyopaque {
+    pub fn call_isTypeSupported(instance: *runtime.Instance, @"type": DOMString) anyerror!anyopaque {
         
-        return try ImageDecoderImpl.call_isTypeSupported(instance, type_);
+        return try ImageDecoderImpl.call_isTypeSupported(instance, @"type");
     }
 
     pub fn call_close(instance: *runtime.Instance) anyerror!void {

@@ -1,5 +1,5 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,23 +8,27 @@ const runtime = @import("runtime");
 const ServiceWorkerRegistrationImpl = @import("impls").ServiceWorkerRegistration;
 const EventTarget = @import("interfaces").EventTarget;
 const PushManagerAttribute = @import("interfaces").PushManagerAttribute;
-const ServiceWorker = @import("interfaces").ServiceWorker;
-const PeriodicSyncManager = @import("interfaces").PeriodicSyncManager;
-const ServiceWorkerUpdateViaCache = @import("enums").ServiceWorkerUpdateViaCache;
-const Promise<ServiceWorkerRegistration> = @import("interfaces").Promise<ServiceWorkerRegistration>;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const ContentIndex = @import("interfaces").ContentIndex;
-const Promise<sequence<Notification>> = @import("interfaces").Promise<sequence<Notification>>;
-const NotificationOptions = @import("dictionaries").NotificationOptions;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
-const BackgroundFetchManager = @import("interfaces").BackgroundFetchManager;
-const NavigationPreloadManager = @import("interfaces").NavigationPreloadManager;
-const PaymentManager = @import("interfaces").PaymentManager;
-const Promise<boolean> = @import("interfaces").Promise<boolean>;
+const USVString = @import("interfaces").USVString;
 const CookieStoreManager = @import("interfaces").CookieStoreManager;
 const GetNotificationOptions = @import("dictionaries").GetNotificationOptions;
 const PushManager = @import("interfaces").PushManager;
-const SyncManager = @import("interfaces").SyncManager;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
 const EventHandler = @import("typedefs").EventHandler;
+const SyncManager = @import("interfaces").SyncManager;
+const ServiceWorker = @import("interfaces").ServiceWorker;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const PeriodicSyncManager = @import("interfaces").PeriodicSyncManager;
+const ServiceWorkerUpdateViaCache = @import("enums").ServiceWorkerUpdateViaCache;
+const NotificationOptions = @import("dictionaries").NotificationOptions;
+const BackgroundFetchManager = @import("interfaces").BackgroundFetchManager;
+const NavigationPreloadManager = @import("interfaces").NavigationPreloadManager;
+const PaymentManager = @import("interfaces").PaymentManager;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const DOMString = @import("typedefs").DOMString;
 
 pub const ServiceWorkerRegistration = struct {
     pub const Meta = struct {
@@ -99,17 +103,7 @@ pub const ServiceWorkerRegistration = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ServiceWorkerRegistrationImpl.init(instance);
-        
-        return instance;
+        return ServiceWorkerRegistrationImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -122,15 +116,15 @@ pub const ServiceWorkerRegistration = struct {
         deinit(instance);
     }
 
-    pub fn get_installing(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_installing(instance: *runtime.Instance) anyerror!ServiceWorker {
         return try ServiceWorkerRegistrationImpl.get_installing(instance);
     }
 
-    pub fn get_waiting(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_waiting(instance: *runtime.Instance) anyerror!ServiceWorker {
         return try ServiceWorkerRegistrationImpl.get_waiting(instance);
     }
 
-    pub fn get_active(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_active(instance: *runtime.Instance) anyerror!ServiceWorker {
         return try ServiceWorkerRegistrationImpl.get_active(instance);
     }
 
@@ -231,9 +225,9 @@ pub const ServiceWorkerRegistration = struct {
         return try ServiceWorkerRegistrationImpl.call_showNotification(instance, title, options);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try ServiceWorkerRegistrationImpl.call_when(instance, type_, options);
+        return try ServiceWorkerRegistrationImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_getNotifications(instance: *runtime.Instance, filter: GetNotificationOptions) anyerror!anyopaque {
@@ -246,14 +240,14 @@ pub const ServiceWorkerRegistration = struct {
         return try ServiceWorkerRegistrationImpl.call_dispatchEvent(instance, event);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try ServiceWorkerRegistrationImpl.call_addEventListener(instance, type_, callback, options);
+        return try ServiceWorkerRegistrationImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try ServiceWorkerRegistrationImpl.call_removeEventListener(instance, type_, callback, options);
+        return try ServiceWorkerRegistrationImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

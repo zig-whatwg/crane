@@ -1,5 +1,5 @@
 //! Generated from: webusb.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,6 +9,10 @@ const USBConnectionEventImpl = @import("impls").USBConnectionEvent;
 const Event = @import("interfaces").Event;
 const USBConnectionEventInit = @import("dictionaries").USBConnectionEventInit;
 const USBDevice = @import("interfaces").USBDevice;
+const EventTarget = @import("interfaces").EventTarget;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
+const DOMString = @import("typedefs").DOMString;
 
 pub const USBConnectionEvent = struct {
     pub const Meta = struct {
@@ -75,17 +79,7 @@ pub const USBConnectionEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        USBConnectionEventImpl.init(instance);
-        
-        return instance;
+        return USBConnectionEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -99,11 +93,11 @@ pub const USBConnectionEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, eventInitDict: USBConnectionEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, eventInitDict: USBConnectionEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try USBConnectionEventImpl.constructor(instance, type_, eventInitDict);
+        try USBConnectionEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -112,15 +106,15 @@ pub const USBConnectionEvent = struct {
         return try USBConnectionEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try USBConnectionEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try USBConnectionEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try USBConnectionEventImpl.get_currentTarget(instance);
     }
 
@@ -185,9 +179,9 @@ pub const USBConnectionEvent = struct {
         return try USBConnectionEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try USBConnectionEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try USBConnectionEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_composedPath(instance: *runtime.Instance) anyerror!anyopaque {

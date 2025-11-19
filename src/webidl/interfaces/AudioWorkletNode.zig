@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,10 +7,20 @@ const std = @import("std");
 const runtime = @import("runtime");
 const AudioWorkletNodeImpl = @import("impls").AudioWorkletNode;
 const AudioNode = @import("interfaces").AudioNode;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const BaseAudioContext = @import("interfaces").BaseAudioContext;
-const AudioWorkletNodeOptions = @import("dictionaries").AudioWorkletNodeOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const ChannelCountMode = @import("enums").ChannelCountMode;
 const AudioParamMap = @import("interfaces").AudioParamMap;
+const AudioWorkletNodeOptions = @import("dictionaries").AudioWorkletNodeOptions;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
+const AudioParam = @import("interfaces").AudioParam;
+const ChannelInterpretation = @import("enums").ChannelInterpretation;
 const MessagePort = @import("interfaces").MessagePort;
+const DOMString = @import("typedefs").DOMString;
 const EventHandler = @import("typedefs").EventHandler;
 
 pub const AudioWorkletNode = struct {
@@ -66,17 +76,7 @@ pub const AudioWorkletNode = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        AudioWorkletNodeImpl.init(instance);
-        
-        return instance;
+        return AudioWorkletNodeImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -151,86 +151,33 @@ pub const AudioWorkletNode = struct {
         try AudioWorkletNodeImpl.set_onprocessorerror(instance, value);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
-        
-        return try AudioWorkletNodeImpl.call_removeEventListener(instance, type_, callback, options);
-    }
-
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
-        
-        return try AudioWorkletNodeImpl.call_when(instance, type_, options);
-    }
-
     pub fn call_dispatchEvent(instance: *runtime.Instance, event: Event) anyerror!bool {
         
         return try AudioWorkletNodeImpl.call_dispatchEvent(instance, event);
     }
 
-    /// Arguments for disconnect (WebIDL overloading)
-    pub const DisconnectArgs = union(enum) {
-        /// disconnect()
-        no_params: void,
-        /// disconnect(output)
-        long: u32,
-        /// disconnect(destinationNode)
-        AudioNode: AudioNode,
-        /// disconnect(destinationNode, output)
-        AudioNode_long: struct {
-            destinationNode: AudioNode,
-            output: u32,
-        },
-        /// disconnect(destinationNode, output, input)
-        AudioNode_long_long: struct {
-            destinationNode: AudioNode,
-            output: u32,
-            input: u32,
-        },
-        /// disconnect(destinationParam)
-        AudioParam: AudioParam,
-        /// disconnect(destinationParam, output)
-        AudioParam_long: struct {
-            destinationParam: AudioParam,
-            output: u32,
-        },
-    };
-
-    pub fn call_disconnect(instance: *runtime.Instance, args: DisconnectArgs) anyerror!void {
-        switch (args) {
-            .no_params => return try AudioWorkletNodeImpl.no_params(instance),
-            .long => |arg| return try AudioWorkletNodeImpl.long(instance, arg),
-            .AudioNode => |arg| return try AudioWorkletNodeImpl.AudioNode(instance, arg),
-            .AudioNode_long => |a| return try AudioWorkletNodeImpl.AudioNode_long(instance, a.destinationNode, a.output),
-            .AudioNode_long_long => |a| return try AudioWorkletNodeImpl.AudioNode_long_long(instance, a.destinationNode, a.output, a.input),
-            .AudioParam => |arg| return try AudioWorkletNodeImpl.AudioParam(instance, arg),
-            .AudioParam_long => |a| return try AudioWorkletNodeImpl.AudioParam_long(instance, a.destinationParam, a.output),
-        }
-    }
-
-    /// Arguments for connect (WebIDL overloading)
-    pub const ConnectArgs = union(enum) {
-        /// connect(destinationNode, output, input)
-        AudioNode_long_long: struct {
-            destinationNode: AudioNode,
-            output: u32,
-            input: u32,
-        },
-        /// connect(destinationParam, output)
-        AudioParam_long: struct {
-            destinationParam: AudioParam,
-            output: u32,
-        },
-    };
-
-    pub fn call_connect(instance: *runtime.Instance, args: ConnectArgs) anyerror!AudioNode {
-        switch (args) {
-            .AudioNode_long_long => |a| return try AudioWorkletNodeImpl.AudioNode_long_long(instance, a.destinationNode, a.output, a.input),
-            .AudioParam_long => |a| return try AudioWorkletNodeImpl.AudioParam_long(instance, a.destinationParam, a.output),
-        }
-    }
-
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_connect(instance: *runtime.Instance, destinationNode: AudioNode, output: u32, input: u32) anyerror!AudioNode {
         
-        return try AudioWorkletNodeImpl.call_addEventListener(instance, type_, callback, options);
+        return try AudioWorkletNodeImpl.call_connect(instance, destinationNode, output, input);
+    }
+
+    pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
+        return try AudioWorkletNodeImpl.call_disconnect(instance);
+    }
+
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+        
+        return try AudioWorkletNodeImpl.call_when(instance, @"type", options);
+    }
+
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
+        
+        return try AudioWorkletNodeImpl.call_addEventListener(instance, @"type", callback, options);
+    }
+
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
+        
+        return try AudioWorkletNodeImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

@@ -1,5 +1,5 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,10 +7,13 @@ const std = @import("std");
 const runtime = @import("runtime");
 const DOMMatrixImpl = @import("impls").DOMMatrix;
 const DOMMatrixReadOnly = @import("interfaces").DOMMatrixReadOnly;
+const DOMPoint = @import("interfaces").DOMPoint;
 const DOMMatrixInit = @import("dictionaries").DOMMatrixInit;
 const Float32Array = @import("interfaces").Float32Array;
-const (DOMString or sequence) = @import("interfaces").(DOMString or sequence);
 const Float64Array = @import("interfaces").Float64Array;
+const sequence = @import("interfaces").sequence;
+const DOMPointInit = @import("dictionaries").DOMPointInit;
+const DOMString = @import("typedefs").DOMString;
 
 pub const DOMMatrix = struct {
     pub const Meta = struct {
@@ -64,50 +67,28 @@ pub const DOMMatrix = struct {
         .deinit_fn = &deinit_wrapper,
 
         .get_a = &get_a,
-        .get_a = &get_a,
-        .get_b = &get_b,
         .get_b = &get_b,
         .get_c = &get_c,
-        .get_c = &get_c,
-        .get_d = &get_d,
         .get_d = &get_d,
         .get_e = &get_e,
-        .get_e = &get_e,
-        .get_f = &get_f,
         .get_f = &get_f,
         .get_is2D = &get_is2D,
         .get_isIdentity = &get_isIdentity,
         .get_m11 = &get_m11,
-        .get_m11 = &get_m11,
-        .get_m12 = &get_m12,
         .get_m12 = &get_m12,
         .get_m13 = &get_m13,
-        .get_m13 = &get_m13,
-        .get_m14 = &get_m14,
         .get_m14 = &get_m14,
         .get_m21 = &get_m21,
-        .get_m21 = &get_m21,
-        .get_m22 = &get_m22,
         .get_m22 = &get_m22,
         .get_m23 = &get_m23,
-        .get_m23 = &get_m23,
-        .get_m24 = &get_m24,
         .get_m24 = &get_m24,
         .get_m31 = &get_m31,
-        .get_m31 = &get_m31,
-        .get_m32 = &get_m32,
         .get_m32 = &get_m32,
         .get_m33 = &get_m33,
-        .get_m33 = &get_m33,
-        .get_m34 = &get_m34,
         .get_m34 = &get_m34,
         .get_m41 = &get_m41,
-        .get_m41 = &get_m41,
-        .get_m42 = &get_m42,
         .get_m42 = &get_m42,
         .get_m43 = &get_m43,
-        .get_m43 = &get_m43,
-        .get_m44 = &get_m44,
         .get_m44 = &get_m44,
 
         .call_flipX = &call_flipX,
@@ -146,17 +127,7 @@ pub const DOMMatrix = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        DOMMatrixImpl.init(instance);
-        
-        return instance;
+        return DOMMatrixImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -170,11 +141,11 @@ pub const DOMMatrix = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, init: anyopaque) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, init_data: anyopaque) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try DOMMatrixImpl.constructor(instance, init);
+        try DOMMatrixImpl.constructor(instance, init_data);
         
         return instance;
     }
@@ -275,107 +246,11 @@ pub const DOMMatrix = struct {
         return try DOMMatrixImpl.get_isIdentity(instance);
     }
 
-    pub fn get_a(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMMatrixImpl.get_a(instance);
-    }
-
-    pub fn get_b(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMMatrixImpl.get_b(instance);
-    }
-
-    pub fn get_c(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMMatrixImpl.get_c(instance);
-    }
-
-    pub fn get_d(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMMatrixImpl.get_d(instance);
-    }
-
-    pub fn get_e(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMMatrixImpl.get_e(instance);
-    }
-
-    pub fn get_f(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMMatrixImpl.get_f(instance);
-    }
-
-    pub fn get_m11(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMMatrixImpl.get_m11(instance);
-    }
-
-    pub fn get_m12(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMMatrixImpl.get_m12(instance);
-    }
-
-    pub fn get_m13(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMMatrixImpl.get_m13(instance);
-    }
-
-    pub fn get_m14(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMMatrixImpl.get_m14(instance);
-    }
-
-    pub fn get_m21(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMMatrixImpl.get_m21(instance);
-    }
-
-    pub fn get_m22(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMMatrixImpl.get_m22(instance);
-    }
-
-    pub fn get_m23(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMMatrixImpl.get_m23(instance);
-    }
-
-    pub fn get_m24(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMMatrixImpl.get_m24(instance);
-    }
-
-    pub fn get_m31(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMMatrixImpl.get_m31(instance);
-    }
-
-    pub fn get_m32(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMMatrixImpl.get_m32(instance);
-    }
-
-    pub fn get_m33(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMMatrixImpl.get_m33(instance);
-    }
-
-    pub fn get_m34(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMMatrixImpl.get_m34(instance);
-    }
-
-    pub fn get_m41(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMMatrixImpl.get_m41(instance);
-    }
-
-    pub fn get_m42(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMMatrixImpl.get_m42(instance);
-    }
-
-    pub fn get_m43(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMMatrixImpl.get_m43(instance);
-    }
-
-    pub fn get_m44(instance: *runtime.Instance) anyerror!f64 {
-        return try DOMMatrixImpl.get_m44(instance);
-    }
-
-    /// Arguments for fromFloat32Array (WebIDL overloading)
-    pub const FromFloat32ArrayArgs = union(enum) {
-        /// fromFloat32Array(array32)
-        Float32Array: anyopaque,
-        /// fromFloat32Array(array32)
-        Float32Array: anyopaque,
-    };
-
-    pub fn call_fromFloat32Array(instance: *runtime.Instance, args: FromFloat32ArrayArgs) anyerror!DOMMatrixReadOnly {
-        switch (args) {
-            .Float32Array => |arg| return try DOMMatrixImpl.Float32Array(instance, arg),
-            .Float32Array => |arg| return try DOMMatrixImpl.Float32Array(instance, arg),
-        }
+    /// Extended attributes: [NewObject]
+    pub fn call_fromFloat32Array(instance: *runtime.Instance, array32: anyopaque) anyerror!DOMMatrixReadOnly {
+        // [NewObject] - Caller owns the returned object
+        
+        return try DOMMatrixImpl.call_fromFloat32Array(instance, array32);
     }
 
     /// Extended attributes: [NewObject]
@@ -385,34 +260,18 @@ pub const DOMMatrix = struct {
         return try DOMMatrixImpl.call_scale3d(instance, scale, originX, originY, originZ);
     }
 
-    /// Arguments for fromFloat64Array (WebIDL overloading)
-    pub const FromFloat64ArrayArgs = union(enum) {
-        /// fromFloat64Array(array64)
-        Float64Array: anyopaque,
-        /// fromFloat64Array(array64)
-        Float64Array: anyopaque,
-    };
-
-    pub fn call_fromFloat64Array(instance: *runtime.Instance, args: FromFloat64ArrayArgs) anyerror!DOMMatrixReadOnly {
-        switch (args) {
-            .Float64Array => |arg| return try DOMMatrixImpl.Float64Array(instance, arg),
-            .Float64Array => |arg| return try DOMMatrixImpl.Float64Array(instance, arg),
-        }
+    /// Extended attributes: [NewObject]
+    pub fn call_fromFloat64Array(instance: *runtime.Instance, array64: anyopaque) anyerror!DOMMatrixReadOnly {
+        // [NewObject] - Caller owns the returned object
+        
+        return try DOMMatrixImpl.call_fromFloat64Array(instance, array64);
     }
 
-    /// Arguments for fromMatrix (WebIDL overloading)
-    pub const FromMatrixArgs = union(enum) {
-        /// fromMatrix(other)
-        DOMMatrixInit: DOMMatrixInit,
-        /// fromMatrix(other)
-        DOMMatrixInit: DOMMatrixInit,
-    };
-
-    pub fn call_fromMatrix(instance: *runtime.Instance, args: FromMatrixArgs) anyerror!DOMMatrixReadOnly {
-        switch (args) {
-            .DOMMatrixInit => |arg| return try DOMMatrixImpl.DOMMatrixInit(instance, arg),
-            .DOMMatrixInit => |arg| return try DOMMatrixImpl.DOMMatrixInit(instance, arg),
-        }
+    /// Extended attributes: [NewObject]
+    pub fn call_fromMatrix(instance: *runtime.Instance, other: DOMMatrixInit) anyerror!DOMMatrixReadOnly {
+        // [NewObject] - Caller owns the returned object
+        
+        return try DOMMatrixImpl.call_fromMatrix(instance, other);
     }
 
     /// Extended attributes: [NewObject]

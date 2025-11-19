@@ -1,12 +1,11 @@
 //! Generated from: testutils.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const TestUtilsImpl = @import("impls").TestUtils;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
 
 pub const TestUtils = struct {
     pub const Meta = struct {
@@ -39,17 +38,7 @@ pub const TestUtils = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        TestUtilsImpl.init(instance);
-        
-        return instance;
+        return TestUtilsImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

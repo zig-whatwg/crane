@@ -1,24 +1,21 @@
 //! Generated from: webcrypto.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const SubtleCryptoImpl = @import("impls").SubtleCrypto;
-const CryptoKey = @import("interfaces").CryptoKey;
-const Promise<(ArrayBufferorJsonWebKey)> = @import("interfaces").Promise<(ArrayBufferorJsonWebKey)>;
-const (BufferSource or JsonWebKey) = @import("interfaces").(BufferSource or JsonWebKey);
-const Promise<(CryptoKeyorCryptoKeyPair)> = @import("interfaces").Promise<(CryptoKeyorCryptoKeyPair)>;
+const EncapsulatedBits = @import("dictionaries").EncapsulatedBits;
 const AlgorithmIdentifier = @import("typedefs").AlgorithmIdentifier;
-const Promise<EncapsulatedBits> = @import("interfaces").Promise<EncapsulatedBits>;
-const Promise<boolean> = @import("interfaces").Promise<boolean>;
-const Promise<ArrayBuffer> = @import("interfaces").Promise<ArrayBuffer>;
+const KeyUsage = @import("enums").KeyUsage;
+const ArrayBuffer = @import("interfaces").ArrayBuffer;
 const KeyFormat = @import("enums").KeyFormat;
-const Promise<EncapsulatedKey> = @import("interfaces").Promise<EncapsulatedKey>;
 const BufferSource = @import("typedefs").BufferSource;
-const unsigned long = @import("interfaces").unsigned long;
-const Promise<CryptoKey> = @import("interfaces").Promise<CryptoKey>;
+const JsonWebKey = @import("dictionaries").JsonWebKey;
+const EncapsulatedKey = @import("dictionaries").EncapsulatedKey;
+const DOMString = @import("typedefs").DOMString;
+const CryptoKey = @import("interfaces").CryptoKey;
 
 pub const SubtleCrypto = struct {
     pub const Meta = struct {
@@ -69,17 +66,7 @@ pub const SubtleCrypto = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        SubtleCryptoImpl.init(instance);
-        
-        return instance;
+        return SubtleCryptoImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -117,7 +104,7 @@ pub const SubtleCrypto = struct {
         return try SubtleCryptoImpl.call_decapsulateKey(instance, decapsulationAlgorithm, decapsulationKey, ciphertext, sharedKeyAlgorithm, extractable, keyUsages);
     }
 
-    pub fn call_deriveBits(instance: *runtime.Instance, algorithm: AlgorithmIdentifier, baseKey: CryptoKey, length: anyopaque) anyerror!anyopaque {
+    pub fn call_deriveBits(instance: *runtime.Instance, algorithm: AlgorithmIdentifier, baseKey: CryptoKey, length: u32) anyerror!anyopaque {
         
         return try SubtleCryptoImpl.call_deriveBits(instance, algorithm, baseKey, length);
     }
@@ -137,27 +124,9 @@ pub const SubtleCrypto = struct {
         return try SubtleCryptoImpl.call_verify(instance, algorithm, key, signature, data);
     }
 
-    /// Arguments for supports (WebIDL overloading)
-    pub const SupportsArgs = union(enum) {
-        /// supports(operation, algorithm, length)
-        string_AlgorithmIdentifier_long?: struct {
-            operation: DOMString,
-            algorithm: AlgorithmIdentifier,
-            length: anyopaque,
-        },
-        /// supports(operation, algorithm, additionalAlgorithm)
-        string_AlgorithmIdentifier_AlgorithmIdentifier: struct {
-            operation: DOMString,
-            algorithm: AlgorithmIdentifier,
-            additionalAlgorithm: AlgorithmIdentifier,
-        },
-    };
-
-    pub fn call_supports(instance: *runtime.Instance, args: SupportsArgs) anyerror!bool {
-        switch (args) {
-            .string_AlgorithmIdentifier_long? => |a| return try SubtleCryptoImpl.string_AlgorithmIdentifier_long?(instance, a.operation, a.algorithm, a.length),
-            .string_AlgorithmIdentifier_AlgorithmIdentifier => |a| return try SubtleCryptoImpl.string_AlgorithmIdentifier_AlgorithmIdentifier(instance, a.operation, a.algorithm, a.additionalAlgorithm),
-        }
+    pub fn call_supports(instance: *runtime.Instance, operation: DOMString, algorithm: AlgorithmIdentifier, length: u32) anyerror!bool {
+        
+        return try SubtleCryptoImpl.call_supports(instance, operation, algorithm, length);
     }
 
     pub fn call_digest(instance: *runtime.Instance, algorithm: AlgorithmIdentifier, data: BufferSource) anyerror!anyopaque {

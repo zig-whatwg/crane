@@ -5,6 +5,6 @@
 const runtime = @import("runtime");
 
 pub const WebAssemblyCompileOptions = struct {
-    importedStringConstants: ?anyopaque = null,
+    importedStringConstants: ?runtime.DOMString = null,
     builtins: ?anyopaque = null,
 };

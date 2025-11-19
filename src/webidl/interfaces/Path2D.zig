@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,9 +7,10 @@ const std = @import("std");
 const runtime = @import("runtime");
 const Path2DImpl = @import("impls").Path2D;
 const CanvasPath = @import("interfaces").CanvasPath;
-const (Path2D or DOMString) = @import("interfaces").(Path2D or DOMString);
 const DOMMatrix2DInit = @import("dictionaries").DOMMatrix2DInit;
-const (unrestricted double or DOMPointInit or sequence) = @import("interfaces").(unrestricted double or DOMPointInit or sequence);
+const sequence = @import("interfaces").sequence;
+const DOMPointInit = @import("dictionaries").DOMPointInit;
+const DOMString = @import("typedefs").DOMString;
 
 pub const Path2D = struct {
     pub const Meta = struct {
@@ -54,17 +55,7 @@ pub const Path2D = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        Path2DImpl.init(instance);
-        
-        return instance;
+        return Path2DImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

@@ -1,5 +1,5 @@
 //! Generated from: uievents.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,8 +7,16 @@ const std = @import("std");
 const runtime = @import("runtime");
 const CompositionEventImpl = @import("impls").CompositionEvent;
 const UIEvent = @import("interfaces").UIEvent;
+const UIEventInit = @import("dictionaries").UIEventInit;
+const Window = @import("interfaces").Window;
 const CompositionEventInit = @import("dictionaries").CompositionEventInit;
+const EventTarget = @import("interfaces").EventTarget;
 const WindowProxy = @import("interfaces").WindowProxy;
+const InputDeviceCapabilities = @import("interfaces").InputDeviceCapabilities;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
+const USVString = @import("interfaces").USVString;
+const DOMString = @import("typedefs").DOMString;
 
 pub const CompositionEvent = struct {
     pub const Meta = struct {
@@ -77,17 +85,7 @@ pub const CompositionEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        CompositionEventImpl.init(instance);
-        
-        return instance;
+        return CompositionEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -101,11 +99,11 @@ pub const CompositionEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, eventInitDict: CompositionEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, eventInitDict: CompositionEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try CompositionEventImpl.constructor(instance, type_, eventInitDict);
+        try CompositionEventImpl.constructor(instance, @"type", eventInitDict);
         
         return instance;
     }
@@ -114,15 +112,15 @@ pub const CompositionEvent = struct {
         return try CompositionEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try CompositionEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try CompositionEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try CompositionEventImpl.get_currentTarget(instance);
     }
 
@@ -171,7 +169,7 @@ pub const CompositionEvent = struct {
         return try CompositionEventImpl.get_timeStamp(instance);
     }
 
-    pub fn get_view(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_view(instance: *runtime.Instance) anyerror!Window {
         return try CompositionEventImpl.get_view(instance);
     }
 
@@ -183,7 +181,7 @@ pub const CompositionEvent = struct {
         return try CompositionEventImpl.get_which(instance);
     }
 
-    pub fn get_sourceCapabilities(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_sourceCapabilities(instance: *runtime.Instance) anyerror!InputDeviceCapabilities {
         return try CompositionEventImpl.get_sourceCapabilities(instance);
     }
 
@@ -195,12 +193,12 @@ pub const CompositionEvent = struct {
         return try CompositionEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try CompositionEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try CompositionEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
-    pub fn call_initUIEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: anyopaque, detailArg: i32) anyerror!void {
+    pub fn call_initUIEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: Window, detailArg: i32) anyerror!void {
         
         return try CompositionEventImpl.call_initUIEvent(instance, typeArg, bubblesArg, cancelableArg, viewArg, detailArg);
     }

@@ -1,5 +1,5 @@
 //! Generated from: media-source.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,6 +7,18 @@ const std = @import("std");
 const runtime = @import("runtime");
 const ManagedMediaSourceImpl = @import("impls").ManagedMediaSource;
 const MediaSource = @import("interfaces").MediaSource;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const EndOfStreamError = @import("enums").EndOfStreamError;
+const MediaSourceHandle = @import("interfaces").MediaSourceHandle;
+const DOMString = @import("typedefs").DOMString;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const SourceBufferList = @import("interfaces").SourceBufferList;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const SourceBuffer = @import("interfaces").SourceBuffer;
+const EventListener = @import("interfaces").EventListener;
+const ReadyState = @import("enums").ReadyState;
 const EventHandler = @import("typedefs").EventHandler;
 
 pub const ManagedMediaSource = struct {
@@ -73,17 +85,7 @@ pub const ManagedMediaSource = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ManagedMediaSourceImpl.init(instance);
-        
-        return instance;
+        return ManagedMediaSourceImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -186,9 +188,9 @@ pub const ManagedMediaSource = struct {
         try ManagedMediaSourceImpl.set_onendstreaming(instance, value);
     }
 
-    pub fn call_endOfStream(instance: *runtime.Instance, error_: EndOfStreamError) anyerror!void {
+    pub fn call_endOfStream(instance: *runtime.Instance, @"error": EndOfStreamError) anyerror!void {
         
-        return try ManagedMediaSourceImpl.call_endOfStream(instance, error_);
+        return try ManagedMediaSourceImpl.call_endOfStream(instance, @"error");
     }
 
     pub fn call_setLiveSeekableRange(instance: *runtime.Instance, start: f64, end: f64) anyerror!void {
@@ -196,14 +198,14 @@ pub const ManagedMediaSource = struct {
         return try ManagedMediaSourceImpl.call_setLiveSeekableRange(instance, start, end);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try ManagedMediaSourceImpl.call_when(instance, type_, options);
+        return try ManagedMediaSourceImpl.call_when(instance, @"type", options);
     }
 
-    pub fn call_addSourceBuffer(instance: *runtime.Instance, type_: DOMString) anyerror!SourceBuffer {
+    pub fn call_addSourceBuffer(instance: *runtime.Instance, @"type": DOMString) anyerror!SourceBuffer {
         
-        return try ManagedMediaSourceImpl.call_addSourceBuffer(instance, type_);
+        return try ManagedMediaSourceImpl.call_addSourceBuffer(instance, @"type");
     }
 
     pub fn call_removeSourceBuffer(instance: *runtime.Instance, sourceBuffer: SourceBuffer) anyerror!void {
@@ -211,9 +213,9 @@ pub const ManagedMediaSource = struct {
         return try ManagedMediaSourceImpl.call_removeSourceBuffer(instance, sourceBuffer);
     }
 
-    pub fn call_isTypeSupported(instance: *runtime.Instance, type_: DOMString) anyerror!bool {
+    pub fn call_isTypeSupported(instance: *runtime.Instance, @"type": DOMString) anyerror!bool {
         
-        return try ManagedMediaSourceImpl.call_isTypeSupported(instance, type_);
+        return try ManagedMediaSourceImpl.call_isTypeSupported(instance, @"type");
     }
 
     pub fn call_dispatchEvent(instance: *runtime.Instance, event: Event) anyerror!bool {
@@ -225,14 +227,14 @@ pub const ManagedMediaSource = struct {
         return try ManagedMediaSourceImpl.call_clearLiveSeekableRange(instance);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try ManagedMediaSourceImpl.call_addEventListener(instance, type_, callback, options);
+        return try ManagedMediaSourceImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try ManagedMediaSourceImpl.call_removeEventListener(instance, type_, callback, options);
+        return try ManagedMediaSourceImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
 };

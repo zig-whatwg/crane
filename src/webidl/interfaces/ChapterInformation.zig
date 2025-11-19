@@ -1,12 +1,13 @@
 //! Generated from: mediasession.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const ChapterInformationImpl = @import("impls").ChapterInformation;
-const FrozenArray<MediaImage> = @import("interfaces").FrozenArray<MediaImage>;
+const DOMString = @import("typedefs").DOMString;
+const MediaImage = @import("dictionaries").MediaImage;
 
 pub const ChapterInformation = struct {
     pub const Meta = struct {
@@ -26,7 +27,7 @@ pub const ChapterInformation = struct {
         struct {
             title: runtime.DOMString = undefined,
             startTime: f64 = undefined,
-            artwork: FrozenArray<MediaImage> = undefined,
+            artwork: runtime.FrozenArray(MediaImage) = undefined,
         },
         Meta.BaseType,
         Meta.MixinTypes,
@@ -42,17 +43,7 @@ pub const ChapterInformation = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        ChapterInformationImpl.init(instance);
-        
-        return instance;
+        return ChapterInformationImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

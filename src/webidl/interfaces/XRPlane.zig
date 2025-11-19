@@ -1,14 +1,14 @@
 //! Generated from: webxr-plane-detection.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const XRPlaneImpl = @import("impls").XRPlane;
-const FrozenArray<DOMPointReadOnly> = @import("interfaces").FrozenArray<DOMPointReadOnly>;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const XRPlaneOrientation = @import("enums").XRPlaneOrientation;
+const DOMPointReadOnly = @import("interfaces").DOMPointReadOnly;
 const DOMString = @import("typedefs").DOMString;
 const XRSpace = @import("interfaces").XRSpace;
 
@@ -24,7 +24,7 @@ pub const XRPlane = struct {
     pub const State = runtime.FlattenedState(
         struct {
             planeSpace: XRSpace = undefined,
-            polygon: FrozenArray<DOMPointReadOnly> = undefined,
+            polygon: runtime.FrozenArray(DOMPointReadOnly) = undefined,
             orientation: ?XRPlaneOrientation = null,
             lastChangedTime: DOMHighResTimeStamp = undefined,
             semanticLabel: ?runtime.DOMString = null,
@@ -45,17 +45,7 @@ pub const XRPlane = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        XRPlaneImpl.init(instance);
-        
-        return instance;
+        return XRPlaneImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -84,7 +74,7 @@ pub const XRPlane = struct {
         return try XRPlaneImpl.get_polygon(instance);
     }
 
-    pub fn get_orientation(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_orientation(instance: *runtime.Instance) anyerror!XRPlaneOrientation {
         return try XRPlaneImpl.get_orientation(instance);
     }
 
@@ -92,7 +82,7 @@ pub const XRPlane = struct {
         return try XRPlaneImpl.get_lastChangedTime(instance);
     }
 
-    pub fn get_semanticLabel(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_semanticLabel(instance: *runtime.Instance) anyerror!DOMString {
         return try XRPlaneImpl.get_semanticLabel(instance);
     }
 

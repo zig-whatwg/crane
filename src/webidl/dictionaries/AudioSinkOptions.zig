@@ -5,5 +5,5 @@
 const runtime = @import("runtime");
 
 pub const AudioSinkOptions = struct {
-    type: anyopaque,
+    @"type": anyopaque,
 };

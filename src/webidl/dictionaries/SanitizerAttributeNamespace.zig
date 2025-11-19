@@ -6,5 +6,5 @@ const runtime = @import("runtime");
 
 pub const SanitizerAttributeNamespace = struct {
     name: runtime.DOMString,
-    _namespace: ?anyopaque = null,
+    _namespace: ?runtime.DOMString = null,
 };

@@ -1,5 +1,5 @@
 //! Generated from: fs.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,13 +7,14 @@ const std = @import("std");
 const runtime = @import("runtime");
 const FileSystemDirectoryHandleImpl = @import("impls").FileSystemDirectoryHandle;
 const FileSystemHandle = @import("interfaces").FileSystemHandle;
-const Promise<FileSystemDirectoryHandle> = @import("interfaces").Promise<FileSystemDirectoryHandle>;
 const FileSystemRemoveOptions = @import("dictionaries").FileSystemRemoveOptions;
+const PermissionState = @import("enums").PermissionState;
 const FileSystemGetFileOptions = @import("dictionaries").FileSystemGetFileOptions;
+const FileSystemHandlePermissionDescriptor = @import("dictionaries").FileSystemHandlePermissionDescriptor;
 const FileSystemGetDirectoryOptions = @import("dictionaries").FileSystemGetDirectoryOptions;
-const Promise<undefined> = @import("interfaces").Promise<undefined>;
-const Promise<sequence<USVString>?> = @import("interfaces").Promise<sequence<USVString>?>;
-const Promise<FileSystemFileHandle> = @import("interfaces").Promise<FileSystemFileHandle>;
+const FileSystemHandleKind = @import("enums").FileSystemHandleKind;
+const USVString = @import("interfaces").USVString;
+const FileSystemFileHandle = @import("interfaces").FileSystemFileHandle;
 
 pub const FileSystemDirectoryHandle = struct {
     pub const Meta = struct {
@@ -57,17 +58,7 @@ pub const FileSystemDirectoryHandle = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        FileSystemDirectoryHandleImpl.init(instance);
-        
-        return instance;
+        return FileSystemDirectoryHandleImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

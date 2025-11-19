@@ -1,5 +1,5 @@
 //! Generated from: scheduling-apis.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,6 +9,10 @@ const TaskPriorityChangeEventImpl = @import("impls").TaskPriorityChangeEvent;
 const Event = @import("interfaces").Event;
 const TaskPriorityChangeEventInit = @import("dictionaries").TaskPriorityChangeEventInit;
 const TaskPriority = @import("enums").TaskPriority;
+const EventTarget = @import("interfaces").EventTarget;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
+const DOMString = @import("typedefs").DOMString;
 
 pub const TaskPriorityChangeEvent = struct {
     pub const Meta = struct {
@@ -74,17 +78,7 @@ pub const TaskPriorityChangeEvent = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        TaskPriorityChangeEventImpl.init(instance);
-        
-        return instance;
+        return TaskPriorityChangeEventImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -98,11 +92,11 @@ pub const TaskPriorityChangeEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, type_: DOMString, priorityChangeEventInitDict: TaskPriorityChangeEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, @"type": DOMString, priorityChangeEventInitDict: TaskPriorityChangeEventInit) !*runtime.Instance {
         const instance = try init(allocator);
         errdefer deinit(instance);
         
-        try TaskPriorityChangeEventImpl.constructor(instance, type_, priorityChangeEventInitDict);
+        try TaskPriorityChangeEventImpl.constructor(instance, @"type", priorityChangeEventInitDict);
         
         return instance;
     }
@@ -111,15 +105,15 @@ pub const TaskPriorityChangeEvent = struct {
         return try TaskPriorityChangeEventImpl.get_type(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
         return try TaskPriorityChangeEventImpl.get_target(instance);
     }
 
-    pub fn get_srcElement(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_srcElement(instance: *runtime.Instance) anyerror!EventTarget {
         return try TaskPriorityChangeEventImpl.get_srcElement(instance);
     }
 
-    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_currentTarget(instance: *runtime.Instance) anyerror!EventTarget {
         return try TaskPriorityChangeEventImpl.get_currentTarget(instance);
     }
 
@@ -176,9 +170,9 @@ pub const TaskPriorityChangeEvent = struct {
         return try TaskPriorityChangeEventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, type_: DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
         
-        return try TaskPriorityChangeEventImpl.call_initEvent(instance, type_, bubbles, cancelable);
+        return try TaskPriorityChangeEventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
     pub fn call_composedPath(instance: *runtime.Instance) anyerror!anyopaque {

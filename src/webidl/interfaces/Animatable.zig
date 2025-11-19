@@ -1,15 +1,14 @@
 //! Generated from: web-animations.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const AnimatableImpl = @import("impls").Animatable;
-const object = @import("interfaces").object;
 const Animation = @import("interfaces").Animation;
-const (unrestricted double or KeyframeAnimationOptions) = @import("interfaces").(unrestricted double or KeyframeAnimationOptions);
 const GetAnimationsOptions = @import("dictionaries").GetAnimationsOptions;
+const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
 
 pub const Animatable = struct {
     pub const Meta = struct {
@@ -35,17 +34,7 @@ pub const Animatable = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        AnimatableImpl.init(instance);
-        
-        return instance;
+        return AnimatableImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources

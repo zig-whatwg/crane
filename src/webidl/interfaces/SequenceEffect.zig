@@ -1,5 +1,5 @@
 //! Generated from: web-animations-2.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,8 +7,9 @@ const std = @import("std");
 const runtime = @import("runtime");
 const SequenceEffectImpl = @import("impls").SequenceEffect;
 const GroupEffect = @import("interfaces").GroupEffect;
-const sequence = @import("interfaces").sequence;
-const (unrestricted double or EffectTiming) = @import("interfaces").(unrestricted double or EffectTiming);
+const AnimationEffect = @import("interfaces").AnimationEffect;
+const AnimationNodeList = @import("interfaces").AnimationNodeList;
+const EffectTiming = @import("dictionaries").EffectTiming;
 
 pub const SequenceEffect = struct {
     pub const Meta = struct {
@@ -44,17 +45,7 @@ pub const SequenceEffect = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        SequenceEffectImpl.init(instance);
-        
-        return instance;
+        return SequenceEffectImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -81,27 +72,16 @@ pub const SequenceEffect = struct {
         return try SequenceEffectImpl.get_children(instance);
     }
 
-    pub fn get_firstChild(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_firstChild(instance: *runtime.Instance) anyerror!AnimationEffect {
         return try SequenceEffectImpl.get_firstChild(instance);
     }
 
-    pub fn get_lastChild(instance: *runtime.Instance) anyerror!anyopaque {
+    pub fn get_lastChild(instance: *runtime.Instance) anyerror!AnimationEffect {
         return try SequenceEffectImpl.get_lastChild(instance);
     }
 
-    /// Arguments for clone (WebIDL overloading)
-    pub const CloneArgs = union(enum) {
-        /// clone()
-        no_params: void,
-        /// clone()
-        no_params: void,
-    };
-
-    pub fn call_clone(instance: *runtime.Instance, args: CloneArgs) anyerror!GroupEffect {
-        switch (args) {
-            .no_params => return try SequenceEffectImpl.no_params(instance),
-            .no_params => return try SequenceEffectImpl.no_params(instance),
-        }
+    pub fn call_clone(instance: *runtime.Instance) anyerror!GroupEffect {
+        return try SequenceEffectImpl.call_clone(instance);
     }
 
     pub fn call_append(instance: *runtime.Instance, effects: AnimationEffect) anyerror!void {

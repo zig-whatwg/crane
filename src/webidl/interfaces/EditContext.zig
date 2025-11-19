@@ -1,5 +1,5 @@
 //! Generated from: edit-context.idl
-//! Generated at: 2025-11-18T18:28:12Z
+//! Generated at: 2025-11-19T20:02:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,9 +7,17 @@ const std = @import("std");
 const runtime = @import("runtime");
 const EditContextImpl = @import("impls").EditContext;
 const EventTarget = @import("interfaces").EventTarget;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const Observable = @import("interfaces").Observable;
 const DOMRect = @import("interfaces").DOMRect;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const Event = @import("interfaces").Event;
+const HTMLElement = @import("interfaces").HTMLElement;
 const EditContextInit = @import("dictionaries").EditContextInit;
+const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListener = @import("interfaces").EventListener;
 const EventHandler = @import("typedefs").EventHandler;
+const DOMString = @import("typedefs").DOMString;
 
 pub const EditContext = struct {
     pub const Meta = struct {
@@ -75,17 +83,7 @@ pub const EditContext = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        EditContextImpl.init(instance);
-        
-        return instance;
+        return EditContextImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
@@ -169,18 +167,18 @@ pub const EditContext = struct {
         return try EditContextImpl.call_updateSelection(instance, start, end);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try EditContextImpl.call_removeEventListener(instance, type_, callback, options);
+        return try EditContextImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
     pub fn call_characterBounds(instance: *runtime.Instance) anyerror!anyopaque {
         return try EditContextImpl.call_characterBounds(instance);
     }
 
-    pub fn call_when(instance: *runtime.Instance, type_: DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!Observable {
         
-        return try EditContextImpl.call_when(instance, type_, options);
+        return try EditContextImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_updateSelectionBounds(instance: *runtime.Instance, selectionBounds: DOMRect) anyerror!void {
@@ -212,9 +210,9 @@ pub const EditContext = struct {
         return try EditContextImpl.call_updateText(instance, rangeStart, rangeEnd, text);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, type_: DOMString, callback: anyopaque, options: anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: EventListener, options: anyopaque) anyerror!void {
         
-        return try EditContextImpl.call_addEventListener(instance, type_, callback, options);
+        return try EditContextImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
 };

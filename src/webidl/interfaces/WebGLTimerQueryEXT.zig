@@ -1,5 +1,5 @@
 //! Generated from: EXT_disjoint_timer_query.idl
-//! Generated at: 2025-11-18T18:28:11Z
+//! Generated at: 2025-11-19T20:02:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,6 +7,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const WebGLTimerQueryEXTImpl = @import("impls").WebGLTimerQueryEXT;
 const WebGLObject = @import("interfaces").WebGLObject;
+const USVString = @import("interfaces").USVString;
 
 pub const WebGLTimerQueryEXT = struct {
     pub const Meta = struct {
@@ -42,17 +43,7 @@ pub const WebGLTimerQueryEXT = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-        _ = allocator;
-        const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-        errdefer runtime.SlabAllocator.get().free(instance);
-        
-        const state = try runtime.ArenaAllocator.get().create(State);
-        instance.state = state;
-        
-        // Initialize the instance (Impl receives full instance)
-        WebGLTimerQueryEXTImpl.init(instance);
-        
-        return instance;
+        return WebGLTimerQueryEXTImpl.init(allocator, State, &vtable);
     }
 
     /// Clean up instance resources
