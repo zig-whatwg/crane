@@ -6,9 +6,9 @@ const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
 // Type aliases
-const Element = dom.Element;
+const Element = dom.ElementWithBase;
 const ShadowRoot = dom.ShadowRoot;
-const Text = dom.Text;
+const Text = dom.TextWithBase;
 
 const tree_helpers = dom.tree_helpers;
 const Node = dom.Node;

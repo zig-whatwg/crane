@@ -9,10 +9,10 @@ const infra = @import("infra");
 const webidl = @import("webidl");
 // Type aliases
 const DocumentFragment = dom.DocumentFragment;
-const Element = dom.Element;
+const Element = dom.ElementWithBase;
 const HTMLCollection = dom.HTMLCollection;
 const NodeList = dom.NodeList;
-const Text = dom.Text;
+const Text = dom.TextWithBase;
 
 const testing = std.testing;
 

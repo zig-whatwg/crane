@@ -4,7 +4,7 @@ const infra = @import("infra");
 const webidl = @import("webidl");
 
 // Type aliases
-const Element = dom.Element;
+const Element = dom.ElementWithBase;
 const Node = dom.Node;
 const ShadowRoot = dom.ShadowRoot;
 const ShadowRootMode = dom.ShadowRootMode;

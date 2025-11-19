@@ -9,8 +9,8 @@ const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
 
-const Element = dom.Element;
-const Text = dom.Text;
+const Element = dom.ElementWithBase;
+const Text = dom.TextWithBase;
 const Node = dom.Node;
 const Document = dom.Document;
 const CharacterData = dom.CharacterData;

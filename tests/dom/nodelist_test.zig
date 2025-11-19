@@ -6,7 +6,7 @@ const dom = @import("dom");
 const Document = dom.Document;
 const Node = dom.Node;
 const NodeList = dom.NodeList;
-const Element = dom.Element;
+const Element = dom.ElementWithBase;
 const infra = @import("infra");
 const webidl = @import("webidl");
 

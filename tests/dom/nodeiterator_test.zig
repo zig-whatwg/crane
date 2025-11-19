@@ -7,8 +7,8 @@ const infra = @import("infra");
 const webidl = @import("webidl");
 
 const Node = dom.Node;
-const Element = dom.Element;
-const Text = dom.Text;
+const Element = dom.ElementWithBase;
+const Text = dom.TextWithBase;
 const NodeIterator = dom.NodeIterator;
 const NodeFilter = dom.NodeFilter;
 

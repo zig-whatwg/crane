@@ -14,7 +14,7 @@ const Slottable = @import("slottable").Slottable;
 const infra = @import("infra");
 const webidl = @import("webidl");
 
-const Element = dom.Element;
+const Element = dom.ElementWithBase;
 const ShadowRoot = dom.ShadowRoot;
 const ShadowRootMode = dom.ShadowRootMode;
 const SlotAssignmentMode = dom.SlotAssignmentMode;

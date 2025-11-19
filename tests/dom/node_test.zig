@@ -16,9 +16,9 @@ const CharacterData = dom.CharacterData;
 const Document = dom.Document;
 const DocumentFragment = dom.DocumentFragment;
 const DocumentType = dom.DocumentType;
-const Element = dom.Element;
+const Element = dom.ElementWithBase;
 const Node = dom.Node;
-const Text = dom.Text;
+const Text = dom.TextWithBase;
 
 // TODO: Import from dom module once build.zig is updated
 // const dom = @import("dom");

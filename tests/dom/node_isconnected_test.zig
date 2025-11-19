@@ -5,7 +5,7 @@ const webidl = @import("webidl");
 
 // Type aliases
 const Document = dom.Document;
-const Element = dom.Element;
+const Element = dom.ElementWithBase;
 const Node = dom.Node;
 
 test "Node.isConnected - document is connected" {

@@ -6,7 +6,7 @@ const webidl = @import("webidl");
 const NodeList = @import("node_list").NodeList;
 
 // Type aliases
-const Element = dom.Element;
+const Element = dom.ElementWithBase;
 const Node = dom.Node;
 
 test "Node.childNodes - [SameObject] returns same NodeList" {

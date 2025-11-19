@@ -6,7 +6,7 @@ const webidl = @import("webidl");
 const Comment = dom.Comment;
 const Document = dom.Document;
 const Range = dom.Range;
-const Text = dom.Text;
+const Text = dom.TextWithBase;
 
 test "Range.deleteContents - deletes text data within same Text node" {
     const allocator = std.testing.allocator;

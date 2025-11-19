@@ -8,7 +8,7 @@ const webidl = @import("webidl");
 // slot_helpers is available through dom module
 const slot_helpers = dom.slot_helpers;
 // Type aliases
-const Element = dom.Element;
+const Element = dom.ElementWithBase;
 // Note: slot_helpers functions are available as dom.isElement, dom.asElement, etc.
 
 test "slot_helpers - isElement" {

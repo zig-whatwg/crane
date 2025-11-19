@@ -8,9 +8,9 @@ const webidl = @import("webidl");
 // Type aliases
 const Attr = dom.Attr;
 const Comment = dom.Comment;
-const Element = dom.Element;
+const Element = dom.ElementWithBase;
 const Node = dom.Node;
-const Text = dom.Text;
+const Text = dom.TextWithBase;
 
 test "Node.nodeValue - Text node returns data" {
     const allocator = std.testing.allocator;

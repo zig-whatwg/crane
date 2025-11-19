@@ -5,7 +5,7 @@ const webidl = @import("webidl");
 // Type aliases
 const Document = dom.Document;
 const Range = dom.Range;
-const Text = dom.Text;
+const Text = dom.TextWithBase;
 
 test "Range.insertNode - splits Text node at start offset" {
     const allocator = std.testing.allocator;

@@ -7,7 +7,7 @@ const webidl = @import("webidl");
 
 // Type aliases
 const Document = dom.Document;
-const Element = dom.Element;
+const Element = dom.ElementWithBase;
 
 test "dom.NodeBase.tryCast - successful downcast to Element with auto-initialized type_tag" {
     const allocator = std.testing.allocator;

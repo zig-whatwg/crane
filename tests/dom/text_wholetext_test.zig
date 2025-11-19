@@ -4,7 +4,7 @@ const infra = @import("infra");
 const webidl = @import("webidl");
 // Type aliases
 const Document = dom.Document;
-const Text = dom.Text;
+const Text = dom.TextWithBase;
 
 test "Text.wholeText - single Text node returns own data" {
     const allocator = std.testing.allocator;

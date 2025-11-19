@@ -10,7 +10,7 @@ const infra = @import("infra");
 const webidl = @import("webidl");
 // Type aliases
 const CharacterData = dom.CharacterData;
-const Text = dom.Text;
+const Text = dom.TextWithBase;
 
 const Range = @import("dom").Range;
 const Document = @import("dom").Document;

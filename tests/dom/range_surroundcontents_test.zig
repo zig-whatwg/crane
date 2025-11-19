@@ -6,7 +6,7 @@ const webidl = @import("webidl");
 const Document = dom.Document;
 const DocumentFragment = dom.DocumentFragment;
 const Range = dom.Range;
-const Text = dom.Text;
+const Text = dom.TextWithBase;
 
 test "Range.surroundContents - wraps range content in new parent" {
     const allocator = std.testing.allocator;

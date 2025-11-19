@@ -9,8 +9,8 @@ const webidl = @import("webidl");
 const CharacterData = dom.CharacterData;
 const Comment = dom.Comment;
 const DocumentType = dom.DocumentType;
-const Element = dom.Element;
-const Text = dom.Text;
+const Element = dom.ElementWithBase;
+const Text = dom.TextWithBase;
 
 const testing = std.testing;
 

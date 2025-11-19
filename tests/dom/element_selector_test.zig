@@ -9,7 +9,7 @@ const webidl = @import("webidl");
 const testing = std.testing;
 const Document = dom.Document;
 const Node = dom.Node;
-const Element = dom.Element;
+const Element = dom.ElementWithBase;
 
 test "Element.matches: basic type selector" {
     const allocator = testing.allocator;
@@ -224,7 +224,7 @@ test "Element.classList: returns DOMTokenList" {
     // Type aliases
     const DOMTokenList = dom.DOMTokenList;
     const Document = dom.Document;
-    const Element = dom.Element;
+    const Element = dom.ElementWithBase;
     const Node = dom.Node;
 
     var doc = try Document.init(allocator);

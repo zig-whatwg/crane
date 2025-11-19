@@ -6,7 +6,7 @@ const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
 
-const Element = dom.Element;
+const Element = dom.ElementWithBase;
 const Attr = dom.Attr;
 const attribute_algorithms = @import("dom").attribute_algorithms;
 

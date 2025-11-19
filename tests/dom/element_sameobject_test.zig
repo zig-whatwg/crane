@@ -9,7 +9,7 @@ const webidl = @import("webidl");
 const DOMTokenList = dom.DOMTokenList;
 const NamedNodeMap = dom.NamedNodeMap;
 
-const Element = dom.Element;
+const Element = dom.ElementWithBase;
 const Document = dom.Document;
 
 test "Element.attributes returns same NamedNodeMap instance ([SameObject])" {

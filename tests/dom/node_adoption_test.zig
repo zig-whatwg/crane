@@ -13,7 +13,7 @@ const mutation = @import("dom").mutation;
 // Type aliases
 const Document = dom.Document;
 const Node = dom.Node;
-const Text = dom.Text;
+const Text = dom.TextWithBase;
 
 test "adopt - node already in target document updates ownerDocument" {
     const allocator = testing.allocator;

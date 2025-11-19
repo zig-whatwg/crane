@@ -6,7 +6,7 @@ const webidl = @import("webidl");
 const Document = dom.Document;
 const Node = dom.Node;
 const Range = dom.Range;
-const Text = dom.Text;
+const Text = dom.TextWithBase;
 
 test "Range.toString - collapsed range returns empty string" {
     const allocator = std.testing.allocator;

@@ -7,8 +7,8 @@ const infra = @import("infra");
 const webidl = @import("webidl");
 
 const Document = dom.Document;
-const Element = dom.Element;
-const Text = dom.Text;
+const Element = dom.ElementWithBase;
+const Text = dom.TextWithBase;
 const Comment = dom.Comment;
 const Node = dom.Node;
 

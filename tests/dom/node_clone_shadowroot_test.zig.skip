@@ -6,7 +6,7 @@ const webidl = @import("webidl");
 const DocumentFragment = dom.DocumentFragment;
 
 // Type aliases
-const Element = dom.Element;
+const Element = dom.ElementWithBase;
 const Node = dom.Node;
 const ShadowRoot = dom.ShadowRoot;
 const ShadowRootMode = dom.ShadowRootMode;

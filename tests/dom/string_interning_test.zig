@@ -7,7 +7,7 @@ const infra = @import("infra");
 const webidl = @import("webidl");
 
 const Document = dom.Document;
-const Element = dom.Element;
+const Element = dom.ElementWithBase;
 
 const expect = std.testing.expect;
 const expectEqual = std.testing.expectEqual;

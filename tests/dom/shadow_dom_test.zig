@@ -6,11 +6,11 @@ const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
 
-const Element = dom.Element;
+const Element = dom.ElementWithBase;
 const ShadowRoot = dom.ShadowRoot;
 const ShadowRootInit = dom.ShadowRootInit;
 const Document = dom.Document;
-const Text = dom.Text;
+const Text = dom.TextWithBase;
 
 test "Shadow DOM: attachShadow creates open shadow root" {
     const allocator = std.testing.allocator;

@@ -6,9 +6,9 @@ const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
 
-const Element = dom.Element;
+const Element = dom.ElementWithBase;
 const Node = dom.Node;
-const Text = dom.Text;
+const Text = dom.TextWithBase;
 
 const expect = std.testing.expect;
 const expectEqual = std.testing.expectEqual;

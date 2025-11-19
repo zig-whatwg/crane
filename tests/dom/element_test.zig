@@ -5,7 +5,7 @@ const webidl = @import("webidl");
 
 
 // Type aliases
-const Element = dom.Element;
+const Element = dom.ElementWithBase;
 
 test "Element - bloom filter class optimization" {
     const allocator = std.testing.allocator;

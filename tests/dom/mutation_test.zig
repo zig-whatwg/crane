@@ -13,7 +13,7 @@ const webidl = @import("webidl");
 const Document = dom.Document;
 const DocumentFragment = dom.DocumentFragment;
 const DocumentType = dom.DocumentType;
-const Text = dom.Text;
+const Text = dom.TextWithBase;
 
 // TODO: Import from dom module once build.zig is updated
 // const dom = @import("dom");

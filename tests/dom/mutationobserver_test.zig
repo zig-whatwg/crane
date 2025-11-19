@@ -8,9 +8,9 @@ const webidl = @import("webidl");
 // Type aliases
 const CharacterData = dom.CharacterData;
 const Comment = dom.Comment;
-const Element = dom.Element;
+const Element = dom.ElementWithBase;
 const Node = dom.Node;
-const Text = dom.Text;
+const Text = dom.TextWithBase;
 
 const MutationObserver = dom.MutationObserver;
 const MutationRecord = dom.MutationRecord;

@@ -9,7 +9,7 @@ const webidl = @import("webidl");
 // Type aliases
 const CDATASection = dom.CDATASection;
 const CharacterData = dom.CharacterData;
-const Text = dom.Text;
+const Text = dom.TextWithBase;
 
 const testing = std.testing;
 
