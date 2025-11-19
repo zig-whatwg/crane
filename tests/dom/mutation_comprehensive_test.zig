@@ -17,8 +17,8 @@ const Node = dom.Node;
 // Type aliases
 const Document = dom.Document;
 const DocumentType = dom.DocumentType;
-const Element = dom.Element;
-const Text = dom.Text;
+const Element = dom.ElementWithBase;
+const Text = dom.TextWithBase;
 
 test "mutation - ensurePreInsertValidity: valid Element into Element" {
     const allocator = testing.allocator;
@@ -157,10 +157,10 @@ test "mutation - removeChild: basic removal" {
     var child = try Element.init(allocator, "span");
     defer child.deinit();
 
-    _ = try mutation.append(@as(*Node, @ptrCast(&child), @ptrCast(&parent));
+    _ = try mutation.append(@as(*Node, @ptrCast(&child)), @as(*Node, @ptrCast(&parent)));
     try testing.expectEqual(@as(usize, 1), parent.child_nodes.toSlice().len);
 
-    const removed = try mutation.preRemove(@as(*Node, @ptrCast(&child), @ptrCast(&parent));
+    const removed = try mutation.preRemove(@as(*Node, @ptrCast(&child)), @as(*Node, @ptrCast(&parent)));
 
     // Should return the child
     try testing.expect(removed == @as(*Node, @ptrCast(&child)));
@@ -205,12 +205,12 @@ test "mutation - replaceChild: basic replacement" {
 
     var old_child = try Element.init(allocator, "span");
     defer old_child.deinit();
-    _ = try mutation.append(@as(*Node, @ptrCast(&old_child), @ptrCast(&parent));
+    _ = try mutation.append(@as(*Node, @ptrCast(&old_child)), @as(*Node, @ptrCast(&parent)));
 
     var new_child = try Element.init(allocator, "p");
     defer new_child.deinit();
 
-    const removed = try mutation.replace(@as(*Node, @ptrCast(&old_child), @ptrCast(&new_child), @ptrCast(&parent));
+    const removed = try mutation.replace(@as(*Node, @ptrCast(&old_child)), @as(*Node, @ptrCast(&new_child)), @as(*Node, @ptrCast(&parent)));
 
     // Should return old child
     try testing.expect(removed == @as(*Node, @ptrCast(&old_child)));
@@ -262,7 +262,7 @@ test "mutation - adopt: with descendants" {
     var child = try Element.init(allocator, "span");
     defer child.deinit();
     child.owner_document = &doc1;
-    _ = try mutation.append(@as(*Node, @ptrCast(&child), @ptrCast(&parent));
+    _ = try mutation.append(@as(*Node, @ptrCast(&child)), @as(*Node, @ptrCast(&parent)));
 
     // Adopt parent to doc2
     try mutation.adopt(@ptrCast(&parent), &doc2);
