@@ -9,7 +9,7 @@ const infra = @import("infra");
 
 test "count - uses printer for output" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     // Disable printer to verify it's being called (won't crash)
@@ -29,7 +29,7 @@ test "count - uses printer for output" {
 
 test "countReset - uses printer for warning when counter doesn't exist" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     // Disable printer
@@ -46,7 +46,7 @@ test "countReset - uses printer for warning when counter doesn't exist" {
 
 test "countReset - resets existing counter to zero" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     console_obj.printFn = null;
@@ -70,7 +70,7 @@ test "countReset - resets existing counter to zero" {
 
 test "count - message buffering works" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     console_obj.printFn = null;

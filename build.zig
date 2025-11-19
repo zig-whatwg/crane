@@ -132,6 +132,12 @@ pub fn build(b: *std.Build) void {
     });
     impls_mod.addImport("runtime", runtime_mod);
 
+    // Cross-imports for WebIDL modules
+    interfaces_mod.addImport("impls", impls_mod);
+    interfaces_mod.addImport("typedefs", runtime_mod);
+    impls_mod.addImport("interfaces", interfaces_mod);
+    impls_mod.addImport("typedefs", runtime_mod);
+
     // DOM module
     const dom_mod = b.addModule("dom", .{
         .root_source_file = b.path("src/dom/root.zig"),
@@ -425,6 +431,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     console_mod.addImport("webidl", webidl_mod);
+    console_mod.addImport("interfaces", interfaces_mod);
 
     // Streams internal modules (used by both root.zig and generated interfaces)
     // All internal files need to import each other via modules to avoid circular file ownership

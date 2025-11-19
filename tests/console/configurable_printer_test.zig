@@ -9,17 +9,17 @@ const webidl = @import("webidl");
 
 test "default printFn uses std.debug.print" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     // Verify default is std.debug.print
     try std.testing.expect(console_obj.printFn != null);
-    try std.testing.expectEqual(console_mod.console.console.defaultPrinter, console_obj.printFn.?);
+    try std.testing.expectEqual(console_mod.console.defaultPrinter, console_obj.printFn.?);
 }
 
 test "production mode - null printFn disables immediate output" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     // Production mode: disable immediate output
@@ -44,7 +44,7 @@ test "production mode - null printFn disables immediate output" {
 
 test "custom printFn - capture output to buffer" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     // Set up custom printer that captures output
@@ -75,7 +75,7 @@ test "custom printFn - capture output to buffer" {
 
 test "switch printFn at runtime" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     // Start in production mode (no output)
@@ -89,7 +89,7 @@ test "switch printFn at runtime" {
     try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 
     // Switch to development mode (with output)
-    console_obj.printFn = console_mod.console.console.defaultPrinter;
+    console_obj.printFn = console_mod.console.defaultPrinter;
 
     const args2 = &[_]webidl.JSValue{
         .{ .string = "Loud message" },
@@ -101,7 +101,7 @@ test "switch printFn at runtime" {
 
 test "disabled console with null printFn - minimal overhead" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     // Fully disable console
@@ -120,7 +120,7 @@ test "disabled console with null printFn - minimal overhead" {
 
 test "printFn with format specifiers in messages" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     // Capture output
@@ -154,10 +154,10 @@ test "printFn with format specifiers in messages" {
 test "multiple console instances with different printers" {
     const allocator = std.testing.allocator;
 
-    var console1 = try console_mod.console.console.init(allocator);
+    var console1 = try console_mod.console.init(allocator);
     defer console1.deinit();
 
-    var console2 = try console_mod.console.console.init(allocator);
+    var console2 = try console_mod.console.init(allocator);
     defer console2.deinit();
 
     // Console 1: production mode (no output)

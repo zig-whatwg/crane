@@ -16,7 +16,7 @@ const JSValue = webidl.JSValue;
 
 test "message buffer - basic message storage" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     // Initially empty
@@ -32,7 +32,7 @@ test "message buffer - basic message storage" {
 
 test "message buffer - multiple messages" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     const mock_args: []const JSValue = &.{};
@@ -50,7 +50,7 @@ test "message buffer - multiple messages" {
 
 test "message buffer - circular overflow at 1000" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     const mock_args: []const JSValue = &.{};
@@ -71,7 +71,7 @@ test "message buffer - circular overflow at 1000" {
 
 test "message buffer - message content" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     const mock_args: []const JSValue = &.{};
@@ -97,7 +97,7 @@ test "message buffer - message content" {
 
 test "message buffer - grouping indentation in messages" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     const mock_args: []const JSValue = &.{};
@@ -137,7 +137,7 @@ test "message buffer - grouping indentation in messages" {
 
 test "message buffer - disabled console doesn't buffer" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     const mock_args: []const JSValue = &.{};
@@ -156,7 +156,7 @@ test "message buffer - disabled console doesn't buffer" {
 
 test "message buffer - clear() doesn't affect buffer" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     const mock_args: []const JSValue = &.{};
@@ -176,7 +176,7 @@ test "message buffer - clear() doesn't affect buffer" {
 
 test "message buffer - timing messages buffered" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     const label = "timer";
@@ -194,7 +194,7 @@ test "message buffer - timing messages buffered" {
 
 test "message buffer - counting messages buffered" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     const label = "counter";
@@ -211,7 +211,7 @@ test "message buffer - counting messages buffered" {
 
 test "message buffer - memory safety (no leaks)" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     const mock_args: []const JSValue = &.{};

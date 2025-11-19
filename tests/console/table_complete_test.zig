@@ -9,7 +9,7 @@ const mock_runtime = @import("mock_runtime.zig");
 test "console.table() - complete implementation with mock data" {
     const allocator = std.testing.allocator;
 
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     const runtime = try mock_runtime.createMockRuntime(allocator);
@@ -36,7 +36,7 @@ test "console.table() - complete implementation with mock data" {
 test "console.table() - with properties filter" {
     const allocator = std.testing.allocator;
 
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     const runtime = try mock_runtime.createMockRuntime(allocator);
@@ -59,7 +59,7 @@ test "console.table() - with properties filter" {
 test "console.table() - empty array" {
     const allocator = std.testing.allocator;
 
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     const runtime = try mock_runtime.createMockRuntime(allocator);
@@ -79,7 +79,7 @@ test "console.table() - empty array" {
 test "console.table() - table formatting structure" {
     const allocator = std.testing.allocator;
 
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     const runtime = try mock_runtime.createMockRuntime(allocator);
@@ -105,7 +105,7 @@ test "console.table() - table formatting structure" {
 test "console.table() - memory safety with large dataset" {
     const allocator = std.testing.allocator;
 
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     const runtime = try mock_runtime.createMockRuntime(allocator);
@@ -128,7 +128,7 @@ test "console.table() - memory safety with large dataset" {
 test "console.table() - with special characters in keys" {
     const allocator = std.testing.allocator;
 
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     const runtime = try mock_runtime.createMockRuntime(allocator);
@@ -149,7 +149,7 @@ test "console.table() - with special characters in keys" {
 test "console.table() - properties filter with no matches" {
     const allocator = std.testing.allocator;
 
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     const runtime = try mock_runtime.createMockRuntime(allocator);

@@ -16,7 +16,7 @@ fn utf8ToUtf16(allocator: std.mem.Allocator, utf8: []const u8) !infra.String {
 
 test "Console - init creates empty state" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     // Verify all state is initialized empty
@@ -27,7 +27,7 @@ test "Console - init creates empty state" {
 
 test "Console - deinit cleans up all resources" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
 
     // Add some state
     const label = "test";
@@ -43,7 +43,7 @@ test "Console - deinit cleans up all resources" {
 
 test "Console - count_map operations" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     const label1 = "counter1";
@@ -73,7 +73,7 @@ test "Console - count_map operations" {
 
 test "Console - timer_table operations" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     const label1 = "timer1";
@@ -104,7 +104,7 @@ test "Console - timer_table operations" {
 
 test "Console - group_stack operations" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     const label1 = "Group 1";
@@ -141,10 +141,10 @@ test "Console - group_stack operations" {
 test "Console - multiple independent instances" {
     const allocator = std.testing.allocator;
 
-    var console1 = try console_mod.console.console.init(allocator);
+    var console1 = try console_mod.console.init(allocator);
     defer console1.deinit();
 
-    var console2 = try console_mod.console.console.init(allocator);
+    var console2 = try console_mod.console.init(allocator);
     defer console2.deinit();
 
     const label = "test";
@@ -167,7 +167,7 @@ test "Console - multiple independent instances" {
 
 test "Console - concurrent timer operations" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     const label1 = "timer1";
@@ -198,7 +198,7 @@ test "Console - concurrent timer operations" {
 
 test "Console - nested group stack" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     // Create nested groups
@@ -221,7 +221,7 @@ test "Console - nested group stack" {
 
 test "Console - memory safety with many operations" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     // Perform many state operations

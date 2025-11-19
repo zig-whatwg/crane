@@ -11,7 +11,7 @@ const JSValue = webidl.JSValue;
 
 test "integration - complete console session" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     const mock_args: []const JSValue = &.{};
@@ -47,7 +47,7 @@ test "integration - complete console session" {
 
 test "integration - nested groups with all operations" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     const mock_args: []const JSValue = &.{};
@@ -88,7 +88,7 @@ test "integration - nested groups with all operations" {
 
 test "integration - concurrent timers and counters" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     // Create multiple timers and counters
@@ -112,7 +112,7 @@ test "integration - concurrent timers and counters" {
 
 test "integration - disabled console performance" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     console_obj.enabled = false;
@@ -138,10 +138,10 @@ test "integration - disabled console performance" {
 test "integration - state isolation between instances" {
     const allocator = std.testing.allocator;
 
-    var console1 = try console_mod.console.console.init(allocator);
+    var console1 = try console_mod.console.init(allocator);
     defer console1.deinit();
 
-    var console2 = try console_mod.console.console.init(allocator);
+    var console2 = try console_mod.console.init(allocator);
     defer console2.deinit();
 
     const label = "test";
@@ -164,7 +164,7 @@ test "integration - state isolation between instances" {
 
 test "integration - clear resets groups but not timers/counts" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     const label = "test";
@@ -193,7 +193,7 @@ test "integration - clear resets groups but not timers/counts" {
 
 test "integration - realistic debugging session" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     const mock_args: []const JSValue = &.{};
@@ -240,7 +240,7 @@ test "integration - realistic debugging session" {
 
 test "integration - error handling workflow" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     const mock_args: []const JSValue = &.{};
@@ -267,7 +267,7 @@ test "integration - error handling workflow" {
 
 test "integration - memory stress test" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     const mock_args: []const JSValue = &.{};

@@ -64,6 +64,9 @@ pub const DOMString = @import("typedefs/DOMString.zig").DOMString;
 pub const USVString = @import("typedefs/USVString.zig").USVString;
 pub const ByteString = @import("typedefs/ByteString.zig").ByteString;
 
+// Re-export typedefs module for generated code
+pub const typedefs = @import("typedefs/root.zig");
+
 // WebIDL primitive types
 const primitives = @import("typedefs/primitives.zig");
 pub const Boolean = primitives.Boolean;
