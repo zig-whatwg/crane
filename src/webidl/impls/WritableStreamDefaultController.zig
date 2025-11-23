@@ -18,11 +18,36 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Internal state for WritableStreamDefaultController
+pub const InternalState = struct {
+    /// [[stream]]: WritableStream instance this controller controls
+    stream: ?*runtime.Instance,
+
+    /// [[writeAlgorithm]]: Underlying sink write callback
+    write_algorithm: ?*const anyopaque,
+
+    /// [[closeAlgorithm]]: Underlying sink close callback
+    close_algorithm: ?*const anyopaque,
+
+    /// [[abortAlgorithm]]: Underlying sink abort callback
+    abort_algorithm: ?*const anyopaque,
+
+    /// [[strategyHWM]]: High water mark for backpressure
+    strategy_hwm: f64,
+
+    /// [[strategySizeAlgorithm]]: Function to compute chunk size
+    strategy_size_algorithm: ?*const anyopaque,
+
+    /// [[started]]: Whether start algorithm has completed
+    started: bool,
+
+    /// Resource management
+    allocator: std.mem.Allocator,
+
+    pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
+    }
+};
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -32,13 +57,16 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    // InternalState is set up by SetUpWritableStreamDefaultController
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.deinit(internal.allocator);
+    }
     runtime.Instance.deinit(instance);
 }
 
@@ -54,4 +82,3 @@ pub fn call_error(instance: *runtime.Instance, e: *const anyopaque) ImplError!vo
     _ = e;
     return error.NotImplemented;
 }
-
