@@ -46,23 +46,48 @@ fn printIndented(ctx: runtime.Context, comptime fmt: []const u8, args: anytype) 
     std.debug.print("\n", .{});
 }
 
+/// Format and print console values
+fn printConsoleValues(ctx: runtime.Context, data: []const runtime.ConsoleValue) void {
+    const indent = getIndent(ctx);
+    if (indent.len > 0) {
+        std.debug.print("{s}", .{indent});
+    }
+
+    for (data, 0..) |value, i| {
+        if (i > 0) std.debug.print(" ", .{});
+
+        switch (value) {
+            .undefined => std.debug.print("undefined", .{}),
+            .null => std.debug.print("null", .{}),
+            .boolean => |b| std.debug.print("{}", .{b}),
+            .number => |n| std.debug.print("{d}", .{n}),
+            .string => |s| std.debug.print("{s}", .{s}),
+            .bigint => |bi| std.debug.print("{s}n", .{bi}),
+            .symbol => std.debug.print("Symbol()", .{}),
+            .object => std.debug.print("[object Object]", .{}),
+        }
+    }
+
+    std.debug.print("\n", .{});
+}
+
 /// console.info(data...)
 ///
 /// WHATWG Console Standard: Logger("info", data)
-pub fn call_info(ctx: runtime.Context, data: []const *const anyopaque) void {
-    _ = data; // TODO: Format data parameters
-    const indent = getIndent(ctx);
-    if (indent.len > 0) std.debug.print("{s}", .{indent});
-    ctx.logger.info("", .{}) catch {};
+pub fn call_info(ctx: runtime.Context, data: []const runtime.ConsoleValue) void {
+    printConsoleValues(ctx, data);
 }
 
 /// console.group(data...)
 ///
 /// WHATWG Console Standard: Push new group onto stack
-pub fn call_group(ctx: runtime.Context, data: []const *const anyopaque) void {
-    _ = data; // TODO: Format group label from data
-    // Print group header
-    printIndented(ctx, "▼ Group", .{});
+pub fn call_group(ctx: runtime.Context, data: []const runtime.ConsoleValue) void {
+    // Print group header with data
+    if (data.len > 0) {
+        printConsoleValues(ctx, data);
+    } else {
+        printIndented(ctx, "▼ Group", .{});
+    }
     // Push new indent level
     ctx.console_state.group_stack.append(ctx.allocator, 0) catch {};
 }
@@ -70,7 +95,7 @@ pub fn call_group(ctx: runtime.Context, data: []const *const anyopaque) void {
 /// console.groupCollapsed(data...)
 ///
 /// WHATWG Console Standard: Same as group() but collapsed by default
-pub fn call_groupCollapsed(ctx: runtime.Context, data: []const *const anyopaque) void {
+pub fn call_groupCollapsed(ctx: runtime.Context, data: []const runtime.ConsoleValue) void {
     // Same implementation as group (collapsed state is UI concern)
     call_group(ctx, data);
 }
@@ -87,14 +112,28 @@ pub fn call_groupEnd(ctx: runtime.Context) void {
 /// console.timeLog(label, data...)
 ///
 /// WHATWG Console Standard: Log elapsed time for label
-pub fn call_timeLog(ctx: runtime.Context, label: runtime.DOMString, data: []const *const anyopaque) void {
-    _ = data; // TODO: Format additional data after time
+pub fn call_timeLog(ctx: runtime.Context, label: runtime.DOMString, data: []const runtime.ConsoleValue) void {
     const label_str = label.asSlice();
 
     if (ctx.console_state.timer_table.get(label_str)) |start_time| {
         const now = std.time.milliTimestamp();
         const elapsed = now - start_time;
-        printIndented(ctx, "{s}: {d}ms", .{ label_str, elapsed });
+        const indent = getIndent(ctx);
+        if (indent.len > 0) std.debug.print("{s}", .{indent});
+        std.debug.print("{s}: {d}ms", .{ label_str, elapsed });
+        if (data.len > 0) {
+            std.debug.print(" ", .{});
+            for (data, 0..) |value, i| {
+                if (i > 0) std.debug.print(" ", .{});
+                switch (value) {
+                    .string => |s| std.debug.print("{s}", .{s}),
+                    .number => |n| std.debug.print("{d}", .{n}),
+                    .boolean => |b| std.debug.print("{}", .{b}),
+                    else => std.debug.print("[value]", .{}),
+                }
+            }
+        }
+        std.debug.print("\n", .{});
     } else {
         const indent = getIndent(ctx);
         if (indent.len > 0) std.debug.print("{s}", .{indent});
@@ -105,9 +144,12 @@ pub fn call_timeLog(ctx: runtime.Context, label: runtime.DOMString, data: []cons
 /// console.trace(data...)
 ///
 /// WHATWG Console Standard: Log with stack trace
-pub fn call_trace(ctx: runtime.Context, data: []const *const anyopaque) void {
-    _ = data; // TODO: Format data and print stack trace
-    printIndented(ctx, "Trace", .{});
+pub fn call_trace(ctx: runtime.Context, data: []const runtime.ConsoleValue) void {
+    if (data.len > 0) {
+        printConsoleValues(ctx, data);
+    } else {
+        printIndented(ctx, "Trace", .{});
+    }
     // TODO: Stack trace generation requires debug info integration
 }
 
@@ -171,11 +213,8 @@ pub fn call_time(ctx: runtime.Context, label: runtime.DOMString) void {
 /// console.warn(data...)
 ///
 /// WHATWG Console Standard: Logger("warn", data)
-pub fn call_warn(ctx: runtime.Context, data: []const *const anyopaque) void {
-    _ = data; // TODO: Format data parameters
-    const indent = getIndent(ctx);
-    if (indent.len > 0) std.debug.print("{s}", .{indent});
-    ctx.logger.warn("", .{}) catch {};
+pub fn call_warn(ctx: runtime.Context, data: []const runtime.ConsoleValue) void {
+    printConsoleValues(ctx, data);
 }
 
 /// console.clear()
@@ -189,30 +228,38 @@ pub fn call_clear(ctx: runtime.Context) void {
 /// console.log(data...)
 ///
 /// WHATWG Console Standard: Logger("log", data)
-pub fn call_log(ctx: runtime.Context, data: []const *const anyopaque) void {
-    _ = data; // TODO: Format data parameters
-    printIndented(ctx, "", .{});
+pub fn call_log(ctx: runtime.Context, data: []const runtime.ConsoleValue) void {
+    printConsoleValues(ctx, data);
 }
 
 /// console.error(data...)
 ///
 /// WHATWG Console Standard: Logger("error", data)
-pub fn call_error(ctx: runtime.Context, data: []const *const anyopaque) void {
-    _ = data; // TODO: Format data parameters
-    const indent = getIndent(ctx);
-    if (indent.len > 0) std.debug.print("{s}", .{indent});
-    ctx.logger.@"error"("", .{}) catch {};
+pub fn call_error(ctx: runtime.Context, data: []const runtime.ConsoleValue) void {
+    printConsoleValues(ctx, data);
 }
 
 /// console.assert(condition, data...)
 ///
 /// WHATWG Console Standard: If !condition, Logger("assert", data)
-pub fn call_assert(ctx: runtime.Context, condition: bool, data: []const *const anyopaque) void {
-    _ = data; // TODO: Format data as assertion message
+pub fn call_assert(ctx: runtime.Context, condition: bool, data: []const runtime.ConsoleValue) void {
     if (!condition) {
         const indent = getIndent(ctx);
         if (indent.len > 0) std.debug.print("{s}", .{indent});
-        ctx.logger.@"error"("Assertion failed", .{}) catch {};
+        std.debug.print("Assertion failed", .{});
+        if (data.len > 0) {
+            std.debug.print(": ", .{});
+            for (data, 0..) |value, i| {
+                if (i > 0) std.debug.print(" ", .{});
+                switch (value) {
+                    .string => |s| std.debug.print("{s}", .{s}),
+                    .number => |n| std.debug.print("{d}", .{n}),
+                    .boolean => |b| std.debug.print("{}", .{b}),
+                    else => std.debug.print("[value]", .{}),
+                }
+            }
+        }
+        std.debug.print("\n", .{});
     }
 }
 
@@ -228,11 +275,8 @@ pub fn call_table(ctx: runtime.Context, tabularData: *const anyopaque, propertie
 /// console.debug(data...)
 ///
 /// WHATWG Console Standard: Logger("debug", data)
-pub fn call_debug(ctx: runtime.Context, data: []const *const anyopaque) void {
-    _ = data; // TODO: Format data parameters
-    const indent = getIndent(ctx);
-    if (indent.len > 0) std.debug.print("{s}", .{indent});
-    ctx.logger.debug("", .{}) catch {};
+pub fn call_debug(ctx: runtime.Context, data: []const runtime.ConsoleValue) void {
+    printConsoleValues(ctx, data);
 }
 
 /// console.dir(item, options)
