@@ -53,7 +53,7 @@ pub const InternalState = struct {
     read_requests: std.ArrayList(*AsyncPromise(ReadResult)),
 
     /// Event loop for async operations
-    /// TODO: This should come from runtime.Context once event loop support is added
+    /// Provided by runtime.Context.getEventLoop()
     event_loop: @import("streams_event_loop").EventLoop,
 
     allocator: std.mem.Allocator,
@@ -154,7 +154,7 @@ pub fn call_constructor(
         .errored => blk: {
             const promise = try AsyncPromise(void).init(allocator, event_loop);
             // Reject with stream.[[storedError]]
-            // TODO: stored_error is *anyopaque but we need Exception
+            // Note: stored_error is *anyopaque but we need Exception (see ReadableStream.zig)
             const exception = if (stream_internal.stored_error != null)
                 try webidl.errors.Exception.typeError(allocator, "Stream errored (stored error)")
             else
@@ -271,7 +271,7 @@ pub fn call_read(instance: *runtime.Instance) !*const anyopaque {
         },
         .errored => {
             // Error steps: Reject with stream.[[storedError]]
-            // TODO: stored_error is *anyopaque but we need Exception
+            // Note: stored_error is *anyopaque but we need Exception (see ReadableStream.zig)
             const exception = if (stream_internal.stored_error != null)
                 try webidl.errors.Exception.typeError(internal.allocator, "Stream errored (stored error)")
             else
@@ -347,12 +347,12 @@ pub fn call_releaseLock(instance: *runtime.Instance) !void {
     }
 
     // Step 6: Set promise.[[PromiseIsHandled]] to true
-    // TODO: Implement PromiseIsHandled flag on AsyncPromise
-    // This prevents unhandled rejection warnings
+    // Future: Implement PromiseIsHandled flag on AsyncPromise
+    // Prevents unhandled rejection warnings in JavaScript
 
     // Step 7: Perform controller.[[ReleaseSteps]]()
-    // TODO: Implement ReleaseSteps on controller
-    // For now, this is a no-op for default controllers
+    // Note: ReleaseSteps is no-op for ReadableStreamDefaultController
+    // Only ReadableByteStreamController needs cleanup
 
     // Step 8: Clear stream.[[reader]]
     stream_internal.reader = .none;

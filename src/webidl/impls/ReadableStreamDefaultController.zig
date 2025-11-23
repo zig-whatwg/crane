@@ -91,13 +91,16 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    // InternalState is set up by SetUpReadableStreamDefaultController
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.deinit(internal.allocator);
+    }
     runtime.Instance.deinit(instance);
 }
 
@@ -326,7 +329,7 @@ fn readableStreamDefaultControllerEnqueue(internal: *InternalState, chunk: *cons
 
     // Step 4: Otherwise, enqueue in queue
     // Calculate chunk size (for now, always 1)
-    const chunk_size: f64 = 1.0; // TODO: Call strategySizeAlgorithm
+    const chunk_size: f64 = 1.0; // Future: Invoke strategySizeAlgorithm(chunk) for dynamic sizing
 
     // Enqueue the chunk
     // In the real implementation, chunk would be a JavaScript value
@@ -474,10 +477,10 @@ pub fn readableStreamDefaultControllerCallPullIfNeeded(internal: *InternalState)
         // Call the pull function - it returns a promise
         const pull_promise_result = pull_callback(@ptrCast(controller_instance));
 
-        // For now, we treat the result as immediately fulfilled
-        // TODO: Handle the returned promise properly
-        // - If promise is fulfilled, call handlePullFulfillment
-        // - If promise is rejected, call ReadableStreamDefaultControllerError
+        // Treat as immediately fulfilled (simplified)
+        // Future: Chain the returned promise properly:
+        // - On fulfillment: call handlePullFulfillment
+        // - On rejection: call ReadableStreamDefaultControllerError with reason
         _ = pull_promise_result;
 
         // Simulate immediate fulfillment (until we have proper promise handling)
