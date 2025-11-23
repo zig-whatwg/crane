@@ -20,6 +20,10 @@ test "V8 constructor - compiles with zero arguments" {
         pub const Meta = struct {
             pub const name = "MockZeroArg";
             pub const has_constructor = true;
+            pub const BaseType = void;
+            pub const MixinTypes = .{};
+            pub const properties = .{};
+            pub const methods = .{};
         };
 
         pub const State = struct {
@@ -51,6 +55,10 @@ test "V8 constructor - compiles with one argument" {
         pub const Meta = struct {
             pub const name = "MockOneArg";
             pub const has_constructor = true;
+            pub const BaseType = void;
+            pub const MixinTypes = .{};
+            pub const properties = .{};
+            pub const methods = .{};
         };
 
         pub const State = struct {
@@ -79,6 +87,10 @@ test "V8 constructor - compiles with two arguments" {
         pub const Meta = struct {
             pub const name = "MockTwoArg";
             pub const has_constructor = true;
+            pub const BaseType = void;
+            pub const MixinTypes = .{};
+            pub const properties = .{};
+            pub const methods = .{};
         };
 
         pub const State = struct {
@@ -110,6 +122,10 @@ test "V8 constructor - compiles with three arguments" {
         pub const Meta = struct {
             pub const name = "MockThreeArg";
             pub const has_constructor = true;
+            pub const BaseType = void;
+            pub const MixinTypes = .{};
+            pub const properties = .{};
+            pub const methods = .{};
         };
 
         pub const State = struct {
@@ -144,6 +160,10 @@ test "V8 constructor - compiles with four arguments" {
         pub const Meta = struct {
             pub const name = "MockFourArg";
             pub const has_constructor = true;
+            pub const BaseType = void;
+            pub const MixinTypes = .{};
+            pub const properties = .{};
+            pub const methods = .{};
         };
 
         pub const State = struct {
@@ -183,6 +203,10 @@ test "V8 constructor - compiles with mixed types" {
         pub const Meta = struct {
             pub const name = "MockMixedTypes";
             pub const has_constructor = true;
+            pub const BaseType = void;
+            pub const MixinTypes = .{};
+            pub const properties = .{};
+            pub const methods = .{};
         };
 
         pub const State = struct {

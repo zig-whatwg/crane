@@ -6,11 +6,12 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-// Import DOM types
-const Node = @import("node").Node;
-const Element = @import("element").Element;
-const ShadowRoot = @import("shadow_root").ShadowRoot;
-const HTMLSlotElement = @import("html_slot_element").HTMLSlotElement;
+// Import DOM types from root
+const dom = @import("root.zig");
+const Node = dom.Node;
+const Element = dom.Element;
+const ShadowRoot = dom.ShadowRoot;
+const HTMLSlotElement = dom.HTMLSlotElement;
 const tree_helpers = @import("tree_helpers.zig");
 
 /// Check if a Node pointer is an Element

@@ -429,7 +429,7 @@ test "Tokenizer: tokenize() - complex selector" {
     const tokens = try tokenizer.tokenize();
     defer allocator.free(tokens);
 
-    try testing.expectEqual(@as(usize, 6), tokens.len); // div . class # id eof
+    try testing.expectEqual(@as(usize, 5), tokens.len); // div . class #id eof
 }
 
 // ============================================================================

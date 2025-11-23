@@ -5,8 +5,11 @@
 const std = @import("std");
 const webidl = @import("webidl");
 const infra = @import("infra");
-const URL = @import("url").URL;
-const URLSearchParams = @import("url_search_params").URLSearchParams;
+
+// Stub file - test_helpers has circular import issue
+// URL and URLSearchParams types are not available within url module itself
+const URL = *anyopaque;
+const URLSearchParams = *anyopaque;
 
 /// Convert UTF-8 string literal to webidl.USVString (UTF-16)
 /// Caller owns the returned memory.

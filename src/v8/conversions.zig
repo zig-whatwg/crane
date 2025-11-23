@@ -840,7 +840,7 @@ pub fn throwRangeError(
         isolate,
         message.ptr,
         @intCast(message.len),
-    );
+    ) orelse return; // Failed to create string, can't throw
     const exception = v8.v8_Exception_RangeError(msg_str) orelse return;
     v8.v8_Isolate_ThrowException(isolate, exception);
 }
