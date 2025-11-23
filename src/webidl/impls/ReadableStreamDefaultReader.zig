@@ -277,9 +277,13 @@ pub fn call_read(instance: *runtime.Instance) !*const anyopaque {
             // The controller will fulfill this when data becomes available
             try internal.read_requests.append(internal.allocator, promise);
 
-            // TODO: Call controller.[[PullSteps]](readRequest)
-            // This would trigger the underlying source's pull() method
-            // For now, the promise remains pending until fulfilled externally
+            // Call controller.[[PullSteps]](readRequest)
+            // Get controller
+            const controller_instance = stream_internal.controller;
+            const ReadableStreamDefaultControllerImpl = @import("ReadableStreamDefaultController.zig");
+
+            // Call pullSteps with the promise
+            try ReadableStreamDefaultControllerImpl.pullSteps(controller_instance, promise);
         },
     }
 

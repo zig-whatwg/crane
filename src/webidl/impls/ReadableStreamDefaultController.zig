@@ -18,6 +18,7 @@ const ReadableStreamDefaultController = interfaces.ReadableStreamDefaultControll
 // Import streams infrastructure
 const streams_common = @import("streams_common");
 const QueueWithSizes = @import("streams_queue").QueueWithSizes;
+const AsyncPromise = @import("streams_async_promise").AsyncPromise;
 
 pub const State = ReadableStreamDefaultController.State;
 
@@ -333,5 +334,221 @@ fn readableStreamDefaultControllerEnqueue(internal: *InternalState, chunk: *cons
     internal.queue_total_size = internal.queue.queue_total_size;
 
     // Call pull if needed
-    // TODO: Implement ReadableStreamDefaultControllerCallPullIfNeeded
+    readableStreamDefaultControllerCallPullIfNeeded(internal);
+}
+
+/// ReadableStreamDefaultControllerShouldCallPull(controller)
+///
+/// Spec: https://streams.spec.whatwg.org/#readable-stream-default-controller-should-call-pull
+///
+/// Steps:
+/// 1. Let stream be controller.[[stream]]
+/// 2. If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(controller) is false, return false
+/// 3. If controller.[[started]] is false, return false
+/// 4. If ! IsReadableStreamLocked(stream) is true and ! ReadableStreamGetNumReadRequests(stream) > 0, return true
+/// 5. Let desiredSize be ! ReadableStreamDefaultControllerGetDesiredSize(controller)
+/// 6. Assert: desiredSize is not null
+/// 7. If desiredSize > 0, return true
+/// 8. Return false
+fn shouldCallPull(internal: *InternalState) bool {
+    // Step 1: Get stream
+    const stream_instance = internal.stream orelse return false;
+    const stream_state = stream_instance.getState(interfaces.ReadableStream.State);
+    const stream_internal = stream_state.own._internal orelse return false;
+
+    // Step 2: Check if can close or enqueue
+    if (!canCloseOrEnqueue(internal)) {
+        return false;
+    }
+
+    // Step 3: Check if started
+    if (!internal.started) {
+        return false;
+    }
+
+    // Step 4: If locked with pending reads, should pull
+    if (stream_internal.reader != .none) {
+        const num_requests = readableStreamGetNumReadRequests(stream_internal);
+        if (num_requests > 0) {
+            return true;
+        }
+    }
+
+    // Step 5: Get desired size
+    const desired_size = switch (stream_internal.state) {
+        .errored => return false, // null in spec, but we can't pull anyway
+        .closed => 0.0,
+        .readable => internal.strategy_hwm - internal.queue_total_size,
+    };
+
+    // Step 6: Assert desiredSize is not null (handled by switch above)
+    // Step 7: If desiredSize > 0, return true
+    if (desired_size > 0.0) {
+        return true;
+    }
+
+    // Step 8: Return false
+    return false;
+}
+
+/// ReadableStreamGetNumReadRequests(stream)
+///
+/// Returns the number of pending read requests on the stream's reader
+fn readableStreamGetNumReadRequests(stream_internal: *const @import("ReadableStream.zig").InternalState) usize {
+    // Get reader
+    const reader_instance = switch (stream_internal.reader) {
+        .default => |r| r,
+        .byob => return 0, // TODO: BYOB not yet supported
+        .none => return 0,
+    };
+
+    const reader_state = reader_instance.getState(interfaces.ReadableStreamDefaultReader.State);
+    const reader_internal = reader_state.own._internal orelse return 0;
+
+    return reader_internal.read_requests.items.len;
+}
+
+/// ReadableStreamDefaultControllerCallPullIfNeeded(controller)
+///
+/// Spec: https://streams.spec.whatwg.org/#readable-stream-default-controller-call-pull-if-needed
+///
+/// Steps:
+/// 1. Let shouldPull be ! ReadableStreamDefaultControllerShouldCallPull(controller)
+/// 2. If shouldPull is false, return
+/// 3. If controller.[[pulling]] is true,
+///    1. Set controller.[[pullAgain]] to true
+///    2. Return
+/// 4. Assert: controller.[[pullAgain]] is false
+/// 5. Set controller.[[pulling]] to true
+/// 6. Let pullPromise be the result of performing controller.[[pullAlgorithm]]
+/// 7. Upon fulfillment of pullPromise,
+///    1. Set controller.[[pulling]] to false
+///    2. If controller.[[pullAgain]] is true,
+///       1. Set controller.[[pullAgain]] to false
+///       2. Perform ! ReadableStreamDefaultControllerCallPullIfNeeded(controller)
+/// 8. Upon rejection of pullPromise with reason e,
+///    1. Perform ! ReadableStreamDefaultControllerError(controller, e)
+pub fn readableStreamDefaultControllerCallPullIfNeeded(internal: *InternalState) void {
+    // Step 1: Should we pull?
+    const should_pull = shouldCallPull(internal);
+
+    // Step 2: If not, return
+    if (!should_pull) {
+        return;
+    }
+
+    // Step 3: If already pulling, set pullAgain flag
+    if (internal.pulling) {
+        internal.pull_again = true;
+        return;
+    }
+
+    // Step 4: Assert pullAgain is false
+    std.debug.assert(!internal.pull_again);
+
+    // Step 5: Set pulling to true
+    internal.pulling = true;
+
+    // Step 6: Perform pullAlgorithm
+    // If no pull algorithm, fulfill immediately
+    const pull_algorithm = internal.pull_algorithm orelse {
+        // No pull algorithm - fulfill immediately
+        handlePullFulfillment(internal);
+        return;
+    };
+
+    // TODO: Call the actual pull algorithm callback
+    // For now, we'll treat it as immediately fulfilled
+    // In a real implementation, this would:
+    // 1. Cast pull_algorithm to the correct function type
+    // 2. Call it with the controller instance
+    // 3. Handle the returned promise
+    // 4. React to fulfillment/rejection
+    _ = pull_algorithm;
+
+    // For now, simulate immediate fulfillment
+    handlePullFulfillment(internal);
+}
+
+/// Handle pull algorithm fulfillment
+fn handlePullFulfillment(internal: *InternalState) void {
+    // Step 7.1: Set pulling to false
+    internal.pulling = false;
+
+    // Step 7.2: If pullAgain is true, call pull again
+    if (internal.pull_again) {
+        internal.pull_again = false;
+        readableStreamDefaultControllerCallPullIfNeeded(internal);
+    }
+}
+
+/// [[PullSteps]](readRequest)
+///
+/// Spec: https://streams.spec.whatwg.org/#readable-stream-default-controller-pull-steps
+///
+/// This is called by ReadableStreamDefaultReaderRead when a read() is requested.
+///
+/// Steps:
+/// 1. Let stream be this.[[stream]]
+/// 2. If this.[[queue]] is not empty,
+///    1. Let chunk be ! DequeueValue(this)
+///    2. If this.[[closeRequested]] is true and this.[[queue]] is empty,
+///       1. Perform ! ReadableStreamDefaultControllerClearAlgorithms(this)
+///       2. Perform ! ReadableStreamClose(stream)
+///    3. Otherwise, perform ! ReadableStreamDefaultControllerCallPullIfNeeded(this)
+///    4. Perform readRequest's chunk steps, given chunk
+/// 3. Otherwise,
+///    1. Perform ! ReadableStreamAddReadRequest(stream, readRequest)
+///    2. Perform ! ReadableStreamDefaultControllerCallPullIfNeeded(this)
+pub fn pullSteps(
+    instance: *runtime.Instance,
+    read_promise: *AsyncPromise(@import("ReadableStreamDefaultReader.zig").ReadResult),
+) !void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+
+    // Step 1: Get stream
+    const stream_instance = internal.stream orelse return error.InvalidState;
+    const stream_state = stream_instance.getState(interfaces.ReadableStream.State);
+    const stream_internal = stream_state.own._internal orelse return error.InvalidState;
+
+    // Step 2: If queue is not empty
+    if (internal.queue.queue.len > 0) {
+        // Step 2.1: Dequeue chunk
+        const chunk = try internal.queue.dequeueValue();
+        internal.queue_total_size = internal.queue.queue_total_size;
+
+        // Step 2.2: If closeRequested and queue empty, close stream
+        if (internal.close_requested and internal.queue.queue.len == 0) {
+            // Step 2.2.1: Clear algorithms
+            readableStreamDefaultControllerClearAlgorithms(internal);
+
+            // Step 2.2.2: Close stream
+            const ReadableStreamImpl = @import("ReadableStream.zig");
+            ReadableStreamImpl.readableStreamClose(stream_internal);
+        } else {
+            // Step 2.3: Otherwise, call pull if needed
+            readableStreamDefaultControllerCallPullIfNeeded(internal);
+        }
+
+        // Step 2.4: Perform chunk steps (fulfill promise with chunk)
+        const ReadableStreamDefaultReaderImpl = @import("ReadableStreamDefaultReader.zig");
+
+        // Allocate the chunk on the heap so it can be passed as *const anyopaque
+        // In a real implementation, chunks would be JavaScript values managed by the runtime
+        const chunk_ptr = try internal.allocator.create(streams_common.JSValue);
+        chunk_ptr.* = chunk;
+
+        read_promise.*.fulfill(ReadableStreamDefaultReaderImpl.ReadResult{
+            .value = @ptrCast(chunk_ptr),
+            .done = false,
+        });
+    } else {
+        // Step 3: Queue is empty
+        // Note: The promise is already added to read_requests by the reader
+        // We just need to call pull if needed
+
+        // Step 3.2: Call pull if needed
+        readableStreamDefaultControllerCallPullIfNeeded(internal);
+    }
 }
