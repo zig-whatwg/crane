@@ -240,13 +240,16 @@ pub fn write(controller: *runtime.Instance, chunk: *const anyopaque, chunk_size:
     // 5. Store WriteRequest in stream's write_requests queue
     try stream_internal.write_requests.append(allocator, request);
 
-    // 6. If stream is writable and no close pending, advance the queue
+    // 6. Update backpressure after adding to queue
+    writableStreamDefaultControllerUpdateBackpressure(controller);
+
+    // 7. If stream is writable and no close pending, advance the queue
     const close_pending = stream_internal.close_request != null or stream_internal.in_flight_close_request != null;
     if (stream_internal.state == .writable and !close_pending) {
         writableStreamDefaultControllerAdvanceQueueIfNeeded(controller);
     }
 
-    // 7. Return the write request's promise
+    // 8. Return the write request's promise
     return request.promise;
 }
 
@@ -403,11 +406,63 @@ fn writableStreamDefaultControllerFinishWrite(controller: *runtime.Instance, str
     // Clear in-flight write request
     stream_internal.in_flight_write_request = null;
 
-    // Update backpressure (TODO: Implement in Phase 2)
-    // writableStreamDefaultControllerUpdateBackpressure(controller);
+    // Update backpressure
+    writableStreamDefaultControllerUpdateBackpressure(controller);
 
     // Advance the queue to process next write
     writableStreamDefaultControllerAdvanceQueueIfNeeded(controller);
+}
+
+/// WritableStreamDefaultControllerUpdateBackpressure - Update backpressure signal
+///
+/// Spec: Not explicitly named in spec, but combines several backpressure algorithms
+/// Arguments:
+///   controller: WritableStreamDefaultController instance
+///
+/// This implements the logic from:
+/// - WritableStreamDefaultControllerGetDesiredSize
+/// - WritableStreamUpdateBackpressure
+fn writableStreamDefaultControllerUpdateBackpressure(controller: *runtime.Instance) void {
+    const controller_state = controller.getState(State);
+    const controller_internal = controller_state.own._internal orelse return;
+
+    // Get stream
+    const stream = controller_internal.stream orelse return;
+    const stream_state = stream.getState(interfaces.WritableStream.State);
+    const stream_internal = stream_state.own._internal orelse return;
+
+    // Calculate desired size = highWaterMark - queueTotalSize
+    const desired_size = controller_internal.strategy_hwm - controller_internal.queue_total_size;
+
+    // Backpressure is true if desired size <= 0
+    const new_backpressure = desired_size <= 0.0;
+
+    // If backpressure changed, update ready promise
+    if (new_backpressure != stream_internal.backpressure) {
+        stream_internal.backpressure = new_backpressure;
+
+        // Update writer's ready promise if writer exists
+        if (stream_internal.writer != .none) {
+            const writer = switch (stream_internal.writer) {
+                .default => |w| w,
+                .none => return,
+            };
+
+            const writer_state = writer.getState(interfaces.WritableStreamDefaultWriter.State);
+            const writer_internal = writer_state.own._internal orelse return;
+
+            if (writer_internal.ready_promise) |ready_promise| {
+                if (new_backpressure) {
+                    // Backpressure applied: ready promise should be pending
+                    // If already fulfilled, create a new pending promise
+                    // TODO: Implement promise re-initialization
+                } else {
+                    // Backpressure released: fulfill ready promise
+                    ready_promise.fulfill({});
+                }
+            }
+        }
+    }
 }
 
 /// [[AbortSteps]] - Handle abort request
