@@ -130,11 +130,15 @@ const Repl = struct {
             const NamespaceType = @field(namespaces, decl.name);
             // Only bind types that have Meta (actual namespaces)
             if (@typeInfo(NamespaceType) == .@"struct" and @hasDecl(NamespaceType, "Meta")) {
-                // Create a plain object for namespaces (not a function)
-                const ns_obj = v8.ffi.v8_Object_New(isolate);
+                // Use V8Namespace to create object with all methods bound
+                const NamespaceBinding = v8.V8Namespace(NamespaceType);
+                NamespaceBinding.registerGlobal(isolate, context, decl.name);
+
+                // Get the namespace object we just created
                 const global_obj = v8.ffi.v8_Context_Global(context);
                 const ns_key_str = v8.ffi.v8_String_NewFromUtf8(isolate, decl.name.ptr, @intCast(decl.name.len));
-                _ = v8.ffi.v8_Object_Set(global_obj.?, context, @ptrCast(ns_key_str), @ptrCast(ns_obj));
+                const ns_obj_value = v8.ffi.v8_Object_Get(global_obj.?, context, @ptrCast(ns_key_str));
+                const ns_obj = @as(?*v8.ffi.Object, @ptrCast(ns_obj_value));
 
                 // Now attach interfaces with [LegacyNamespace=<this namespace>] as properties
                 const namespace_name = decl.name;
