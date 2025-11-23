@@ -13,9 +13,10 @@
 const std = @import("std");
 const infra = @import("infra");
 const Allocator = std.mem.Allocator;
+const interfaces = @import("interfaces");
 
 // Forward declarations at file scope
-const DocumentType = @import("document").Document;
+const DocumentType = interfaces.Document;
 pub const RegisteredObserverType = @import("registered_observer").RegisteredObserver;
 
 /// Base structure containing all fields from the Node interface

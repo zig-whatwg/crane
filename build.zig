@@ -228,6 +228,7 @@ pub fn build(b: *std.Build) void {
     dom_mod.addImport("infra", infra_mod);
     dom_mod.addImport("webidl", webidl_mod);
     dom_mod.addImport("runtime", runtime_mod);
+    dom_mod.addImport("interfaces", interfaces_mod);
 
     // Selector module (CSS Selectors Level 4 implementation)
     const selector_mod = b.addModule("selector", .{
