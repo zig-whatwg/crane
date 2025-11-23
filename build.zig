@@ -934,6 +934,37 @@ pub fn build(b: *std.Build) void {
     repl_step.dependOn(&run_repl.step);
 
     // ========================================================================
+    // V8 JAVASCRIPT TEST RUNNER
+    // ========================================================================
+
+    // Test runner executable for V8 JavaScript tests
+    const test_runner_exe = b.addExecutable(.{
+        .name = "test-runner",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/v8/test_runner.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    b.installArtifact(test_runner_exe);
+
+    // V8 WebIDL bindings conformance tests
+    const test_v8_step = b.step("test-v8", "Run V8 WebIDL bindings JavaScript tests");
+
+    // Run basic tests
+    const run_basic_tests = b.addRunArtifact(test_runner_exe);
+    run_basic_tests.addArtifactArg(repl_exe);
+    run_basic_tests.addArg("tests/v8/bindings_test.js");
+
+    // Run advanced tests
+    const run_advanced_tests = b.addRunArtifact(test_runner_exe);
+    run_advanced_tests.step.dependOn(&run_basic_tests.step); // Run after basic tests
+    run_advanced_tests.addArtifactArg(repl_exe);
+    run_advanced_tests.addArg("tests/v8/bindings_advanced_test.js");
+
+    test_v8_step.dependOn(&run_advanced_tests.step);
+
+    // ========================================================================
     // COMPREHENSIVE BUILD TEST
     // ========================================================================
 
