@@ -422,6 +422,9 @@ fn setUpWritableStreamDefaultController(
         .strategy_hwm = highWaterMark,
         .strategy_size_algorithm = null, // Future: Pass size algorithm
         .started = false,
+        .queue = .{},
+        .queue_total_size = 0.0,
+        .abort_controller = null, // Future: Create AbortController instance
         .allocator = allocator,
     };
 
