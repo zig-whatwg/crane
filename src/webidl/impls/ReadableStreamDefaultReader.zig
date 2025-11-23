@@ -153,9 +153,12 @@ pub fn call_constructor(
         // Step 5: If stream.[[state]] is "errored", create rejected promise
         .errored => blk: {
             const promise = try AsyncPromise(void).init(allocator, event_loop);
-            // TODO: Reject with stream.[[storedError]]
-            // For now, reject with generic TypeError
-            const exception = try webidl.errors.Exception.typeError(allocator, "Stream is errored");
+            // Reject with stream.[[storedError]]
+            // TODO: stored_error is *anyopaque but we need Exception
+            const exception = if (stream_internal.stored_error != null)
+                try webidl.errors.Exception.typeError(allocator, "Stream errored (stored error)")
+            else
+                try webidl.errors.Exception.typeError(allocator, "Stream is errored");
             promise.*.reject(exception);
             // Note: Should set promise.[[PromiseIsHandled]] to true
             break :blk promise;
@@ -268,8 +271,11 @@ pub fn call_read(instance: *runtime.Instance) !*const anyopaque {
         },
         .errored => {
             // Error steps: Reject with stream.[[storedError]]
-            // TODO: Use actual stored error from stream_internal.stored_error
-            const exception = try webidl.errors.Exception.typeError(internal.allocator, "Stream is errored");
+            // TODO: stored_error is *anyopaque but we need Exception
+            const exception = if (stream_internal.stored_error != null)
+                try webidl.errors.Exception.typeError(internal.allocator, "Stream errored (stored error)")
+            else
+                try webidl.errors.Exception.typeError(internal.allocator, "Stream is errored");
             promise.*.reject(exception);
         },
         .readable => {

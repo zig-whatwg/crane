@@ -174,12 +174,11 @@ pub fn call_constructor(
     // Step 5.1: Assert type does not exist (checked above)
 
     // Step 5.2: Extract size algorithm
-    // For now, we use a default size algorithm that returns 1
-    // TODO: Implement proper ExtractSizeAlgorithm from strategy
-    _ = strategy;
+    const size_algorithm = extractSizeAlgorithm(&strategy);
+    _ = size_algorithm; // TODO: Pass to controller for chunk size calculation
 
     // Step 5.3: Extract high water mark (default 1 for count-based queuing)
-    const high_water_mark: f64 = 1.0; // TODO: Extract from strategy
+    const high_water_mark = try extractHighWaterMark(&strategy, 1.0);
 
     // Step 5.4: Perform SetUpReadableStreamDefaultControllerFromUnderlyingSource
     try setUpReadableStreamDefaultControllerFromUnderlyingSource(
@@ -290,8 +289,13 @@ fn readableStreamCancel(
             internal.allocator,
             internal.event_loop,
         );
-        // TODO: Reject with actual stream.[[storedError]]
-        const exception = try webidl.errors.Exception.typeError(internal.allocator, "Stream is errored");
+        // Reject with stream.[[storedError]]
+        // TODO: stored_error is *anyopaque but we need to cast back to Exception
+        // For now, use a generic error if storedError is set, or create new one
+        const exception = if (internal.stored_error != null)
+            try webidl.errors.Exception.typeError(internal.allocator, "Stream errored (stored error)")
+        else
+            try webidl.errors.Exception.typeError(internal.allocator, "Stream is errored");
         promise.*.reject(exception);
         return @ptrCast(promise);
     }
@@ -596,4 +600,48 @@ fn setUpReadableStreamDefaultController(
     }
 
     _ = loop; // Will be used for promise handling when we implement full async
+}
+
+// ============================================================================
+// Strategy Algorithms
+// ============================================================================
+
+/// ExtractHighWaterMark(strategy, defaultHWM)
+///
+/// Spec: https://streams.spec.whatwg.org/#extract-high-water-mark
+///
+/// Steps:
+/// 1. If strategy["highWaterMark"] does not exist, return defaultHWM
+/// 2. Let highWaterMark be strategy["highWaterMark"]
+/// 3. If highWaterMark is NaN or highWaterMark < 0, throw RangeError
+/// 4. Return highWaterMark
+fn extractHighWaterMark(strategy: *const dictionaries.QueuingStrategy, default_hwm: f64) !f64 {
+    // Step 1: If highWaterMark not provided, use default
+    const hwm = strategy.highWaterMark orelse return default_hwm;
+
+    // Step 2: Get the value
+    // Step 3: Validate (NaN or negative throws RangeError)
+    if (std.math.isNan(hwm) or hwm < 0.0) {
+        return error.RangeError;
+    }
+
+    // Step 4: Return the value
+    return hwm;
+}
+
+/// ExtractSizeAlgorithm(strategy)
+///
+/// Spec: https://streams.spec.whatwg.org/#extract-size-algorithm
+///
+/// Steps:
+/// 1. If strategy["size"] does not exist, return an algorithm that returns 1
+/// 2. Return an algorithm that invokes strategy["size"] with chunk argument
+///
+/// Returns: An opaque pointer to the size function, or null for default (returns 1)
+fn extractSizeAlgorithm(strategy: *const dictionaries.QueuingStrategy) ?*const anyopaque {
+    // Step 1: If no size function, return null (caller will use default of 1)
+    const size_fn = strategy.size orelse return null;
+
+    // Step 2: Return the size function to be invoked later with chunks
+    return size_fn;
 }
