@@ -256,7 +256,7 @@ fn readableStreamCancel(
 
 /// ReadableStreamClose algorithm
 /// Internal implementation of stream closing
-fn readableStreamClose(internal: *InternalState) void {
+pub fn readableStreamClose(internal: *InternalState) void {
     // Assert: stream.[[state]] is "readable"
     std.debug.assert(internal.state == .readable);
 
@@ -266,6 +266,22 @@ fn readableStreamClose(internal: *InternalState) void {
     // Note: The spec also requires:
     // - Resolving reader.[[closedPromise]] if reader exists
     // - This is handled by the reader implementation
+}
+
+/// ReadableStreamError algorithm
+/// Internal implementation of stream erroring
+pub fn readableStreamError(internal: *InternalState, e: *const anyopaque) void {
+    // Assert: stream.[[state]] is "readable"
+    std.debug.assert(internal.state == .readable);
+
+    // Set stream.[[state]] to "errored"
+    internal.state = .errored;
+
+    // Store the error
+    internal.stored_error = @constCast(e);
+
+    // TODO: Reject reader.[[closedPromise]] if reader exists
+    // TODO: Reject all pending read requests with e
 }
 
 /// Operation: getReader
