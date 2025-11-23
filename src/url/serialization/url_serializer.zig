@@ -57,13 +57,20 @@ fn estimateSerializedSize(url: *const URLRecord, exclude_fragment: bool) usize {
         .opaque_path => |op| capacity += op.len,
         .segments => |segs| {
             // Estimate path size (each segment + "/" separator)
-            for (segs.items) |segment| {
-                capacity += 1 + segment.len; // "/" + segment
+            var i: usize = 0;
+            while (i < segs.len) : (i += 1) {
+                if (segs.get(i)) |segment| {
+                    capacity += 1 + segment.len; // "/" + segment
+                }
             }
 
             // Special case "/." prefix
-            if (url.host == null and segs.items.len > 1 and segs.items[0].len == 0) {
-                capacity += 2; // "/."
+            if (url.host == null and segs.len > 1) {
+                if (segs.get(0)) |first_seg| {
+                    if (first_seg.len == 0) {
+                        capacity += 2; // "/."
+                    }
+                }
             }
         },
     }
@@ -148,7 +155,7 @@ pub fn serialize(allocator: std.mem.Allocator, url: *const URLRecord, exclude_fr
         // Step 2.4: If port is non-null, append ":" + port
         if (url.port) |port| {
             try output.append(':');
-            try output.writer(allocator).print("{d}", .{port});
+            try output.writer().print("{d}", .{port});
         }
     }
 
@@ -157,10 +164,13 @@ pub fn serialize(allocator: std.mem.Allocator, url: *const URLRecord, exclude_fr
     // append "/."
     if (url.host == null and
         !url.hasOpaquePath() and
-        url.path.segments.items.len > 1 and
-        url.path.segments.items[0].len == 0)
+        url.path.segments.len > 1)
     {
-        try output.appendSlice("/.");
+        if (url.path.segments.get(0)) |first_segment| {
+            if (first_segment.len == 0) {
+                try output.appendSlice("/.");
+            }
+        }
     }
 
     // Step 4: Append URL path serialized
@@ -186,10 +196,3 @@ pub fn serialize(allocator: std.mem.Allocator, url: *const URLRecord, exclude_fr
     // Step 7: Return output
     return try output.toOwnedSlice();
 }
-
-
-
-
-
-
-

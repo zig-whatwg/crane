@@ -70,12 +70,12 @@ pub fn getOrigin(allocator: std.mem.Allocator, url: *const URLRecord) !Origin {
         // Step 2: Parse the path part of the blob URL
         // Get path serialization
         const path_serializer = @import("path_serializer");
-        const path_str = try path_serializer.serializePath(allocator, url.path, url.scheme());
+        const path_str = try path_serializer.serializePath(allocator, url);
         defer allocator.free(path_str);
 
         // Step 2: Parse pathURL
         const api_parser = @import("api_url_parser");
-        const path_url = api_parser.parseURL(allocator, path_str, null) catch {
+        var path_url = api_parser.parseURL(allocator, path_str, null) catch {
             // Step 3: If pathURL is failure, return opaque origin
             return Origin{ .opaque_origin = {} };
         };
@@ -169,7 +169,3 @@ fn hostsEqual(a: Host, b: Host) bool {
         .empty => return true,
     }
 }
-
-
-
-

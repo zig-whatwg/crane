@@ -13,6 +13,15 @@ const infra = @import("infra");
 const form_parser = @import("form_parser");
 const form_serializer = @import("form_serializer");
 const Tuple = form_parser.Tuple;
+const URLRecord = @import("url_record").URLRecord;
+
+/// URL's InternalState structure (for type-safe casting)
+/// This mirrors the structure in URL.zig without creating a circular dependency
+const URLInternalState = struct {
+    url_record: URLRecord,
+    query_params_instance: ?*runtime.Instance,
+    allocator: std.mem.Allocator,
+};
 
 pub const State = URLSearchParams.State;
 
@@ -219,14 +228,12 @@ fn updateSteps(instance: *runtime.Instance) !void {
     defer internal.allocator.free(serialized);
 
     // Step 3-4: Update URL's query
-    // Import URL impl to access its InternalState
-    const URLImpl = @import("impls").URL;
     const url_instance = internal.url_object.?;
     const url_state = url_instance.getState(interfaces.URL.State);
 
     if (url_state.own._internal) |url_internal_ptr| {
-        // Cast to URL's InternalState
-        const url_internal: *URLImpl.InternalState = @ptrCast(@alignCast(url_internal_ptr));
+        // Cast to URL's InternalState (using locally defined structure)
+        const url_internal: *URLInternalState = @ptrCast(@alignCast(url_internal_ptr));
 
         // Set new query (empty string becomes null)
         const new_query = if (serialized.len == 0) null else serialized;

@@ -398,6 +398,10 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/url/form_urlencoded/serializer.zig"),
         .target = target,
     });
+    url_form_serializer_mod.addImport("form_parser", url_form_parser_mod);
+    url_form_serializer_mod.addImport("infra", infra_mod);
+    url_form_serializer_mod.addImport("percent_encoding", url_percent_encoding_mod);
+    url_form_serializer_mod.addImport("encode_sets", url_encode_sets_mod);
 
     // Additional URL modules for internal use
     const url_validation_mod = b.createModule(.{
@@ -483,6 +487,8 @@ pub fn build(b: *std.Build) void {
             .{ .name = "host", .module = url_internal_host_mod },
             .{ .name = "host_serializer", .module = url_host_serializer_mod },
             .{ .name = "path", .module = url_internal_path_mod },
+            .{ .name = "path_serializer", .module = url_path_serializer_mod },
+            .{ .name = "api_url_parser", .module = url_parser_api_mod },
         },
     });
 

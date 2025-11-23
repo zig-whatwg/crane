@@ -789,7 +789,7 @@ pub fn setReturnValue(
     value: T,
 ) ConversionError!void {
     const isolate = info.getIsolate();
-    const context = v8.v8_Isolate_GetCurrentContext(isolate);
+    const context = v8.v8_Isolate_GetCurrentContext(isolate).?;
     const v8_value = try toV8Value(T, isolate, context, value);
     info.setReturnValue(v8_value);
 }
