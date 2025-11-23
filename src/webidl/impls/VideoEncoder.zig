@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -86,7 +82,7 @@ pub fn call_isConfigSupported(instance: *runtime.Instance, config: dictionaries.
 }
 
 /// Operation: encode
-pub fn call_encode(instance: *runtime.Instance, frame: interfaces.VideoFrame, options: dictionaries.VideoEncoderEncodeOptions) ImplError!void {
+pub fn call_encode(instance: *runtime.Instance, frame: *runtime.Instance, options: dictionaries.VideoEncoderEncodeOptions) ImplError!void {
     _ = instance;
     _ = frame;
     _ = options;

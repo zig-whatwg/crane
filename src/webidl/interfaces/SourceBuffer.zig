@@ -1,5 +1,5 @@
 //! Generated from: media-source.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -184,7 +184,7 @@ pub const SourceBuffer = struct {
         return try SourceBufferImpl.get_updating(instance);
     }
 
-    pub fn get_buffered(instance: *runtime.Instance) anyerror!TimeRanges {
+    pub fn get_buffered(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SourceBufferImpl.get_buffered(instance);
     }
 
@@ -196,15 +196,15 @@ pub const SourceBuffer = struct {
         try SourceBufferImpl.set_timestampOffset(instance, value);
     }
 
-    pub fn get_audioTracks(instance: *runtime.Instance) anyerror!AudioTrackList {
+    pub fn get_audioTracks(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SourceBufferImpl.get_audioTracks(instance);
     }
 
-    pub fn get_videoTracks(instance: *runtime.Instance) anyerror!VideoTrackList {
+    pub fn get_videoTracks(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SourceBufferImpl.get_videoTracks(instance);
     }
 
-    pub fn get_textTracks(instance: *runtime.Instance) anyerror!TextTrackList {
+    pub fn get_textTracks(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SourceBufferImpl.get_textTracks(instance);
     }
 

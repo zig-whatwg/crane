@@ -1,5 +1,5 @@
 //! Generated from: speech-api.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -173,11 +173,11 @@ pub const SpeechSynthesisUtterance = struct {
         try SpeechSynthesisUtteranceImpl.set_lang(instance, value);
     }
 
-    pub fn get_voice(instance: *runtime.Instance) anyerror!SpeechSynthesisVoice {
+    pub fn get_voice(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SpeechSynthesisUtteranceImpl.get_voice(instance);
     }
 
-    pub fn set_voice(instance: *runtime.Instance, value: SpeechSynthesisVoice) anyerror!void {
+    pub fn set_voice(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         try SpeechSynthesisUtteranceImpl.set_voice(instance, value);
     }
 

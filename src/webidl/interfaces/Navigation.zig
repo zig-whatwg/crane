@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -156,15 +156,15 @@ pub const Navigation = struct {
         NavigationImpl.deinit(instance);
     }
 
-    pub fn get_currentEntry(instance: *runtime.Instance) anyerror!NavigationHistoryEntry {
+    pub fn get_currentEntry(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NavigationImpl.get_currentEntry(instance);
     }
 
-    pub fn get_transition(instance: *runtime.Instance) anyerror!NavigationTransition {
+    pub fn get_transition(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NavigationImpl.get_transition(instance);
     }
 
-    pub fn get_activation(instance: *runtime.Instance) anyerror!NavigationActivation {
+    pub fn get_activation(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NavigationImpl.get_activation(instance);
     }
 

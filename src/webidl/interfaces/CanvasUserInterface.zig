@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -71,7 +71,7 @@ pub const CanvasUserInterface = struct {
         CanvasUserInterfaceImpl.deinit(instance);
     }
 
-    pub fn call_drawFocusIfNeeded(instance: *runtime.Instance, element: Element) anyerror!void {
+    pub fn call_drawFocusIfNeeded(instance: *runtime.Instance, element: *runtime.Instance) anyerror!void {
         
         return try CanvasUserInterfaceImpl.call_drawFocusIfNeeded(instance, element);
     }

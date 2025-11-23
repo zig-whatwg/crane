@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -55,19 +51,19 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for touches
-pub fn get_touches(instance: *runtime.Instance) ImplError!interfaces.TouchList {
+pub fn get_touches(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for targetTouches
-pub fn get_targetTouches(instance: *runtime.Instance) ImplError!interfaces.TouchList {
+pub fn get_targetTouches(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for changedTouches
-pub fn get_changedTouches(instance: *runtime.Instance) ImplError!interfaces.TouchList {
+pub fn get_changedTouches(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

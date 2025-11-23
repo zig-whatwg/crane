@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -53,7 +49,7 @@ pub fn get_loadTime(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTi
 }
 
 /// Getter for intersectionRect
-pub fn get_intersectionRect(instance: *runtime.Instance) ImplError!interfaces.DOMRectReadOnly {
+pub fn get_intersectionRect(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -83,7 +79,7 @@ pub fn get_id(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for element
-pub fn get_element(instance: *runtime.Instance) ImplError!interfaces.Element {
+pub fn get_element(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

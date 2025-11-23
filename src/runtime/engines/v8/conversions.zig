@@ -339,6 +339,22 @@ pub fn fromV8Value(
         }
     }
 
+    // Handle *runtime.Instance (interface instance pointers)
+    if (T == *runtime.Instance) {
+        // Extract instance pointer from V8 object's internal field
+        if (!v8.v8_Value_IsObject(value)) {
+            return ConversionError.TypeError;
+        }
+        const object = @as(*v8.Object, @ptrCast(value));
+
+        // Get the instance pointer from internal field 0
+        const internal_field = v8.v8_Object_GetAlignedPointerFromInternalField(object, 0) orelse {
+            return ConversionError.TypeError;
+        };
+
+        return @ptrCast(@alignCast(internal_field));
+    }
+
     // Handle function pointers (callbacks)
     if (type_info == .pointer) {
         const child_info = @typeInfo(type_info.pointer.child);

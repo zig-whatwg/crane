@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -93,24 +93,24 @@ pub const CSSSkew = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, ax: CSSNumericValue, ay: CSSNumericValue) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, ax: *runtime.Instance, ay: *runtime.Instance) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try CSSSkewImpl.call_constructor(allocator, ctx, ax, ay);
     }
 
-    pub fn get_ax(instance: *runtime.Instance) anyerror!CSSNumericValue {
+    pub fn get_ax(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSSkewImpl.get_ax(instance);
     }
 
-    pub fn set_ax(instance: *runtime.Instance, value: CSSNumericValue) anyerror!void {
+    pub fn set_ax(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         try CSSSkewImpl.set_ax(instance, value);
     }
 
-    pub fn get_ay(instance: *runtime.Instance) anyerror!CSSNumericValue {
+    pub fn get_ay(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSSkewImpl.get_ay(instance);
     }
 
-    pub fn set_ay(instance: *runtime.Instance, value: CSSNumericValue) anyerror!void {
+    pub fn set_ay(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         try CSSSkewImpl.set_ay(instance, value);
     }
 

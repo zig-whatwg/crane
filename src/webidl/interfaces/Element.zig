@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -821,7 +821,7 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [SameObject], [PutForwards=value]
-    pub fn get_classList(instance: *runtime.Instance) anyerror!DOMTokenList {
+    pub fn get_classList(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_classList) |cached| {
@@ -847,7 +847,7 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_attributes(instance: *runtime.Instance) anyerror!NamedNodeMap {
+    pub fn get_attributes(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_attributes) |cached| {
@@ -858,11 +858,11 @@ pub const Element = struct {
         return value;
     }
 
-    pub fn get_shadowRoot(instance: *runtime.Instance) anyerror!ShadowRoot {
+    pub fn get_shadowRoot(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ElementImpl.get_shadowRoot(instance);
     }
 
-    pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!CustomElementRegistry {
+    pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ElementImpl.get_customElementRegistry(instance);
     }
 
@@ -897,7 +897,7 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [SameObject], [PutForwards=value]
-    pub fn get_part(instance: *runtime.Instance) anyerror!DOMTokenList {
+    pub fn get_part(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_part) |cached| {
@@ -908,7 +908,7 @@ pub const Element = struct {
         return value;
     }
 
-    pub fn get_activeViewTransition(instance: *runtime.Instance) anyerror!ViewTransition {
+    pub fn get_activeViewTransition(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ElementImpl.get_activeViewTransition(instance);
     }
 
@@ -999,12 +999,12 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-activedescendant"]
-    pub fn get_ariaActiveDescendantElement(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_ariaActiveDescendantElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ElementImpl.get_ariaActiveDescendantElement(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-activedescendant"]
-    pub fn set_ariaActiveDescendantElement(instance: *runtime.Instance, value: Element) anyerror!void {
+    pub fn set_ariaActiveDescendantElement(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1717,7 +1717,7 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_children(instance: *runtime.Instance) anyerror!HTMLCollection {
+    pub fn get_children(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_children) |cached| {
@@ -1728,11 +1728,11 @@ pub const Element = struct {
         return value;
     }
 
-    pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ElementImpl.get_firstElementChild(instance);
     }
 
-    pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ElementImpl.get_lastElementChild(instance);
     }
 
@@ -1740,15 +1740,15 @@ pub const Element = struct {
         return try ElementImpl.get_childElementCount(instance);
     }
 
-    pub fn get_previousElementSibling(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_previousElementSibling(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ElementImpl.get_previousElementSibling(instance);
     }
 
-    pub fn get_nextElementSibling(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_nextElementSibling(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ElementImpl.get_nextElementSibling(instance);
     }
 
-    pub fn get_assignedSlot(instance: *runtime.Instance) anyerror!HTMLSlotElement {
+    pub fn get_assignedSlot(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ElementImpl.get_assignedSlot(instance);
     }
 
@@ -1778,7 +1778,7 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn call_computedStyleMap(instance: *runtime.Instance) anyerror!StylePropertyMapReadOnly {
+    pub fn call_computedStyleMap(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ElementImpl.call_computedStyleMap(instance);
     }
 
@@ -1787,7 +1787,7 @@ pub const Element = struct {
         return try ElementImpl.call_scroll(instance, options);
     }
 
-    pub fn call_getClientRects(instance: *runtime.Instance) anyerror!DOMRectList {
+    pub fn call_getClientRects(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ElementImpl.call_getClientRects(instance);
     }
 
@@ -1816,13 +1816,13 @@ pub const Element = struct {
         return try ElementImpl.call_replaceWith(instance, nodes);
     }
 
-    pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!DOMQuad {
+    pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!*runtime.Instance {
         
         return try ElementImpl.call_convertQuadFromNode(instance, quad, from, options);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_setAttributeNodeNS(instance: *runtime.Instance, attr: Attr) anyerror!Attr {
+    pub fn call_setAttributeNodeNS(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1831,7 +1831,7 @@ pub const Element = struct {
         return try ElementImpl.call_setAttributeNodeNS(instance, attr);
     }
 
-    pub fn call_getAttributeNodeNS(instance: *runtime.Instance, namespace: DOMString, localName: DOMString) anyerror!Attr {
+    pub fn call_getAttributeNodeNS(instance: *runtime.Instance, namespace: DOMString, localName: DOMString) anyerror!*runtime.Instance {
         
         return try ElementImpl.call_getAttributeNodeNS(instance, namespace, localName);
     }
@@ -1847,7 +1847,7 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_setAttributeNode(instance: *runtime.Instance, attr: Attr) anyerror!Attr {
+    pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1861,7 +1861,7 @@ pub const Element = struct {
         return try ElementImpl.call_scrollTo(instance, options);
     }
 
-    pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: DOMString, localName: DOMString) anyerror!HTMLCollection {
+    pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: DOMString, localName: DOMString) anyerror!*runtime.Instance {
         
         return try ElementImpl.call_getElementsByTagNameNS(instance, namespace, localName);
     }
@@ -1890,7 +1890,7 @@ pub const Element = struct {
         return try ElementImpl.call_focusableAreas(instance, option);
     }
 
-    pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!DOMPoint {
+    pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!*runtime.Instance {
         
         return try ElementImpl.call_convertPointFromNode(instance, point, from, options);
     }
@@ -1900,13 +1900,13 @@ pub const Element = struct {
         return try ElementImpl.call_getAnimations(instance, options);
     }
 
-    pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: DOMString) anyerror!HTMLCollection {
+    pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: DOMString) anyerror!*runtime.Instance {
         
         return try ElementImpl.call_getElementsByClassName(instance, classNames);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_insertAdjacentElement(instance: *runtime.Instance, where: DOMString, element: Element) anyerror!Element {
+    pub fn call_insertAdjacentElement(instance: *runtime.Instance, where: DOMString, element: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1920,27 +1920,27 @@ pub const Element = struct {
         return try ElementImpl.call_webkitMatchesSelector(instance, selectors);
     }
 
-    pub fn call_spatialNavigationSearch(instance: *runtime.Instance, dir: SpatialNavigationDirection, options: SpatialNavigationSearchOptions) anyerror!Node {
+    pub fn call_spatialNavigationSearch(instance: *runtime.Instance, dir: SpatialNavigationDirection, options: SpatialNavigationSearchOptions) anyerror!*runtime.Instance {
         
         return try ElementImpl.call_spatialNavigationSearch(instance, dir, options);
     }
 
-    pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!HTMLCollection {
+    pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!*runtime.Instance {
         
         return try ElementImpl.call_getElementsByTagName(instance, qualifiedName);
     }
 
-    pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!Element {
+    pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!*runtime.Instance {
         
         return try ElementImpl.call_querySelector(instance, selectors);
     }
 
-    pub fn call_closest(instance: *runtime.Instance, selectors: DOMString) anyerror!Element {
+    pub fn call_closest(instance: *runtime.Instance, selectors: DOMString) anyerror!*runtime.Instance {
         
         return try ElementImpl.call_closest(instance, selectors);
     }
 
-    pub fn call_getSpatialNavigationContainer(instance: *runtime.Instance) anyerror!Node {
+    pub fn call_getSpatialNavigationContainer(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ElementImpl.call_getSpatialNavigationContainer(instance);
     }
 
@@ -1963,13 +1963,13 @@ pub const Element = struct {
         return try ElementImpl.call_removeAttribute(instance, qualifiedName);
     }
 
-    pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: DOMRectReadOnly, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!DOMQuad {
+    pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!*runtime.Instance {
         
         return try ElementImpl.call_convertRectFromNode(instance, rect, from, options);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_removeAttributeNode(instance: *runtime.Instance, attr: Attr) anyerror!Attr {
+    pub fn call_removeAttributeNode(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1998,7 +1998,7 @@ pub const Element = struct {
         return try ElementImpl.call_requestFullscreen(instance, options);
     }
 
-    pub fn call_animate(instance: *runtime.Instance, keyframes: *const anyopaque, options: *const anyopaque) anyerror!Animation {
+    pub fn call_animate(instance: *runtime.Instance, keyframes: *const anyopaque, options: *const anyopaque) anyerror!*runtime.Instance {
         
         return try ElementImpl.call_animate(instance, keyframes, options);
     }
@@ -2014,7 +2014,7 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_moveBefore(instance: *runtime.Instance, node: Node, child: Node) anyerror!void {
+    pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -2028,12 +2028,12 @@ pub const Element = struct {
         return try ElementImpl.call_getHTML(instance, options);
     }
 
-    pub fn call_getAttributeNode(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!Attr {
+    pub fn call_getAttributeNode(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!*runtime.Instance {
         
         return try ElementImpl.call_getAttributeNode(instance, qualifiedName);
     }
 
-    pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: *const anyopaque) anyerror!ViewTransition {
+    pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: *const anyopaque) anyerror!*runtime.Instance {
         
         return try ElementImpl.call_startViewTransition(instance, callbackOptions);
     }
@@ -2072,7 +2072,7 @@ pub const Element = struct {
         return try ElementImpl.call_toggleAttribute(instance, qualifiedName, force);
     }
 
-    pub fn call_pseudo(instance: *runtime.Instance, @"type": CSSOMString) anyerror!CSSPseudoElement {
+    pub fn call_pseudo(instance: *runtime.Instance, @"type": CSSOMString) anyerror!*runtime.Instance {
         
         return try ElementImpl.call_pseudo(instance, @"type");
     }
@@ -2126,7 +2126,7 @@ pub const Element = struct {
         return try ElementImpl.call_getAttributeNames(instance);
     }
 
-    pub fn call_attachShadow(instance: *runtime.Instance, init_data: ShadowRootInit) anyerror!ShadowRoot {
+    pub fn call_attachShadow(instance: *runtime.Instance, init_data: ShadowRootInit) anyerror!*runtime.Instance {
         
         return try ElementImpl.call_attachShadow(instance, init_data);
     }
@@ -2142,13 +2142,13 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getBoundingClientRect(instance: *runtime.Instance) anyerror!DOMRect {
+    pub fn call_getBoundingClientRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         return try ElementImpl.call_getBoundingClientRect(instance);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: DOMString) anyerror!NodeList {
+    pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try ElementImpl.call_querySelectorAll(instance, selectors);

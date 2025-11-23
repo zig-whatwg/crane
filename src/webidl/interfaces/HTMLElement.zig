@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -1202,19 +1202,19 @@ pub const HTMLElement = struct {
         try HTMLElementImpl.set_headingReset(instance, value);
     }
 
-    pub fn get_editContext(instance: *runtime.Instance) anyerror!EditContext {
+    pub fn get_editContext(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLElementImpl.get_editContext(instance);
     }
 
-    pub fn set_editContext(instance: *runtime.Instance, value: EditContext) anyerror!void {
+    pub fn set_editContext(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         try HTMLElementImpl.set_editContext(instance, value);
     }
 
-    pub fn get_scrollParent(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_scrollParent(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLElementImpl.get_scrollParent(instance);
     }
 
-    pub fn get_offsetParent(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_offsetParent(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLElementImpl.get_offsetParent(instance);
     }
 
@@ -1235,7 +1235,7 @@ pub const HTMLElement = struct {
     }
 
     /// Extended attributes: [SameObject], [PutForwards=cssText]
-    pub fn get_style(instance: *runtime.Instance) anyerror!CSSStyleProperties {
+    pub fn get_style(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_style) |cached| {
@@ -1247,7 +1247,7 @@ pub const HTMLElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_attributeStyleMap(instance: *runtime.Instance) anyerror!StylePropertyMap {
+    pub fn get_attributeStyleMap(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_attributeStyleMap) |cached| {
@@ -2165,7 +2165,7 @@ pub const HTMLElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_dataset(instance: *runtime.Instance) anyerror!DOMStringMap {
+    pub fn get_dataset(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_dataset) |cached| {
@@ -2239,7 +2239,7 @@ pub const HTMLElement = struct {
         return try HTMLElementImpl.call_focus(instance, options);
     }
 
-    pub fn call_attachInternals(instance: *runtime.Instance) anyerror!ElementInternals {
+    pub fn call_attachInternals(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLElementImpl.call_attachInternals(instance);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -153,7 +153,7 @@ pub const VideoDecoder = struct {
         return try VideoDecoderImpl.call_isConfigSupported(instance, config);
     }
 
-    pub fn call_decode(instance: *runtime.Instance, chunk: EncodedVideoChunk) anyerror!void {
+    pub fn call_decode(instance: *runtime.Instance, chunk: *runtime.Instance) anyerror!void {
         
         return try VideoDecoderImpl.call_decode(instance, chunk);
     }

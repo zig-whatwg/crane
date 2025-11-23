@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -71,7 +71,7 @@ pub const WindowSessionStorage = struct {
         WindowSessionStorageImpl.deinit(instance);
     }
 
-    pub fn get_sessionStorage(instance: *runtime.Instance) anyerror!Storage {
+    pub fn get_sessionStorage(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowSessionStorageImpl.get_sessionStorage(instance);
     }
 

@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,61 +37,61 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for scheduling
-pub fn get_scheduling(instance: *runtime.Instance) ImplError!interfaces.Scheduling {
+pub fn get_scheduling(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for presentation
-pub fn get_presentation(instance: *runtime.Instance) ImplError!interfaces.Presentation {
+pub fn get_presentation(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for keyboard
-pub fn get_keyboard(instance: *runtime.Instance) ImplError!interfaces.Keyboard {
+pub fn get_keyboard(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for clipboard
-pub fn get_clipboard(instance: *runtime.Instance) ImplError!interfaces.Clipboard {
+pub fn get_clipboard(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for audioSession
-pub fn get_audioSession(instance: *runtime.Instance) ImplError!interfaces.AudioSession {
+pub fn get_audioSession(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for mediaCapabilities
-pub fn get_mediaCapabilities(instance: *runtime.Instance) ImplError!interfaces.MediaCapabilities {
+pub fn get_mediaCapabilities(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for serial
-pub fn get_serial(instance: *runtime.Instance) ImplError!interfaces.Serial {
+pub fn get_serial(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for permissions
-pub fn get_permissions(instance: *runtime.Instance) ImplError!interfaces.Permissions {
+pub fn get_permissions(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for contacts
-pub fn get_contacts(instance: *runtime.Instance) ImplError!interfaces.ContactsManager {
+pub fn get_contacts(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for devicePosture
-pub fn get_devicePosture(instance: *runtime.Instance) ImplError!interfaces.DevicePosture {
+pub fn get_devicePosture(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -107,31 +103,31 @@ pub fn get_maxTouchPoints(instance: *runtime.Instance) ImplError!i32 {
 }
 
 /// Getter for attribution
-pub fn get_attribution(instance: *runtime.Instance) ImplError!interfaces.Attribution {
+pub fn get_attribution(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for smartCard
-pub fn get_smartCard(instance: *runtime.Instance) ImplError!interfaces.SmartCardResourceManager {
+pub fn get_smartCard(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for usb
-pub fn get_usb(instance: *runtime.Instance) ImplError!interfaces.USB {
+pub fn get_usb(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for windowControlsOverlay
-pub fn get_windowControlsOverlay(instance: *runtime.Instance) ImplError!interfaces.WindowControlsOverlay {
+pub fn get_windowControlsOverlay(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for xr
-pub fn get_xr(instance: *runtime.Instance) ImplError!interfaces.XRSystem {
+pub fn get_xr(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -143,109 +139,109 @@ pub fn get_deprecatedRunAdAuctionEnforcesKAnonymity(instance: *runtime.Instance)
 }
 
 /// Getter for protectedAudience
-pub fn get_protectedAudience(instance: *runtime.Instance) ImplError!interfaces.ProtectedAudience {
+pub fn get_protectedAudience(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for hid
-pub fn get_hid(instance: *runtime.Instance) ImplError!interfaces.HID {
+pub fn get_hid(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for credentials
-pub fn get_credentials(instance: *runtime.Instance) ImplError!interfaces.CredentialsContainer {
+pub fn get_credentials(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for wakeLock
-pub fn get_wakeLock(instance: *runtime.Instance) ImplError!interfaces.WakeLock {
+pub fn get_wakeLock(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for virtualKeyboard
-pub fn get_virtualKeyboard(instance: *runtime.Instance) ImplError!interfaces.VirtualKeyboard {
+pub fn get_virtualKeyboard(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for preferences
-pub fn get_preferences(instance: *runtime.Instance) ImplError!interfaces.PreferenceManager {
+pub fn get_preferences(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for managed
-pub fn get_managed(instance: *runtime.Instance) ImplError!interfaces.NavigatorManagedData {
+pub fn get_managed(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for serviceWorker
-pub fn get_serviceWorker(instance: *runtime.Instance) ImplError!interfaces.ServiceWorkerContainer {
+pub fn get_serviceWorker(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ink
-pub fn get_ink(instance: *runtime.Instance) ImplError!interfaces.Ink {
+pub fn get_ink(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for epubReadingSystem
-pub fn get_epubReadingSystem(instance: *runtime.Instance) ImplError!interfaces.EpubReadingSystem {
+pub fn get_epubReadingSystem(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for userActivation
-pub fn get_userActivation(instance: *runtime.Instance) ImplError!interfaces.UserActivation {
+pub fn get_userActivation(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for bluetooth
-pub fn get_bluetooth(instance: *runtime.Instance) ImplError!interfaces.Bluetooth {
+pub fn get_bluetooth(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for geolocation
-pub fn get_geolocation(instance: *runtime.Instance) ImplError!interfaces.Geolocation {
+pub fn get_geolocation(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for login
-pub fn get_login(instance: *runtime.Instance) ImplError!interfaces.NavigatorLogin {
+pub fn get_login(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for mediaSession
-pub fn get_mediaSession(instance: *runtime.Instance) ImplError!interfaces.MediaSession {
+pub fn get_mediaSession(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for mediaDevices
-pub fn get_mediaDevices(instance: *runtime.Instance) ImplError!interfaces.MediaDevices {
+pub fn get_mediaDevices(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for locks
-pub fn get_locks(instance: *runtime.Instance) ImplError!interfaces.LockManager {
+pub fn get_locks(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for gpu
-pub fn get_gpu(instance: *runtime.Instance) ImplError!interfaces.GPU {
+pub fn get_gpu(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -263,13 +259,13 @@ pub fn get_webdriver(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Getter for connection
-pub fn get_connection(instance: *runtime.Instance) ImplError!interfaces.NetworkInformation {
+pub fn get_connection(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ml
-pub fn get_ml(instance: *runtime.Instance) ImplError!interfaces.ML {
+pub fn get_ml(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -281,13 +277,13 @@ pub fn get_deviceMemory(instance: *runtime.Instance) ImplError!f64 {
 }
 
 /// Getter for storage
-pub fn get_storage(instance: *runtime.Instance) ImplError!interfaces.StorageManager {
+pub fn get_storage(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for storageBuckets
-pub fn get_storageBuckets(instance: *runtime.Instance) ImplError!interfaces.StorageBucketManager {
+pub fn get_storageBuckets(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -377,13 +373,13 @@ pub fn get_cookieEnabled(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Getter for plugins
-pub fn get_plugins(instance: *runtime.Instance) ImplError!interfaces.PluginArray {
+pub fn get_plugins(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for mimeTypes
-pub fn get_mimeTypes(instance: *runtime.Instance) ImplError!interfaces.MimeTypeArray {
+pub fn get_mimeTypes(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -401,7 +397,7 @@ pub fn get_hardwareConcurrency(instance: *runtime.Instance) ImplError!u64 {
 }
 
 /// Getter for userAgentData
-pub fn get_userAgentData(instance: *runtime.Instance) ImplError!interfaces.NavigatorUAData {
+pub fn get_userAgentData(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

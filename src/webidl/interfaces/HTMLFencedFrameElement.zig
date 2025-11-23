@@ -1,5 +1,5 @@
 //! Generated from: fenced-frame.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -261,12 +261,12 @@ pub const HTMLFencedFrameElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_config(instance: *runtime.Instance) anyerror!FencedFrameConfig {
+    pub fn get_config(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLFencedFrameElementImpl.get_config(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_config(instance: *runtime.Instance, value: FencedFrameConfig) anyerror!void {
+    pub fn set_config(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -303,7 +303,7 @@ pub const HTMLFencedFrameElement = struct {
     }
 
     /// Extended attributes: [SameObject], [PutForwards=value]
-    pub fn get_sandbox(instance: *runtime.Instance) anyerror!DOMTokenList {
+    pub fn get_sandbox(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_sandbox) |cached| {

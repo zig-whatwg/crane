@@ -1,5 +1,5 @@
 //! Generated from: uievents.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -110,7 +110,7 @@ pub const UIEvent = struct {
         return try UIEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
-    pub fn get_view(instance: *runtime.Instance) anyerror!Window {
+    pub fn get_view(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try UIEventImpl.get_view(instance);
     }
 
@@ -122,11 +122,11 @@ pub const UIEvent = struct {
         return try UIEventImpl.get_which(instance);
     }
 
-    pub fn get_sourceCapabilities(instance: *runtime.Instance) anyerror!InputDeviceCapabilities {
+    pub fn get_sourceCapabilities(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try UIEventImpl.get_sourceCapabilities(instance);
     }
 
-    pub fn call_initUIEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: Window, detailArg: i32) anyerror!void {
+    pub fn call_initUIEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: *runtime.Instance, detailArg: i32) anyerror!void {
         
         return try UIEventImpl.call_initUIEvent(instance, typeArg, bubblesArg, cancelableArg, viewArg, detailArg);
     }

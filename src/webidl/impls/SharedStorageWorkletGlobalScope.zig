@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,19 +37,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for sharedStorage
-pub fn get_sharedStorage(instance: *runtime.Instance) ImplError!interfaces.SharedStorage {
+pub fn get_sharedStorage(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for privateAggregation
-pub fn get_privateAggregation(instance: *runtime.Instance) ImplError!interfaces.PrivateAggregation {
+pub fn get_privateAggregation(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for navigator
-pub fn get_navigator(instance: *runtime.Instance) ImplError!interfaces.SharedStorageWorkletNavigator {
+pub fn get_navigator(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

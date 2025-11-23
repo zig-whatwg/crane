@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -122,7 +122,7 @@ pub const OscillatorNode = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: BaseAudioContext, options: OscillatorOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: OscillatorOptions) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try OscillatorNodeImpl.call_constructor(allocator, ctx, context, options);
     }
@@ -135,15 +135,15 @@ pub const OscillatorNode = struct {
         try OscillatorNodeImpl.set_type(instance, value);
     }
 
-    pub fn get_frequency(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_frequency(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try OscillatorNodeImpl.get_frequency(instance);
     }
 
-    pub fn get_detune(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_detune(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try OscillatorNodeImpl.get_detune(instance);
     }
 
-    pub fn call_setPeriodicWave(instance: *runtime.Instance, periodicWave: PeriodicWave) anyerror!void {
+    pub fn call_setPeriodicWave(instance: *runtime.Instance, periodicWave: *runtime.Instance) anyerror!void {
         
         return try OscillatorNodeImpl.call_setPeriodicWave(instance, periodicWave);
     }

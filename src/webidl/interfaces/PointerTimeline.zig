@@ -1,5 +1,5 @@
 //! Generated from: pointer-animations.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -93,7 +93,7 @@ pub const PointerTimeline = struct {
         return try PointerTimelineImpl.call_constructor(allocator, ctx, options);
     }
 
-    pub fn get_source(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_source(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try PointerTimelineImpl.get_source(instance);
     }
 

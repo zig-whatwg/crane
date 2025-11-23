@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -55,38 +51,38 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, chil
 }
 
 /// Getter for children
-pub fn get_children(instance: *runtime.Instance) ImplError!interfaces.AnimationNodeList {
+pub fn get_children(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for firstChild
-pub fn get_firstChild(instance: *runtime.Instance) ImplError!interfaces.AnimationEffect {
+pub fn get_firstChild(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for lastChild
-pub fn get_lastChild(instance: *runtime.Instance) ImplError!interfaces.AnimationEffect {
+pub fn get_lastChild(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: clone
-pub fn call_clone(instance: *runtime.Instance) ImplError!interfaces.GroupEffect {
+pub fn call_clone(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: append
-pub fn call_append(instance: *runtime.Instance, effects: interfaces.AnimationEffect) ImplError!void {
+pub fn call_append(instance: *runtime.Instance, effects: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = effects;
     return error.NotImplemented;
 }
 
 /// Operation: prepend
-pub fn call_prepend(instance: *runtime.Instance, effects: interfaces.AnimationEffect) ImplError!void {
+pub fn call_prepend(instance: *runtime.Instance, effects: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = effects;
     return error.NotImplemented;

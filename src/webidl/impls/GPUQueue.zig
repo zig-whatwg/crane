@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -60,7 +56,7 @@ pub fn call_onSubmittedWorkDone(instance: *runtime.Instance) ImplError!*const an
 }
 
 /// Operation: writeBuffer
-pub fn call_writeBuffer(instance: *runtime.Instance, buffer: interfaces.GPUBuffer, bufferOffset: typedefs.GPUSize64, data: typedefs.AllowSharedBufferSource, dataOffset: typedefs.GPUSize64, size: typedefs.GPUSize64) ImplError!void {
+pub fn call_writeBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, bufferOffset: typedefs.GPUSize64, data: typedefs.AllowSharedBufferSource, dataOffset: typedefs.GPUSize64, size: typedefs.GPUSize64) ImplError!void {
     _ = instance;
     _ = buffer;
     _ = bufferOffset;

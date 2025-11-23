@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -260,7 +260,7 @@ pub const WorkerNavigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_mediaCapabilities(instance: *runtime.Instance) anyerror!MediaCapabilities {
+    pub fn get_mediaCapabilities(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_mediaCapabilities) |cached| {
@@ -272,7 +272,7 @@ pub const WorkerNavigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_serial(instance: *runtime.Instance) anyerror!Serial {
+    pub fn get_serial(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_serial) |cached| {
@@ -284,7 +284,7 @@ pub const WorkerNavigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_permissions(instance: *runtime.Instance) anyerror!Permissions {
+    pub fn get_permissions(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_permissions) |cached| {
@@ -296,7 +296,7 @@ pub const WorkerNavigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_smartCard(instance: *runtime.Instance) anyerror!SmartCardResourceManager {
+    pub fn get_smartCard(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_smartCard) |cached| {
@@ -308,7 +308,7 @@ pub const WorkerNavigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_usb(instance: *runtime.Instance) anyerror!USB {
+    pub fn get_usb(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_usb) |cached| {
@@ -320,7 +320,7 @@ pub const WorkerNavigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_hid(instance: *runtime.Instance) anyerror!HID {
+    pub fn get_hid(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_hid) |cached| {
@@ -332,7 +332,7 @@ pub const WorkerNavigator = struct {
     }
 
     /// Extended attributes: [SecureContext], [SameObject]
-    pub fn get_serviceWorker(instance: *runtime.Instance) anyerror!ServiceWorkerContainer {
+    pub fn get_serviceWorker(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_serviceWorker) |cached| {
@@ -343,12 +343,12 @@ pub const WorkerNavigator = struct {
         return value;
     }
 
-    pub fn get_locks(instance: *runtime.Instance) anyerror!LockManager {
+    pub fn get_locks(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WorkerNavigatorImpl.get_locks(instance);
     }
 
     /// Extended attributes: [SameObject], [SecureContext]
-    pub fn get_gpu(instance: *runtime.Instance) anyerror!GPU {
+    pub fn get_gpu(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_gpu) |cached| {
@@ -364,7 +364,7 @@ pub const WorkerNavigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_connection(instance: *runtime.Instance) anyerror!NetworkInformation {
+    pub fn get_connection(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_connection) |cached| {
@@ -376,7 +376,7 @@ pub const WorkerNavigator = struct {
     }
 
     /// Extended attributes: [SecureContext], [SameObject]
-    pub fn get_ml(instance: *runtime.Instance) anyerror!ML {
+    pub fn get_ml(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_ml) |cached| {
@@ -392,7 +392,7 @@ pub const WorkerNavigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_storage(instance: *runtime.Instance) anyerror!StorageManager {
+    pub fn get_storage(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_storage) |cached| {
@@ -404,7 +404,7 @@ pub const WorkerNavigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_storageBuckets(instance: *runtime.Instance) anyerror!StorageBucketManager {
+    pub fn get_storageBuckets(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_storageBuckets) |cached| {
@@ -476,7 +476,7 @@ pub const WorkerNavigator = struct {
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn get_userAgentData(instance: *runtime.Instance) anyerror!NavigatorUAData {
+    pub fn get_userAgentData(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WorkerNavigatorImpl.get_userAgentData(instance);
     }
 

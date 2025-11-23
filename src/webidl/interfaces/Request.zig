@@ -1,5 +1,5 @@
 //! Generated from: fetch.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -209,7 +209,7 @@ pub const Request = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_headers(instance: *runtime.Instance) anyerror!Headers {
+    pub fn get_headers(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_headers) |cached| {
@@ -264,7 +264,7 @@ pub const Request = struct {
         return try RequestImpl.get_isHistoryNavigation(instance);
     }
 
-    pub fn get_signal(instance: *runtime.Instance) anyerror!AbortSignal {
+    pub fn get_signal(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RequestImpl.get_signal(instance);
     }
 
@@ -276,7 +276,7 @@ pub const Request = struct {
         return try RequestImpl.get_targetAddressSpace(instance);
     }
 
-    pub fn get_body(instance: *runtime.Instance) anyerror!ReadableStream {
+    pub fn get_body(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RequestImpl.get_body(instance);
     }
 
@@ -285,7 +285,7 @@ pub const Request = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_clone(instance: *runtime.Instance) anyerror!Request {
+    pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         return try RequestImpl.call_clone(instance);
     }

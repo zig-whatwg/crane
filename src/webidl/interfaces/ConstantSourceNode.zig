@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -106,12 +106,12 @@ pub const ConstantSourceNode = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: BaseAudioContext, options: ConstantSourceOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: ConstantSourceOptions) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try ConstantSourceNodeImpl.call_constructor(allocator, ctx, context, options);
     }
 
-    pub fn get_offset(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_offset(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ConstantSourceNodeImpl.get_offset(instance);
     }
 

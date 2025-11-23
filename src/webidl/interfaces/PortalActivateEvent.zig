@@ -1,5 +1,5 @@
 //! Generated from: portals.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -101,7 +101,7 @@ pub const PortalActivateEvent = struct {
         return try PortalActivateEventImpl.get_data(instance);
     }
 
-    pub fn call_adoptPredecessor(instance: *runtime.Instance) anyerror!HTMLPortalElement {
+    pub fn call_adoptPredecessor(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try PortalActivateEventImpl.call_adoptPredecessor(instance);
     }
 

@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -53,7 +49,7 @@ pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
 }
 
 /// Getter for parentRule
-pub fn get_parentRule(instance: *runtime.Instance) ImplError!interfaces.CSSRule {
+pub fn get_parentRule(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -80,7 +76,7 @@ pub fn call_removeProperty(instance: *runtime.Instance, property: typedefs.CSSOM
 }
 
 /// Operation: getPropertyCSSValue
-pub fn call_getPropertyCSSValue(instance: *runtime.Instance, propertyName: runtime.DOMString) ImplError!interfaces.CSSValue {
+pub fn call_getPropertyCSSValue(instance: *runtime.Instance, propertyName: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = propertyName;
     return error.NotImplemented;

@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -65,49 +61,49 @@ pub fn get_isConnected(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Getter for ownerDocument
-pub fn get_ownerDocument(instance: *runtime.Instance) ImplError!interfaces.Document {
+pub fn get_ownerDocument(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for parentNode
-pub fn get_parentNode(instance: *runtime.Instance) ImplError!interfaces.Node {
+pub fn get_parentNode(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for parentElement
-pub fn get_parentElement(instance: *runtime.Instance) ImplError!interfaces.Element {
+pub fn get_parentElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for childNodes
-pub fn get_childNodes(instance: *runtime.Instance) ImplError!interfaces.NodeList {
+pub fn get_childNodes(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for firstChild
-pub fn get_firstChild(instance: *runtime.Instance) ImplError!interfaces.Node {
+pub fn get_firstChild(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for lastChild
-pub fn get_lastChild(instance: *runtime.Instance) ImplError!interfaces.Node {
+pub fn get_lastChild(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for previousSibling
-pub fn get_previousSibling(instance: *runtime.Instance) ImplError!interfaces.Node {
+pub fn get_previousSibling(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for nextSibling
-pub fn get_nextSibling(instance: *runtime.Instance) ImplError!interfaces.Node {
+pub fn get_nextSibling(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -146,21 +142,21 @@ pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: runtime.D
 }
 
 /// Operation: compareDocumentPosition
-pub fn call_compareDocumentPosition(instance: *runtime.Instance, other: interfaces.Node) ImplError!u16 {
+pub fn call_compareDocumentPosition(instance: *runtime.Instance, other: *runtime.Instance) ImplError!u16 {
     _ = instance;
     _ = other;
     return error.NotImplemented;
 }
 
 /// Operation: contains
-pub fn call_contains(instance: *runtime.Instance, other: interfaces.Node) ImplError!bool {
+pub fn call_contains(instance: *runtime.Instance, other: *runtime.Instance) ImplError!bool {
     _ = instance;
     _ = other;
     return error.NotImplemented;
 }
 
 /// Operation: insertBefore
-pub fn call_insertBefore(instance: *runtime.Instance, node: interfaces.Node, child: interfaces.Node) ImplError!interfaces.Node {
+pub fn call_insertBefore(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = node;
     _ = child;
@@ -175,7 +171,7 @@ pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: runtime.DOMS
 }
 
 /// Operation: appendChild
-pub fn call_appendChild(instance: *runtime.Instance, node: interfaces.Node) ImplError!interfaces.Node {
+pub fn call_appendChild(instance: *runtime.Instance, node: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = node;
     return error.NotImplemented;
@@ -188,28 +184,28 @@ pub fn call_hasChildNodes(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Operation: cloneNode
-pub fn call_cloneNode(instance: *runtime.Instance, subtree: bool) ImplError!interfaces.Node {
+pub fn call_cloneNode(instance: *runtime.Instance, subtree: bool) ImplError!*runtime.Instance {
     _ = instance;
     _ = subtree;
     return error.NotImplemented;
 }
 
 /// Operation: getRootNode
-pub fn call_getRootNode(instance: *runtime.Instance, options: dictionaries.GetRootNodeOptions) ImplError!interfaces.Node {
+pub fn call_getRootNode(instance: *runtime.Instance, options: dictionaries.GetRootNodeOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: removeChild
-pub fn call_removeChild(instance: *runtime.Instance, child: interfaces.Node) ImplError!interfaces.Node {
+pub fn call_removeChild(instance: *runtime.Instance, child: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = child;
     return error.NotImplemented;
 }
 
 /// Operation: isEqualNode
-pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: interfaces.Node) ImplError!bool {
+pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: *runtime.Instance) ImplError!bool {
     _ = instance;
     _ = otherNode;
     return error.NotImplemented;
@@ -222,7 +218,7 @@ pub fn call_normalize(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: replaceChild
-pub fn call_replaceChild(instance: *runtime.Instance, node: interfaces.Node, child: interfaces.Node) ImplError!interfaces.Node {
+pub fn call_replaceChild(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = node;
     _ = child;
@@ -230,7 +226,7 @@ pub fn call_replaceChild(instance: *runtime.Instance, node: interfaces.Node, chi
 }
 
 /// Operation: isSameNode
-pub fn call_isSameNode(instance: *runtime.Instance, otherNode: interfaces.Node) ImplError!bool {
+pub fn call_isSameNode(instance: *runtime.Instance, otherNode: *runtime.Instance) ImplError!bool {
     _ = instance;
     _ = otherNode;
     return error.NotImplemented;

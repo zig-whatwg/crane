@@ -1,5 +1,5 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -140,7 +140,7 @@ pub const Cache = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_put(instance: *runtime.Instance, request: RequestInfo, response: Response) anyerror!*const anyopaque {
+    pub fn call_put(instance: *runtime.Instance, request: RequestInfo, response: *runtime.Instance) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
         return try CacheImpl.call_put(instance, request, response);

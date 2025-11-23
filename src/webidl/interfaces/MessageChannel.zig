@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -89,11 +89,11 @@ pub const MessageChannel = struct {
         return try MessageChannelImpl.call_constructor(allocator, ctx);
     }
 
-    pub fn get_port1(instance: *runtime.Instance) anyerror!MessagePort {
+    pub fn get_port1(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try MessageChannelImpl.get_port1(instance);
     }
 
-    pub fn get_port2(instance: *runtime.Instance) anyerror!MessagePort {
+    pub fn get_port2(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try MessageChannelImpl.get_port2(instance);
     }
 

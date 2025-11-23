@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,31 +37,31 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for customElementRegistry
-pub fn get_customElementRegistry(instance: *runtime.Instance) ImplError!interfaces.CustomElementRegistry {
+pub fn get_customElementRegistry(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for fullscreenElement
-pub fn get_fullscreenElement(instance: *runtime.Instance) ImplError!interfaces.Element {
+pub fn get_fullscreenElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for pictureInPictureElement
-pub fn get_pictureInPictureElement(instance: *runtime.Instance) ImplError!interfaces.Element {
+pub fn get_pictureInPictureElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for pointerLockElement
-pub fn get_pointerLockElement(instance: *runtime.Instance) ImplError!interfaces.Element {
+pub fn get_pointerLockElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for styleSheets
-pub fn get_styleSheets(instance: *runtime.Instance) ImplError!interfaces.StyleSheetList {
+pub fn get_styleSheets(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -77,7 +73,7 @@ pub fn get_adoptedStyleSheets(instance: *runtime.Instance) ImplError!*const anyo
 }
 
 /// Getter for activeElement
-pub fn get_activeElement(instance: *runtime.Instance) ImplError!interfaces.Element {
+pub fn get_activeElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

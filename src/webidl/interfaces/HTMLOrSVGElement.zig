@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -98,7 +98,7 @@ pub const HTMLOrSVGElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_dataset(instance: *runtime.Instance) anyerror!DOMStringMap {
+    pub fn get_dataset(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_dataset) |cached| {

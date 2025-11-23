@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,19 +37,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for clients
-pub fn get_clients(instance: *runtime.Instance) ImplError!interfaces.Clients {
+pub fn get_clients(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for registration
-pub fn get_registration(instance: *runtime.Instance) ImplError!interfaces.ServiceWorkerRegistration {
+pub fn get_registration(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for serviceWorker
-pub fn get_serviceWorker(instance: *runtime.Instance) ImplError!interfaces.ServiceWorker {
+pub fn get_serviceWorker(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -95,7 +91,7 @@ pub fn get_onperiodicsync(instance: *runtime.Instance) ImplError!typedefs.EventH
 }
 
 /// Getter for cookieStore
-pub fn get_cookieStore(instance: *runtime.Instance) ImplError!interfaces.CookieStore {
+pub fn get_cookieStore(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

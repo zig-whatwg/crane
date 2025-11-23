@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,7 +37,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for error
-pub fn get_error(instance: *runtime.Instance) ImplError!interfaces.MediaError {
+pub fn get_error(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -83,7 +79,7 @@ pub fn get_preload(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for buffered
-pub fn get_buffered(instance: *runtime.Instance) ImplError!interfaces.TimeRanges {
+pub fn get_buffered(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -137,13 +133,13 @@ pub fn get_preservesPitch(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Getter for played
-pub fn get_played(instance: *runtime.Instance) ImplError!interfaces.TimeRanges {
+pub fn get_played(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for seekable
-pub fn get_seekable(instance: *runtime.Instance) ImplError!interfaces.TimeRanges {
+pub fn get_seekable(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -191,19 +187,19 @@ pub fn get_defaultMuted(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Getter for audioTracks
-pub fn get_audioTracks(instance: *runtime.Instance) ImplError!interfaces.AudioTrackList {
+pub fn get_audioTracks(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for videoTracks
-pub fn get_videoTracks(instance: *runtime.Instance) ImplError!interfaces.VideoTrackList {
+pub fn get_videoTracks(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for textTracks
-pub fn get_textTracks(instance: *runtime.Instance) ImplError!interfaces.TextTrackList {
+pub fn get_textTracks(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -215,7 +211,7 @@ pub fn get_sinkId(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for remote
-pub fn get_remote(instance: *runtime.Instance) ImplError!interfaces.RemotePlayback {
+pub fn get_remote(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -227,7 +223,7 @@ pub fn get_disableRemotePlayback(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Getter for mediaKeys
-pub fn get_mediaKeys(instance: *runtime.Instance) ImplError!interfaces.MediaKeys {
+pub fn get_mediaKeys(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -377,7 +373,7 @@ pub fn call_load(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: setMediaKeys
-pub fn call_setMediaKeys(instance: *runtime.Instance, mediaKeys: interfaces.MediaKeys) ImplError!*const anyopaque {
+pub fn call_setMediaKeys(instance: *runtime.Instance, mediaKeys: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     _ = mediaKeys;
     return error.NotImplemented;
@@ -404,7 +400,7 @@ pub fn call_fastSeek(instance: *runtime.Instance, time: f64) ImplError!void {
 }
 
 /// Operation: captureStream
-pub fn call_captureStream(instance: *runtime.Instance) ImplError!interfaces.MediaStream {
+pub fn call_captureStream(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -422,7 +418,7 @@ pub fn call_getStartDate(instance: *runtime.Instance) ImplError!*const anyopaque
 }
 
 /// Operation: addTextTrack
-pub fn call_addTextTrack(instance: *runtime.Instance, kind: enums.TextTrackKind, label: runtime.DOMString, language: runtime.DOMString) ImplError!interfaces.TextTrack {
+pub fn call_addTextTrack(instance: *runtime.Instance, kind: enums.TextTrackKind, label: runtime.DOMString, language: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = kind;
     _ = label;

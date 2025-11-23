@@ -1,5 +1,5 @@
 //! Generated from: entries-api.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -115,7 +115,7 @@ pub const FileSystemEntry = struct {
         return try FileSystemEntryImpl.get_fullPath(instance);
     }
 
-    pub fn get_filesystem(instance: *runtime.Instance) anyerror!FileSystem {
+    pub fn get_filesystem(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try FileSystemEntryImpl.get_filesystem(instance);
     }
 

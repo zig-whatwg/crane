@@ -1,5 +1,5 @@
 //! Generated from: speech-api.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -102,7 +102,7 @@ pub const SpeechRecognitionEvent = struct {
         return try SpeechRecognitionEventImpl.get_resultIndex(instance);
     }
 
-    pub fn get_results(instance: *runtime.Instance) anyerror!SpeechRecognitionResultList {
+    pub fn get_results(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SpeechRecognitionEventImpl.get_results(instance);
     }
 

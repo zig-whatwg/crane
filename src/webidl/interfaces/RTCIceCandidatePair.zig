@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -83,7 +83,7 @@ pub const RTCIceCandidatePair = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_local(instance: *runtime.Instance) anyerror!RTCIceCandidate {
+    pub fn get_local(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_local) |cached| {
@@ -95,7 +95,7 @@ pub const RTCIceCandidatePair = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_remote(instance: *runtime.Instance) anyerror!RTCIceCandidate {
+    pub fn get_remote(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_remote) |cached| {

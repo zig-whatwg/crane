@@ -1,5 +1,5 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -132,14 +132,14 @@ pub const DOMPointReadOnly = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_matrixTransform(instance: *runtime.Instance, matrix: DOMMatrixInit) anyerror!DOMPoint {
+    pub fn call_matrixTransform(instance: *runtime.Instance, matrix: DOMMatrixInit) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMPointReadOnlyImpl.call_matrixTransform(instance, matrix);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_fromPoint(instance: *runtime.Instance, other: DOMPointInit) anyerror!DOMPointReadOnly {
+    pub fn call_fromPoint(instance: *runtime.Instance, other: DOMPointInit) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMPointReadOnlyImpl.call_fromPoint(instance, other);

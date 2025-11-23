@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -57,44 +53,44 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, p1: 
 }
 
 /// Getter for p1
-pub fn get_p1(instance: *runtime.Instance) ImplError!interfaces.DOMPoint {
+pub fn get_p1(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for p2
-pub fn get_p2(instance: *runtime.Instance) ImplError!interfaces.DOMPoint {
+pub fn get_p2(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for p3
-pub fn get_p3(instance: *runtime.Instance) ImplError!interfaces.DOMPoint {
+pub fn get_p3(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for p4
-pub fn get_p4(instance: *runtime.Instance) ImplError!interfaces.DOMPoint {
+pub fn get_p4(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getBounds
-pub fn call_getBounds(instance: *runtime.Instance) ImplError!interfaces.DOMRect {
+pub fn call_getBounds(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: fromQuad
-pub fn call_fromQuad(instance: *runtime.Instance, other: dictionaries.DOMQuadInit) ImplError!interfaces.DOMQuad {
+pub fn call_fromQuad(instance: *runtime.Instance, other: dictionaries.DOMQuadInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = other;
     return error.NotImplemented;
 }
 
 /// Operation: fromRect
-pub fn call_fromRect(instance: *runtime.Instance, other: dictionaries.DOMRectInit) ImplError!interfaces.DOMQuad {
+pub fn call_fromRect(instance: *runtime.Instance, other: dictionaries.DOMRectInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = other;
     return error.NotImplemented;

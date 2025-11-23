@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,7 +37,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for targetElement
-pub fn get_targetElement(instance: *runtime.Instance) ImplError!interfaces.SVGElement {
+pub fn get_targetElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -65,13 +61,13 @@ pub fn get_onrepeat(instance: *runtime.Instance) ImplError!typedefs.EventHandler
 }
 
 /// Getter for requiredExtensions
-pub fn get_requiredExtensions(instance: *runtime.Instance) ImplError!interfaces.SVGStringList {
+pub fn get_requiredExtensions(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for systemLanguage
-pub fn get_systemLanguage(instance: *runtime.Instance) ImplError!interfaces.SVGStringList {
+pub fn get_systemLanguage(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -54,7 +50,7 @@ pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) ImplErro
 }
 
 /// Operation: drawIndexedIndirect
-pub fn call_drawIndexedIndirect(instance: *runtime.Instance, indirectBuffer: interfaces.GPUBuffer, indirectOffset: typedefs.GPUSize64) ImplError!void {
+pub fn call_drawIndexedIndirect(instance: *runtime.Instance, indirectBuffer: *runtime.Instance, indirectOffset: typedefs.GPUSize64) ImplError!void {
     _ = instance;
     _ = indirectBuffer;
     _ = indirectOffset;
@@ -78,7 +74,7 @@ pub fn call_popDebugGroup(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: setBindGroup
-pub fn call_setBindGroup(instance: *runtime.Instance, index: typedefs.GPUIndex32, bindGroup: interfaces.GPUBindGroup, dynamicOffsets: *const anyopaque) ImplError!void {
+pub fn call_setBindGroup(instance: *runtime.Instance, index: typedefs.GPUIndex32, bindGroup: *runtime.Instance, dynamicOffsets: *const anyopaque) ImplError!void {
     _ = instance;
     _ = index;
     _ = bindGroup;
@@ -87,7 +83,7 @@ pub fn call_setBindGroup(instance: *runtime.Instance, index: typedefs.GPUIndex32
 }
 
 /// Operation: setVertexBuffer
-pub fn call_setVertexBuffer(instance: *runtime.Instance, slot: typedefs.GPUIndex32, buffer: interfaces.GPUBuffer, offset: typedefs.GPUSize64, size: typedefs.GPUSize64) ImplError!void {
+pub fn call_setVertexBuffer(instance: *runtime.Instance, slot: typedefs.GPUIndex32, buffer: *runtime.Instance, offset: typedefs.GPUSize64, size: typedefs.GPUSize64) ImplError!void {
     _ = instance;
     _ = slot;
     _ = buffer;
@@ -104,7 +100,7 @@ pub fn call_insertDebugMarker(instance: *runtime.Instance, markerLabel: runtime.
 }
 
 /// Operation: setIndexBuffer
-pub fn call_setIndexBuffer(instance: *runtime.Instance, buffer: interfaces.GPUBuffer, indexFormat: enums.GPUIndexFormat, offset: typedefs.GPUSize64, size: typedefs.GPUSize64) ImplError!void {
+pub fn call_setIndexBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, indexFormat: enums.GPUIndexFormat, offset: typedefs.GPUSize64, size: typedefs.GPUSize64) ImplError!void {
     _ = instance;
     _ = buffer;
     _ = indexFormat;
@@ -121,14 +117,14 @@ pub fn call_pushDebugGroup(instance: *runtime.Instance, groupLabel: runtime.USVS
 }
 
 /// Operation: finish
-pub fn call_finish(instance: *runtime.Instance, descriptor: dictionaries.GPURenderBundleDescriptor) ImplError!interfaces.GPURenderBundle {
+pub fn call_finish(instance: *runtime.Instance, descriptor: dictionaries.GPURenderBundleDescriptor) ImplError!*runtime.Instance {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
 }
 
 /// Operation: drawIndirect
-pub fn call_drawIndirect(instance: *runtime.Instance, indirectBuffer: interfaces.GPUBuffer, indirectOffset: typedefs.GPUSize64) ImplError!void {
+pub fn call_drawIndirect(instance: *runtime.Instance, indirectBuffer: *runtime.Instance, indirectOffset: typedefs.GPUSize64) ImplError!void {
     _ = instance;
     _ = indirectBuffer;
     _ = indirectOffset;
@@ -147,7 +143,7 @@ pub fn call_drawIndexed(instance: *runtime.Instance, indexCount: typedefs.GPUSiz
 }
 
 /// Operation: setPipeline
-pub fn call_setPipeline(instance: *runtime.Instance, pipeline: interfaces.GPURenderPipeline) ImplError!void {
+pub fn call_setPipeline(instance: *runtime.Instance, pipeline: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = pipeline;
     return error.NotImplemented;

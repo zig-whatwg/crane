@@ -1,5 +1,5 @@
 //! Generated from: mediastream-recording.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -163,12 +163,12 @@ pub const MediaRecorder = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, stream: MediaStream, options: MediaRecorderOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, stream: *runtime.Instance, options: MediaRecorderOptions) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try MediaRecorderImpl.call_constructor(allocator, ctx, stream, options);
     }
 
-    pub fn get_stream(instance: *runtime.Instance) anyerror!MediaStream {
+    pub fn get_stream(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try MediaRecorderImpl.get_stream(instance);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -284,7 +284,7 @@ pub const XRSession = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_renderState(instance: *runtime.Instance) anyerror!XRRenderState {
+    pub fn get_renderState(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_renderState) |cached| {
@@ -296,7 +296,7 @@ pub const XRSession = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_inputSources(instance: *runtime.Instance) anyerror!XRInputSourceArray {
+    pub fn get_inputSources(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_inputSources) |cached| {
@@ -308,7 +308,7 @@ pub const XRSession = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_trackedSources(instance: *runtime.Instance) anyerror!XRInputSourceArray {
+    pub fn get_trackedSources(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_trackedSources) |cached| {

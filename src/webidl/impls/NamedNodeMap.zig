@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -47,14 +43,14 @@ pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
 }
 
 /// Operation: item
-pub fn call_item(instance: *runtime.Instance, index: u32) ImplError!interfaces.Attr {
+pub fn call_item(instance: *runtime.Instance, index: u32) ImplError!*runtime.Instance {
     _ = instance;
     _ = index;
     return error.NotImplemented;
 }
 
 /// Operation: getNamedItemNS
-pub fn call_getNamedItemNS(instance: *runtime.Instance, namespace: runtime.DOMString, localName: runtime.DOMString) ImplError!interfaces.Attr {
+pub fn call_getNamedItemNS(instance: *runtime.Instance, namespace: runtime.DOMString, localName: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = namespace;
     _ = localName;
@@ -62,28 +58,28 @@ pub fn call_getNamedItemNS(instance: *runtime.Instance, namespace: runtime.DOMSt
 }
 
 /// Operation: getNamedItem
-pub fn call_getNamedItem(instance: *runtime.Instance, qualifiedName: runtime.DOMString) ImplError!interfaces.Attr {
+pub fn call_getNamedItem(instance: *runtime.Instance, qualifiedName: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = qualifiedName;
     return error.NotImplemented;
 }
 
 /// Operation: setNamedItemNS
-pub fn call_setNamedItemNS(instance: *runtime.Instance, attr: interfaces.Attr) ImplError!interfaces.Attr {
+pub fn call_setNamedItemNS(instance: *runtime.Instance, attr: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = attr;
     return error.NotImplemented;
 }
 
 /// Operation: removeNamedItem
-pub fn call_removeNamedItem(instance: *runtime.Instance, qualifiedName: runtime.DOMString) ImplError!interfaces.Attr {
+pub fn call_removeNamedItem(instance: *runtime.Instance, qualifiedName: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = qualifiedName;
     return error.NotImplemented;
 }
 
 /// Operation: removeNamedItemNS
-pub fn call_removeNamedItemNS(instance: *runtime.Instance, namespace: runtime.DOMString, localName: runtime.DOMString) ImplError!interfaces.Attr {
+pub fn call_removeNamedItemNS(instance: *runtime.Instance, namespace: runtime.DOMString, localName: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = namespace;
     _ = localName;
@@ -91,7 +87,7 @@ pub fn call_removeNamedItemNS(instance: *runtime.Instance, namespace: runtime.DO
 }
 
 /// Operation: setNamedItem
-pub fn call_setNamedItem(instance: *runtime.Instance, attr: interfaces.Attr) ImplError!interfaces.Attr {
+pub fn call_setNamedItem(instance: *runtime.Instance, attr: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = attr;
     return error.NotImplemented;

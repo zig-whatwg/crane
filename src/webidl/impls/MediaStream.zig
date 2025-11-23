@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -105,27 +101,27 @@ pub fn call_getVideoTracks(instance: *runtime.Instance) ImplError!*const anyopaq
 }
 
 /// Operation: clone
-pub fn call_clone(instance: *runtime.Instance) ImplError!interfaces.MediaStream {
+pub fn call_clone(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getTrackById
-pub fn call_getTrackById(instance: *runtime.Instance, trackId: runtime.DOMString) ImplError!interfaces.MediaStreamTrack {
+pub fn call_getTrackById(instance: *runtime.Instance, trackId: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = trackId;
     return error.NotImplemented;
 }
 
 /// Operation: addTrack
-pub fn call_addTrack(instance: *runtime.Instance, track: interfaces.MediaStreamTrack) ImplError!void {
+pub fn call_addTrack(instance: *runtime.Instance, track: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = track;
     return error.NotImplemented;
 }
 
 /// Operation: removeTrack
-pub fn call_removeTrack(instance: *runtime.Instance, track: interfaces.MediaStreamTrack) ImplError!void {
+pub fn call_removeTrack(instance: *runtime.Instance, track: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = track;
     return error.NotImplemented;

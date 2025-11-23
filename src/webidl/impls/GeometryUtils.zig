@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,7 +37,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: convertQuadFromNode
-pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: dictionaries.DOMQuadInit, from: typedefs.GeometryNode, options: dictionaries.ConvertCoordinateOptions) ImplError!interfaces.DOMQuad {
+pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: dictionaries.DOMQuadInit, from: typedefs.GeometryNode, options: dictionaries.ConvertCoordinateOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = quad;
     _ = from;
@@ -50,7 +46,7 @@ pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: dictionaries.
 }
 
 /// Operation: convertPointFromNode
-pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionaries.DOMPointInit, from: typedefs.GeometryNode, options: dictionaries.ConvertCoordinateOptions) ImplError!interfaces.DOMPoint {
+pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionaries.DOMPointInit, from: typedefs.GeometryNode, options: dictionaries.ConvertCoordinateOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = point;
     _ = from;
@@ -66,7 +62,7 @@ pub fn call_getBoxQuads(instance: *runtime.Instance, options: dictionaries.BoxQu
 }
 
 /// Operation: convertRectFromNode
-pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: interfaces.DOMRectReadOnly, from: typedefs.GeometryNode, options: dictionaries.ConvertCoordinateOptions) ImplError!interfaces.DOMQuad {
+pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: typedefs.GeometryNode, options: dictionaries.ConvertCoordinateOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = rect;
     _ = from;

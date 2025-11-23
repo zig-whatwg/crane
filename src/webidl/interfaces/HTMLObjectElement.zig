@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -396,7 +396,7 @@ pub const HTMLObjectElement = struct {
         try HTMLObjectElementImpl.set_name(instance, value);
     }
 
-    pub fn get_form(instance: *runtime.Instance) anyerror!HTMLFormElement {
+    pub fn get_form(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLObjectElementImpl.get_form(instance);
     }
 
@@ -428,7 +428,7 @@ pub const HTMLObjectElement = struct {
         try HTMLObjectElementImpl.set_height(instance, value);
     }
 
-    pub fn get_contentDocument(instance: *runtime.Instance) anyerror!Document {
+    pub fn get_contentDocument(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLObjectElementImpl.get_contentDocument(instance);
     }
 
@@ -440,7 +440,7 @@ pub const HTMLObjectElement = struct {
         return try HTMLObjectElementImpl.get_willValidate(instance);
     }
 
-    pub fn get_validity(instance: *runtime.Instance) anyerror!ValidityState {
+    pub fn get_validity(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLObjectElementImpl.get_validity(instance);
     }
 
@@ -611,7 +611,7 @@ pub const HTMLObjectElement = struct {
         return try HTMLObjectElementImpl.call_checkValidity(instance);
     }
 
-    pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!Document {
+    pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLObjectElementImpl.call_getSVGDocument(instance);
     }
 

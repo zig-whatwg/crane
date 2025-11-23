@@ -1,5 +1,5 @@
 //! Generated from: handwriting-recognition.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -86,7 +86,7 @@ pub const HandwritingDrawing = struct {
         HandwritingDrawingImpl.deinit(instance);
     }
 
-    pub fn call_addStroke(instance: *runtime.Instance, stroke: HandwritingStroke) anyerror!void {
+    pub fn call_addStroke(instance: *runtime.Instance, stroke: *runtime.Instance) anyerror!void {
         
         return try HandwritingDrawingImpl.call_addStroke(instance, stroke);
     }
@@ -103,7 +103,7 @@ pub const HandwritingDrawing = struct {
         return try HandwritingDrawingImpl.call_clear(instance);
     }
 
-    pub fn call_removeStroke(instance: *runtime.Instance, stroke: HandwritingStroke) anyerror!void {
+    pub fn call_removeStroke(instance: *runtime.Instance, stroke: *runtime.Instance) anyerror!void {
         
         return try HandwritingDrawingImpl.call_removeStroke(instance, stroke);
     }

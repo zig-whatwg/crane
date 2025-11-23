@@ -1,5 +1,5 @@
 //! Generated from: wasm-js-api.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -78,7 +78,7 @@ pub const Instance = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, module: Module, importObject: *const anyopaque) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, module: *runtime.Instance, importObject: *const anyopaque) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try InstanceImpl.call_constructor(allocator, ctx, module, importObject);
     }

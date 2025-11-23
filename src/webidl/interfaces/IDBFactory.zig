@@ -1,5 +1,5 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -87,7 +87,7 @@ pub const IDBFactory = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_open(instance: *runtime.Instance, name: DOMString, version: u64) anyerror!IDBOpenDBRequest {
+    pub fn call_open(instance: *runtime.Instance, name: DOMString, version: u64) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         // [EnforceRange] on version
         if (!runtime.isInRange(u64, version)) return error.TypeError;
@@ -100,7 +100,7 @@ pub const IDBFactory = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_deleteDatabase(instance: *runtime.Instance, name: DOMString) anyerror!IDBOpenDBRequest {
+    pub fn call_deleteDatabase(instance: *runtime.Instance, name: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBFactoryImpl.call_deleteDatabase(instance, name);

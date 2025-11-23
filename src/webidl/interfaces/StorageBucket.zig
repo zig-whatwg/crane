@@ -1,5 +1,5 @@
 //! Generated from: storage-buckets.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -119,7 +119,7 @@ pub const StorageBucket = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_indexedDB(instance: *runtime.Instance) anyerror!IDBFactory {
+    pub fn get_indexedDB(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_indexedDB) |cached| {
@@ -131,7 +131,7 @@ pub const StorageBucket = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_caches(instance: *runtime.Instance) anyerror!CacheStorage {
+    pub fn get_caches(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_caches) |cached| {

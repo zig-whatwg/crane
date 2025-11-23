@@ -1,5 +1,5 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -140,7 +140,7 @@ pub const IDBTransaction = struct {
         IDBTransactionImpl.deinit(instance);
     }
 
-    pub fn get_objectStoreNames(instance: *runtime.Instance) anyerror!DOMStringList {
+    pub fn get_objectStoreNames(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try IDBTransactionImpl.get_objectStoreNames(instance);
     }
 
@@ -153,7 +153,7 @@ pub const IDBTransaction = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_db(instance: *runtime.Instance) anyerror!IDBDatabase {
+    pub fn get_db(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_db) |cached| {
@@ -164,7 +164,7 @@ pub const IDBTransaction = struct {
         return value;
     }
 
-    pub fn get_error(instance: *runtime.Instance) anyerror!DOMException {
+    pub fn get_error(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try IDBTransactionImpl.get_error(instance);
     }
 
@@ -192,7 +192,7 @@ pub const IDBTransaction = struct {
         try IDBTransactionImpl.set_onerror(instance, value);
     }
 
-    pub fn call_objectStore(instance: *runtime.Instance, name: DOMString) anyerror!IDBObjectStore {
+    pub fn call_objectStore(instance: *runtime.Instance, name: DOMString) anyerror!*runtime.Instance {
         
         return try IDBTransactionImpl.call_objectStore(instance, name);
     }

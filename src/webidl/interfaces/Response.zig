@@ -1,5 +1,5 @@
 //! Generated from: fetch.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -184,7 +184,7 @@ pub const Response = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_headers(instance: *runtime.Instance) anyerror!Headers {
+    pub fn get_headers(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_headers) |cached| {
@@ -195,7 +195,7 @@ pub const Response = struct {
         return value;
     }
 
-    pub fn get_body(instance: *runtime.Instance) anyerror!ReadableStream {
+    pub fn get_body(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ResponseImpl.get_body(instance);
     }
 
@@ -204,13 +204,13 @@ pub const Response = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_error(instance: *runtime.Instance) anyerror!Response {
+    pub fn call_error(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         return try ResponseImpl.call_error(instance);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_clone(instance: *runtime.Instance) anyerror!Response {
+    pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         return try ResponseImpl.call_clone(instance);
     }
@@ -240,14 +240,14 @@ pub const Response = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_redirect(instance: *runtime.Instance, url: runtime.USVString, status: u16) anyerror!Response {
+    pub fn call_redirect(instance: *runtime.Instance, url: runtime.USVString, status: u16) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try ResponseImpl.call_redirect(instance, url, status);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_json(instance: *runtime.Instance, data: *const anyopaque, init_data: ResponseInit) anyerror!Response {
+    pub fn call_json(instance: *runtime.Instance, data: *const anyopaque, init_data: ResponseInit) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try ResponseImpl.call_json(instance, data, init_data);

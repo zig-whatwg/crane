@@ -1,5 +1,5 @@
 //! Generated from: orientation-event.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -112,15 +112,15 @@ pub const DeviceMotionEvent = struct {
         return try DeviceMotionEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
-    pub fn get_acceleration(instance: *runtime.Instance) anyerror!DeviceMotionEventAcceleration {
+    pub fn get_acceleration(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DeviceMotionEventImpl.get_acceleration(instance);
     }
 
-    pub fn get_accelerationIncludingGravity(instance: *runtime.Instance) anyerror!DeviceMotionEventAcceleration {
+    pub fn get_accelerationIncludingGravity(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DeviceMotionEventImpl.get_accelerationIncludingGravity(instance);
     }
 
-    pub fn get_rotationRate(instance: *runtime.Instance) anyerror!DeviceMotionEventRotationRate {
+    pub fn get_rotationRate(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DeviceMotionEventImpl.get_rotationRate(instance);
     }
 

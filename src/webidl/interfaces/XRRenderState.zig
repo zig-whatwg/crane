@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -114,7 +114,7 @@ pub const XRRenderState = struct {
         return try XRRenderStateImpl.get_inlineVerticalFieldOfView(instance);
     }
 
-    pub fn get_baseLayer(instance: *runtime.Instance) anyerror!XRWebGLLayer {
+    pub fn get_baseLayer(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try XRRenderStateImpl.get_baseLayer(instance);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: DOM-Style.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -77,7 +77,7 @@ pub const DOMImplementationCSS = struct {
         DOMImplementationCSSImpl.deinit(instance);
     }
 
-    pub fn call_createCSSStyleSheet(instance: *runtime.Instance, title: DOMString, media: DOMString) anyerror!CSSStyleSheet {
+    pub fn call_createCSSStyleSheet(instance: *runtime.Instance, title: DOMString, media: DOMString) anyerror!*runtime.Instance {
         
         return try DOMImplementationCSSImpl.call_createCSSStyleSheet(instance, title, media);
     }

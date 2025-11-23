@@ -1,5 +1,5 @@
 //! Generated from: css-view-transitions.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -114,15 +114,15 @@ pub const ViewTransition = struct {
         return try ViewTransitionImpl.get_finished(instance);
     }
 
-    pub fn get_types(instance: *runtime.Instance) anyerror!ViewTransitionTypeSet {
+    pub fn get_types(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ViewTransitionImpl.get_types(instance);
     }
 
-    pub fn set_types(instance: *runtime.Instance, value: ViewTransitionTypeSet) anyerror!void {
+    pub fn set_types(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         try ViewTransitionImpl.set_types(instance, value);
     }
 
-    pub fn get_transitionRoot(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_transitionRoot(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ViewTransitionImpl.get_transitionRoot(instance);
     }
 

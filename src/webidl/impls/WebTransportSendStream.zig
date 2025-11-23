@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,7 +37,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for sendGroup
-pub fn get_sendGroup(instance: *runtime.Instance) ImplError!interfaces.WebTransportSendGroup {
+pub fn get_sendGroup(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -53,7 +49,7 @@ pub fn get_sendOrder(instance: *runtime.Instance) ImplError!i64 {
 }
 
 /// Setter for sendGroup
-pub fn set_sendGroup(instance: *runtime.Instance, value: interfaces.WebTransportSendGroup) ImplError!void {
+pub fn set_sendGroup(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -67,7 +63,7 @@ pub fn set_sendOrder(instance: *runtime.Instance, value: i64) ImplError!void {
 }
 
 /// Operation: getWriter
-pub fn call_getWriter(instance: *runtime.Instance) ImplError!interfaces.WebTransportWriter {
+pub fn call_getWriter(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

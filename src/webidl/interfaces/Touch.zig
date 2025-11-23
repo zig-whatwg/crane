@@ -1,5 +1,5 @@
 //! Generated from: touch-events.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -144,7 +144,7 @@ pub const Touch = struct {
         return try TouchImpl.get_identifier(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!EventTarget {
+    pub fn get_target(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try TouchImpl.get_target(instance);
     }
 

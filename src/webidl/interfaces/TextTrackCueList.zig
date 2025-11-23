@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -85,7 +85,7 @@ pub const TextTrackCueList = struct {
         return try TextTrackCueListImpl.get_length(instance);
     }
 
-    pub fn call_getCueById(instance: *runtime.Instance, id: DOMString) anyerror!TextTrackCue {
+    pub fn call_getCueById(instance: *runtime.Instance, id: DOMString) anyerror!*runtime.Instance {
         
         return try TextTrackCueListImpl.call_getCueById(instance, id);
     }

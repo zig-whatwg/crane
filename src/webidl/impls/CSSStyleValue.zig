@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -49,7 +45,7 @@ pub fn call_parseAll(instance: *runtime.Instance, property: runtime.USVString, c
 }
 
 /// Operation: parse
-pub fn call_parse(instance: *runtime.Instance, property: runtime.USVString, cssText: runtime.USVString) ImplError!interfaces.CSSStyleValue {
+pub fn call_parse(instance: *runtime.Instance, property: runtime.USVString, cssText: runtime.USVString) ImplError!*runtime.Instance {
     _ = instance;
     _ = property;
     _ = cssText;

@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -104,7 +104,7 @@ pub const XSLTProcessor = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_transformToDocument(instance: *runtime.Instance, source: Node) anyerror!Document {
+    pub fn call_transformToDocument(instance: *runtime.Instance, source: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -128,7 +128,7 @@ pub const XSLTProcessor = struct {
         return try XSLTProcessorImpl.call_setParameter(instance, namespaceURI, localName, value);
     }
 
-    pub fn call_importStylesheet(instance: *runtime.Instance, style: Node) anyerror!void {
+    pub fn call_importStylesheet(instance: *runtime.Instance, style: *runtime.Instance) anyerror!void {
         
         return try XSLTProcessorImpl.call_importStylesheet(instance, style);
     }
@@ -142,7 +142,7 @@ pub const XSLTProcessor = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_transformToFragment(instance: *runtime.Instance, source: Node, output: Document) anyerror!DocumentFragment {
+    pub fn call_transformToFragment(instance: *runtime.Instance, source: *runtime.Instance, output: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

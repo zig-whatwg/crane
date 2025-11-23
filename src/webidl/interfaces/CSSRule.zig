@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -214,11 +214,11 @@ pub const CSSRule = struct {
         try CSSRuleImpl.set_cssText(instance, value);
     }
 
-    pub fn get_parentRule(instance: *runtime.Instance) anyerror!CSSRule {
+    pub fn get_parentRule(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSRuleImpl.get_parentRule(instance);
     }
 
-    pub fn get_parentStyleSheet(instance: *runtime.Instance) anyerror!CSSStyleSheet {
+    pub fn get_parentStyleSheet(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSRuleImpl.get_parentStyleSheet(instance);
     }
 

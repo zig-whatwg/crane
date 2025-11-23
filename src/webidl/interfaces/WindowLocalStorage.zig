@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -71,7 +71,7 @@ pub const WindowLocalStorage = struct {
         WindowLocalStorageImpl.deinit(instance);
     }
 
-    pub fn get_localStorage(instance: *runtime.Instance) anyerror!Storage {
+    pub fn get_localStorage(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowLocalStorageImpl.get_localStorage(instance);
     }
 

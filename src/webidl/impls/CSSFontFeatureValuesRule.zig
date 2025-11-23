@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -47,43 +43,43 @@ pub fn get_fontFamily(instance: *runtime.Instance) ImplError!typedefs.CSSOMStrin
 }
 
 /// Getter for annotation
-pub fn get_annotation(instance: *runtime.Instance) ImplError!interfaces.CSSFontFeatureValuesMap {
+pub fn get_annotation(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ornaments
-pub fn get_ornaments(instance: *runtime.Instance) ImplError!interfaces.CSSFontFeatureValuesMap {
+pub fn get_ornaments(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for stylistic
-pub fn get_stylistic(instance: *runtime.Instance) ImplError!interfaces.CSSFontFeatureValuesMap {
+pub fn get_stylistic(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for swash
-pub fn get_swash(instance: *runtime.Instance) ImplError!interfaces.CSSFontFeatureValuesMap {
+pub fn get_swash(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for characterVariant
-pub fn get_characterVariant(instance: *runtime.Instance) ImplError!interfaces.CSSFontFeatureValuesMap {
+pub fn get_characterVariant(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for styleset
-pub fn get_styleset(instance: *runtime.Instance) ImplError!interfaces.CSSFontFeatureValuesMap {
+pub fn get_styleset(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for historicalForms
-pub fn get_historicalForms(instance: *runtime.Instance) ImplError!interfaces.CSSFontFeatureValuesMap {
+pub fn get_historicalForms(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

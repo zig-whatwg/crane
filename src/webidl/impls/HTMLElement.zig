@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -161,19 +157,19 @@ pub fn get_headingReset(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Getter for editContext
-pub fn get_editContext(instance: *runtime.Instance) ImplError!interfaces.EditContext {
+pub fn get_editContext(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for scrollParent
-pub fn get_scrollParent(instance: *runtime.Instance) ImplError!interfaces.Element {
+pub fn get_scrollParent(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for offsetParent
-pub fn get_offsetParent(instance: *runtime.Instance) ImplError!interfaces.Element {
+pub fn get_offsetParent(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -203,13 +199,13 @@ pub fn get_offsetHeight(instance: *runtime.Instance) ImplError!i32 {
 }
 
 /// Getter for style
-pub fn get_style(instance: *runtime.Instance) ImplError!interfaces.CSSStyleProperties {
+pub fn get_style(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for attributeStyleMap
-pub fn get_attributeStyleMap(instance: *runtime.Instance) ImplError!interfaces.StylePropertyMap {
+pub fn get_attributeStyleMap(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -875,7 +871,7 @@ pub fn get_virtualKeyboardPolicy(instance: *runtime.Instance) ImplError!runtime.
 }
 
 /// Getter for dataset
-pub fn get_dataset(instance: *runtime.Instance) ImplError!interfaces.DOMStringMap {
+pub fn get_dataset(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -1018,7 +1014,7 @@ pub fn set_headingReset(instance: *runtime.Instance, value: bool) ImplError!void
 }
 
 /// Setter for editContext
-pub fn set_editContext(instance: *runtime.Instance, value: interfaces.EditContext) ImplError!void {
+pub fn set_editContext(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -1848,7 +1844,7 @@ pub fn call_focus(instance: *runtime.Instance, options: dictionaries.FocusOption
 }
 
 /// Operation: attachInternals
-pub fn call_attachInternals(instance: *runtime.Instance) ImplError!interfaces.ElementInternals {
+pub fn call_attachInternals(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

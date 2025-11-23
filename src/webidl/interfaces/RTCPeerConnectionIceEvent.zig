@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -98,7 +98,7 @@ pub const RTCPeerConnectionIceEvent = struct {
         return try RTCPeerConnectionIceEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
-    pub fn get_candidate(instance: *runtime.Instance) anyerror!RTCIceCandidate {
+    pub fn get_candidate(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RTCPeerConnectionIceEventImpl.get_candidate(instance);
     }
 

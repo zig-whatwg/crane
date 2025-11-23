@@ -1,5 +1,5 @@
 //! Generated from: webvtt.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -153,11 +153,11 @@ pub const VTTCue = struct {
         return try VTTCueImpl.call_constructor(allocator, ctx, startTime, endTime, text);
     }
 
-    pub fn get_region(instance: *runtime.Instance) anyerror!VTTRegion {
+    pub fn get_region(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try VTTCueImpl.get_region(instance);
     }
 
-    pub fn set_region(instance: *runtime.Instance, value: VTTRegion) anyerror!void {
+    pub fn set_region(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         try VTTCueImpl.set_region(instance, value);
     }
 
@@ -233,7 +233,7 @@ pub const VTTCue = struct {
         try VTTCueImpl.set_text(instance, value);
     }
 
-    pub fn call_getCueAsHTML(instance: *runtime.Instance) anyerror!DocumentFragment {
+    pub fn call_getCueAsHTML(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try VTTCueImpl.call_getCueAsHTML(instance);
     }
 

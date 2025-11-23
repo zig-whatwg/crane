@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -67,7 +63,7 @@ pub fn set_fillStyle(instance: *runtime.Instance, value: *const anyopaque) ImplE
 }
 
 /// Operation: createLinearGradient
-pub fn call_createLinearGradient(instance: *runtime.Instance, x0: f64, y0: f64, x1: f64, y1: f64) ImplError!interfaces.CanvasGradient {
+pub fn call_createLinearGradient(instance: *runtime.Instance, x0: f64, y0: f64, x1: f64, y1: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = x0;
     _ = y0;
@@ -77,7 +73,7 @@ pub fn call_createLinearGradient(instance: *runtime.Instance, x0: f64, y0: f64, 
 }
 
 /// Operation: createPattern
-pub fn call_createPattern(instance: *runtime.Instance, image: typedefs.CanvasImageSource, repetition: runtime.DOMString) ImplError!interfaces.CanvasPattern {
+pub fn call_createPattern(instance: *runtime.Instance, image: typedefs.CanvasImageSource, repetition: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = image;
     _ = repetition;
@@ -85,7 +81,7 @@ pub fn call_createPattern(instance: *runtime.Instance, image: typedefs.CanvasIma
 }
 
 /// Operation: createConicGradient
-pub fn call_createConicGradient(instance: *runtime.Instance, startAngle: f64, x: f64, y: f64) ImplError!interfaces.CanvasGradient {
+pub fn call_createConicGradient(instance: *runtime.Instance, startAngle: f64, x: f64, y: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = startAngle;
     _ = x;
@@ -94,7 +90,7 @@ pub fn call_createConicGradient(instance: *runtime.Instance, startAngle: f64, x:
 }
 
 /// Operation: createRadialGradient
-pub fn call_createRadialGradient(instance: *runtime.Instance, x0: f64, y0: f64, r0: f64, x1: f64, y1: f64, r1: f64) ImplError!interfaces.CanvasGradient {
+pub fn call_createRadialGradient(instance: *runtime.Instance, x0: f64, y0: f64, r0: f64, x1: f64, y1: f64, r1: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = x0;
     _ = y0;

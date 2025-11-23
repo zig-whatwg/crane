@@ -1,5 +1,5 @@
 //! Generated from: layout-instability.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -85,15 +85,15 @@ pub const LayoutShiftAttribution = struct {
         LayoutShiftAttributionImpl.deinit(instance);
     }
 
-    pub fn get_node(instance: *runtime.Instance) anyerror!Node {
+    pub fn get_node(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try LayoutShiftAttributionImpl.get_node(instance);
     }
 
-    pub fn get_previousRect(instance: *runtime.Instance) anyerror!DOMRectReadOnly {
+    pub fn get_previousRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try LayoutShiftAttributionImpl.get_previousRect(instance);
     }
 
-    pub fn get_currentRect(instance: *runtime.Instance) anyerror!DOMRectReadOnly {
+    pub fn get_currentRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try LayoutShiftAttributionImpl.get_currentRect(instance);
     }
 

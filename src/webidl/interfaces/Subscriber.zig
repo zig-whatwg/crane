@@ -1,5 +1,5 @@
 //! Generated from: observable.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -98,7 +98,7 @@ pub const Subscriber = struct {
         return try SubscriberImpl.get_active(instance);
     }
 
-    pub fn get_signal(instance: *runtime.Instance) anyerror!AbortSignal {
+    pub fn get_signal(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SubscriberImpl.get_signal(instance);
     }
 

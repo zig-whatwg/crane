@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -61,7 +57,7 @@ pub fn get_navigationType(instance: *runtime.Instance) ImplError!enums.Navigatio
 }
 
 /// Getter for destination
-pub fn get_destination(instance: *runtime.Instance) ImplError!interfaces.NavigationDestination {
+pub fn get_destination(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -85,13 +81,13 @@ pub fn get_hashChange(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Getter for signal
-pub fn get_signal(instance: *runtime.Instance) ImplError!interfaces.AbortSignal {
+pub fn get_signal(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for formData
-pub fn get_formData(instance: *runtime.Instance) ImplError!interfaces.FormData {
+pub fn get_formData(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -115,7 +111,7 @@ pub fn get_hasUAVisualTransition(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Getter for sourceElement
-pub fn get_sourceElement(instance: *runtime.Instance) ImplError!interfaces.Element {
+pub fn get_sourceElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

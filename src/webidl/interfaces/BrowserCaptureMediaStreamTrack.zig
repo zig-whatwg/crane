@@ -1,5 +1,5 @@
 //! Generated from: mediacapture-region.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -107,16 +107,16 @@ pub const BrowserCaptureMediaStreamTrack = struct {
         BrowserCaptureMediaStreamTrackImpl.deinit(instance);
     }
 
-    pub fn call_clone(instance: *runtime.Instance) anyerror!BrowserCaptureMediaStreamTrack {
+    pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try BrowserCaptureMediaStreamTrackImpl.call_clone(instance);
     }
 
-    pub fn call_cropTo(instance: *runtime.Instance, cropTarget: CropTarget) anyerror!*const anyopaque {
+    pub fn call_cropTo(instance: *runtime.Instance, cropTarget: *runtime.Instance) anyerror!*const anyopaque {
         
         return try BrowserCaptureMediaStreamTrackImpl.call_cropTo(instance, cropTarget);
     }
 
-    pub fn call_restrictTo(instance: *runtime.Instance, restrictiontarget_param: RestrictionTarget) anyerror!*const anyopaque {
+    pub fn call_restrictTo(instance: *runtime.Instance, restrictiontarget_param: *runtime.Instance) anyerror!*const anyopaque {
         
         return try BrowserCaptureMediaStreamTrackImpl.call_restrictTo(instance, restrictiontarget_param);
     }

@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -92,7 +92,7 @@ pub const AbstractRange = struct {
         AbstractRangeImpl.deinit(instance);
     }
 
-    pub fn get_startContainer(instance: *runtime.Instance) anyerror!Node {
+    pub fn get_startContainer(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AbstractRangeImpl.get_startContainer(instance);
     }
 
@@ -100,7 +100,7 @@ pub const AbstractRange = struct {
         return try AbstractRangeImpl.get_startOffset(instance);
     }
 
-    pub fn get_endContainer(instance: *runtime.Instance) anyerror!Node {
+    pub fn get_endContainer(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AbstractRangeImpl.get_endContainer(instance);
     }
 

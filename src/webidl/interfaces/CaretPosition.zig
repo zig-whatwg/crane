@@ -1,5 +1,5 @@
 //! Generated from: cssom-view.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -85,7 +85,7 @@ pub const CaretPosition = struct {
         CaretPositionImpl.deinit(instance);
     }
 
-    pub fn get_offsetNode(instance: *runtime.Instance) anyerror!Node {
+    pub fn get_offsetNode(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CaretPositionImpl.get_offsetNode(instance);
     }
 
@@ -94,7 +94,7 @@ pub const CaretPosition = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getClientRect(instance: *runtime.Instance) anyerror!DOMRect {
+    pub fn call_getClientRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         return try CaretPositionImpl.call_getClientRect(instance);
     }

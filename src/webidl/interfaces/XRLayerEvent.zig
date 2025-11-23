@@ -1,5 +1,5 @@
 //! Generated from: webxrlayers.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -96,7 +96,7 @@ pub const XRLayerEvent = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_layer(instance: *runtime.Instance) anyerror!XRLayer {
+    pub fn get_layer(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_layer) |cached| {

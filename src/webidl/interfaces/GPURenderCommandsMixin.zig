@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -92,7 +92,7 @@ pub const GPURenderCommandsMixin = struct {
         GPURenderCommandsMixinImpl.deinit(instance);
     }
 
-    pub fn call_drawIndexedIndirect(instance: *runtime.Instance, indirectBuffer: GPUBuffer, indirectOffset: GPUSize64) anyerror!void {
+    pub fn call_drawIndexedIndirect(instance: *runtime.Instance, indirectBuffer: *runtime.Instance, indirectOffset: GPUSize64) anyerror!void {
         
         return try GPURenderCommandsMixinImpl.call_drawIndexedIndirect(instance, indirectBuffer, indirectOffset);
     }
@@ -102,17 +102,17 @@ pub const GPURenderCommandsMixin = struct {
         return try GPURenderCommandsMixinImpl.call_draw(instance, vertexCount, instanceCount, firstVertex, firstInstance);
     }
 
-    pub fn call_setVertexBuffer(instance: *runtime.Instance, slot: GPUIndex32, buffer: GPUBuffer, offset: GPUSize64, size: GPUSize64) anyerror!void {
+    pub fn call_setVertexBuffer(instance: *runtime.Instance, slot: GPUIndex32, buffer: *runtime.Instance, offset: GPUSize64, size: GPUSize64) anyerror!void {
         
         return try GPURenderCommandsMixinImpl.call_setVertexBuffer(instance, slot, buffer, offset, size);
     }
 
-    pub fn call_setIndexBuffer(instance: *runtime.Instance, buffer: GPUBuffer, indexFormat: GPUIndexFormat, offset: GPUSize64, size: GPUSize64) anyerror!void {
+    pub fn call_setIndexBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, indexFormat: GPUIndexFormat, offset: GPUSize64, size: GPUSize64) anyerror!void {
         
         return try GPURenderCommandsMixinImpl.call_setIndexBuffer(instance, buffer, indexFormat, offset, size);
     }
 
-    pub fn call_drawIndirect(instance: *runtime.Instance, indirectBuffer: GPUBuffer, indirectOffset: GPUSize64) anyerror!void {
+    pub fn call_drawIndirect(instance: *runtime.Instance, indirectBuffer: *runtime.Instance, indirectOffset: GPUSize64) anyerror!void {
         
         return try GPURenderCommandsMixinImpl.call_drawIndirect(instance, indirectBuffer, indirectOffset);
     }
@@ -122,7 +122,7 @@ pub const GPURenderCommandsMixin = struct {
         return try GPURenderCommandsMixinImpl.call_drawIndexed(instance, indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
     }
 
-    pub fn call_setPipeline(instance: *runtime.Instance, pipeline: GPURenderPipeline) anyerror!void {
+    pub fn call_setPipeline(instance: *runtime.Instance, pipeline: *runtime.Instance) anyerror!void {
         
         return try GPURenderCommandsMixinImpl.call_setPipeline(instance, pipeline);
     }

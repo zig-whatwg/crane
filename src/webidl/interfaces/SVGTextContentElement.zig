@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -299,7 +299,7 @@ pub const SVGTextContentElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_textLength(instance: *runtime.Instance) anyerror!SVGAnimatedLength {
+    pub fn get_textLength(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_textLength) |cached| {
@@ -311,7 +311,7 @@ pub const SVGTextContentElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_lengthAdjust(instance: *runtime.Instance) anyerror!SVGAnimatedEnumeration {
+    pub fn get_lengthAdjust(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_lengthAdjust) |cached| {
@@ -327,7 +327,7 @@ pub const SVGTextContentElement = struct {
         return try SVGTextContentElementImpl.call_selectSubString(instance, charnum, nchars);
     }
 
-    pub fn call_getExtentOfChar(instance: *runtime.Instance, charnum: u32) anyerror!DOMRect {
+    pub fn call_getExtentOfChar(instance: *runtime.Instance, charnum: u32) anyerror!*runtime.Instance {
         
         return try SVGTextContentElementImpl.call_getExtentOfChar(instance, charnum);
     }
@@ -336,12 +336,12 @@ pub const SVGTextContentElement = struct {
         return try SVGTextContentElementImpl.call_getNumberOfChars(instance);
     }
 
-    pub fn call_getStartPositionOfChar(instance: *runtime.Instance, charnum: u32) anyerror!DOMPoint {
+    pub fn call_getStartPositionOfChar(instance: *runtime.Instance, charnum: u32) anyerror!*runtime.Instance {
         
         return try SVGTextContentElementImpl.call_getStartPositionOfChar(instance, charnum);
     }
 
-    pub fn call_getEndPositionOfChar(instance: *runtime.Instance, charnum: u32) anyerror!DOMPoint {
+    pub fn call_getEndPositionOfChar(instance: *runtime.Instance, charnum: u32) anyerror!*runtime.Instance {
         
         return try SVGTextContentElementImpl.call_getEndPositionOfChar(instance, charnum);
     }

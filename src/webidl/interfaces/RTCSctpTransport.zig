@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -108,7 +108,7 @@ pub const RTCSctpTransport = struct {
         RTCSctpTransportImpl.deinit(instance);
     }
 
-    pub fn get_transport(instance: *runtime.Instance) anyerror!RTCDtlsTransport {
+    pub fn get_transport(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RTCSctpTransportImpl.get_transport(instance);
     }
 

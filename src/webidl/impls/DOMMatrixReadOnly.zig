@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -198,20 +194,20 @@ pub fn get_isIdentity(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Operation: fromFloat32Array
-pub fn call_fromFloat32Array(instance: *runtime.Instance, array32: *const anyopaque) ImplError!interfaces.DOMMatrixReadOnly {
+pub fn call_fromFloat32Array(instance: *runtime.Instance, array32: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = array32;
     return error.NotImplemented;
 }
 
 /// Operation: flipX
-pub fn call_flipX(instance: *runtime.Instance) ImplError!interfaces.DOMMatrix {
+pub fn call_flipX(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: scale3d
-pub fn call_scale3d(instance: *runtime.Instance, scale: f64, originX: f64, originY: f64, originZ: f64) ImplError!interfaces.DOMMatrix {
+pub fn call_scale3d(instance: *runtime.Instance, scale: f64, originX: f64, originY: f64, originZ: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = scale;
     _ = originX;
@@ -221,21 +217,21 @@ pub fn call_scale3d(instance: *runtime.Instance, scale: f64, originX: f64, origi
 }
 
 /// Operation: fromFloat64Array
-pub fn call_fromFloat64Array(instance: *runtime.Instance, array64: *const anyopaque) ImplError!interfaces.DOMMatrixReadOnly {
+pub fn call_fromFloat64Array(instance: *runtime.Instance, array64: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = array64;
     return error.NotImplemented;
 }
 
 /// Operation: fromMatrix
-pub fn call_fromMatrix(instance: *runtime.Instance, other: dictionaries.DOMMatrixInit) ImplError!interfaces.DOMMatrixReadOnly {
+pub fn call_fromMatrix(instance: *runtime.Instance, other: dictionaries.DOMMatrixInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = other;
     return error.NotImplemented;
 }
 
 /// Operation: rotateAxisAngle
-pub fn call_rotateAxisAngle(instance: *runtime.Instance, x: f64, y: f64, z: f64, angle: f64) ImplError!interfaces.DOMMatrix {
+pub fn call_rotateAxisAngle(instance: *runtime.Instance, x: f64, y: f64, z: f64, angle: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = x;
     _ = y;
@@ -245,14 +241,14 @@ pub fn call_rotateAxisAngle(instance: *runtime.Instance, x: f64, y: f64, z: f64,
 }
 
 /// Operation: skewY
-pub fn call_skewY(instance: *runtime.Instance, sy: f64) ImplError!interfaces.DOMMatrix {
+pub fn call_skewY(instance: *runtime.Instance, sy: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = sy;
     return error.NotImplemented;
 }
 
 /// Operation: rotate
-pub fn call_rotate(instance: *runtime.Instance, rotX: f64, rotY: f64, rotZ: f64) ImplError!interfaces.DOMMatrix {
+pub fn call_rotate(instance: *runtime.Instance, rotX: f64, rotY: f64, rotZ: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = rotX;
     _ = rotY;
@@ -261,7 +257,7 @@ pub fn call_rotate(instance: *runtime.Instance, rotX: f64, rotY: f64, rotZ: f64)
 }
 
 /// Operation: inverse
-pub fn call_inverse(instance: *runtime.Instance) ImplError!interfaces.DOMMatrix {
+pub fn call_inverse(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -273,7 +269,7 @@ pub fn call_toFloat64Array(instance: *runtime.Instance) ImplError!*const anyopaq
 }
 
 /// Operation: scale
-pub fn call_scale(instance: *runtime.Instance, scaleX: f64, scaleY: f64, scaleZ: f64, originX: f64, originY: f64, originZ: f64) ImplError!interfaces.DOMMatrix {
+pub fn call_scale(instance: *runtime.Instance, scaleX: f64, scaleY: f64, scaleZ: f64, originX: f64, originY: f64, originZ: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = scaleX;
     _ = scaleY;
@@ -285,7 +281,7 @@ pub fn call_scale(instance: *runtime.Instance, scaleX: f64, scaleY: f64, scaleZ:
 }
 
 /// Operation: translate
-pub fn call_translate(instance: *runtime.Instance, tx: f64, ty: f64, tz: f64) ImplError!interfaces.DOMMatrix {
+pub fn call_translate(instance: *runtime.Instance, tx: f64, ty: f64, tz: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = tx;
     _ = ty;
@@ -294,21 +290,21 @@ pub fn call_translate(instance: *runtime.Instance, tx: f64, ty: f64, tz: f64) Im
 }
 
 /// Operation: multiply
-pub fn call_multiply(instance: *runtime.Instance, other: dictionaries.DOMMatrixInit) ImplError!interfaces.DOMMatrix {
+pub fn call_multiply(instance: *runtime.Instance, other: dictionaries.DOMMatrixInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = other;
     return error.NotImplemented;
 }
 
 /// Operation: transformPoint
-pub fn call_transformPoint(instance: *runtime.Instance, point: dictionaries.DOMPointInit) ImplError!interfaces.DOMPoint {
+pub fn call_transformPoint(instance: *runtime.Instance, point: dictionaries.DOMPointInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = point;
     return error.NotImplemented;
 }
 
 /// Operation: skewX
-pub fn call_skewX(instance: *runtime.Instance, sx: f64) ImplError!interfaces.DOMMatrix {
+pub fn call_skewX(instance: *runtime.Instance, sx: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = sx;
     return error.NotImplemented;
@@ -321,7 +317,7 @@ pub fn call_toJSON(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Operation: scaleNonUniform
-pub fn call_scaleNonUniform(instance: *runtime.Instance, scaleX: f64, scaleY: f64) ImplError!interfaces.DOMMatrix {
+pub fn call_scaleNonUniform(instance: *runtime.Instance, scaleX: f64, scaleY: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = scaleX;
     _ = scaleY;
@@ -329,7 +325,7 @@ pub fn call_scaleNonUniform(instance: *runtime.Instance, scaleX: f64, scaleY: f6
 }
 
 /// Operation: flipY
-pub fn call_flipY(instance: *runtime.Instance) ImplError!interfaces.DOMMatrix {
+pub fn call_flipY(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -341,7 +337,7 @@ pub fn call_toFloat32Array(instance: *runtime.Instance) ImplError!*const anyopaq
 }
 
 /// Operation: rotateFromVector
-pub fn call_rotateFromVector(instance: *runtime.Instance, x: f64, y: f64) ImplError!interfaces.DOMMatrix {
+pub fn call_rotateFromVector(instance: *runtime.Instance, x: f64, y: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = x;
     _ = y;

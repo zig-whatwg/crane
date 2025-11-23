@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -186,7 +182,7 @@ pub fn get_m44(instance: *runtime.Instance) ImplError!f64 {
 }
 
 /// Operation: scaleSelf
-pub fn call_scaleSelf(instance: *runtime.Instance, scaleX: f64, scaleY: f64, scaleZ: f64, originX: f64, originY: f64, originZ: f64) ImplError!interfaces.DOMMatrix {
+pub fn call_scaleSelf(instance: *runtime.Instance, scaleX: f64, scaleY: f64, scaleZ: f64, originX: f64, originY: f64, originZ: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = scaleX;
     _ = scaleY;
@@ -198,14 +194,14 @@ pub fn call_scaleSelf(instance: *runtime.Instance, scaleX: f64, scaleY: f64, sca
 }
 
 /// Operation: fromFloat32Array
-pub fn call_fromFloat32Array(instance: *runtime.Instance, array32: *const anyopaque) ImplError!interfaces.DOMMatrix {
+pub fn call_fromFloat32Array(instance: *runtime.Instance, array32: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = array32;
     return error.NotImplemented;
 }
 
 /// Operation: rotateFromVectorSelf
-pub fn call_rotateFromVectorSelf(instance: *runtime.Instance, x: f64, y: f64) ImplError!interfaces.DOMMatrix {
+pub fn call_rotateFromVectorSelf(instance: *runtime.Instance, x: f64, y: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = x;
     _ = y;
@@ -213,28 +209,28 @@ pub fn call_rotateFromVectorSelf(instance: *runtime.Instance, x: f64, y: f64) Im
 }
 
 /// Operation: fromFloat64Array
-pub fn call_fromFloat64Array(instance: *runtime.Instance, array64: *const anyopaque) ImplError!interfaces.DOMMatrix {
+pub fn call_fromFloat64Array(instance: *runtime.Instance, array64: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = array64;
     return error.NotImplemented;
 }
 
 /// Operation: fromMatrix
-pub fn call_fromMatrix(instance: *runtime.Instance, other: dictionaries.DOMMatrixInit) ImplError!interfaces.DOMMatrix {
+pub fn call_fromMatrix(instance: *runtime.Instance, other: dictionaries.DOMMatrixInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = other;
     return error.NotImplemented;
 }
 
 /// Operation: setMatrixValue
-pub fn call_setMatrixValue(instance: *runtime.Instance, transformList: runtime.DOMString) ImplError!interfaces.DOMMatrix {
+pub fn call_setMatrixValue(instance: *runtime.Instance, transformList: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = transformList;
     return error.NotImplemented;
 }
 
 /// Operation: rotateAxisAngleSelf
-pub fn call_rotateAxisAngleSelf(instance: *runtime.Instance, x: f64, y: f64, z: f64, angle: f64) ImplError!interfaces.DOMMatrix {
+pub fn call_rotateAxisAngleSelf(instance: *runtime.Instance, x: f64, y: f64, z: f64, angle: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = x;
     _ = y;
@@ -244,7 +240,7 @@ pub fn call_rotateAxisAngleSelf(instance: *runtime.Instance, x: f64, y: f64, z: 
 }
 
 /// Operation: scale3dSelf
-pub fn call_scale3dSelf(instance: *runtime.Instance, scale: f64, originX: f64, originY: f64, originZ: f64) ImplError!interfaces.DOMMatrix {
+pub fn call_scale3dSelf(instance: *runtime.Instance, scale: f64, originX: f64, originY: f64, originZ: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = scale;
     _ = originX;
@@ -254,7 +250,7 @@ pub fn call_scale3dSelf(instance: *runtime.Instance, scale: f64, originX: f64, o
 }
 
 /// Operation: rotateSelf
-pub fn call_rotateSelf(instance: *runtime.Instance, rotX: f64, rotY: f64, rotZ: f64) ImplError!interfaces.DOMMatrix {
+pub fn call_rotateSelf(instance: *runtime.Instance, rotX: f64, rotY: f64, rotZ: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = rotX;
     _ = rotY;
@@ -263,7 +259,7 @@ pub fn call_rotateSelf(instance: *runtime.Instance, rotX: f64, rotY: f64, rotZ: 
 }
 
 /// Operation: translateSelf
-pub fn call_translateSelf(instance: *runtime.Instance, tx: f64, ty: f64, tz: f64) ImplError!interfaces.DOMMatrix {
+pub fn call_translateSelf(instance: *runtime.Instance, tx: f64, ty: f64, tz: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = tx;
     _ = ty;
@@ -272,34 +268,34 @@ pub fn call_translateSelf(instance: *runtime.Instance, tx: f64, ty: f64, tz: f64
 }
 
 /// Operation: multiplySelf
-pub fn call_multiplySelf(instance: *runtime.Instance, other: dictionaries.DOMMatrixInit) ImplError!interfaces.DOMMatrix {
+pub fn call_multiplySelf(instance: *runtime.Instance, other: dictionaries.DOMMatrixInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = other;
     return error.NotImplemented;
 }
 
 /// Operation: skewXSelf
-pub fn call_skewXSelf(instance: *runtime.Instance, sx: f64) ImplError!interfaces.DOMMatrix {
+pub fn call_skewXSelf(instance: *runtime.Instance, sx: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = sx;
     return error.NotImplemented;
 }
 
 /// Operation: skewYSelf
-pub fn call_skewYSelf(instance: *runtime.Instance, sy: f64) ImplError!interfaces.DOMMatrix {
+pub fn call_skewYSelf(instance: *runtime.Instance, sy: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = sy;
     return error.NotImplemented;
 }
 
 /// Operation: invertSelf
-pub fn call_invertSelf(instance: *runtime.Instance) ImplError!interfaces.DOMMatrix {
+pub fn call_invertSelf(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: preMultiplySelf
-pub fn call_preMultiplySelf(instance: *runtime.Instance, other: dictionaries.DOMMatrixInit) ImplError!interfaces.DOMMatrix {
+pub fn call_preMultiplySelf(instance: *runtime.Instance, other: dictionaries.DOMMatrixInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = other;
     return error.NotImplemented;

@@ -1,5 +1,5 @@
 //! Generated from: mediacapture-transform.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -93,7 +93,7 @@ pub const VideoTrackGenerator = struct {
         return try VideoTrackGeneratorImpl.call_constructor(allocator, ctx);
     }
 
-    pub fn get_writable(instance: *runtime.Instance) anyerror!WritableStream {
+    pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try VideoTrackGeneratorImpl.get_writable(instance);
     }
 
@@ -105,7 +105,7 @@ pub const VideoTrackGenerator = struct {
         try VideoTrackGeneratorImpl.set_muted(instance, value);
     }
 
-    pub fn get_track(instance: *runtime.Instance) anyerror!MediaStreamTrack {
+    pub fn get_track(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try VideoTrackGeneratorImpl.get_track(instance);
     }
 

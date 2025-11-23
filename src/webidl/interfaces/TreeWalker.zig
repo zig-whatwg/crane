@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -115,7 +115,7 @@ pub const TreeWalker = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_root(instance: *runtime.Instance) anyerror!Node {
+    pub fn get_root(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_root) |cached| {
@@ -130,43 +130,43 @@ pub const TreeWalker = struct {
         return try TreeWalkerImpl.get_whatToShow(instance);
     }
 
-    pub fn get_filter(instance: *runtime.Instance) anyerror!NodeFilter {
+    pub fn get_filter(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try TreeWalkerImpl.get_filter(instance);
     }
 
-    pub fn get_currentNode(instance: *runtime.Instance) anyerror!Node {
+    pub fn get_currentNode(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try TreeWalkerImpl.get_currentNode(instance);
     }
 
-    pub fn set_currentNode(instance: *runtime.Instance, value: Node) anyerror!void {
+    pub fn set_currentNode(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         try TreeWalkerImpl.set_currentNode(instance, value);
     }
 
-    pub fn call_parentNode(instance: *runtime.Instance) anyerror!Node {
+    pub fn call_parentNode(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try TreeWalkerImpl.call_parentNode(instance);
     }
 
-    pub fn call_previousNode(instance: *runtime.Instance) anyerror!Node {
+    pub fn call_previousNode(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try TreeWalkerImpl.call_previousNode(instance);
     }
 
-    pub fn call_lastChild(instance: *runtime.Instance) anyerror!Node {
+    pub fn call_lastChild(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try TreeWalkerImpl.call_lastChild(instance);
     }
 
-    pub fn call_nextNode(instance: *runtime.Instance) anyerror!Node {
+    pub fn call_nextNode(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try TreeWalkerImpl.call_nextNode(instance);
     }
 
-    pub fn call_firstChild(instance: *runtime.Instance) anyerror!Node {
+    pub fn call_firstChild(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try TreeWalkerImpl.call_firstChild(instance);
     }
 
-    pub fn call_previousSibling(instance: *runtime.Instance) anyerror!Node {
+    pub fn call_previousSibling(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try TreeWalkerImpl.call_previousSibling(instance);
     }
 
-    pub fn call_nextSibling(instance: *runtime.Instance) anyerror!Node {
+    pub fn call_nextSibling(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try TreeWalkerImpl.call_nextSibling(instance);
     }
 

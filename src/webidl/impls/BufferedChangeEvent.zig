@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -55,13 +51,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for addedRanges
-pub fn get_addedRanges(instance: *runtime.Instance) ImplError!interfaces.TimeRanges {
+pub fn get_addedRanges(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for removedRanges
-pub fn get_removedRanges(instance: *runtime.Instance) ImplError!interfaces.TimeRanges {
+pub fn get_removedRanges(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

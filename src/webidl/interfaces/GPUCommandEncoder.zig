@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -149,7 +149,7 @@ pub const GPUCommandEncoder = struct {
         try GPUCommandEncoderImpl.set_label(instance, value);
     }
 
-    pub fn call_copyBufferToBuffer(instance: *runtime.Instance, source: GPUBuffer, destination: GPUBuffer, size: GPUSize64) anyerror!void {
+    pub fn call_copyBufferToBuffer(instance: *runtime.Instance, source: *runtime.Instance, destination: *runtime.Instance, size: GPUSize64) anyerror!void {
         
         return try GPUCommandEncoderImpl.call_copyBufferToBuffer(instance, source, destination, size);
     }
@@ -173,7 +173,7 @@ pub const GPUCommandEncoder = struct {
         return try GPUCommandEncoderImpl.call_copyTextureToTexture(instance, source, destination, copySize);
     }
 
-    pub fn call_resolveQuerySet(instance: *runtime.Instance, querySet: GPUQuerySet, firstQuery: GPUSize32, queryCount: GPUSize32, destination: GPUBuffer, destinationOffset: GPUSize64) anyerror!void {
+    pub fn call_resolveQuerySet(instance: *runtime.Instance, querySet: *runtime.Instance, firstQuery: GPUSize32, queryCount: GPUSize32, destination: *runtime.Instance, destinationOffset: GPUSize64) anyerror!void {
         
         return try GPUCommandEncoderImpl.call_resolveQuerySet(instance, querySet, firstQuery, queryCount, destination, destinationOffset);
     }
@@ -188,22 +188,22 @@ pub const GPUCommandEncoder = struct {
         return try GPUCommandEncoderImpl.call_pushDebugGroup(instance, groupLabel);
     }
 
-    pub fn call_finish(instance: *runtime.Instance, descriptor: GPUCommandBufferDescriptor) anyerror!GPUCommandBuffer {
+    pub fn call_finish(instance: *runtime.Instance, descriptor: GPUCommandBufferDescriptor) anyerror!*runtime.Instance {
         
         return try GPUCommandEncoderImpl.call_finish(instance, descriptor);
     }
 
-    pub fn call_beginComputePass(instance: *runtime.Instance, descriptor: GPUComputePassDescriptor) anyerror!GPUComputePassEncoder {
+    pub fn call_beginComputePass(instance: *runtime.Instance, descriptor: GPUComputePassDescriptor) anyerror!*runtime.Instance {
         
         return try GPUCommandEncoderImpl.call_beginComputePass(instance, descriptor);
     }
 
-    pub fn call_beginRenderPass(instance: *runtime.Instance, descriptor: GPURenderPassDescriptor) anyerror!GPURenderPassEncoder {
+    pub fn call_beginRenderPass(instance: *runtime.Instance, descriptor: GPURenderPassDescriptor) anyerror!*runtime.Instance {
         
         return try GPUCommandEncoderImpl.call_beginRenderPass(instance, descriptor);
     }
 
-    pub fn call_clearBuffer(instance: *runtime.Instance, buffer: GPUBuffer, offset: GPUSize64, size: GPUSize64) anyerror!void {
+    pub fn call_clearBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, offset: GPUSize64, size: GPUSize64) anyerror!void {
         
         return try GPUCommandEncoderImpl.call_clearBuffer(instance, buffer, offset, size);
     }

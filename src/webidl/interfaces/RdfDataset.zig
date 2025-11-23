@@ -1,5 +1,5 @@
 //! Generated from: json-ld-api.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -97,11 +97,11 @@ pub const RdfDataset = struct {
         return try RdfDatasetImpl.call_constructor(allocator, ctx);
     }
 
-    pub fn get_defaultGraph(instance: *runtime.Instance) anyerror!RdfGraph {
+    pub fn get_defaultGraph(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RdfDatasetImpl.get_defaultGraph(instance);
     }
 
-    pub fn call_add(instance: *runtime.Instance, graphName: runtime.USVString, graph: RdfGraph) anyerror!void {
+    pub fn call_add(instance: *runtime.Instance, graphName: runtime.USVString, graph: *runtime.Instance) anyerror!void {
         
         return try RdfDatasetImpl.call_add(instance, graphName, graph);
     }

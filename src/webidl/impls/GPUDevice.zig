@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,25 +37,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for features
-pub fn get_features(instance: *runtime.Instance) ImplError!interfaces.GPUSupportedFeatures {
+pub fn get_features(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for limits
-pub fn get_limits(instance: *runtime.Instance) ImplError!interfaces.GPUSupportedLimits {
+pub fn get_limits(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for adapterInfo
-pub fn get_adapterInfo(instance: *runtime.Instance) ImplError!interfaces.GPUAdapterInfo {
+pub fn get_adapterInfo(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for queue
-pub fn get_queue(instance: *runtime.Instance) ImplError!interfaces.GPUQueue {
+pub fn get_queue(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -97,21 +93,21 @@ pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) ImplErro
 }
 
 /// Operation: createQuerySet
-pub fn call_createQuerySet(instance: *runtime.Instance, descriptor: dictionaries.GPUQuerySetDescriptor) ImplError!interfaces.GPUQuerySet {
+pub fn call_createQuerySet(instance: *runtime.Instance, descriptor: dictionaries.GPUQuerySetDescriptor) ImplError!*runtime.Instance {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
 }
 
 /// Operation: createTexture
-pub fn call_createTexture(instance: *runtime.Instance, descriptor: dictionaries.GPUTextureDescriptor) ImplError!interfaces.GPUTexture {
+pub fn call_createTexture(instance: *runtime.Instance, descriptor: dictionaries.GPUTextureDescriptor) ImplError!*runtime.Instance {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
 }
 
 /// Operation: createRenderPipeline
-pub fn call_createRenderPipeline(instance: *runtime.Instance, descriptor: dictionaries.GPURenderPipelineDescriptor) ImplError!interfaces.GPURenderPipeline {
+pub fn call_createRenderPipeline(instance: *runtime.Instance, descriptor: dictionaries.GPURenderPipelineDescriptor) ImplError!*runtime.Instance {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
@@ -125,21 +121,21 @@ pub fn call_createRenderPipelineAsync(instance: *runtime.Instance, descriptor: d
 }
 
 /// Operation: createPipelineLayout
-pub fn call_createPipelineLayout(instance: *runtime.Instance, descriptor: dictionaries.GPUPipelineLayoutDescriptor) ImplError!interfaces.GPUPipelineLayout {
+pub fn call_createPipelineLayout(instance: *runtime.Instance, descriptor: dictionaries.GPUPipelineLayoutDescriptor) ImplError!*runtime.Instance {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
 }
 
 /// Operation: createShaderModule
-pub fn call_createShaderModule(instance: *runtime.Instance, descriptor: dictionaries.GPUShaderModuleDescriptor) ImplError!interfaces.GPUShaderModule {
+pub fn call_createShaderModule(instance: *runtime.Instance, descriptor: dictionaries.GPUShaderModuleDescriptor) ImplError!*runtime.Instance {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
 }
 
 /// Operation: createCommandEncoder
-pub fn call_createCommandEncoder(instance: *runtime.Instance, descriptor: dictionaries.GPUCommandEncoderDescriptor) ImplError!interfaces.GPUCommandEncoder {
+pub fn call_createCommandEncoder(instance: *runtime.Instance, descriptor: dictionaries.GPUCommandEncoderDescriptor) ImplError!*runtime.Instance {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
@@ -153,28 +149,28 @@ pub fn call_createComputePipelineAsync(instance: *runtime.Instance, descriptor: 
 }
 
 /// Operation: createBindGroupLayout
-pub fn call_createBindGroupLayout(instance: *runtime.Instance, descriptor: dictionaries.GPUBindGroupLayoutDescriptor) ImplError!interfaces.GPUBindGroupLayout {
+pub fn call_createBindGroupLayout(instance: *runtime.Instance, descriptor: dictionaries.GPUBindGroupLayoutDescriptor) ImplError!*runtime.Instance {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
 }
 
 /// Operation: createSampler
-pub fn call_createSampler(instance: *runtime.Instance, descriptor: dictionaries.GPUSamplerDescriptor) ImplError!interfaces.GPUSampler {
+pub fn call_createSampler(instance: *runtime.Instance, descriptor: dictionaries.GPUSamplerDescriptor) ImplError!*runtime.Instance {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
 }
 
 /// Operation: importExternalTexture
-pub fn call_importExternalTexture(instance: *runtime.Instance, descriptor: dictionaries.GPUExternalTextureDescriptor) ImplError!interfaces.GPUExternalTexture {
+pub fn call_importExternalTexture(instance: *runtime.Instance, descriptor: dictionaries.GPUExternalTextureDescriptor) ImplError!*runtime.Instance {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
 }
 
 /// Operation: createComputePipeline
-pub fn call_createComputePipeline(instance: *runtime.Instance, descriptor: dictionaries.GPUComputePipelineDescriptor) ImplError!interfaces.GPUComputePipeline {
+pub fn call_createComputePipeline(instance: *runtime.Instance, descriptor: dictionaries.GPUComputePipelineDescriptor) ImplError!*runtime.Instance {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
@@ -187,7 +183,7 @@ pub fn call_destroy(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: createRenderBundleEncoder
-pub fn call_createRenderBundleEncoder(instance: *runtime.Instance, descriptor: dictionaries.GPURenderBundleEncoderDescriptor) ImplError!interfaces.GPURenderBundleEncoder {
+pub fn call_createRenderBundleEncoder(instance: *runtime.Instance, descriptor: dictionaries.GPURenderBundleEncoderDescriptor) ImplError!*runtime.Instance {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
@@ -201,14 +197,14 @@ pub fn call_pushErrorScope(instance: *runtime.Instance, filter: enums.GPUErrorFi
 }
 
 /// Operation: createBuffer
-pub fn call_createBuffer(instance: *runtime.Instance, descriptor: dictionaries.GPUBufferDescriptor) ImplError!interfaces.GPUBuffer {
+pub fn call_createBuffer(instance: *runtime.Instance, descriptor: dictionaries.GPUBufferDescriptor) ImplError!*runtime.Instance {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
 }
 
 /// Operation: createBindGroup
-pub fn call_createBindGroup(instance: *runtime.Instance, descriptor: dictionaries.GPUBindGroupDescriptor) ImplError!interfaces.GPUBindGroup {
+pub fn call_createBindGroup(instance: *runtime.Instance, descriptor: dictionaries.GPUBindGroupDescriptor) ImplError!*runtime.Instance {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;

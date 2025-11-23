@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -314,7 +314,7 @@ pub const SVGTextPathElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_startOffset(instance: *runtime.Instance) anyerror!SVGAnimatedLength {
+    pub fn get_startOffset(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_startOffset) |cached| {
@@ -326,7 +326,7 @@ pub const SVGTextPathElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_method(instance: *runtime.Instance) anyerror!SVGAnimatedEnumeration {
+    pub fn get_method(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_method) |cached| {
@@ -338,7 +338,7 @@ pub const SVGTextPathElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_spacing(instance: *runtime.Instance) anyerror!SVGAnimatedEnumeration {
+    pub fn get_spacing(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_spacing) |cached| {
@@ -350,7 +350,7 @@ pub const SVGTextPathElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_href(instance: *runtime.Instance) anyerror!SVGAnimatedString {
+    pub fn get_href(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_href) |cached| {

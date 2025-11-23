@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -296,27 +296,27 @@ pub const RTCPeerConnection = struct {
         return try RTCPeerConnectionImpl.call_constructor(allocator, ctx, configuration);
     }
 
-    pub fn get_localDescription(instance: *runtime.Instance) anyerror!RTCSessionDescription {
+    pub fn get_localDescription(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RTCPeerConnectionImpl.get_localDescription(instance);
     }
 
-    pub fn get_currentLocalDescription(instance: *runtime.Instance) anyerror!RTCSessionDescription {
+    pub fn get_currentLocalDescription(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RTCPeerConnectionImpl.get_currentLocalDescription(instance);
     }
 
-    pub fn get_pendingLocalDescription(instance: *runtime.Instance) anyerror!RTCSessionDescription {
+    pub fn get_pendingLocalDescription(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RTCPeerConnectionImpl.get_pendingLocalDescription(instance);
     }
 
-    pub fn get_remoteDescription(instance: *runtime.Instance) anyerror!RTCSessionDescription {
+    pub fn get_remoteDescription(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RTCPeerConnectionImpl.get_remoteDescription(instance);
     }
 
-    pub fn get_currentRemoteDescription(instance: *runtime.Instance) anyerror!RTCSessionDescription {
+    pub fn get_currentRemoteDescription(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RTCPeerConnectionImpl.get_currentRemoteDescription(instance);
     }
 
-    pub fn get_pendingRemoteDescription(instance: *runtime.Instance) anyerror!RTCSessionDescription {
+    pub fn get_pendingRemoteDescription(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RTCPeerConnectionImpl.get_pendingRemoteDescription(instance);
     }
 
@@ -404,7 +404,7 @@ pub const RTCPeerConnection = struct {
         try RTCPeerConnectionImpl.set_ontrack(instance, value);
     }
 
-    pub fn get_sctp(instance: *runtime.Instance) anyerror!RTCSctpTransport {
+    pub fn get_sctp(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RTCPeerConnectionImpl.get_sctp(instance);
     }
 
@@ -428,7 +428,7 @@ pub const RTCPeerConnection = struct {
         return try RTCPeerConnectionImpl.get_idpErrorInfo(instance);
     }
 
-    pub fn call_addTransceiver(instance: *runtime.Instance, trackOrKind: *const anyopaque, init_data: RTCRtpTransceiverInit) anyerror!RTCRtpTransceiver {
+    pub fn call_addTransceiver(instance: *runtime.Instance, trackOrKind: *const anyopaque, init_data: RTCRtpTransceiverInit) anyerror!*runtime.Instance {
         
         return try RTCPeerConnectionImpl.call_addTransceiver(instance, trackOrKind, init_data);
     }
@@ -462,7 +462,7 @@ pub const RTCPeerConnection = struct {
         return try RTCPeerConnectionImpl.call_setLocalDescription(instance, description);
     }
 
-    pub fn call_addTrack(instance: *runtime.Instance, track: MediaStreamTrack, streams: MediaStream) anyerror!RTCRtpSender {
+    pub fn call_addTrack(instance: *runtime.Instance, track: *runtime.Instance, streams: *runtime.Instance) anyerror!*runtime.Instance {
         
         return try RTCPeerConnectionImpl.call_addTrack(instance, track, streams);
     }
@@ -471,7 +471,7 @@ pub const RTCPeerConnection = struct {
         return try RTCPeerConnectionImpl.call_getIdentityAssertion(instance);
     }
 
-    pub fn call_removeTrack(instance: *runtime.Instance, sender: RTCRtpSender) anyerror!void {
+    pub fn call_removeTrack(instance: *runtime.Instance, sender: *runtime.Instance) anyerror!void {
         
         return try RTCPeerConnectionImpl.call_removeTrack(instance, sender);
     }
@@ -489,12 +489,12 @@ pub const RTCPeerConnection = struct {
         return try RTCPeerConnectionImpl.call_generateCertificate(instance, keygenAlgorithm);
     }
 
-    pub fn call_createDataChannel(instance: *runtime.Instance, label: runtime.USVString, dataChannelDict: RTCDataChannelInit) anyerror!RTCDataChannel {
+    pub fn call_createDataChannel(instance: *runtime.Instance, label: runtime.USVString, dataChannelDict: RTCDataChannelInit) anyerror!*runtime.Instance {
         
         return try RTCPeerConnectionImpl.call_createDataChannel(instance, label, dataChannelDict);
     }
 
-    pub fn call_getStats(instance: *runtime.Instance, selector: MediaStreamTrack) anyerror!*const anyopaque {
+    pub fn call_getStats(instance: *runtime.Instance, selector: *runtime.Instance) anyerror!*const anyopaque {
         
         return try RTCPeerConnectionImpl.call_getStats(instance, selector);
     }

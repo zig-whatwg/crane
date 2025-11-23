@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -104,7 +100,7 @@ pub fn call_rewrite(instance: *runtime.Instance, input: runtime.DOMString, optio
 }
 
 /// Operation: rewriteStreaming
-pub fn call_rewriteStreaming(instance: *runtime.Instance, input: runtime.DOMString, options: dictionaries.RewriterRewriteOptions) ImplError!interfaces.ReadableStream {
+pub fn call_rewriteStreaming(instance: *runtime.Instance, input: runtime.DOMString, options: dictionaries.RewriterRewriteOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;

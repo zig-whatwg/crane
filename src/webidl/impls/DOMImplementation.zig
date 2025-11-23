@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,7 +37,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: createDocument
-pub fn call_createDocument(instance: *runtime.Instance, namespace: runtime.DOMString, qualifiedName: runtime.DOMString, doctype: interfaces.DocumentType) ImplError!interfaces.XMLDocument {
+pub fn call_createDocument(instance: *runtime.Instance, namespace: runtime.DOMString, qualifiedName: runtime.DOMString, doctype: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = namespace;
     _ = qualifiedName;
@@ -50,7 +46,7 @@ pub fn call_createDocument(instance: *runtime.Instance, namespace: runtime.DOMSt
 }
 
 /// Operation: createDocumentType
-pub fn call_createDocumentType(instance: *runtime.Instance, name: runtime.DOMString, publicId: runtime.DOMString, systemId: runtime.DOMString) ImplError!interfaces.DocumentType {
+pub fn call_createDocumentType(instance: *runtime.Instance, name: runtime.DOMString, publicId: runtime.DOMString, systemId: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = name;
     _ = publicId;
@@ -59,7 +55,7 @@ pub fn call_createDocumentType(instance: *runtime.Instance, name: runtime.DOMStr
 }
 
 /// Operation: createHTMLDocument
-pub fn call_createHTMLDocument(instance: *runtime.Instance, title: runtime.DOMString) ImplError!interfaces.Document {
+pub fn call_createHTMLDocument(instance: *runtime.Instance, title: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = title;
     return error.NotImplemented;

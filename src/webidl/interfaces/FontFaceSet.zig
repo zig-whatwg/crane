@@ -1,5 +1,5 @@
 //! Generated from: css-font-loading.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -166,12 +166,12 @@ pub const FontFaceSet = struct {
         return try FontFaceSetImpl.get_status(instance);
     }
 
-    pub fn call_delete(instance: *runtime.Instance, font: FontFace) anyerror!bool {
+    pub fn call_delete(instance: *runtime.Instance, font: *runtime.Instance) anyerror!bool {
         
         return try FontFaceSetImpl.call_delete(instance, font);
     }
 
-    pub fn call_add(instance: *runtime.Instance, font: FontFace) anyerror!FontFaceSet {
+    pub fn call_add(instance: *runtime.Instance, font: *runtime.Instance) anyerror!*runtime.Instance {
         
         return try FontFaceSetImpl.call_add(instance, font);
     }

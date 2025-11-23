@@ -1,5 +1,5 @@
 //! Generated from: scheduling-apis.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -119,7 +119,7 @@ pub const TaskSignal = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call__any(instance: *runtime.Instance, signals: *const anyopaque, init_data: TaskSignalAnyInit) anyerror!TaskSignal {
+    pub fn call__any(instance: *runtime.Instance, signals: *const anyopaque, init_data: TaskSignalAnyInit) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try TaskSignalImpl.call__any(instance, signals, init_data);

@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -47,7 +43,7 @@ pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for objectStore
-pub fn get_objectStore(instance: *runtime.Instance) ImplError!interfaces.IDBObjectStore {
+pub fn get_objectStore(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -78,7 +74,7 @@ pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) ImplError
 }
 
 /// Operation: getAll
-pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: *const anyopaque, count: u32) ImplError!interfaces.IDBRequest {
+pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: *const anyopaque, count: u32) ImplError!*runtime.Instance {
     _ = instance;
     _ = queryOrOptions;
     _ = count;
@@ -86,7 +82,7 @@ pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: *const anyopaque
 }
 
 /// Operation: openKeyCursor
-pub fn call_openKeyCursor(instance: *runtime.Instance, query: *const anyopaque, direction: enums.IDBCursorDirection) ImplError!interfaces.IDBRequest {
+pub fn call_openKeyCursor(instance: *runtime.Instance, query: *const anyopaque, direction: enums.IDBCursorDirection) ImplError!*runtime.Instance {
     _ = instance;
     _ = query;
     _ = direction;
@@ -94,35 +90,35 @@ pub fn call_openKeyCursor(instance: *runtime.Instance, query: *const anyopaque, 
 }
 
 /// Operation: getAllRecords
-pub fn call_getAllRecords(instance: *runtime.Instance, options: dictionaries.IDBGetAllOptions) ImplError!interfaces.IDBRequest {
+pub fn call_getAllRecords(instance: *runtime.Instance, options: dictionaries.IDBGetAllOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: count
-pub fn call_count(instance: *runtime.Instance, query: *const anyopaque) ImplError!interfaces.IDBRequest {
+pub fn call_count(instance: *runtime.Instance, query: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = query;
     return error.NotImplemented;
 }
 
 /// Operation: getKey
-pub fn call_getKey(instance: *runtime.Instance, query: *const anyopaque) ImplError!interfaces.IDBRequest {
+pub fn call_getKey(instance: *runtime.Instance, query: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = query;
     return error.NotImplemented;
 }
 
 /// Operation: get
-pub fn call_get(instance: *runtime.Instance, query: *const anyopaque) ImplError!interfaces.IDBRequest {
+pub fn call_get(instance: *runtime.Instance, query: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = query;
     return error.NotImplemented;
 }
 
 /// Operation: getAllKeys
-pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: *const anyopaque, count: u32) ImplError!interfaces.IDBRequest {
+pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: *const anyopaque, count: u32) ImplError!*runtime.Instance {
     _ = instance;
     _ = queryOrOptions;
     _ = count;
@@ -130,7 +126,7 @@ pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: *const anyop
 }
 
 /// Operation: openCursor
-pub fn call_openCursor(instance: *runtime.Instance, query: *const anyopaque, direction: enums.IDBCursorDirection) ImplError!interfaces.IDBRequest {
+pub fn call_openCursor(instance: *runtime.Instance, query: *const anyopaque, direction: enums.IDBCursorDirection) ImplError!*runtime.Instance {
     _ = instance;
     _ = query;
     _ = direction;

@@ -1,5 +1,5 @@
 //! Generated from: turtledove.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -81,11 +81,11 @@ pub const InterestGroupScriptRunnerGlobalScope = struct {
         InterestGroupScriptRunnerGlobalScopeImpl.deinit(instance);
     }
 
-    pub fn get_privateAggregation(instance: *runtime.Instance) anyerror!PrivateAggregation {
+    pub fn get_privateAggregation(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try InterestGroupScriptRunnerGlobalScopeImpl.get_privateAggregation(instance);
     }
 
-    pub fn get_protectedAudience(instance: *runtime.Instance) anyerror!ProtectedAudienceUtilities {
+    pub fn get_protectedAudience(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try InterestGroupScriptRunnerGlobalScopeImpl.get_protectedAudience(instance);
     }
 

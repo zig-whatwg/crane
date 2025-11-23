@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -65,7 +61,7 @@ pub fn get_effectAllowed(instance: *runtime.Instance) ImplError!runtime.DOMStrin
 }
 
 /// Getter for items
-pub fn get_items(instance: *runtime.Instance) ImplError!interfaces.DataTransferItemList {
+pub fn get_items(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -77,7 +73,7 @@ pub fn get_types(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Getter for files
-pub fn get_files(instance: *runtime.Instance) ImplError!interfaces.FileList {
+pub fn get_files(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -111,7 +107,7 @@ pub fn call_clearData(instance: *runtime.Instance, format: runtime.DOMString) Im
 }
 
 /// Operation: setDragImage
-pub fn call_setDragImage(instance: *runtime.Instance, image: interfaces.Element, x: i32, y: i32) ImplError!void {
+pub fn call_setDragImage(instance: *runtime.Instance, image: *runtime.Instance, x: i32, y: i32) ImplError!void {
     _ = instance;
     _ = image;
     _ = x;

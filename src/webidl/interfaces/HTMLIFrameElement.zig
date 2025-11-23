@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -412,7 +412,7 @@ pub const HTMLIFrameElement = struct {
     }
 
     /// Extended attributes: [SameObject], [PutForwards=value], [Reflect]
-    pub fn get_sandbox(instance: *runtime.Instance) anyerror!DOMTokenList {
+    pub fn get_sandbox(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_sandbox) |cached| {
@@ -507,7 +507,7 @@ pub const HTMLIFrameElement = struct {
         try HTMLIFrameElementImpl.set_loading(instance, value);
     }
 
-    pub fn get_contentDocument(instance: *runtime.Instance) anyerror!Document {
+    pub fn get_contentDocument(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLIFrameElementImpl.get_contentDocument(instance);
     }
 
@@ -660,7 +660,7 @@ pub const HTMLIFrameElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_permissionsPolicy(instance: *runtime.Instance) anyerror!PermissionsPolicy {
+    pub fn get_permissionsPolicy(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_permissionsPolicy) |cached| {
@@ -685,7 +685,7 @@ pub const HTMLIFrameElement = struct {
         try HTMLIFrameElementImpl.set_sharedStorageWritable(instance, value);
     }
 
-    pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!Document {
+    pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLIFrameElementImpl.call_getSVGDocument(instance);
     }
 

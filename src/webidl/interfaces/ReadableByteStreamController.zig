@@ -1,5 +1,5 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -91,7 +91,7 @@ pub const ReadableByteStreamController = struct {
         ReadableByteStreamControllerImpl.deinit(instance);
     }
 
-    pub fn get_byobRequest(instance: *runtime.Instance) anyerror!ReadableStreamBYOBRequest {
+    pub fn get_byobRequest(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ReadableByteStreamControllerImpl.get_byobRequest(instance);
     }
 

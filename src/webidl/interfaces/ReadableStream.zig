@@ -1,5 +1,5 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -121,12 +121,12 @@ pub const ReadableStream = struct {
         return try ReadableStreamImpl.get_locked(instance);
     }
 
-    pub fn call_pipeTo(instance: *runtime.Instance, destination: WritableStream, options: StreamPipeOptions) anyerror!*const anyopaque {
+    pub fn call_pipeTo(instance: *runtime.Instance, destination: *runtime.Instance, options: StreamPipeOptions) anyerror!*const anyopaque {
         
         return try ReadableStreamImpl.call_pipeTo(instance, destination, options);
     }
 
-    pub fn call_pipeThrough(instance: *runtime.Instance, transform: ReadableWritablePair, options: StreamPipeOptions) anyerror!ReadableStream {
+    pub fn call_pipeThrough(instance: *runtime.Instance, transform: ReadableWritablePair, options: StreamPipeOptions) anyerror!*runtime.Instance {
         
         return try ReadableStreamImpl.call_pipeThrough(instance, transform, options);
     }
@@ -136,7 +136,7 @@ pub const ReadableStream = struct {
         return try ReadableStreamImpl.call_forEach(instance, callback);
     }
 
-    pub fn call_from(instance: *runtime.Instance, asyncIterable: *const anyopaque) anyerror!ReadableStream {
+    pub fn call_from(instance: *runtime.Instance, asyncIterable: *const anyopaque) anyerror!*runtime.Instance {
         
         return try ReadableStreamImpl.call_from(instance, asyncIterable);
     }

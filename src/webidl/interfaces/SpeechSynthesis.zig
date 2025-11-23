@@ -1,5 +1,5 @@
 //! Generated from: speech-api.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -140,7 +140,7 @@ pub const SpeechSynthesis = struct {
         try SpeechSynthesisImpl.set_onvoiceschanged(instance, value);
     }
 
-    pub fn call_speak(instance: *runtime.Instance, utterance: SpeechSynthesisUtterance) anyerror!void {
+    pub fn call_speak(instance: *runtime.Instance, utterance: *runtime.Instance) anyerror!void {
         
         return try SpeechSynthesisImpl.call_speak(instance, utterance);
     }

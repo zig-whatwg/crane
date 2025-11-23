@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -216,7 +216,7 @@ pub const GPUDevice = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_features(instance: *runtime.Instance) anyerror!GPUSupportedFeatures {
+    pub fn get_features(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_features) |cached| {
@@ -228,7 +228,7 @@ pub const GPUDevice = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_limits(instance: *runtime.Instance) anyerror!GPUSupportedLimits {
+    pub fn get_limits(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_limits) |cached| {
@@ -240,7 +240,7 @@ pub const GPUDevice = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_adapterInfo(instance: *runtime.Instance) anyerror!GPUAdapterInfo {
+    pub fn get_adapterInfo(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_adapterInfo) |cached| {
@@ -252,7 +252,7 @@ pub const GPUDevice = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_queue(instance: *runtime.Instance) anyerror!GPUQueue {
+    pub fn get_queue(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_queue) |cached| {
@@ -283,17 +283,17 @@ pub const GPUDevice = struct {
         try GPUDeviceImpl.set_label(instance, value);
     }
 
-    pub fn call_createQuerySet(instance: *runtime.Instance, descriptor: GPUQuerySetDescriptor) anyerror!GPUQuerySet {
+    pub fn call_createQuerySet(instance: *runtime.Instance, descriptor: GPUQuerySetDescriptor) anyerror!*runtime.Instance {
         
         return try GPUDeviceImpl.call_createQuerySet(instance, descriptor);
     }
 
-    pub fn call_createTexture(instance: *runtime.Instance, descriptor: GPUTextureDescriptor) anyerror!GPUTexture {
+    pub fn call_createTexture(instance: *runtime.Instance, descriptor: GPUTextureDescriptor) anyerror!*runtime.Instance {
         
         return try GPUDeviceImpl.call_createTexture(instance, descriptor);
     }
 
-    pub fn call_createRenderPipeline(instance: *runtime.Instance, descriptor: GPURenderPipelineDescriptor) anyerror!GPURenderPipeline {
+    pub fn call_createRenderPipeline(instance: *runtime.Instance, descriptor: GPURenderPipelineDescriptor) anyerror!*runtime.Instance {
         
         return try GPUDeviceImpl.call_createRenderPipeline(instance, descriptor);
     }
@@ -303,17 +303,17 @@ pub const GPUDevice = struct {
         return try GPUDeviceImpl.call_createRenderPipelineAsync(instance, descriptor);
     }
 
-    pub fn call_createPipelineLayout(instance: *runtime.Instance, descriptor: GPUPipelineLayoutDescriptor) anyerror!GPUPipelineLayout {
+    pub fn call_createPipelineLayout(instance: *runtime.Instance, descriptor: GPUPipelineLayoutDescriptor) anyerror!*runtime.Instance {
         
         return try GPUDeviceImpl.call_createPipelineLayout(instance, descriptor);
     }
 
-    pub fn call_createShaderModule(instance: *runtime.Instance, descriptor: GPUShaderModuleDescriptor) anyerror!GPUShaderModule {
+    pub fn call_createShaderModule(instance: *runtime.Instance, descriptor: GPUShaderModuleDescriptor) anyerror!*runtime.Instance {
         
         return try GPUDeviceImpl.call_createShaderModule(instance, descriptor);
     }
 
-    pub fn call_createCommandEncoder(instance: *runtime.Instance, descriptor: GPUCommandEncoderDescriptor) anyerror!GPUCommandEncoder {
+    pub fn call_createCommandEncoder(instance: *runtime.Instance, descriptor: GPUCommandEncoderDescriptor) anyerror!*runtime.Instance {
         
         return try GPUDeviceImpl.call_createCommandEncoder(instance, descriptor);
     }
@@ -323,22 +323,22 @@ pub const GPUDevice = struct {
         return try GPUDeviceImpl.call_createComputePipelineAsync(instance, descriptor);
     }
 
-    pub fn call_createBindGroupLayout(instance: *runtime.Instance, descriptor: GPUBindGroupLayoutDescriptor) anyerror!GPUBindGroupLayout {
+    pub fn call_createBindGroupLayout(instance: *runtime.Instance, descriptor: GPUBindGroupLayoutDescriptor) anyerror!*runtime.Instance {
         
         return try GPUDeviceImpl.call_createBindGroupLayout(instance, descriptor);
     }
 
-    pub fn call_createSampler(instance: *runtime.Instance, descriptor: GPUSamplerDescriptor) anyerror!GPUSampler {
+    pub fn call_createSampler(instance: *runtime.Instance, descriptor: GPUSamplerDescriptor) anyerror!*runtime.Instance {
         
         return try GPUDeviceImpl.call_createSampler(instance, descriptor);
     }
 
-    pub fn call_importExternalTexture(instance: *runtime.Instance, descriptor: GPUExternalTextureDescriptor) anyerror!GPUExternalTexture {
+    pub fn call_importExternalTexture(instance: *runtime.Instance, descriptor: GPUExternalTextureDescriptor) anyerror!*runtime.Instance {
         
         return try GPUDeviceImpl.call_importExternalTexture(instance, descriptor);
     }
 
-    pub fn call_createComputePipeline(instance: *runtime.Instance, descriptor: GPUComputePipelineDescriptor) anyerror!GPUComputePipeline {
+    pub fn call_createComputePipeline(instance: *runtime.Instance, descriptor: GPUComputePipelineDescriptor) anyerror!*runtime.Instance {
         
         return try GPUDeviceImpl.call_createComputePipeline(instance, descriptor);
     }
@@ -347,7 +347,7 @@ pub const GPUDevice = struct {
         return try GPUDeviceImpl.call_destroy(instance);
     }
 
-    pub fn call_createRenderBundleEncoder(instance: *runtime.Instance, descriptor: GPURenderBundleEncoderDescriptor) anyerror!GPURenderBundleEncoder {
+    pub fn call_createRenderBundleEncoder(instance: *runtime.Instance, descriptor: GPURenderBundleEncoderDescriptor) anyerror!*runtime.Instance {
         
         return try GPUDeviceImpl.call_createRenderBundleEncoder(instance, descriptor);
     }
@@ -357,12 +357,12 @@ pub const GPUDevice = struct {
         return try GPUDeviceImpl.call_pushErrorScope(instance, filter);
     }
 
-    pub fn call_createBuffer(instance: *runtime.Instance, descriptor: GPUBufferDescriptor) anyerror!GPUBuffer {
+    pub fn call_createBuffer(instance: *runtime.Instance, descriptor: GPUBufferDescriptor) anyerror!*runtime.Instance {
         
         return try GPUDeviceImpl.call_createBuffer(instance, descriptor);
     }
 
-    pub fn call_createBindGroup(instance: *runtime.Instance, descriptor: GPUBindGroupDescriptor) anyerror!GPUBindGroup {
+    pub fn call_createBindGroup(instance: *runtime.Instance, descriptor: GPUBindGroupDescriptor) anyerror!*runtime.Instance {
         
         return try GPUDeviceImpl.call_createBindGroup(instance, descriptor);
     }

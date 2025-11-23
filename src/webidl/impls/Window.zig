@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -53,7 +49,7 @@ pub fn get_self(instance: *runtime.Instance) ImplError!typedefs.WindowProxy {
 }
 
 /// Getter for document
-pub fn get_document(instance: *runtime.Instance) ImplError!interfaces.Document {
+pub fn get_document(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -65,61 +61,61 @@ pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for location
-pub fn get_location(instance: *runtime.Instance) ImplError!interfaces.Location {
+pub fn get_location(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for history
-pub fn get_history(instance: *runtime.Instance) ImplError!interfaces.History {
+pub fn get_history(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for navigation
-pub fn get_navigation(instance: *runtime.Instance) ImplError!interfaces.Navigation {
+pub fn get_navigation(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for customElements
-pub fn get_customElements(instance: *runtime.Instance) ImplError!interfaces.CustomElementRegistry {
+pub fn get_customElements(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for locationbar
-pub fn get_locationbar(instance: *runtime.Instance) ImplError!interfaces.BarProp {
+pub fn get_locationbar(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for menubar
-pub fn get_menubar(instance: *runtime.Instance) ImplError!interfaces.BarProp {
+pub fn get_menubar(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for personalbar
-pub fn get_personalbar(instance: *runtime.Instance) ImplError!interfaces.BarProp {
+pub fn get_personalbar(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for scrollbars
-pub fn get_scrollbars(instance: *runtime.Instance) ImplError!interfaces.BarProp {
+pub fn get_scrollbars(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for statusbar
-pub fn get_statusbar(instance: *runtime.Instance) ImplError!interfaces.BarProp {
+pub fn get_statusbar(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for toolbar
-pub fn get_toolbar(instance: *runtime.Instance) ImplError!interfaces.BarProp {
+pub fn get_toolbar(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -167,19 +163,19 @@ pub fn get_parent(instance: *runtime.Instance) ImplError!typedefs.WindowProxy {
 }
 
 /// Getter for frameElement
-pub fn get_frameElement(instance: *runtime.Instance) ImplError!interfaces.Element {
+pub fn get_frameElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for navigator
-pub fn get_navigator(instance: *runtime.Instance) ImplError!interfaces.Navigator {
+pub fn get_navigator(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for clientInformation
-pub fn get_clientInformation(instance: *runtime.Instance) ImplError!interfaces.Navigator {
+pub fn get_clientInformation(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -209,13 +205,13 @@ pub fn get_ondevicemotion(instance: *runtime.Instance) ImplError!typedefs.EventH
 }
 
 /// Getter for viewport
-pub fn get_viewport(instance: *runtime.Instance) ImplError!interfaces.Viewport {
+pub fn get_viewport(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for cookieStore
-pub fn get_cookieStore(instance: *runtime.Instance) ImplError!interfaces.CookieStore {
+pub fn get_cookieStore(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -227,19 +223,19 @@ pub fn get_credentialless(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Getter for speechSynthesis
-pub fn get_speechSynthesis(instance: *runtime.Instance) ImplError!interfaces.SpeechSynthesis {
+pub fn get_speechSynthesis(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for fence
-pub fn get_fence(instance: *runtime.Instance) ImplError!interfaces.Fence {
+pub fn get_fence(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for documentPictureInPicture
-pub fn get_documentPictureInPicture(instance: *runtime.Instance) ImplError!interfaces.DocumentPictureInPicture {
+pub fn get_documentPictureInPicture(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -263,7 +259,7 @@ pub fn get_onorientationchange(instance: *runtime.Instance) ImplError!typedefs.E
 }
 
 /// Getter for sharedStorage
-pub fn get_sharedStorage(instance: *runtime.Instance) ImplError!interfaces.SharedStorage {
+pub fn get_sharedStorage(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -281,19 +277,19 @@ pub fn get_onbeforeinstallprompt(instance: *runtime.Instance) ImplError!typedefs
 }
 
 /// Getter for external
-pub fn get_external(instance: *runtime.Instance) ImplError!interfaces.External {
+pub fn get_external(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for screen
-pub fn get_screen(instance: *runtime.Instance) ImplError!interfaces.Screen {
+pub fn get_screen(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for visualViewport
-pub fn get_visualViewport(instance: *runtime.Instance) ImplError!interfaces.VisualViewport {
+pub fn get_visualViewport(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -377,19 +373,19 @@ pub fn get_devicePixelRatio(instance: *runtime.Instance) ImplError!f64 {
 }
 
 /// Getter for launchQueue
-pub fn get_launchQueue(instance: *runtime.Instance) ImplError!interfaces.LaunchQueue {
+pub fn get_launchQueue(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for portalHost
-pub fn get_portalHost(instance: *runtime.Instance) ImplError!interfaces.PortalHost {
+pub fn get_portalHost(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for pushManager
-pub fn get_pushManager(instance: *runtime.Instance) ImplError!interfaces.PushManager {
+pub fn get_pushManager(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -1169,49 +1165,49 @@ pub fn get_crossOriginIsolated(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Getter for indexedDB
-pub fn get_indexedDB(instance: *runtime.Instance) ImplError!interfaces.IDBFactory {
+pub fn get_indexedDB(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for trustedTypes
-pub fn get_trustedTypes(instance: *runtime.Instance) ImplError!interfaces.TrustedTypePolicyFactory {
+pub fn get_trustedTypes(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for performance
-pub fn get_performance(instance: *runtime.Instance) ImplError!interfaces.Performance {
+pub fn get_performance(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for caches
-pub fn get_caches(instance: *runtime.Instance) ImplError!interfaces.CacheStorage {
+pub fn get_caches(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for scheduler
-pub fn get_scheduler(instance: *runtime.Instance) ImplError!interfaces.Scheduler {
+pub fn get_scheduler(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for crypto
-pub fn get_crypto(instance: *runtime.Instance) ImplError!interfaces.Crypto {
+pub fn get_crypto(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for sessionStorage
-pub fn get_sessionStorage(instance: *runtime.Instance) ImplError!interfaces.Storage {
+pub fn get_sessionStorage(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for localStorage
-pub fn get_localStorage(instance: *runtime.Instance) ImplError!interfaces.Storage {
+pub fn get_localStorage(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -2191,7 +2187,7 @@ pub fn call_showDirectoryPicker(instance: *runtime.Instance, options: dictionari
 }
 
 /// Operation: matchMedia
-pub fn call_matchMedia(instance: *runtime.Instance, query: typedefs.CSSOMString) ImplError!interfaces.MediaQueryList {
+pub fn call_matchMedia(instance: *runtime.Instance, query: typedefs.CSSOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = query;
     return error.NotImplemented;
@@ -2340,7 +2336,7 @@ pub fn call_moveBy(instance: *runtime.Instance, x: i32, y: i32) ImplError!void {
 }
 
 /// Operation: getSelection
-pub fn call_getSelection(instance: *runtime.Instance) ImplError!interfaces.Selection {
+pub fn call_getSelection(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -2406,7 +2402,7 @@ pub fn call_clearTimeout(instance: *runtime.Instance, id: i32) ImplError!void {
 }
 
 /// Operation: getComputedStyle
-pub fn call_getComputedStyle(instance: *runtime.Instance, elt: interfaces.Element, pseudoElt: typedefs.CSSOMString) ImplError!interfaces.CSSStyleProperties {
+pub fn call_getComputedStyle(instance: *runtime.Instance, elt: *runtime.Instance, pseudoElt: typedefs.CSSOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = elt;
     _ = pseudoElt;
@@ -2430,7 +2426,7 @@ pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) ImplE
 }
 
 /// Operation: fetchLater
-pub fn call_fetchLater(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: dictionaries.DeferredRequestInit) ImplError!interfaces.FetchLaterResult {
+pub fn call_fetchLater(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: dictionaries.DeferredRequestInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = init_data;

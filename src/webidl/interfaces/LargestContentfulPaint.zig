@@ -1,5 +1,5 @@
 //! Generated from: largest-contentful-paint.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -134,7 +134,7 @@ pub const LargestContentfulPaint = struct {
         return try LargestContentfulPaintImpl.get_url(instance);
     }
 
-    pub fn get_element(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_element(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try LargestContentfulPaintImpl.get_element(instance);
     }
 

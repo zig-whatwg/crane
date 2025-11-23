@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -101,7 +101,7 @@ pub const GPUComputePipeline = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getBindGroupLayout(instance: *runtime.Instance, index: u32) anyerror!GPUBindGroupLayout {
+    pub fn call_getBindGroupLayout(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try GPUComputePipelineImpl.call_getBindGroupLayout(instance, index);

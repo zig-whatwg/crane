@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -172,7 +172,7 @@ pub const PannerNode = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: BaseAudioContext, options: PannerOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: PannerOptions) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try PannerNodeImpl.call_constructor(allocator, ctx, context, options);
     }
@@ -185,27 +185,27 @@ pub const PannerNode = struct {
         try PannerNodeImpl.set_panningModel(instance, value);
     }
 
-    pub fn get_positionX(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_positionX(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try PannerNodeImpl.get_positionX(instance);
     }
 
-    pub fn get_positionY(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_positionY(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try PannerNodeImpl.get_positionY(instance);
     }
 
-    pub fn get_positionZ(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_positionZ(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try PannerNodeImpl.get_positionZ(instance);
     }
 
-    pub fn get_orientationX(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_orientationX(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try PannerNodeImpl.get_orientationX(instance);
     }
 
-    pub fn get_orientationY(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_orientationY(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try PannerNodeImpl.get_orientationY(instance);
     }
 
-    pub fn get_orientationZ(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_orientationZ(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try PannerNodeImpl.get_orientationZ(instance);
     }
 

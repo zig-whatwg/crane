@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -143,7 +143,7 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_service(instance: *runtime.Instance) anyerror!BluetoothRemoteGATTService {
+    pub fn get_service(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_service) |cached| {
@@ -158,7 +158,7 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
         return try BluetoothRemoteGATTCharacteristicImpl.get_uuid(instance);
     }
 
-    pub fn get_properties(instance: *runtime.Instance) anyerror!BluetoothCharacteristicProperties {
+    pub fn get_properties(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try BluetoothRemoteGATTCharacteristicImpl.get_properties(instance);
     }
 

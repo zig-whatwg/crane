@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,7 +37,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for canvas
-pub fn get_canvas(instance: *runtime.Instance) ImplError!interfaces.HTMLCanvasElement {
+pub fn get_canvas(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -447,7 +443,7 @@ pub fn call_clearRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f6
 }
 
 /// Operation: createConicGradient
-pub fn call_createConicGradient(instance: *runtime.Instance, startAngle: f64, x: f64, y: f64) ImplError!interfaces.CanvasGradient {
+pub fn call_createConicGradient(instance: *runtime.Instance, startAngle: f64, x: f64, y: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = startAngle;
     _ = x;
@@ -512,7 +508,7 @@ pub fn call_drawImage(instance: *runtime.Instance, image: typedefs.CanvasImageSo
 }
 
 /// Operation: getImageData
-pub fn call_getImageData(instance: *runtime.Instance, sx: i32, sy: i32, sw: i32, sh: i32, settings: dictionaries.ImageDataSettings) ImplError!interfaces.ImageData {
+pub fn call_getImageData(instance: *runtime.Instance, sx: i32, sy: i32, sw: i32, sh: i32, settings: dictionaries.ImageDataSettings) ImplError!*runtime.Instance {
     _ = instance;
     _ = sx;
     _ = sy;
@@ -535,13 +531,13 @@ pub fn call_arc(instance: *runtime.Instance, x: f64, y: f64, radius: f64, startA
 }
 
 /// Operation: getTransform
-pub fn call_getTransform(instance: *runtime.Instance) ImplError!interfaces.DOMMatrix {
+pub fn call_getTransform(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: createRadialGradient
-pub fn call_createRadialGradient(instance: *runtime.Instance, x0: f64, y0: f64, r0: f64, x1: f64, y1: f64, r1: f64) ImplError!interfaces.CanvasGradient {
+pub fn call_createRadialGradient(instance: *runtime.Instance, x0: f64, y0: f64, r0: f64, x1: f64, y1: f64, r1: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = x0;
     _ = y0;
@@ -553,7 +549,7 @@ pub fn call_createRadialGradient(instance: *runtime.Instance, x0: f64, y0: f64, 
 }
 
 /// Operation: drawFocusIfNeeded
-pub fn call_drawFocusIfNeeded(instance: *runtime.Instance, element: interfaces.Element) ImplError!void {
+pub fn call_drawFocusIfNeeded(instance: *runtime.Instance, element: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = element;
     return error.NotImplemented;
@@ -577,7 +573,7 @@ pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f6
 }
 
 /// Operation: createPattern
-pub fn call_createPattern(instance: *runtime.Instance, image: typedefs.CanvasImageSource, repetition: runtime.DOMString) ImplError!interfaces.CanvasPattern {
+pub fn call_createPattern(instance: *runtime.Instance, image: typedefs.CanvasImageSource, repetition: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = image;
     _ = repetition;
@@ -680,7 +676,7 @@ pub fn call_rotate(instance: *runtime.Instance, angle: f64) ImplError!void {
 }
 
 /// Operation: createImageData
-pub fn call_createImageData(instance: *runtime.Instance, sw: i32, sh: i32, settings: dictionaries.ImageDataSettings) ImplError!interfaces.ImageData {
+pub fn call_createImageData(instance: *runtime.Instance, sw: i32, sh: i32, settings: dictionaries.ImageDataSettings) ImplError!*runtime.Instance {
     _ = instance;
     _ = sw;
     _ = sh;
@@ -705,7 +701,7 @@ pub fn call_translate(instance: *runtime.Instance, x: f64, y: f64) ImplError!voi
 }
 
 /// Operation: createLinearGradient
-pub fn call_createLinearGradient(instance: *runtime.Instance, x0: f64, y0: f64, x1: f64, y1: f64) ImplError!interfaces.CanvasGradient {
+pub fn call_createLinearGradient(instance: *runtime.Instance, x0: f64, y0: f64, x1: f64, y1: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = x0;
     _ = y0;
@@ -763,7 +759,7 @@ pub fn call_fillText(instance: *runtime.Instance, text: runtime.DOMString, x: f6
 }
 
 /// Operation: measureText
-pub fn call_measureText(instance: *runtime.Instance, text: runtime.DOMString) ImplError!interfaces.TextMetrics {
+pub fn call_measureText(instance: *runtime.Instance, text: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = text;
     return error.NotImplemented;
@@ -777,7 +773,7 @@ pub fn call_fill(instance: *runtime.Instance, fillRule: enums.CanvasFillRule) Im
 }
 
 /// Operation: putImageData
-pub fn call_putImageData(instance: *runtime.Instance, imageData: interfaces.ImageData, dx: i32, dy: i32) ImplError!void {
+pub fn call_putImageData(instance: *runtime.Instance, imageData: *runtime.Instance, dx: i32, dy: i32) ImplError!void {
     _ = instance;
     _ = imageData;
     _ = dx;

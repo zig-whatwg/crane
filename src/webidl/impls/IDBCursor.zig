@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -65,13 +61,13 @@ pub fn get_primaryKey(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Getter for request
-pub fn get_request(instance: *runtime.Instance) ImplError!interfaces.IDBRequest {
+pub fn get_request(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: delete
-pub fn call_delete(instance: *runtime.Instance) ImplError!interfaces.IDBRequest {
+pub fn call_delete(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -92,7 +88,7 @@ pub fn call_continuePrimaryKey(instance: *runtime.Instance, key: *const anyopaqu
 }
 
 /// Operation: update
-pub fn call_update(instance: *runtime.Instance, value: *const anyopaque) ImplError!interfaces.IDBRequest {
+pub fn call_update(instance: *runtime.Instance, value: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = value;
     return error.NotImplemented;

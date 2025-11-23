@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -116,11 +116,11 @@ pub const RTCRtpReceiver = struct {
         RTCRtpReceiverImpl.deinit(instance);
     }
 
-    pub fn get_track(instance: *runtime.Instance) anyerror!MediaStreamTrack {
+    pub fn get_track(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RTCRtpReceiverImpl.get_track(instance);
     }
 
-    pub fn get_transport(instance: *runtime.Instance) anyerror!RTCDtlsTransport {
+    pub fn get_transport(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RTCRtpReceiverImpl.get_transport(instance);
     }
 

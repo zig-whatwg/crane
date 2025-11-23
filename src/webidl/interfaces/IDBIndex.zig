@@ -1,5 +1,5 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -136,7 +136,7 @@ pub const IDBIndex = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_objectStore(instance: *runtime.Instance) anyerror!IDBObjectStore {
+    pub fn get_objectStore(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_objectStore) |cached| {
@@ -160,7 +160,7 @@ pub const IDBIndex = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: *const anyopaque, count: u32) anyerror!IDBRequest {
+    pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: *const anyopaque, count: u32) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         // [EnforceRange] on count
         if (!runtime.isInRange(u32, count)) return error.TypeError;
@@ -169,42 +169,42 @@ pub const IDBIndex = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_openKeyCursor(instance: *runtime.Instance, query: *const anyopaque, direction: IDBCursorDirection) anyerror!IDBRequest {
+    pub fn call_openKeyCursor(instance: *runtime.Instance, query: *const anyopaque, direction: IDBCursorDirection) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBIndexImpl.call_openKeyCursor(instance, query, direction);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getAllRecords(instance: *runtime.Instance, options: IDBGetAllOptions) anyerror!IDBRequest {
+    pub fn call_getAllRecords(instance: *runtime.Instance, options: IDBGetAllOptions) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBIndexImpl.call_getAllRecords(instance, options);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_count(instance: *runtime.Instance, query: *const anyopaque) anyerror!IDBRequest {
+    pub fn call_count(instance: *runtime.Instance, query: *const anyopaque) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBIndexImpl.call_count(instance, query);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getKey(instance: *runtime.Instance, query: *const anyopaque) anyerror!IDBRequest {
+    pub fn call_getKey(instance: *runtime.Instance, query: *const anyopaque) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBIndexImpl.call_getKey(instance, query);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_get(instance: *runtime.Instance, query: *const anyopaque) anyerror!IDBRequest {
+    pub fn call_get(instance: *runtime.Instance, query: *const anyopaque) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBIndexImpl.call_get(instance, query);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: *const anyopaque, count: u32) anyerror!IDBRequest {
+    pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: *const anyopaque, count: u32) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         // [EnforceRange] on count
         if (!runtime.isInRange(u32, count)) return error.TypeError;
@@ -213,7 +213,7 @@ pub const IDBIndex = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_openCursor(instance: *runtime.Instance, query: *const anyopaque, direction: IDBCursorDirection) anyerror!IDBRequest {
+    pub fn call_openCursor(instance: *runtime.Instance, query: *const anyopaque, direction: IDBCursorDirection) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBIndexImpl.call_openCursor(instance, query, direction);

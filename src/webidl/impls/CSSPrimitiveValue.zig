@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -62,7 +58,7 @@ pub fn call_getFloatValue(instance: *runtime.Instance, unitType: u16) ImplError!
 }
 
 /// Operation: getRGBColorValue
-pub fn call_getRGBColorValue(instance: *runtime.Instance) ImplError!interfaces.RGBColor {
+pub fn call_getRGBColorValue(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -82,13 +78,13 @@ pub fn call_getStringValue(instance: *runtime.Instance) ImplError!runtime.DOMStr
 }
 
 /// Operation: getRectValue
-pub fn call_getRectValue(instance: *runtime.Instance) ImplError!interfaces.Rect {
+pub fn call_getRectValue(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getCounterValue
-pub fn call_getCounterValue(instance: *runtime.Instance) ImplError!interfaces.Counter {
+pub fn call_getCounterValue(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

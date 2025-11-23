@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -47,7 +43,7 @@ pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Operation: createScriptURL
-pub fn call_createScriptURL(instance: *runtime.Instance, input: runtime.DOMString, arguments: *const anyopaque) ImplError!interfaces.TrustedScriptURL {
+pub fn call_createScriptURL(instance: *runtime.Instance, input: runtime.DOMString, arguments: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = arguments;
@@ -55,7 +51,7 @@ pub fn call_createScriptURL(instance: *runtime.Instance, input: runtime.DOMStrin
 }
 
 /// Operation: createHTML
-pub fn call_createHTML(instance: *runtime.Instance, input: runtime.DOMString, arguments: *const anyopaque) ImplError!interfaces.TrustedHTML {
+pub fn call_createHTML(instance: *runtime.Instance, input: runtime.DOMString, arguments: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = arguments;
@@ -63,7 +59,7 @@ pub fn call_createHTML(instance: *runtime.Instance, input: runtime.DOMString, ar
 }
 
 /// Operation: createScript
-pub fn call_createScript(instance: *runtime.Instance, input: runtime.DOMString, arguments: *const anyopaque) ImplError!interfaces.TrustedScript {
+pub fn call_createScript(instance: *runtime.Instance, input: runtime.DOMString, arguments: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = arguments;

@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -65,7 +61,7 @@ pub fn get_renderQuantumSize(instance: *runtime.Instance) ImplError!u32 {
 }
 
 /// Getter for port
-pub fn get_port(instance: *runtime.Instance) ImplError!interfaces.MessagePort {
+pub fn get_port(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

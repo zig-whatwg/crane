@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -42,7 +38,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: interfaces.BaseAudioContext, options: dictionaries.PannerOptions) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: dictionaries.PannerOptions) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &PannerNode.vtable, ctx);
     errdefer deinit(instance);
@@ -61,37 +57,37 @@ pub fn get_panningModel(instance: *runtime.Instance) ImplError!enums.PanningMode
 }
 
 /// Getter for positionX
-pub fn get_positionX(instance: *runtime.Instance) ImplError!interfaces.AudioParam {
+pub fn get_positionX(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for positionY
-pub fn get_positionY(instance: *runtime.Instance) ImplError!interfaces.AudioParam {
+pub fn get_positionY(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for positionZ
-pub fn get_positionZ(instance: *runtime.Instance) ImplError!interfaces.AudioParam {
+pub fn get_positionZ(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for orientationX
-pub fn get_orientationX(instance: *runtime.Instance) ImplError!interfaces.AudioParam {
+pub fn get_orientationX(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for orientationY
-pub fn get_orientationY(instance: *runtime.Instance) ImplError!interfaces.AudioParam {
+pub fn get_orientationY(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for orientationZ
-pub fn get_orientationZ(instance: *runtime.Instance) ImplError!interfaces.AudioParam {
+pub fn get_orientationZ(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

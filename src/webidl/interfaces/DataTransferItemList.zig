@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -94,7 +94,7 @@ pub const DataTransferItemList = struct {
         return try DataTransferItemListImpl.get_length(instance);
     }
 
-    pub fn call_add(instance: *runtime.Instance, data: DOMString, @"type": DOMString) anyerror!DataTransferItem {
+    pub fn call_add(instance: *runtime.Instance, data: DOMString, @"type": DOMString) anyerror!*runtime.Instance {
         
         return try DataTransferItemListImpl.call_add(instance, data, @"type");
     }

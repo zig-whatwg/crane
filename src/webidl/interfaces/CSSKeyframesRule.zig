@@ -1,5 +1,5 @@
 //! Generated from: css-animations.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -109,7 +109,7 @@ pub const CSSKeyframesRule = struct {
         try CSSKeyframesRuleImpl.set_name(instance, value);
     }
 
-    pub fn get_cssRules(instance: *runtime.Instance) anyerror!CSSRuleList {
+    pub fn get_cssRules(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSKeyframesRuleImpl.get_cssRules(instance);
     }
 
@@ -122,7 +122,7 @@ pub const CSSKeyframesRule = struct {
         return try CSSKeyframesRuleImpl.call_deleteRule(instance, select);
     }
 
-    pub fn call_findRule(instance: *runtime.Instance, select: CSSOMString) anyerror!CSSKeyframeRule {
+    pub fn call_findRule(instance: *runtime.Instance, select: CSSOMString) anyerror!*runtime.Instance {
         
         return try CSSKeyframesRuleImpl.call_findRule(instance, select);
     }

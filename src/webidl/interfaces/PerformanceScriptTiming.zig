@@ -1,5 +1,5 @@
 //! Generated from: long-animation-frames.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -185,7 +185,7 @@ pub const PerformanceScriptTiming = struct {
         return try PerformanceScriptTimingImpl.get_forcedStyleAndLayoutDuration(instance);
     }
 
-    pub fn get_window(instance: *runtime.Instance) anyerror!Window {
+    pub fn get_window(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try PerformanceScriptTimingImpl.get_window(instance);
     }
 

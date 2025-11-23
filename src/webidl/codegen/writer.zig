@@ -1607,10 +1607,18 @@ pub fn writeConstructor(
 
     // Write constructor parameters
     for (constructor.arguments) |arg| {
-        var arg_type = if (type_registry) |reg|
-            mapWebIDLTypeWithRegistry(arg.idlType, reg).type_name
+        const type_mapping = if (type_registry) |reg|
+            mapWebIDLTypeWithRegistry(arg.idlType, reg)
         else
-            mapWebIDLType(arg.idlType);
+            TypeMapping{ .type_name = mapWebIDLType(arg.idlType), .needs_import = false };
+
+        var arg_type = type_mapping.type_name;
+
+        // Check if this is an interface type - if so, use *runtime.Instance
+        const is_interface = if (type_registry) |reg|
+            reg.lookup(arg.idlType.type) != null and reg.lookup(arg.idlType.type).? == .interface
+        else
+            false;
 
         // If we got anyopaque (union type or unknown), make it a pointer
         if (std.mem.eql(u8, arg_type, "anyopaque")) {
@@ -1619,7 +1627,13 @@ pub fn writeConstructor(
 
         try writer.writeAll(", ");
         try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
-        try writer.print(": {s}", .{arg_type});
+
+        // For interface types, use *runtime.Instance directly
+        if (is_interface) {
+            try writer.writeAll(": *runtime.Instance");
+        } else {
+            try writer.print(": {s}", .{arg_type});
+        }
     }
 
     try writer.writeAll(") !*runtime.Instance {\n");
@@ -1781,7 +1795,16 @@ fn writeSingleOperation(
     type_registry: ?*const @import("ir.zig").TypeRegistry,
 ) !void {
     const name = op.name orelse return; // Skip unnamed operations
-    var return_type = if (type_registry) |reg|
+
+    // Check if return type is an interface - if so, use *runtime.Instance
+    const is_interface_return = if (type_registry) |reg|
+        reg.lookup(op.idlType.type) != null and reg.lookup(op.idlType.type).? == .interface
+    else
+        false;
+
+    var return_type = if (is_interface_return)
+        "*runtime.Instance"
+    else if (type_registry) |reg|
         mapWebIDLTypeWithRegistry(op.idlType, reg).type_name
     else
         mapWebIDLType(op.idlType);
@@ -1802,7 +1825,15 @@ fn writeSingleOperation(
 
     // Write parameters
     for (op.arguments) |arg| {
-        var arg_type = if (type_registry) |reg|
+        // Check if parameter type is an interface - if so, use *runtime.Instance
+        const is_interface_param = if (type_registry) |reg|
+            reg.lookup(arg.idlType.type) != null and reg.lookup(arg.idlType.type).? == .interface
+        else
+            false;
+
+        var arg_type = if (is_interface_param)
+            "*runtime.Instance"
+        else if (type_registry) |reg|
             mapWebIDLTypeWithRegistry(arg.idlType, reg).type_name
         else
             mapWebIDLType(arg.idlType);
@@ -1996,7 +2027,15 @@ pub fn writeDelegateFunctions(
 
     // Write attribute getters - ONLY for own attributes (not inherited)
     for (own_attributes) |attr| {
-        var return_type = if (type_registry) |reg|
+        // Check if this is an interface type - if so, use *runtime.Instance
+        const is_interface_type = if (type_registry) |reg|
+            reg.lookup(attr.idlType.type) != null and reg.lookup(attr.idlType.type).? == .interface
+        else
+            false;
+
+        var return_type = if (is_interface_type)
+            "*runtime.Instance"
+        else if (type_registry) |reg|
             mapWebIDLTypeWithRegistry(attr.idlType, reg).type_name
         else
             mapWebIDLType(attr.idlType);

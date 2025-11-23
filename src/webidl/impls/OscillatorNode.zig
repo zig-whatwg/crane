@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -42,7 +38,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: interfaces.BaseAudioContext, options: dictionaries.OscillatorOptions) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: dictionaries.OscillatorOptions) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &OscillatorNode.vtable, ctx);
     errdefer deinit(instance);
@@ -61,13 +57,13 @@ pub fn get_type(instance: *runtime.Instance) ImplError!enums.OscillatorType {
 }
 
 /// Getter for frequency
-pub fn get_frequency(instance: *runtime.Instance) ImplError!interfaces.AudioParam {
+pub fn get_frequency(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for detune
-pub fn get_detune(instance: *runtime.Instance) ImplError!interfaces.AudioParam {
+pub fn get_detune(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -80,7 +76,7 @@ pub fn set_type(instance: *runtime.Instance, value: enums.OscillatorType) ImplEr
 }
 
 /// Operation: setPeriodicWave
-pub fn call_setPeriodicWave(instance: *runtime.Instance, periodicWave: interfaces.PeriodicWave) ImplError!void {
+pub fn call_setPeriodicWave(instance: *runtime.Instance, periodicWave: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = periodicWave;
     return error.NotImplemented;

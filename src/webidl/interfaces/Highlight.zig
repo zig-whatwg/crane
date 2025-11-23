@@ -1,5 +1,5 @@
 //! Generated from: css-highlight-api.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -89,7 +89,7 @@ pub const Highlight = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, initialRanges: AbstractRange) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, initialRanges: *runtime.Instance) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try HighlightImpl.call_constructor(allocator, ctx, initialRanges);
     }

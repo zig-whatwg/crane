@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,19 +37,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for transform
-pub fn get_transform(instance: *runtime.Instance) ImplError!interfaces.XRRigidTransform {
+pub fn get_transform(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for linearVelocity
-pub fn get_linearVelocity(instance: *runtime.Instance) ImplError!interfaces.DOMPointReadOnly {
+pub fn get_linearVelocity(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for angularVelocity
-pub fn get_angularVelocity(instance: *runtime.Instance) ImplError!interfaces.DOMPointReadOnly {
+pub fn get_angularVelocity(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

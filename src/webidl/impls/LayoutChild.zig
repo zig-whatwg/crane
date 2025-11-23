@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,7 +37,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for styleMap
-pub fn get_styleMap(instance: *runtime.Instance) ImplError!interfaces.StylePropertyMapReadOnly {
+pub fn get_styleMap(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -53,7 +49,7 @@ pub fn call_intrinsicSizes(instance: *runtime.Instance) ImplError!*const anyopaq
 }
 
 /// Operation: layoutNextFragment
-pub fn call_layoutNextFragment(instance: *runtime.Instance, constraints: dictionaries.LayoutConstraintsOptions, breakToken: interfaces.ChildBreakToken) ImplError!*const anyopaque {
+pub fn call_layoutNextFragment(instance: *runtime.Instance, constraints: dictionaries.LayoutConstraintsOptions, breakToken: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     _ = constraints;
     _ = breakToken;

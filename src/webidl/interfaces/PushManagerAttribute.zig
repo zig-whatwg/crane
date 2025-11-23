@@ -1,5 +1,5 @@
 //! Generated from: push-api.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -73,7 +73,7 @@ pub const PushManagerAttribute = struct {
         PushManagerAttributeImpl.deinit(instance);
     }
 
-    pub fn get_pushManager(instance: *runtime.Instance) anyerror!PushManager {
+    pub fn get_pushManager(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try PushManagerAttributeImpl.get_pushManager(instance);
     }
 

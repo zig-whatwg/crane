@@ -1,5 +1,5 @@
 //! Generated from: trusted-types.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -96,17 +96,17 @@ pub const TrustedTypePolicy = struct {
         return try TrustedTypePolicyImpl.get_name(instance);
     }
 
-    pub fn call_createScriptURL(instance: *runtime.Instance, input: DOMString, arguments: *const anyopaque) anyerror!TrustedScriptURL {
+    pub fn call_createScriptURL(instance: *runtime.Instance, input: DOMString, arguments: *const anyopaque) anyerror!*runtime.Instance {
         
         return try TrustedTypePolicyImpl.call_createScriptURL(instance, input, arguments);
     }
 
-    pub fn call_createHTML(instance: *runtime.Instance, input: DOMString, arguments: *const anyopaque) anyerror!TrustedHTML {
+    pub fn call_createHTML(instance: *runtime.Instance, input: DOMString, arguments: *const anyopaque) anyerror!*runtime.Instance {
         
         return try TrustedTypePolicyImpl.call_createHTML(instance, input, arguments);
     }
 
-    pub fn call_createScript(instance: *runtime.Instance, input: DOMString, arguments: *const anyopaque) anyerror!TrustedScript {
+    pub fn call_createScript(instance: *runtime.Instance, input: DOMString, arguments: *const anyopaque) anyerror!*runtime.Instance {
         
         return try TrustedTypePolicyImpl.call_createScript(instance, input, arguments);
     }

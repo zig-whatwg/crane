@@ -40,11 +40,9 @@ pub const ReadResult = struct {
 /// Per WHATWG Streams spec § 4.3.2
 /// Includes slots from ReadableStreamGenericReader mixin
 pub const InternalState = struct {
-    /// [[stream]]: ReadableStream reference or undefined if released
+    /// [[stream]]: ReadableStream instance or undefined if released
     /// From ReadableStreamGenericReader mixin
-    /// TODO: This should be *runtime.Instance once we solve the interface parameter issue
-    /// For now, store as opaque pointer
-    stream: ?*const anyopaque,
+    stream: ?*runtime.Instance,
 
     /// [[closedPromise]]: Promise<undefined> that fulfills when stream closes
     /// From ReadableStreamGenericReader mixin
@@ -106,7 +104,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 pub fn call_constructor(
     allocator: std.mem.Allocator,
     ctx: runtime.Context,
-    stream: interfaces.ReadableStream,
+    stream_instance: *runtime.Instance,
 ) !*runtime.Instance {
     // Create instance
     const instance = try init(allocator, State, &ReadableStreamDefaultReader.vtable, ctx);
@@ -136,11 +134,8 @@ pub fn call_constructor(
     const internal = try allocator.create(InternalState);
     errdefer allocator.destroy(internal);
 
-    // Store stream reference (as opaque for now)
-    const stream_ref: *const anyopaque = &stream;
-
     internal.* = InternalState{
-        .stream = stream_ref,
+        .stream = stream_instance,
         .closed_promise = closed_promise,
         .read_requests = std.ArrayList(*AsyncPromise(ReadResult)){},
         .event_loop = event_loop,

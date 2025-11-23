@@ -1,5 +1,5 @@
 //! Generated from: css-conditional.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -101,7 +101,7 @@ pub const CSSMediaRule = struct {
     }
 
     /// Extended attributes: [SameObject], [PutForwards=mediaText]
-    pub fn get_media(instance: *runtime.Instance) anyerror!MediaList {
+    pub fn get_media(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_media) |cached| {
@@ -116,7 +116,7 @@ pub const CSSMediaRule = struct {
         return try CSSMediaRuleImpl.get_matches(instance);
     }
 
-    pub fn get_cssRules(instance: *runtime.Instance) anyerror!CSSRuleList {
+    pub fn get_cssRules(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSMediaRuleImpl.get_cssRules(instance);
     }
 

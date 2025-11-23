@@ -1,5 +1,5 @@
 //! Generated from: clipboard-apis.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -93,7 +93,7 @@ pub const ClipboardEvent = struct {
         return try ClipboardEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
-    pub fn get_clipboardData(instance: *runtime.Instance) anyerror!DataTransfer {
+    pub fn get_clipboardData(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ClipboardEventImpl.get_clipboardData(instance);
     }
 

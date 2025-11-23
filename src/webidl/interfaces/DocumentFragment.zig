@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -155,7 +155,7 @@ pub const DocumentFragment = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_children(instance: *runtime.Instance) anyerror!HTMLCollection {
+    pub fn get_children(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_children) |cached| {
@@ -166,11 +166,11 @@ pub const DocumentFragment = struct {
         return value;
     }
 
-    pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentFragmentImpl.get_firstElementChild(instance);
     }
 
-    pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentFragmentImpl.get_lastElementChild(instance);
     }
 
@@ -199,7 +199,7 @@ pub const DocumentFragment = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_moveBefore(instance: *runtime.Instance, node: Node, child: Node) anyerror!void {
+    pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -218,19 +218,19 @@ pub const DocumentFragment = struct {
         return try DocumentFragmentImpl.call_prepend(instance, nodes);
     }
 
-    pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!Element {
+    pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!*runtime.Instance {
         
         return try DocumentFragmentImpl.call_querySelector(instance, selectors);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: DOMString) anyerror!NodeList {
+    pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DocumentFragmentImpl.call_querySelectorAll(instance, selectors);
     }
 
-    pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!Element {
+    pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!*runtime.Instance {
         
         return try DocumentFragmentImpl.call_getElementById(instance, elementId);
     }

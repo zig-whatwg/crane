@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,7 +37,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: animate
-pub fn call_animate(instance: *runtime.Instance, keyframes: *const anyopaque, options: *const anyopaque) ImplError!interfaces.Animation {
+pub fn call_animate(instance: *runtime.Instance, keyframes: *const anyopaque, options: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = keyframes;
     _ = options;

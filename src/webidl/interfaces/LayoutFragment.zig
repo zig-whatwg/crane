@@ -1,5 +1,5 @@
 //! Generated from: css-layout-api.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -127,7 +127,7 @@ pub const LayoutFragment = struct {
         return try LayoutFragmentImpl.get_data(instance);
     }
 
-    pub fn get_breakToken(instance: *runtime.Instance) anyerror!ChildBreakToken {
+    pub fn get_breakToken(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try LayoutFragmentImpl.get_breakToken(instance);
     }
 

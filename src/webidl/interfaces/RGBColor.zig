@@ -1,5 +1,5 @@
 //! Generated from: DOM-Style.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -79,15 +79,15 @@ pub const RGBColor = struct {
         RGBColorImpl.deinit(instance);
     }
 
-    pub fn get_red(instance: *runtime.Instance) anyerror!CSSPrimitiveValue {
+    pub fn get_red(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RGBColorImpl.get_red(instance);
     }
 
-    pub fn get_green(instance: *runtime.Instance) anyerror!CSSPrimitiveValue {
+    pub fn get_green(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RGBColorImpl.get_green(instance);
     }
 
-    pub fn get_blue(instance: *runtime.Instance) anyerror!CSSPrimitiveValue {
+    pub fn get_blue(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RGBColorImpl.get_blue(instance);
     }
 

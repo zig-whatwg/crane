@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -107,16 +107,16 @@ pub const CSSHWB = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, h: CSSNumericValue, w: CSSNumberish, b: CSSNumberish, alpha: CSSNumberish) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, h: *runtime.Instance, w: CSSNumberish, b: CSSNumberish, alpha: CSSNumberish) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try CSSHWBImpl.call_constructor(allocator, ctx, h, w, b, alpha);
     }
 
-    pub fn get_h(instance: *runtime.Instance) anyerror!CSSNumericValue {
+    pub fn get_h(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSHWBImpl.get_h(instance);
     }
 
-    pub fn set_h(instance: *runtime.Instance, value: CSSNumericValue) anyerror!void {
+    pub fn set_h(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         try CSSHWBImpl.set_h(instance, value);
     }
 

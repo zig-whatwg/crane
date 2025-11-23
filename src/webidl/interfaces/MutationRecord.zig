@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -118,7 +118,7 @@ pub const MutationRecord = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_target(instance: *runtime.Instance) anyerror!Node {
+    pub fn get_target(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_target) |cached| {
@@ -130,7 +130,7 @@ pub const MutationRecord = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_addedNodes(instance: *runtime.Instance) anyerror!NodeList {
+    pub fn get_addedNodes(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_addedNodes) |cached| {
@@ -142,7 +142,7 @@ pub const MutationRecord = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_removedNodes(instance: *runtime.Instance) anyerror!NodeList {
+    pub fn get_removedNodes(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_removedNodes) |cached| {
@@ -153,11 +153,11 @@ pub const MutationRecord = struct {
         return value;
     }
 
-    pub fn get_previousSibling(instance: *runtime.Instance) anyerror!Node {
+    pub fn get_previousSibling(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try MutationRecordImpl.get_previousSibling(instance);
     }
 
-    pub fn get_nextSibling(instance: *runtime.Instance) anyerror!Node {
+    pub fn get_nextSibling(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try MutationRecordImpl.get_nextSibling(instance);
     }
 

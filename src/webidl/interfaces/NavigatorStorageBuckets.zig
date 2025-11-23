@@ -1,5 +1,5 @@
 //! Generated from: storage-buckets.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -75,7 +75,7 @@ pub const NavigatorStorageBuckets = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_storageBuckets(instance: *runtime.Instance) anyerror!StorageBucketManager {
+    pub fn get_storageBuckets(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_storageBuckets) |cached| {

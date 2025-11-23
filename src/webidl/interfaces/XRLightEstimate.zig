@@ -1,5 +1,5 @@
 //! Generated from: webxr-lighting-estimation.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -89,11 +89,11 @@ pub const XRLightEstimate = struct {
         return try XRLightEstimateImpl.get_sphericalHarmonicsCoefficients(instance);
     }
 
-    pub fn get_primaryLightDirection(instance: *runtime.Instance) anyerror!DOMPointReadOnly {
+    pub fn get_primaryLightDirection(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try XRLightEstimateImpl.get_primaryLightDirection(instance);
     }
 
-    pub fn get_primaryLightIntensity(instance: *runtime.Instance) anyerror!DOMPointReadOnly {
+    pub fn get_primaryLightIntensity(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try XRLightEstimateImpl.get_primaryLightIntensity(instance);
     }
 

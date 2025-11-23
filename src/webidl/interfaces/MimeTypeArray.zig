@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -89,12 +89,12 @@ pub const MimeTypeArray = struct {
         return try MimeTypeArrayImpl.get_length(instance);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!MimeType {
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
         
         return try MimeTypeArrayImpl.call_item(instance, index);
     }
 
-    pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!MimeType {
+    pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!*runtime.Instance {
         
         return try MimeTypeArrayImpl.call_namedItem(instance, name);
     }

@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,19 +37,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for defaultRequest
-pub fn get_defaultRequest(instance: *runtime.Instance) ImplError!interfaces.PresentationRequest {
+pub fn get_defaultRequest(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for receiver
-pub fn get_receiver(instance: *runtime.Instance) ImplError!interfaces.PresentationReceiver {
+pub fn get_receiver(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for defaultRequest
-pub fn set_defaultRequest(instance: *runtime.Instance, value: interfaces.PresentationRequest) ImplError!void {
+pub fn set_defaultRequest(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

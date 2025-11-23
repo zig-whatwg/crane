@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -127,7 +123,7 @@ pub fn get_buttons(instance: *runtime.Instance) ImplError!u16 {
 }
 
 /// Getter for relatedTarget
-pub fn get_relatedTarget(instance: *runtime.Instance) ImplError!interfaces.EventTarget {
+pub fn get_relatedTarget(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -181,7 +177,7 @@ pub fn get_offsetY(instance: *runtime.Instance) ImplError!f64 {
 }
 
 /// Operation: initMouseEvent
-pub fn call_initMouseEvent(instance: *runtime.Instance, typeArg: runtime.DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: interfaces.Window, detailArg: i32, screenXArg: i32, screenYArg: i32, clientXArg: i32, clientYArg: i32, ctrlKeyArg: bool, altKeyArg: bool, shiftKeyArg: bool, metaKeyArg: bool, buttonArg: i16, relatedTargetArg: interfaces.EventTarget) ImplError!void {
+pub fn call_initMouseEvent(instance: *runtime.Instance, typeArg: runtime.DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: *runtime.Instance, detailArg: i32, screenXArg: i32, screenYArg: i32, clientXArg: i32, clientYArg: i32, ctrlKeyArg: bool, altKeyArg: bool, shiftKeyArg: bool, metaKeyArg: bool, buttonArg: i16, relatedTargetArg: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = typeArg;
     _ = bubblesArg;

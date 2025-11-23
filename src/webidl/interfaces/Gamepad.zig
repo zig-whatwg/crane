@@ -1,5 +1,5 @@
 //! Generated from: gamepad.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -161,7 +161,7 @@ pub const Gamepad = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_vibrationActuator(instance: *runtime.Instance) anyerror!GamepadHapticActuator {
+    pub fn get_vibrationActuator(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_vibrationActuator) |cached| {
@@ -180,7 +180,7 @@ pub const Gamepad = struct {
         return try GamepadImpl.get_hapticActuators(instance);
     }
 
-    pub fn get_pose(instance: *runtime.Instance) anyerror!GamepadPose {
+    pub fn get_pose(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try GamepadImpl.get_pose(instance);
     }
 

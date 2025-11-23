@@ -1,5 +1,5 @@
 //! Generated from: css-regions.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -128,7 +128,7 @@ pub const NamedFlow = struct {
         return try NamedFlowImpl.call_getContent(instance);
     }
 
-    pub fn call_getRegionsByContent(instance: *runtime.Instance, node: Node) anyerror!*const anyopaque {
+    pub fn call_getRegionsByContent(instance: *runtime.Instance, node: *runtime.Instance) anyerror!*const anyopaque {
         
         return try NamedFlowImpl.call_getRegionsByContent(instance, node);
     }

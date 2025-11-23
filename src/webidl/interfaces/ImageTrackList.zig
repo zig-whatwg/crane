@@ -1,5 +1,5 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -104,7 +104,7 @@ pub const ImageTrackList = struct {
         return try ImageTrackListImpl.get_selectedIndex(instance);
     }
 
-    pub fn get_selectedTrack(instance: *runtime.Instance) anyerror!ImageTrack {
+    pub fn get_selectedTrack(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ImageTrackListImpl.get_selectedTrack(instance);
     }
 

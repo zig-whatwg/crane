@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,19 +37,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for features
-pub fn get_features(instance: *runtime.Instance) ImplError!interfaces.GPUSupportedFeatures {
+pub fn get_features(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for limits
-pub fn get_limits(instance: *runtime.Instance) ImplError!interfaces.GPUSupportedLimits {
+pub fn get_limits(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for info
-pub fn get_info(instance: *runtime.Instance) ImplError!interfaces.GPUAdapterInfo {
+pub fn get_info(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

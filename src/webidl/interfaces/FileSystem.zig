@@ -1,5 +1,5 @@
 //! Generated from: entries-api.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -85,7 +85,7 @@ pub const FileSystem = struct {
         return try FileSystemImpl.get_name(instance);
     }
 
-    pub fn get_root(instance: *runtime.Instance) anyerror!FileSystemDirectoryEntry {
+    pub fn get_root(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try FileSystemImpl.get_root(instance);
     }
 

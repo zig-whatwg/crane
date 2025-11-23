@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -105,11 +105,11 @@ pub const AudioProcessingEvent = struct {
         return try AudioProcessingEventImpl.get_playbackTime(instance);
     }
 
-    pub fn get_inputBuffer(instance: *runtime.Instance) anyerror!AudioBuffer {
+    pub fn get_inputBuffer(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AudioProcessingEventImpl.get_inputBuffer(instance);
     }
 
-    pub fn get_outputBuffer(instance: *runtime.Instance) anyerror!AudioBuffer {
+    pub fn get_outputBuffer(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AudioProcessingEventImpl.get_outputBuffer(instance);
     }
 

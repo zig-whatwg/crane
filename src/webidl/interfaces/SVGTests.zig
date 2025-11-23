@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -78,7 +78,7 @@ pub const SVGTests = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_requiredExtensions(instance: *runtime.Instance) anyerror!SVGStringList {
+    pub fn get_requiredExtensions(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_requiredExtensions) |cached| {
@@ -90,7 +90,7 @@ pub const SVGTests = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_systemLanguage(instance: *runtime.Instance) anyerror!SVGStringList {
+    pub fn get_systemLanguage(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_systemLanguage) |cached| {

@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -77,7 +73,7 @@ pub fn get_withCredentials(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Getter for upload
-pub fn get_upload(instance: *runtime.Instance) ImplError!interfaces.XMLHttpRequestUpload {
+pub fn get_upload(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -119,7 +115,7 @@ pub fn get_responseText(instance: *runtime.Instance) ImplError!runtime.USVString
 }
 
 /// Getter for responseXML
-pub fn get_responseXML(instance: *runtime.Instance) ImplError!interfaces.Document {
+pub fn get_responseXML(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

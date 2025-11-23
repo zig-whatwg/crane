@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -109,11 +109,11 @@ pub const RTCTrackEvent = struct {
         return try RTCTrackEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
-    pub fn get_receiver(instance: *runtime.Instance) anyerror!RTCRtpReceiver {
+    pub fn get_receiver(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RTCTrackEventImpl.get_receiver(instance);
     }
 
-    pub fn get_track(instance: *runtime.Instance) anyerror!MediaStreamTrack {
+    pub fn get_track(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RTCTrackEventImpl.get_track(instance);
     }
 
@@ -129,7 +129,7 @@ pub const RTCTrackEvent = struct {
         return value;
     }
 
-    pub fn get_transceiver(instance: *runtime.Instance) anyerror!RTCRtpTransceiver {
+    pub fn get_transceiver(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RTCTrackEventImpl.get_transceiver(instance);
     }
 

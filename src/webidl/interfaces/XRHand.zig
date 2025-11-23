@@ -1,5 +1,5 @@
 //! Generated from: webxr-hand-input.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -95,7 +95,7 @@ pub const XRHand = struct {
         return try XRHandImpl.get_size(instance);
     }
 
-    pub fn call_get(instance: *runtime.Instance, key: XRHandJoint) anyerror!XRJointSpace {
+    pub fn call_get(instance: *runtime.Instance, key: XRHandJoint) anyerror!*runtime.Instance {
         
         return try XRHandImpl.call_get(instance, key);
     }

@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -129,7 +129,7 @@ pub const BluetoothAdvertisingEvent = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_device(instance: *runtime.Instance) anyerror!BluetoothDevice {
+    pub fn get_device(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_device) |cached| {
@@ -161,7 +161,7 @@ pub const BluetoothAdvertisingEvent = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_manufacturerData(instance: *runtime.Instance) anyerror!BluetoothManufacturerDataMap {
+    pub fn get_manufacturerData(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_manufacturerData) |cached| {
@@ -173,7 +173,7 @@ pub const BluetoothAdvertisingEvent = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_serviceData(instance: *runtime.Instance) anyerror!BluetoothServiceDataMap {
+    pub fn get_serviceData(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_serviceData) |cached| {

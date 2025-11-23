@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -65,7 +61,7 @@ pub fn get_result(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Getter for error
-pub fn get_error(instance: *runtime.Instance) ImplError!interfaces.DOMException {
+pub fn get_error(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -149,21 +145,21 @@ pub fn set_onloadend(instance: *runtime.Instance, value: typedefs.EventHandler) 
 }
 
 /// Operation: readAsArrayBuffer
-pub fn call_readAsArrayBuffer(instance: *runtime.Instance, blob: interfaces.Blob) ImplError!void {
+pub fn call_readAsArrayBuffer(instance: *runtime.Instance, blob: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = blob;
     return error.NotImplemented;
 }
 
 /// Operation: readAsBinaryString
-pub fn call_readAsBinaryString(instance: *runtime.Instance, blob: interfaces.Blob) ImplError!void {
+pub fn call_readAsBinaryString(instance: *runtime.Instance, blob: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = blob;
     return error.NotImplemented;
 }
 
 /// Operation: readAsDataURL
-pub fn call_readAsDataURL(instance: *runtime.Instance, blob: interfaces.Blob) ImplError!void {
+pub fn call_readAsDataURL(instance: *runtime.Instance, blob: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = blob;
     return error.NotImplemented;
@@ -176,7 +172,7 @@ pub fn call_abort(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: readAsText
-pub fn call_readAsText(instance: *runtime.Instance, blob: interfaces.Blob, encoding: runtime.DOMString) ImplError!void {
+pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: runtime.DOMString) ImplError!void {
     _ = instance;
     _ = blob;
     _ = encoding;

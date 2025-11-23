@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -55,13 +51,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for activation
-pub fn get_activation(instance: *runtime.Instance) ImplError!interfaces.NavigationActivation {
+pub fn get_activation(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for viewTransition
-pub fn get_viewTransition(instance: *runtime.Instance) ImplError!interfaces.ViewTransition {
+pub fn get_viewTransition(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

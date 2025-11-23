@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -60,7 +56,7 @@ pub fn set_onprioritychange(instance: *runtime.Instance, value: typedefs.EventHa
 }
 
 /// Operation: _any
-pub fn call__any(instance: *runtime.Instance, signals: *const anyopaque, init_data: dictionaries.TaskSignalAnyInit) ImplError!interfaces.TaskSignal {
+pub fn call__any(instance: *runtime.Instance, signals: *const anyopaque, init_data: dictionaries.TaskSignalAnyInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = signals;
     _ = init_data;

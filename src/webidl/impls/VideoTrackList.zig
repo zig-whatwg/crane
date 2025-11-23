@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -92,7 +88,7 @@ pub fn set_onremovetrack(instance: *runtime.Instance, value: typedefs.EventHandl
 }
 
 /// Operation: getTrackById
-pub fn call_getTrackById(instance: *runtime.Instance, id: runtime.DOMString) ImplError!interfaces.VideoTrack {
+pub fn call_getTrackById(instance: *runtime.Instance, id: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = id;
     return error.NotImplemented;

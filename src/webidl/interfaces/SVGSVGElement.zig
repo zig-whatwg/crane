@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -460,7 +460,7 @@ pub const SVGSVGElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_x(instance: *runtime.Instance) anyerror!SVGAnimatedLength {
+    pub fn get_x(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_x) |cached| {
@@ -472,7 +472,7 @@ pub const SVGSVGElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_y(instance: *runtime.Instance) anyerror!SVGAnimatedLength {
+    pub fn get_y(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_y) |cached| {
@@ -484,7 +484,7 @@ pub const SVGSVGElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_width(instance: *runtime.Instance) anyerror!SVGAnimatedLength {
+    pub fn get_width(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_width) |cached| {
@@ -496,7 +496,7 @@ pub const SVGSVGElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_height(instance: *runtime.Instance) anyerror!SVGAnimatedLength {
+    pub fn get_height(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_height) |cached| {
@@ -516,7 +516,7 @@ pub const SVGSVGElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_currentTranslate(instance: *runtime.Instance) anyerror!DOMPointReadOnly {
+    pub fn get_currentTranslate(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_currentTranslate) |cached| {
@@ -528,7 +528,7 @@ pub const SVGSVGElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_viewBox(instance: *runtime.Instance) anyerror!SVGAnimatedRect {
+    pub fn get_viewBox(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_viewBox) |cached| {
@@ -540,7 +540,7 @@ pub const SVGSVGElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_preserveAspectRatio(instance: *runtime.Instance) anyerror!SVGAnimatedPreserveAspectRatio {
+    pub fn get_preserveAspectRatio(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_preserveAspectRatio) |cached| {
@@ -720,7 +720,7 @@ pub const SVGSVGElement = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createSVGPoint(instance: *runtime.Instance) anyerror!DOMPoint {
+    pub fn call_createSVGPoint(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         return try SVGSVGElementImpl.call_createSVGPoint(instance);
     }
@@ -736,7 +736,7 @@ pub const SVGSVGElement = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createSVGLength(instance: *runtime.Instance) anyerror!SVGLength {
+    pub fn call_createSVGLength(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         return try SVGSVGElementImpl.call_createSVGLength(instance);
     }
@@ -745,12 +745,12 @@ pub const SVGSVGElement = struct {
         return try SVGSVGElementImpl.call_animationsPaused(instance);
     }
 
-    pub fn call_getIntersectionList(instance: *runtime.Instance, rect: DOMRectReadOnly, referenceElement: SVGElement) anyerror!NodeList {
+    pub fn call_getIntersectionList(instance: *runtime.Instance, rect: *runtime.Instance, referenceElement: *runtime.Instance) anyerror!*runtime.Instance {
         
         return try SVGSVGElementImpl.call_getIntersectionList(instance, rect, referenceElement);
     }
 
-    pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!Element {
+    pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!*runtime.Instance {
         
         return try SVGSVGElementImpl.call_getElementById(instance, elementId);
     }
@@ -760,7 +760,7 @@ pub const SVGSVGElement = struct {
         return try SVGSVGElementImpl.call_unsuspendRedraw(instance, suspendHandleID);
     }
 
-    pub fn call_getEnclosureList(instance: *runtime.Instance, rect: DOMRectReadOnly, referenceElement: SVGElement) anyerror!NodeList {
+    pub fn call_getEnclosureList(instance: *runtime.Instance, rect: *runtime.Instance, referenceElement: *runtime.Instance) anyerror!*runtime.Instance {
         
         return try SVGSVGElementImpl.call_getEnclosureList(instance, rect, referenceElement);
     }
@@ -770,13 +770,13 @@ pub const SVGSVGElement = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createSVGAngle(instance: *runtime.Instance) anyerror!SVGAngle {
+    pub fn call_createSVGAngle(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         return try SVGSVGElementImpl.call_createSVGAngle(instance);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createSVGTransformFromMatrix(instance: *runtime.Instance, matrix: DOMMatrix2DInit) anyerror!SVGTransform {
+    pub fn call_createSVGTransformFromMatrix(instance: *runtime.Instance, matrix: DOMMatrix2DInit) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try SVGSVGElementImpl.call_createSVGTransformFromMatrix(instance, matrix);
@@ -791,7 +791,7 @@ pub const SVGSVGElement = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createSVGMatrix(instance: *runtime.Instance) anyerror!DOMMatrix {
+    pub fn call_createSVGMatrix(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         return try SVGSVGElementImpl.call_createSVGMatrix(instance);
     }
@@ -800,12 +800,12 @@ pub const SVGSVGElement = struct {
         return try SVGSVGElementImpl.call_getCurrentTime(instance);
     }
 
-    pub fn call_checkIntersection(instance: *runtime.Instance, element: SVGElement, rect: DOMRectReadOnly) anyerror!bool {
+    pub fn call_checkIntersection(instance: *runtime.Instance, element: *runtime.Instance, rect: *runtime.Instance) anyerror!bool {
         
         return try SVGSVGElementImpl.call_checkIntersection(instance, element, rect);
     }
 
-    pub fn call_checkEnclosure(instance: *runtime.Instance, element: SVGElement, rect: DOMRectReadOnly) anyerror!bool {
+    pub fn call_checkEnclosure(instance: *runtime.Instance, element: *runtime.Instance, rect: *runtime.Instance) anyerror!bool {
         
         return try SVGSVGElementImpl.call_checkEnclosure(instance, element, rect);
     }
@@ -815,19 +815,19 @@ pub const SVGSVGElement = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createSVGRect(instance: *runtime.Instance) anyerror!DOMRect {
+    pub fn call_createSVGRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         return try SVGSVGElementImpl.call_createSVGRect(instance);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createSVGTransform(instance: *runtime.Instance) anyerror!SVGTransform {
+    pub fn call_createSVGTransform(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         return try SVGSVGElementImpl.call_createSVGTransform(instance);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createSVGNumber(instance: *runtime.Instance) anyerror!SVGNumber {
+    pub fn call_createSVGNumber(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         return try SVGSVGElementImpl.call_createSVGNumber(instance);
     }

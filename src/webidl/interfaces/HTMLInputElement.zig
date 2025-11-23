@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -646,15 +646,15 @@ pub const HTMLInputElement = struct {
         try HTMLInputElementImpl.set_disabled(instance, value);
     }
 
-    pub fn get_form(instance: *runtime.Instance) anyerror!HTMLFormElement {
+    pub fn get_form(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLInputElementImpl.get_form(instance);
     }
 
-    pub fn get_files(instance: *runtime.Instance) anyerror!FileList {
+    pub fn get_files(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLInputElementImpl.get_files(instance);
     }
 
-    pub fn set_files(instance: *runtime.Instance, value: FileList) anyerror!void {
+    pub fn set_files(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         try HTMLInputElementImpl.set_files(instance, value);
     }
 
@@ -750,7 +750,7 @@ pub const HTMLInputElement = struct {
         try HTMLInputElementImpl.set_indeterminate(instance, value);
     }
 
-    pub fn get_list(instance: *runtime.Instance) anyerror!HTMLDataListElement {
+    pub fn get_list(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLInputElementImpl.get_list(instance);
     }
 
@@ -1012,7 +1012,7 @@ pub const HTMLInputElement = struct {
         return try HTMLInputElementImpl.get_willValidate(instance);
     }
 
-    pub fn get_validity(instance: *runtime.Instance) anyerror!ValidityState {
+    pub fn get_validity(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLInputElementImpl.get_validity(instance);
     }
 
@@ -1020,7 +1020,7 @@ pub const HTMLInputElement = struct {
         return try HTMLInputElementImpl.get_validationMessage(instance);
     }
 
-    pub fn get_labels(instance: *runtime.Instance) anyerror!NodeList {
+    pub fn get_labels(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLInputElementImpl.get_labels(instance);
     }
 
@@ -1103,12 +1103,12 @@ pub const HTMLInputElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_popoverTargetElement(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_popoverTargetElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLInputElementImpl.get_popoverTargetElement(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_popoverTargetElement(instance: *runtime.Instance, value: Element) anyerror!void {
+    pub fn set_popoverTargetElement(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

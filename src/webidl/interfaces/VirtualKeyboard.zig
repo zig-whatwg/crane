@@ -1,5 +1,5 @@
 //! Generated from: virtual-keyboard.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -108,7 +108,7 @@ pub const VirtualKeyboard = struct {
         VirtualKeyboardImpl.deinit(instance);
     }
 
-    pub fn get_boundingRect(instance: *runtime.Instance) anyerror!DOMRect {
+    pub fn get_boundingRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try VirtualKeyboardImpl.get_boundingRect(instance);
     }
 

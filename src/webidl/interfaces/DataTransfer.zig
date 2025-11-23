@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -136,7 +136,7 @@ pub const DataTransfer = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_items(instance: *runtime.Instance) anyerror!DataTransferItemList {
+    pub fn get_items(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_items) |cached| {
@@ -152,7 +152,7 @@ pub const DataTransfer = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_files(instance: *runtime.Instance) anyerror!FileList {
+    pub fn get_files(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_files) |cached| {
@@ -173,7 +173,7 @@ pub const DataTransfer = struct {
         return try DataTransferImpl.call_clearData(instance, format);
     }
 
-    pub fn call_setDragImage(instance: *runtime.Instance, image: Element, x: i32, y: i32) anyerror!void {
+    pub fn call_setDragImage(instance: *runtime.Instance, image: *runtime.Instance, x: i32, y: i32) anyerror!void {
         
         return try DataTransferImpl.call_setDragImage(instance, image, x, y);
     }

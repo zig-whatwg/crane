@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -125,7 +125,7 @@ pub const XRWebGLLayer = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, session: XRSession, context: XRWebGLRenderingContext, layerInit: XRWebGLLayerInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, session: *runtime.Instance, context: XRWebGLRenderingContext, layerInit: XRWebGLLayerInit) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try XRWebGLLayerImpl.call_constructor(allocator, ctx, session, context, layerInit);
     }
@@ -147,7 +147,7 @@ pub const XRWebGLLayer = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_framebuffer(instance: *runtime.Instance) anyerror!WebGLFramebuffer {
+    pub fn get_framebuffer(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_framebuffer) |cached| {
@@ -166,12 +166,12 @@ pub const XRWebGLLayer = struct {
         return try XRWebGLLayerImpl.get_framebufferHeight(instance);
     }
 
-    pub fn call_getNativeFramebufferScaleFactor(instance: *runtime.Instance, session: XRSession) anyerror!f64 {
+    pub fn call_getNativeFramebufferScaleFactor(instance: *runtime.Instance, session: *runtime.Instance) anyerror!f64 {
         
         return try XRWebGLLayerImpl.call_getNativeFramebufferScaleFactor(instance, session);
     }
 
-    pub fn call_getViewport(instance: *runtime.Instance, view: XRView) anyerror!XRViewport {
+    pub fn call_getViewport(instance: *runtime.Instance, view: *runtime.Instance) anyerror!*runtime.Instance {
         
         return try XRWebGLLayerImpl.call_getViewport(instance, view);
     }

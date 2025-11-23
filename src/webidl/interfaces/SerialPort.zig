@@ -1,5 +1,5 @@
 //! Generated from: serial.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -156,11 +156,11 @@ pub const SerialPort = struct {
         return try SerialPortImpl.get_connected(instance);
     }
 
-    pub fn get_readable(instance: *runtime.Instance) anyerror!ReadableStream {
+    pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SerialPortImpl.get_readable(instance);
     }
 
-    pub fn get_writable(instance: *runtime.Instance) anyerror!WritableStream {
+    pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SerialPortImpl.get_writable(instance);
     }
 

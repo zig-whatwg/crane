@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -53,31 +49,31 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for caption
-pub fn get_caption(instance: *runtime.Instance) ImplError!interfaces.HTMLTableCaptionElement {
+pub fn get_caption(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for tHead
-pub fn get_tHead(instance: *runtime.Instance) ImplError!interfaces.HTMLTableSectionElement {
+pub fn get_tHead(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for tFoot
-pub fn get_tFoot(instance: *runtime.Instance) ImplError!interfaces.HTMLTableSectionElement {
+pub fn get_tFoot(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for tBodies
-pub fn get_tBodies(instance: *runtime.Instance) ImplError!interfaces.HTMLCollection {
+pub fn get_tBodies(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for rows
-pub fn get_rows(instance: *runtime.Instance) ImplError!interfaces.HTMLCollection {
+pub fn get_rows(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -137,21 +133,21 @@ pub fn get_cellSpacing(instance: *runtime.Instance) ImplError!runtime.DOMString 
 }
 
 /// Setter for caption
-pub fn set_caption(instance: *runtime.Instance, value: interfaces.HTMLTableCaptionElement) ImplError!void {
+pub fn set_caption(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for tHead
-pub fn set_tHead(instance: *runtime.Instance, value: interfaces.HTMLTableSectionElement) ImplError!void {
+pub fn set_tHead(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for tFoot
-pub fn set_tFoot(instance: *runtime.Instance, value: interfaces.HTMLTableSectionElement) ImplError!void {
+pub fn set_tFoot(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -221,7 +217,7 @@ pub fn set_cellSpacing(instance: *runtime.Instance, value: runtime.DOMString) Im
 }
 
 /// Operation: createTFoot
-pub fn call_createTFoot(instance: *runtime.Instance) ImplError!interfaces.HTMLTableSectionElement {
+pub fn call_createTFoot(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -233,26 +229,26 @@ pub fn call_deleteTHead(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: createCaption
-pub fn call_createCaption(instance: *runtime.Instance) ImplError!interfaces.HTMLTableCaptionElement {
+pub fn call_createCaption(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: insertRow
-pub fn call_insertRow(instance: *runtime.Instance, index: i32) ImplError!interfaces.HTMLTableRowElement {
+pub fn call_insertRow(instance: *runtime.Instance, index: i32) ImplError!*runtime.Instance {
     _ = instance;
     _ = index;
     return error.NotImplemented;
 }
 
 /// Operation: createTBody
-pub fn call_createTBody(instance: *runtime.Instance) ImplError!interfaces.HTMLTableSectionElement {
+pub fn call_createTBody(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: createTHead
-pub fn call_createTHead(instance: *runtime.Instance) ImplError!interfaces.HTMLTableSectionElement {
+pub fn call_createTHead(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

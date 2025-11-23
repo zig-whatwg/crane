@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -544,12 +544,12 @@ pub const Navigator = struct {
         NavigatorImpl.deinit(instance);
     }
 
-    pub fn get_scheduling(instance: *runtime.Instance) anyerror!Scheduling {
+    pub fn get_scheduling(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NavigatorImpl.get_scheduling(instance);
     }
 
     /// Extended attributes: [SecureContext], [SameObject]
-    pub fn get_presentation(instance: *runtime.Instance) anyerror!Presentation {
+    pub fn get_presentation(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_presentation) |cached| {
@@ -561,7 +561,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SecureContext], [SameObject]
-    pub fn get_keyboard(instance: *runtime.Instance) anyerror!Keyboard {
+    pub fn get_keyboard(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_keyboard) |cached| {
@@ -573,7 +573,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SecureContext], [SameObject]
-    pub fn get_clipboard(instance: *runtime.Instance) anyerror!Clipboard {
+    pub fn get_clipboard(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_clipboard) |cached| {
@@ -584,12 +584,12 @@ pub const Navigator = struct {
         return value;
     }
 
-    pub fn get_audioSession(instance: *runtime.Instance) anyerror!AudioSession {
+    pub fn get_audioSession(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NavigatorImpl.get_audioSession(instance);
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_mediaCapabilities(instance: *runtime.Instance) anyerror!MediaCapabilities {
+    pub fn get_mediaCapabilities(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_mediaCapabilities) |cached| {
@@ -601,7 +601,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_serial(instance: *runtime.Instance) anyerror!Serial {
+    pub fn get_serial(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_serial) |cached| {
@@ -613,7 +613,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_permissions(instance: *runtime.Instance) anyerror!Permissions {
+    pub fn get_permissions(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_permissions) |cached| {
@@ -625,7 +625,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SecureContext], [SameObject]
-    pub fn get_contacts(instance: *runtime.Instance) anyerror!ContactsManager {
+    pub fn get_contacts(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_contacts) |cached| {
@@ -637,7 +637,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_devicePosture(instance: *runtime.Instance) anyerror!DevicePosture {
+    pub fn get_devicePosture(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_devicePosture) |cached| {
@@ -653,7 +653,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SecureContext], [SameObject]
-    pub fn get_attribution(instance: *runtime.Instance) anyerror!Attribution {
+    pub fn get_attribution(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_attribution) |cached| {
@@ -665,7 +665,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_smartCard(instance: *runtime.Instance) anyerror!SmartCardResourceManager {
+    pub fn get_smartCard(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_smartCard) |cached| {
@@ -677,7 +677,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_usb(instance: *runtime.Instance) anyerror!USB {
+    pub fn get_usb(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_usb) |cached| {
@@ -689,7 +689,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_windowControlsOverlay(instance: *runtime.Instance) anyerror!WindowControlsOverlay {
+    pub fn get_windowControlsOverlay(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_windowControlsOverlay) |cached| {
@@ -701,7 +701,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SecureContext], [SameObject]
-    pub fn get_xr(instance: *runtime.Instance) anyerror!XRSystem {
+    pub fn get_xr(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_xr) |cached| {
@@ -717,7 +717,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_protectedAudience(instance: *runtime.Instance) anyerror!ProtectedAudience {
+    pub fn get_protectedAudience(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_protectedAudience) |cached| {
@@ -729,7 +729,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_hid(instance: *runtime.Instance) anyerror!HID {
+    pub fn get_hid(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_hid) |cached| {
@@ -741,7 +741,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SecureContext], [SameObject]
-    pub fn get_credentials(instance: *runtime.Instance) anyerror!CredentialsContainer {
+    pub fn get_credentials(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_credentials) |cached| {
@@ -753,7 +753,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_wakeLock(instance: *runtime.Instance) anyerror!WakeLock {
+    pub fn get_wakeLock(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_wakeLock) |cached| {
@@ -765,7 +765,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SecureContext], [SameObject]
-    pub fn get_virtualKeyboard(instance: *runtime.Instance) anyerror!VirtualKeyboard {
+    pub fn get_virtualKeyboard(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_virtualKeyboard) |cached| {
@@ -777,7 +777,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_preferences(instance: *runtime.Instance) anyerror!PreferenceManager {
+    pub fn get_preferences(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_preferences) |cached| {
@@ -789,7 +789,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SecureContext], [SameObject]
-    pub fn get_managed(instance: *runtime.Instance) anyerror!NavigatorManagedData {
+    pub fn get_managed(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_managed) |cached| {
@@ -801,7 +801,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SecureContext], [SameObject]
-    pub fn get_serviceWorker(instance: *runtime.Instance) anyerror!ServiceWorkerContainer {
+    pub fn get_serviceWorker(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_serviceWorker) |cached| {
@@ -813,7 +813,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_ink(instance: *runtime.Instance) anyerror!Ink {
+    pub fn get_ink(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_ink) |cached| {
@@ -825,7 +825,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [LegacyUnforgeable], [SameObject]
-    pub fn get_epubReadingSystem(instance: *runtime.Instance) anyerror!EpubReadingSystem {
+    pub fn get_epubReadingSystem(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_epubReadingSystem) |cached| {
@@ -837,7 +837,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_userActivation(instance: *runtime.Instance) anyerror!UserActivation {
+    pub fn get_userActivation(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_userActivation) |cached| {
@@ -849,7 +849,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_bluetooth(instance: *runtime.Instance) anyerror!Bluetooth {
+    pub fn get_bluetooth(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_bluetooth) |cached| {
@@ -861,7 +861,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_geolocation(instance: *runtime.Instance) anyerror!Geolocation {
+    pub fn get_geolocation(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_geolocation) |cached| {
@@ -873,12 +873,12 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn get_login(instance: *runtime.Instance) anyerror!NavigatorLogin {
+    pub fn get_login(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NavigatorImpl.get_login(instance);
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_mediaSession(instance: *runtime.Instance) anyerror!MediaSession {
+    pub fn get_mediaSession(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_mediaSession) |cached| {
@@ -890,7 +890,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SameObject], [SecureContext]
-    pub fn get_mediaDevices(instance: *runtime.Instance) anyerror!MediaDevices {
+    pub fn get_mediaDevices(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_mediaDevices) |cached| {
@@ -901,12 +901,12 @@ pub const Navigator = struct {
         return value;
     }
 
-    pub fn get_locks(instance: *runtime.Instance) anyerror!LockManager {
+    pub fn get_locks(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NavigatorImpl.get_locks(instance);
     }
 
     /// Extended attributes: [SameObject], [SecureContext]
-    pub fn get_gpu(instance: *runtime.Instance) anyerror!GPU {
+    pub fn get_gpu(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_gpu) |cached| {
@@ -926,7 +926,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_connection(instance: *runtime.Instance) anyerror!NetworkInformation {
+    pub fn get_connection(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_connection) |cached| {
@@ -938,7 +938,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SecureContext], [SameObject]
-    pub fn get_ml(instance: *runtime.Instance) anyerror!ML {
+    pub fn get_ml(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_ml) |cached| {
@@ -954,7 +954,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_storage(instance: *runtime.Instance) anyerror!StorageManager {
+    pub fn get_storage(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_storage) |cached| {
@@ -966,7 +966,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_storageBuckets(instance: *runtime.Instance) anyerror!StorageBucketManager {
+    pub fn get_storageBuckets(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_storageBuckets) |cached| {
@@ -1038,7 +1038,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_plugins(instance: *runtime.Instance) anyerror!PluginArray {
+    pub fn get_plugins(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_plugins) |cached| {
@@ -1050,7 +1050,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_mimeTypes(instance: *runtime.Instance) anyerror!MimeTypeArray {
+    pub fn get_mimeTypes(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_mimeTypes) |cached| {
@@ -1070,7 +1070,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn get_userAgentData(instance: *runtime.Instance) anyerror!NavigatorUAData {
+    pub fn get_userAgentData(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NavigatorImpl.get_userAgentData(instance);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: writing-assistance-apis.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -186,7 +186,7 @@ pub const Writer = struct {
         return try WriterImpl.call_destroy(instance);
     }
 
-    pub fn call_writeStreaming(instance: *runtime.Instance, input: DOMString, options: WriterWriteOptions) anyerror!ReadableStream {
+    pub fn call_writeStreaming(instance: *runtime.Instance, input: DOMString, options: WriterWriteOptions) anyerror!*runtime.Instance {
         
         return try WriterImpl.call_writeStreaming(instance, input, options);
     }

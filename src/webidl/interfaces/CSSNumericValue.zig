@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -120,42 +120,42 @@ pub const CSSNumericValue = struct {
         return try CSSNumericValueImpl.call_equals(instance, value);
     }
 
-    pub fn call_max(instance: *runtime.Instance, values: CSSNumberish) anyerror!CSSNumericValue {
+    pub fn call_max(instance: *runtime.Instance, values: CSSNumberish) anyerror!*runtime.Instance {
         
         return try CSSNumericValueImpl.call_max(instance, values);
     }
 
-    pub fn call_sub(instance: *runtime.Instance, values: CSSNumberish) anyerror!CSSNumericValue {
+    pub fn call_sub(instance: *runtime.Instance, values: CSSNumberish) anyerror!*runtime.Instance {
         
         return try CSSNumericValueImpl.call_sub(instance, values);
     }
 
-    pub fn call_min(instance: *runtime.Instance, values: CSSNumberish) anyerror!CSSNumericValue {
+    pub fn call_min(instance: *runtime.Instance, values: CSSNumberish) anyerror!*runtime.Instance {
         
         return try CSSNumericValueImpl.call_min(instance, values);
     }
 
-    pub fn call_mul(instance: *runtime.Instance, values: CSSNumberish) anyerror!CSSNumericValue {
+    pub fn call_mul(instance: *runtime.Instance, values: CSSNumberish) anyerror!*runtime.Instance {
         
         return try CSSNumericValueImpl.call_mul(instance, values);
     }
 
-    pub fn call_add(instance: *runtime.Instance, values: CSSNumberish) anyerror!CSSNumericValue {
+    pub fn call_add(instance: *runtime.Instance, values: CSSNumberish) anyerror!*runtime.Instance {
         
         return try CSSNumericValueImpl.call_add(instance, values);
     }
 
-    pub fn call_to(instance: *runtime.Instance, unit: runtime.USVString) anyerror!CSSUnitValue {
+    pub fn call_to(instance: *runtime.Instance, unit: runtime.USVString) anyerror!*runtime.Instance {
         
         return try CSSNumericValueImpl.call_to(instance, unit);
     }
 
-    pub fn call_toSum(instance: *runtime.Instance, units: runtime.USVString) anyerror!CSSMathSum {
+    pub fn call_toSum(instance: *runtime.Instance, units: runtime.USVString) anyerror!*runtime.Instance {
         
         return try CSSNumericValueImpl.call_toSum(instance, units);
     }
 
-    pub fn call_div(instance: *runtime.Instance, values: CSSNumberish) anyerror!CSSNumericValue {
+    pub fn call_div(instance: *runtime.Instance, values: CSSNumberish) anyerror!*runtime.Instance {
         
         return try CSSNumericValueImpl.call_div(instance, values);
     }
@@ -165,7 +165,7 @@ pub const CSSNumericValue = struct {
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn call_parse(instance: *runtime.Instance, cssText: runtime.USVString) anyerror!CSSNumericValue {
+    pub fn call_parse(instance: *runtime.Instance, cssText: runtime.USVString) anyerror!*runtime.Instance {
         
         return try CSSNumericValueImpl.call_parse(instance, cssText);
     }

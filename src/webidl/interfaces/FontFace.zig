@@ -1,5 +1,5 @@
 //! Generated from: css-font-loading.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -263,15 +263,15 @@ pub const FontFace = struct {
         return try FontFaceImpl.get_loaded(instance);
     }
 
-    pub fn get_features(instance: *runtime.Instance) anyerror!FontFaceFeatures {
+    pub fn get_features(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try FontFaceImpl.get_features(instance);
     }
 
-    pub fn get_variations(instance: *runtime.Instance) anyerror!FontFaceVariations {
+    pub fn get_variations(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try FontFaceImpl.get_variations(instance);
     }
 
-    pub fn get_palettes(instance: *runtime.Instance) anyerror!FontFacePalettes {
+    pub fn get_palettes(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try FontFaceImpl.get_palettes(instance);
     }
 

@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -56,7 +52,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, star
 }
 
 /// Getter for region
-pub fn get_region(instance: *runtime.Instance) ImplError!interfaces.VTTRegion {
+pub fn get_region(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -116,7 +112,7 @@ pub fn get_text(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Setter for region
-pub fn set_region(instance: *runtime.Instance, value: interfaces.VTTRegion) ImplError!void {
+pub fn set_region(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -186,7 +182,7 @@ pub fn set_text(instance: *runtime.Instance, value: runtime.DOMString) ImplError
 }
 
 /// Operation: getCueAsHTML
-pub fn call_getCueAsHTML(instance: *runtime.Instance) ImplError!interfaces.DocumentFragment {
+pub fn call_getCueAsHTML(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

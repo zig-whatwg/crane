@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -53,7 +49,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for config
-pub fn get_config(instance: *runtime.Instance) ImplError!interfaces.FencedFrameConfig {
+pub fn get_config(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -71,7 +67,7 @@ pub fn get_height(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for sandbox
-pub fn get_sandbox(instance: *runtime.Instance) ImplError!interfaces.DOMTokenList {
+pub fn get_sandbox(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -83,7 +79,7 @@ pub fn get_allow(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Setter for config
-pub fn set_config(instance: *runtime.Instance, value: interfaces.FencedFrameConfig) ImplError!void {
+pub fn set_config(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

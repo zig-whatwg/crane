@@ -1,5 +1,5 @@
 //! Generated from: turtledove.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -85,11 +85,11 @@ pub const InterestGroupBiddingAndScoringScriptRunnerGlobalScope = struct {
         InterestGroupBiddingAndScoringScriptRunnerGlobalScopeImpl.deinit(instance);
     }
 
-    pub fn get_forDebuggingOnly(instance: *runtime.Instance) anyerror!ForDebuggingOnly {
+    pub fn get_forDebuggingOnly(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try InterestGroupBiddingAndScoringScriptRunnerGlobalScopeImpl.get_forDebuggingOnly(instance);
     }
 
-    pub fn get_realTimeReporting(instance: *runtime.Instance) anyerror!RealTimeReporting {
+    pub fn get_realTimeReporting(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try InterestGroupBiddingAndScoringScriptRunnerGlobalScopeImpl.get_realTimeReporting(instance);
     }
 

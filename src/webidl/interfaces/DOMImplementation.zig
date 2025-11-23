@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -86,21 +86,21 @@ pub const DOMImplementation = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createDocument(instance: *runtime.Instance, namespace: DOMString, qualifiedName: DOMString, doctype: DocumentType) anyerror!XMLDocument {
+    pub fn call_createDocument(instance: *runtime.Instance, namespace: DOMString, qualifiedName: DOMString, doctype: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMImplementationImpl.call_createDocument(instance, namespace, qualifiedName, doctype);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createDocumentType(instance: *runtime.Instance, name: DOMString, publicId: DOMString, systemId: DOMString) anyerror!DocumentType {
+    pub fn call_createDocumentType(instance: *runtime.Instance, name: DOMString, publicId: DOMString, systemId: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMImplementationImpl.call_createDocumentType(instance, name, publicId, systemId);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createHTMLDocument(instance: *runtime.Instance, title: DOMString) anyerror!Document {
+    pub fn call_createHTMLDocument(instance: *runtime.Instance, title: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMImplementationImpl.call_createHTMLDocument(instance, title);

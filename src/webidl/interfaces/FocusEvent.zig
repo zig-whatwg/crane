@@ -1,5 +1,5 @@
 //! Generated from: uievents.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -96,7 +96,7 @@ pub const FocusEvent = struct {
         return try FocusEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
-    pub fn get_relatedTarget(instance: *runtime.Instance) anyerror!EventTarget {
+    pub fn get_relatedTarget(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try FocusEventImpl.get_relatedTarget(instance);
     }
 

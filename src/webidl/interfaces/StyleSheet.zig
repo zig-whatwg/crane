@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -139,7 +139,7 @@ pub const StyleSheet = struct {
         return try StyleSheetImpl.get_ownerNode(instance);
     }
 
-    pub fn get_parentStyleSheet(instance: *runtime.Instance) anyerror!CSSStyleSheet {
+    pub fn get_parentStyleSheet(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try StyleSheetImpl.get_parentStyleSheet(instance);
     }
 
@@ -148,7 +148,7 @@ pub const StyleSheet = struct {
     }
 
     /// Extended attributes: [SameObject], [PutForwards=mediaText]
-    pub fn get_media(instance: *runtime.Instance) anyerror!MediaList {
+    pub fn get_media(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_media) |cached| {

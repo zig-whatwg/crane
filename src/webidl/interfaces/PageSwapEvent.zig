@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -98,11 +98,11 @@ pub const PageSwapEvent = struct {
         return try PageSwapEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
-    pub fn get_activation(instance: *runtime.Instance) anyerror!NavigationActivation {
+    pub fn get_activation(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try PageSwapEventImpl.get_activation(instance);
     }
 
-    pub fn get_viewTransition(instance: *runtime.Instance) anyerror!ViewTransition {
+    pub fn get_viewTransition(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try PageSwapEventImpl.get_viewTransition(instance);
     }
 

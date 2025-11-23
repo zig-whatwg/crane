@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -69,7 +69,7 @@ pub const NonElementParentNode = struct {
         NonElementParentNodeImpl.deinit(instance);
     }
 
-    pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!Element {
+    pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!*runtime.Instance {
         
         return try NonElementParentNodeImpl.call_getElementById(instance, elementId);
     }

@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -70,7 +66,7 @@ pub fn call_flatten(instance: *runtime.Instance, input: typedefs.JsonLdInput, co
 }
 
 /// Operation: fromRdf
-pub fn call_fromRdf(instance: *runtime.Instance, input: interfaces.RdfDataset, options: dictionaries.JsonLdOptions) ImplError!*const anyopaque {
+pub fn call_fromRdf(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.JsonLdOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = options;

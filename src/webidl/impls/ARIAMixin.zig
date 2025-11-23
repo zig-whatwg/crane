@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -47,7 +43,7 @@ pub fn get_role(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for ariaActiveDescendantElement
-pub fn get_ariaActiveDescendantElement(instance: *runtime.Instance) ImplError!interfaces.Element {
+pub fn get_ariaActiveDescendantElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -360,7 +356,7 @@ pub fn set_role(instance: *runtime.Instance, value: runtime.DOMString) ImplError
 }
 
 /// Setter for ariaActiveDescendantElement
-pub fn set_ariaActiveDescendantElement(instance: *runtime.Instance, value: interfaces.Element) ImplError!void {
+pub fn set_ariaActiveDescendantElement(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

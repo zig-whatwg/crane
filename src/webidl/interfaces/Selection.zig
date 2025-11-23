@@ -1,5 +1,5 @@
 //! Generated from: selection-api.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -157,7 +157,7 @@ pub const Selection = struct {
         SelectionImpl.deinit(instance);
     }
 
-    pub fn get_anchorNode(instance: *runtime.Instance) anyerror!Node {
+    pub fn get_anchorNode(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SelectionImpl.get_anchorNode(instance);
     }
 
@@ -165,7 +165,7 @@ pub const Selection = struct {
         return try SelectionImpl.get_anchorOffset(instance);
     }
 
-    pub fn get_focusNode(instance: *runtime.Instance) anyerror!Node {
+    pub fn get_focusNode(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SelectionImpl.get_focusNode(instance);
     }
 
@@ -189,7 +189,7 @@ pub const Selection = struct {
         return try SelectionImpl.get_direction(instance);
     }
 
-    pub fn call_setPosition(instance: *runtime.Instance, node: Node, offset: u32) anyerror!void {
+    pub fn call_setPosition(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) anyerror!void {
         
         return try SelectionImpl.call_setPosition(instance, node, offset);
     }
@@ -198,7 +198,7 @@ pub const Selection = struct {
         return try SelectionImpl.call_removeAllRanges(instance);
     }
 
-    pub fn call_selectAllChildren(instance: *runtime.Instance, node: Node) anyerror!void {
+    pub fn call_selectAllChildren(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
         
         return try SelectionImpl.call_selectAllChildren(instance, node);
     }
@@ -225,12 +225,12 @@ pub const Selection = struct {
         return try SelectionImpl.call_getComposedRanges(instance, options);
     }
 
-    pub fn call_collapse(instance: *runtime.Instance, node: Node, offset: u32) anyerror!void {
+    pub fn call_collapse(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) anyerror!void {
         
         return try SelectionImpl.call_collapse(instance, node, offset);
     }
 
-    pub fn call_extend(instance: *runtime.Instance, node: Node, offset: u32) anyerror!void {
+    pub fn call_extend(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) anyerror!void {
         
         return try SelectionImpl.call_extend(instance, node, offset);
     }
@@ -239,17 +239,17 @@ pub const Selection = struct {
         return try SelectionImpl.call_collapseToStart(instance);
     }
 
-    pub fn call_addRange(instance: *runtime.Instance, range: Range) anyerror!void {
+    pub fn call_addRange(instance: *runtime.Instance, range: *runtime.Instance) anyerror!void {
         
         return try SelectionImpl.call_addRange(instance, range);
     }
 
-    pub fn call_setBaseAndExtent(instance: *runtime.Instance, anchorNode: Node, anchorOffset: u32, focusNode: Node, focusOffset: u32) anyerror!void {
+    pub fn call_setBaseAndExtent(instance: *runtime.Instance, anchorNode: *runtime.Instance, anchorOffset: u32, focusNode: *runtime.Instance, focusOffset: u32) anyerror!void {
         
         return try SelectionImpl.call_setBaseAndExtent(instance, anchorNode, anchorOffset, focusNode, focusOffset);
     }
 
-    pub fn call_getRangeAt(instance: *runtime.Instance, index: u32) anyerror!Range {
+    pub fn call_getRangeAt(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
         
         return try SelectionImpl.call_getRangeAt(instance, index);
     }
@@ -259,12 +259,12 @@ pub const Selection = struct {
         return try SelectionImpl.call_modify(instance, alter, direction, granularity);
     }
 
-    pub fn call_containsNode(instance: *runtime.Instance, node: Node, allowPartialContainment: bool) anyerror!bool {
+    pub fn call_containsNode(instance: *runtime.Instance, node: *runtime.Instance, allowPartialContainment: bool) anyerror!bool {
         
         return try SelectionImpl.call_containsNode(instance, node, allowPartialContainment);
     }
 
-    pub fn call_removeRange(instance: *runtime.Instance, range: Range) anyerror!void {
+    pub fn call_removeRange(instance: *runtime.Instance, range: *runtime.Instance) anyerror!void {
         
         return try SelectionImpl.call_removeRange(instance, range);
     }

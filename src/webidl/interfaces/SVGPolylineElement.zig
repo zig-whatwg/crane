@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -249,7 +249,7 @@ pub const SVGPolylineElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_points(instance: *runtime.Instance) anyerror!SVGPointList {
+    pub fn get_points(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_points) |cached| {
@@ -261,7 +261,7 @@ pub const SVGPolylineElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_animatedPoints(instance: *runtime.Instance) anyerror!SVGPointList {
+    pub fn get_animatedPoints(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_animatedPoints) |cached| {

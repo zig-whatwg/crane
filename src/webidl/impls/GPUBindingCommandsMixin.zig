@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,7 +37,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: setBindGroup
-pub fn call_setBindGroup(instance: *runtime.Instance, index: typedefs.GPUIndex32, bindGroup: interfaces.GPUBindGroup, dynamicOffsets: *const anyopaque) ImplError!void {
+pub fn call_setBindGroup(instance: *runtime.Instance, index: typedefs.GPUIndex32, bindGroup: *runtime.Instance, dynamicOffsets: *const anyopaque) ImplError!void {
     _ = instance;
     _ = index;
     _ = bindGroup;

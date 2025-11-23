@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -59,19 +55,19 @@ pub fn get_supportedFrameRates(instance: *runtime.Instance) ImplError!*const any
 }
 
 /// Getter for renderState
-pub fn get_renderState(instance: *runtime.Instance) ImplError!interfaces.XRRenderState {
+pub fn get_renderState(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for inputSources
-pub fn get_inputSources(instance: *runtime.Instance) ImplError!interfaces.XRInputSourceArray {
+pub fn get_inputSources(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for trackedSources
-pub fn get_trackedSources(instance: *runtime.Instance) ImplError!interfaces.XRInputSourceArray {
+pub fn get_trackedSources(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

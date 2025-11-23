@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -336,12 +336,12 @@ pub const HTMLTableElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_caption(instance: *runtime.Instance) anyerror!HTMLTableCaptionElement {
+    pub fn get_caption(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLTableElementImpl.get_caption(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_caption(instance: *runtime.Instance, value: HTMLTableCaptionElement) anyerror!void {
+    pub fn set_caption(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -350,12 +350,12 @@ pub const HTMLTableElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_tHead(instance: *runtime.Instance) anyerror!HTMLTableSectionElement {
+    pub fn get_tHead(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLTableElementImpl.get_tHead(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_tHead(instance: *runtime.Instance, value: HTMLTableSectionElement) anyerror!void {
+    pub fn set_tHead(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -364,12 +364,12 @@ pub const HTMLTableElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_tFoot(instance: *runtime.Instance) anyerror!HTMLTableSectionElement {
+    pub fn get_tFoot(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLTableElementImpl.get_tFoot(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_tFoot(instance: *runtime.Instance, value: HTMLTableSectionElement) anyerror!void {
+    pub fn set_tFoot(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -378,7 +378,7 @@ pub const HTMLTableElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_tBodies(instance: *runtime.Instance) anyerror!HTMLCollection {
+    pub fn get_tBodies(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_tBodies) |cached| {
@@ -390,7 +390,7 @@ pub const HTMLTableElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_rows(instance: *runtime.Instance) anyerror!HTMLCollection {
+    pub fn get_rows(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_rows) |cached| {
@@ -527,7 +527,7 @@ pub const HTMLTableElement = struct {
         try HTMLTableElementImpl.set_cellSpacing(instance, value);
     }
 
-    pub fn call_createTFoot(instance: *runtime.Instance) anyerror!HTMLTableSectionElement {
+    pub fn call_createTFoot(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLTableElementImpl.call_createTFoot(instance);
     }
 
@@ -540,20 +540,20 @@ pub const HTMLTableElement = struct {
         return try HTMLTableElementImpl.call_deleteTHead(instance);
     }
 
-    pub fn call_createCaption(instance: *runtime.Instance) anyerror!HTMLTableCaptionElement {
+    pub fn call_createCaption(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLTableElementImpl.call_createCaption(instance);
     }
 
-    pub fn call_insertRow(instance: *runtime.Instance, index: i32) anyerror!HTMLTableRowElement {
+    pub fn call_insertRow(instance: *runtime.Instance, index: i32) anyerror!*runtime.Instance {
         
         return try HTMLTableElementImpl.call_insertRow(instance, index);
     }
 
-    pub fn call_createTBody(instance: *runtime.Instance) anyerror!HTMLTableSectionElement {
+    pub fn call_createTBody(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLTableElementImpl.call_createTBody(instance);
     }
 
-    pub fn call_createTHead(instance: *runtime.Instance) anyerror!HTMLTableSectionElement {
+    pub fn call_createTHead(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLTableElementImpl.call_createTHead(instance);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -98,7 +98,7 @@ pub const BluetoothRemoteGATTServer = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_device(instance: *runtime.Instance) anyerror!BluetoothDevice {
+    pub fn get_device(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_device) |cached| {

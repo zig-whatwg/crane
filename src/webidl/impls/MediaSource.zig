@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -53,19 +49,19 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for handle
-pub fn get_handle(instance: *runtime.Instance) ImplError!interfaces.MediaSourceHandle {
+pub fn get_handle(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for sourceBuffers
-pub fn get_sourceBuffers(instance: *runtime.Instance) ImplError!interfaces.SourceBufferList {
+pub fn get_sourceBuffers(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for activeSourceBuffers
-pub fn get_activeSourceBuffers(instance: *runtime.Instance) ImplError!interfaces.SourceBufferList {
+pub fn get_activeSourceBuffers(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -156,14 +152,14 @@ pub fn call_clearLiveSeekableRange(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: addSourceBuffer
-pub fn call_addSourceBuffer(instance: *runtime.Instance, @"type": runtime.DOMString) ImplError!interfaces.SourceBuffer {
+pub fn call_addSourceBuffer(instance: *runtime.Instance, @"type": runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = @"type";
     return error.NotImplemented;
 }
 
 /// Operation: removeSourceBuffer
-pub fn call_removeSourceBuffer(instance: *runtime.Instance, sourceBuffer: interfaces.SourceBuffer) ImplError!void {
+pub fn call_removeSourceBuffer(instance: *runtime.Instance, sourceBuffer: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = sourceBuffer;
     return error.NotImplemented;

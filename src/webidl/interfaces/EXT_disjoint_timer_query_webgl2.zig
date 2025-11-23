@@ -1,5 +1,5 @@
 //! Generated from: EXT_disjoint_timer_query_webgl2.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -115,7 +115,7 @@ pub const EXT_disjoint_timer_query_webgl2 = struct {
         EXT_disjoint_timer_query_webgl2Impl.deinit(instance);
     }
 
-    pub fn call_queryCounterEXT(instance: *runtime.Instance, query: WebGLQuery, target: GLenum) anyerror!void {
+    pub fn call_queryCounterEXT(instance: *runtime.Instance, query: *runtime.Instance, target: GLenum) anyerror!void {
         
         return try EXT_disjoint_timer_query_webgl2Impl.call_queryCounterEXT(instance, query, target);
     }

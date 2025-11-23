@@ -1,5 +1,5 @@
 //! Generated from: web-locks.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -73,7 +73,7 @@ pub const NavigatorLocks = struct {
         NavigatorLocksImpl.deinit(instance);
     }
 
-    pub fn get_locks(instance: *runtime.Instance) anyerror!LockManager {
+    pub fn get_locks(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NavigatorLocksImpl.get_locks(instance);
     }
 

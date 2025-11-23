@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -55,13 +51,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for receiver
-pub fn get_receiver(instance: *runtime.Instance) ImplError!interfaces.RTCRtpReceiver {
+pub fn get_receiver(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for track
-pub fn get_track(instance: *runtime.Instance) ImplError!interfaces.MediaStreamTrack {
+pub fn get_track(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -73,7 +69,7 @@ pub fn get_streams(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Getter for transceiver
-pub fn get_transceiver(instance: *runtime.Instance) ImplError!interfaces.RTCRtpTransceiver {
+pub fn get_transceiver(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

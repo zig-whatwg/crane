@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -53,7 +49,7 @@ pub fn get_lost(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Operation: dispatch
-pub fn call_dispatch(instance: *runtime.Instance, graph: interfaces.MLGraph, inputs: typedefs.MLNamedTensors, outputs: typedefs.MLNamedTensors) ImplError!void {
+pub fn call_dispatch(instance: *runtime.Instance, graph: *runtime.Instance, inputs: typedefs.MLNamedTensors, outputs: typedefs.MLNamedTensors) ImplError!void {
     _ = instance;
     _ = graph;
     _ = inputs;
@@ -68,7 +64,7 @@ pub fn call_opSupportLimits(instance: *runtime.Instance) ImplError!dictionaries.
 }
 
 /// Operation: writeTensor
-pub fn call_writeTensor(instance: *runtime.Instance, tensor: interfaces.MLTensor, inputData: typedefs.AllowSharedBufferSource) ImplError!void {
+pub fn call_writeTensor(instance: *runtime.Instance, tensor: *runtime.Instance, inputData: typedefs.AllowSharedBufferSource) ImplError!void {
     _ = instance;
     _ = tensor;
     _ = inputData;
@@ -76,7 +72,7 @@ pub fn call_writeTensor(instance: *runtime.Instance, tensor: interfaces.MLTensor
 }
 
 /// Operation: readTensor
-pub fn call_readTensor(instance: *runtime.Instance, tensor: interfaces.MLTensor) ImplError!*const anyopaque {
+pub fn call_readTensor(instance: *runtime.Instance, tensor: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     _ = tensor;
     return error.NotImplemented;

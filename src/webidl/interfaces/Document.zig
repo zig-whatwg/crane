@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -1235,7 +1235,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_implementation(instance: *runtime.Instance) anyerror!DOMImplementation {
+    pub fn get_implementation(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_implementation) |cached| {
@@ -1274,16 +1274,16 @@ pub const Document = struct {
         return try DocumentImpl.get_contentType(instance);
     }
 
-    pub fn get_doctype(instance: *runtime.Instance) anyerror!DocumentType {
+    pub fn get_doctype(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentImpl.get_doctype(instance);
     }
 
-    pub fn get_documentElement(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_documentElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentImpl.get_documentElement(instance);
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_fragmentDirective(instance: *runtime.Instance) anyerror!FragmentDirective {
+    pub fn get_fragmentDirective(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_fragmentDirective) |cached| {
@@ -1332,7 +1332,7 @@ pub const Document = struct {
         try DocumentImpl.set_onfullscreenerror(instance, value);
     }
 
-    pub fn get_timeline(instance: *runtime.Instance) anyerror!DocumentTimeline {
+    pub fn get_timeline(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentImpl.get_timeline(instance);
     }
 
@@ -1376,20 +1376,20 @@ pub const Document = struct {
         return try DocumentImpl.get_wasDiscarded(instance);
     }
 
-    pub fn get_namedFlows(instance: *runtime.Instance) anyerror!NamedFlowMap {
+    pub fn get_namedFlows(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentImpl.get_namedFlows(instance);
     }
 
-    pub fn get_rootElement(instance: *runtime.Instance) anyerror!SVGSVGElement {
+    pub fn get_rootElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentImpl.get_rootElement(instance);
     }
 
-    pub fn get_activeViewTransition(instance: *runtime.Instance) anyerror!ViewTransition {
+    pub fn get_activeViewTransition(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentImpl.get_activeViewTransition(instance);
     }
 
     /// Extended attributes: [PutForwards=href], [LegacyUnforgeable]
-    pub fn get_location(instance: *runtime.Instance) anyerror!Location {
+    pub fn get_location(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentImpl.get_location(instance);
     }
 
@@ -1450,12 +1450,12 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_body(instance: *runtime.Instance) anyerror!HTMLElement {
+    pub fn get_body(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentImpl.get_body(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_body(instance: *runtime.Instance, value: HTMLElement) anyerror!void {
+    pub fn set_body(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1463,12 +1463,12 @@ pub const Document = struct {
         try DocumentImpl.set_body(instance, value);
     }
 
-    pub fn get_head(instance: *runtime.Instance) anyerror!HTMLHeadElement {
+    pub fn get_head(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentImpl.get_head(instance);
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_images(instance: *runtime.Instance) anyerror!HTMLCollection {
+    pub fn get_images(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_images) |cached| {
@@ -1480,7 +1480,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_embeds(instance: *runtime.Instance) anyerror!HTMLCollection {
+    pub fn get_embeds(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_embeds) |cached| {
@@ -1492,7 +1492,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_plugins(instance: *runtime.Instance) anyerror!HTMLCollection {
+    pub fn get_plugins(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_plugins) |cached| {
@@ -1504,7 +1504,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_links(instance: *runtime.Instance) anyerror!HTMLCollection {
+    pub fn get_links(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_links) |cached| {
@@ -1516,7 +1516,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_forms(instance: *runtime.Instance) anyerror!HTMLCollection {
+    pub fn get_forms(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_forms) |cached| {
@@ -1528,7 +1528,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_scripts(instance: *runtime.Instance) anyerror!HTMLCollection {
+    pub fn get_scripts(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_scripts) |cached| {
@@ -1658,7 +1658,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_anchors(instance: *runtime.Instance) anyerror!HTMLCollection {
+    pub fn get_anchors(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_anchors) |cached| {
@@ -1670,7 +1670,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_applets(instance: *runtime.Instance) anyerror!HTMLCollection {
+    pub fn get_applets(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_applets) |cached| {
@@ -1682,7 +1682,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_all(instance: *runtime.Instance) anyerror!HTMLAllCollection {
+    pub fn get_all(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_all) |cached| {
@@ -1693,12 +1693,12 @@ pub const Document = struct {
         return value;
     }
 
-    pub fn get_scrollingElement(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_scrollingElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentImpl.get_scrollingElement(instance);
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_permissionsPolicy(instance: *runtime.Instance) anyerror!PermissionsPolicy {
+    pub fn get_permissionsPolicy(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_permissionsPolicy) |cached| {
@@ -1709,29 +1709,29 @@ pub const Document = struct {
         return value;
     }
 
-    pub fn get_fonts(instance: *runtime.Instance) anyerror!FontFaceSet {
+    pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentImpl.get_fonts(instance);
     }
 
-    pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!CustomElementRegistry {
+    pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentImpl.get_customElementRegistry(instance);
     }
 
     /// Extended attributes: [LegacyLenientSetter]
-    pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentImpl.get_fullscreenElement(instance);
     }
 
-    pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentImpl.get_pictureInPictureElement(instance);
     }
 
-    pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentImpl.get_pointerLockElement(instance);
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_styleSheets(instance: *runtime.Instance) anyerror!StyleSheetList {
+    pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_styleSheets) |cached| {
@@ -1750,12 +1750,12 @@ pub const Document = struct {
         try DocumentImpl.set_adoptedStyleSheets(instance, value);
     }
 
-    pub fn get_activeElement(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_activeElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentImpl.get_activeElement(instance);
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_children(instance: *runtime.Instance) anyerror!HTMLCollection {
+    pub fn get_children(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_children) |cached| {
@@ -1766,11 +1766,11 @@ pub const Document = struct {
         return value;
     }
 
-    pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentImpl.get_firstElementChild(instance);
     }
 
-    pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentImpl.get_lastElementChild(instance);
     }
 
@@ -2633,7 +2633,7 @@ pub const Document = struct {
         return try DocumentImpl.call_queryCommandState(instance, commandId);
     }
 
-    pub fn call_parseHTMLUnsafe(instance: *runtime.Instance, html: *const anyopaque) anyerror!Document {
+    pub fn call_parseHTMLUnsafe(instance: *runtime.Instance, html: *const anyopaque) anyerror!*runtime.Instance {
         
         return try DocumentImpl.call_parseHTMLUnsafe(instance, html);
     }
@@ -2645,19 +2645,19 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createExpression(instance: *runtime.Instance, expression: DOMString, resolver: XPathNSResolver) anyerror!XPathExpression {
+    pub fn call_createExpression(instance: *runtime.Instance, expression: DOMString, resolver: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DocumentImpl.call_createExpression(instance, expression, resolver);
     }
 
-    pub fn call_elementFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyerror!Element {
+    pub fn call_elementFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyerror!*runtime.Instance {
         
         return try DocumentImpl.call_elementFromPoint(instance, x, y);
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
-    pub fn call_createElement(instance: *runtime.Instance, localName: DOMString, options: *const anyopaque) anyerror!Element {
+    pub fn call_createElement(instance: *runtime.Instance, localName: DOMString, options: *const anyopaque) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -2681,7 +2681,7 @@ pub const Document = struct {
         return try DocumentImpl.call_prepend(instance, nodes);
     }
 
-    pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!DOMQuad {
+    pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!*runtime.Instance {
         
         return try DocumentImpl.call_convertQuadFromNode(instance, quad, from, options);
     }
@@ -2702,7 +2702,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_open(instance: *runtime.Instance, unused1: DOMString, unused2: DOMString) anyerror!Document {
+    pub fn call_open(instance: *runtime.Instance, unused1: DOMString, unused2: DOMString) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -2730,7 +2730,7 @@ pub const Document = struct {
         return try DocumentImpl.call_execCommand(instance, commandId, showUI, value);
     }
 
-    pub fn call_measureElement(instance: *runtime.Instance, element: Element) anyerror!FontMetrics {
+    pub fn call_measureElement(instance: *runtime.Instance, element: *runtime.Instance) anyerror!*runtime.Instance {
         
         return try DocumentImpl.call_measureElement(instance, element);
     }
@@ -2746,7 +2746,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createAttribute(instance: *runtime.Instance, localName: DOMString) anyerror!Attr {
+    pub fn call_createAttribute(instance: *runtime.Instance, localName: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DocumentImpl.call_createAttribute(instance, localName);
@@ -2761,7 +2761,7 @@ pub const Document = struct {
         return try DocumentImpl.call_queryCommandIndeterm(instance, commandId);
     }
 
-    pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: DOMString, localName: DOMString) anyerror!HTMLCollection {
+    pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: DOMString, localName: DOMString) anyerror!*runtime.Instance {
         
         return try DocumentImpl.call_getElementsByTagNameNS(instance, namespace, localName);
     }
@@ -2772,14 +2772,14 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createProcessingInstruction(instance: *runtime.Instance, target: DOMString, data: DOMString) anyerror!ProcessingInstruction {
+    pub fn call_createProcessingInstruction(instance: *runtime.Instance, target: DOMString, data: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DocumentImpl.call_createProcessingInstruction(instance, target, data);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createEvent(instance: *runtime.Instance, interface: DOMString) anyerror!Event {
+    pub fn call_createEvent(instance: *runtime.Instance, interface: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DocumentImpl.call_createEvent(instance, interface);
@@ -2800,7 +2800,7 @@ pub const Document = struct {
         return try DocumentImpl.call_getBoxQuads(instance, options);
     }
 
-    pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!DOMPoint {
+    pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!*runtime.Instance {
         
         return try DocumentImpl.call_convertPointFromNode(instance, point, from, options);
     }
@@ -2809,22 +2809,22 @@ pub const Document = struct {
         return try DocumentImpl.call_getAnimations(instance);
     }
 
-    pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: DOMString) anyerror!HTMLCollection {
+    pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: DOMString) anyerror!*runtime.Instance {
         
         return try DocumentImpl.call_getElementsByClassName(instance, classNames);
     }
 
-    pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!HTMLCollection {
+    pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!*runtime.Instance {
         
         return try DocumentImpl.call_getElementsByTagName(instance, qualifiedName);
     }
 
-    pub fn call_evaluate(instance: *runtime.Instance, expression: DOMString, contextNode: Node, resolver: XPathNSResolver, @"type": u16, result: XPathResult) anyerror!XPathResult {
+    pub fn call_evaluate(instance: *runtime.Instance, expression: DOMString, contextNode: *runtime.Instance, resolver: *runtime.Instance, @"type": u16, result: *runtime.Instance) anyerror!*runtime.Instance {
         
         return try DocumentImpl.call_evaluate(instance, expression, contextNode, resolver, @"type", result);
     }
 
-    pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!Element {
+    pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!*runtime.Instance {
         
         return try DocumentImpl.call_querySelector(instance, selectors);
     }
@@ -2834,7 +2834,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
-    pub fn call_importNode(instance: *runtime.Instance, node: Node, options: *const anyopaque) anyerror!Node {
+    pub fn call_importNode(instance: *runtime.Instance, node: *runtime.Instance, options: *const anyopaque) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -2845,7 +2845,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createCDATASection(instance: *runtime.Instance, data: DOMString) anyerror!CDATASection {
+    pub fn call_createCDATASection(instance: *runtime.Instance, data: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DocumentImpl.call_createCDATASection(instance, data);
@@ -2857,18 +2857,18 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createRange(instance: *runtime.Instance) anyerror!Range {
+    pub fn call_createRange(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         return try DocumentImpl.call_createRange(instance);
     }
 
-    pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!Element {
+    pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!*runtime.Instance {
         
         return try DocumentImpl.call_getElementById(instance, elementId);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createAttributeNS(instance: *runtime.Instance, namespace: DOMString, qualifiedName: DOMString) anyerror!Attr {
+    pub fn call_createAttributeNS(instance: *runtime.Instance, namespace: DOMString, qualifiedName: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DocumentImpl.call_createAttributeNS(instance, namespace, qualifiedName);
@@ -2883,7 +2883,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_adoptNode(instance: *runtime.Instance, node: Node) anyerror!Node {
+    pub fn call_adoptNode(instance: *runtime.Instance, node: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -2893,20 +2893,20 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createTextNode(instance: *runtime.Instance, data: DOMString) anyerror!Text {
+    pub fn call_createTextNode(instance: *runtime.Instance, data: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DocumentImpl.call_createTextNode(instance, data);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createTreeWalker(instance: *runtime.Instance, root: Node, whatToShow: u32, filter: NodeFilter) anyerror!TreeWalker {
+    pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: u32, filter: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DocumentImpl.call_createTreeWalker(instance, root, whatToShow, filter);
     }
 
-    pub fn call_getElementsByName(instance: *runtime.Instance, elementName: DOMString) anyerror!NodeList {
+    pub fn call_getElementsByName(instance: *runtime.Instance, elementName: DOMString) anyerror!*runtime.Instance {
         
         return try DocumentImpl.call_getElementsByName(instance, elementName);
     }
@@ -2932,7 +2932,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_moveBefore(instance: *runtime.Instance, node: Node, child: Node) anyerror!void {
+    pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -2941,7 +2941,7 @@ pub const Document = struct {
         return try DocumentImpl.call_moveBefore(instance, node, child);
     }
 
-    pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: DOMRectReadOnly, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!DOMQuad {
+    pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!*runtime.Instance {
         
         return try DocumentImpl.call_convertRectFromNode(instance, rect, from, options);
     }
@@ -2951,30 +2951,30 @@ pub const Document = struct {
         return try DocumentImpl.call_queryCommandValue(instance, commandId);
     }
 
-    pub fn call_caretPositionFromPoint(instance: *runtime.Instance, x: f64, y: f64, options: CaretPositionFromPointOptions) anyerror!CaretPosition {
+    pub fn call_caretPositionFromPoint(instance: *runtime.Instance, x: f64, y: f64, options: CaretPositionFromPointOptions) anyerror!*runtime.Instance {
         
         return try DocumentImpl.call_caretPositionFromPoint(instance, x, y, options);
     }
 
-    pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: *const anyopaque) anyerror!ViewTransition {
+    pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: *const anyopaque) anyerror!*runtime.Instance {
         
         return try DocumentImpl.call_startViewTransition(instance, callbackOptions);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createComment(instance: *runtime.Instance, data: DOMString) anyerror!Comment {
+    pub fn call_createComment(instance: *runtime.Instance, data: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DocumentImpl.call_createComment(instance, data);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createDocumentFragment(instance: *runtime.Instance) anyerror!DocumentFragment {
+    pub fn call_createDocumentFragment(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         return try DocumentImpl.call_createDocumentFragment(instance);
     }
 
-    pub fn call_getSelection(instance: *runtime.Instance) anyerror!Selection {
+    pub fn call_getSelection(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentImpl.call_getSelection(instance);
     }
 
@@ -2992,7 +2992,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
-    pub fn call_createElementNS(instance: *runtime.Instance, namespace: DOMString, qualifiedName: DOMString, options: *const anyopaque) anyerror!Element {
+    pub fn call_createElementNS(instance: *runtime.Instance, namespace: DOMString, qualifiedName: DOMString, options: *const anyopaque) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -3007,7 +3007,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: DOMString) anyerror!NodeList {
+    pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DocumentImpl.call_querySelectorAll(instance, selectors);
@@ -3019,19 +3019,19 @@ pub const Document = struct {
         return try DocumentImpl.call_browsingTopics(instance, options);
     }
 
-    pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: Node) anyerror!Node {
+    pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime.Instance) anyerror!*runtime.Instance {
         
         return try DocumentImpl.call_createNSResolver(instance, nodeResolver);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createNodeIterator(instance: *runtime.Instance, root: Node, whatToShow: u32, filter: NodeFilter) anyerror!NodeIterator {
+    pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: u32, filter: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DocumentImpl.call_createNodeIterator(instance, root, whatToShow, filter);
     }
 
-    pub fn call_measureText(instance: *runtime.Instance, text: DOMString, styleMap: StylePropertyMapReadOnly) anyerror!FontMetrics {
+    pub fn call_measureText(instance: *runtime.Instance, text: DOMString, styleMap: *runtime.Instance) anyerror!*runtime.Instance {
         
         return try DocumentImpl.call_measureText(instance, text, styleMap);
     }

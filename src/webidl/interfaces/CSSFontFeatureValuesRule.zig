@@ -1,5 +1,5 @@
 //! Generated from: css-fonts.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -118,31 +118,31 @@ pub const CSSFontFeatureValuesRule = struct {
         try CSSFontFeatureValuesRuleImpl.set_fontFamily(instance, value);
     }
 
-    pub fn get_annotation(instance: *runtime.Instance) anyerror!CSSFontFeatureValuesMap {
+    pub fn get_annotation(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSFontFeatureValuesRuleImpl.get_annotation(instance);
     }
 
-    pub fn get_ornaments(instance: *runtime.Instance) anyerror!CSSFontFeatureValuesMap {
+    pub fn get_ornaments(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSFontFeatureValuesRuleImpl.get_ornaments(instance);
     }
 
-    pub fn get_stylistic(instance: *runtime.Instance) anyerror!CSSFontFeatureValuesMap {
+    pub fn get_stylistic(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSFontFeatureValuesRuleImpl.get_stylistic(instance);
     }
 
-    pub fn get_swash(instance: *runtime.Instance) anyerror!CSSFontFeatureValuesMap {
+    pub fn get_swash(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSFontFeatureValuesRuleImpl.get_swash(instance);
     }
 
-    pub fn get_characterVariant(instance: *runtime.Instance) anyerror!CSSFontFeatureValuesMap {
+    pub fn get_characterVariant(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSFontFeatureValuesRuleImpl.get_characterVariant(instance);
     }
 
-    pub fn get_styleset(instance: *runtime.Instance) anyerror!CSSFontFeatureValuesMap {
+    pub fn get_styleset(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSFontFeatureValuesRuleImpl.get_styleset(instance);
     }
 
-    pub fn get_historicalForms(instance: *runtime.Instance) anyerror!CSSFontFeatureValuesMap {
+    pub fn get_historicalForms(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSFontFeatureValuesRuleImpl.get_historicalForms(instance);
     }
 

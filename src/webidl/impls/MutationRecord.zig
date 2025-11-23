@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -47,31 +43,31 @@ pub fn get_type(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for target
-pub fn get_target(instance: *runtime.Instance) ImplError!interfaces.Node {
+pub fn get_target(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for addedNodes
-pub fn get_addedNodes(instance: *runtime.Instance) ImplError!interfaces.NodeList {
+pub fn get_addedNodes(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for removedNodes
-pub fn get_removedNodes(instance: *runtime.Instance) ImplError!interfaces.NodeList {
+pub fn get_removedNodes(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for previousSibling
-pub fn get_previousSibling(instance: *runtime.Instance) ImplError!interfaces.Node {
+pub fn get_previousSibling(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for nextSibling
-pub fn get_nextSibling(instance: *runtime.Instance) ImplError!interfaces.Node {
+pub fn get_nextSibling(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

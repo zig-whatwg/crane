@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -77,13 +73,13 @@ pub fn get_mode(instance: *runtime.Instance) ImplError!enums.TextTrackMode {
 }
 
 /// Getter for cues
-pub fn get_cues(instance: *runtime.Instance) ImplError!interfaces.TextTrackCueList {
+pub fn get_cues(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for activeCues
-pub fn get_activeCues(instance: *runtime.Instance) ImplError!interfaces.TextTrackCueList {
+pub fn get_activeCues(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -95,7 +91,7 @@ pub fn get_oncuechange(instance: *runtime.Instance) ImplError!typedefs.EventHand
 }
 
 /// Getter for sourceBuffer
-pub fn get_sourceBuffer(instance: *runtime.Instance) ImplError!interfaces.SourceBuffer {
+pub fn get_sourceBuffer(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -115,14 +111,14 @@ pub fn set_oncuechange(instance: *runtime.Instance, value: typedefs.EventHandler
 }
 
 /// Operation: addCue
-pub fn call_addCue(instance: *runtime.Instance, cue: interfaces.TextTrackCue) ImplError!void {
+pub fn call_addCue(instance: *runtime.Instance, cue: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = cue;
     return error.NotImplemented;
 }
 
 /// Operation: removeCue
-pub fn call_removeCue(instance: *runtime.Instance, cue: interfaces.TextTrackCue) ImplError!void {
+pub fn call_removeCue(instance: *runtime.Instance, cue: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = cue;
     return error.NotImplemented;

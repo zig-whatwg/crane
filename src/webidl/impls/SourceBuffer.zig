@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -53,7 +49,7 @@ pub fn get_updating(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Getter for buffered
-pub fn get_buffered(instance: *runtime.Instance) ImplError!interfaces.TimeRanges {
+pub fn get_buffered(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -65,19 +61,19 @@ pub fn get_timestampOffset(instance: *runtime.Instance) ImplError!f64 {
 }
 
 /// Getter for audioTracks
-pub fn get_audioTracks(instance: *runtime.Instance) ImplError!interfaces.AudioTrackList {
+pub fn get_audioTracks(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for videoTracks
-pub fn get_videoTracks(instance: *runtime.Instance) ImplError!interfaces.VideoTrackList {
+pub fn get_videoTracks(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for textTracks
-pub fn get_textTracks(instance: *runtime.Instance) ImplError!interfaces.TextTrackList {
+pub fn get_textTracks(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

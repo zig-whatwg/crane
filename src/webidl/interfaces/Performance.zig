@@ -1,5 +1,5 @@
 //! Generated from: hr-time.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -168,7 +168,7 @@ pub const Performance = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_eventCounts(instance: *runtime.Instance) anyerror!EventCounts {
+    pub fn get_eventCounts(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_eventCounts) |cached| {
@@ -184,7 +184,7 @@ pub const Performance = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_timing(instance: *runtime.Instance) anyerror!PerformanceTiming {
+    pub fn get_timing(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_timing) |cached| {
@@ -196,7 +196,7 @@ pub const Performance = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_navigation(instance: *runtime.Instance) anyerror!PerformanceNavigation {
+    pub fn get_navigation(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_navigation) |cached| {
@@ -215,7 +215,7 @@ pub const Performance = struct {
         try PerformanceImpl.set_onresourcetimingbufferfull(instance, value);
     }
 
-    pub fn call_measure(instance: *runtime.Instance, measureName: DOMString, startOrMeasureOptions: *const anyopaque, endMark: DOMString) anyerror!PerformanceMeasure {
+    pub fn call_measure(instance: *runtime.Instance, measureName: DOMString, startOrMeasureOptions: *const anyopaque, endMark: DOMString) anyerror!*runtime.Instance {
         
         return try PerformanceImpl.call_measure(instance, measureName, startOrMeasureOptions, endMark);
     }
@@ -234,7 +234,7 @@ pub const Performance = struct {
         return try PerformanceImpl.call_clearMeasures(instance, measureName);
     }
 
-    pub fn call_mark(instance: *runtime.Instance, markName: DOMString, markOptions: PerformanceMarkOptions) anyerror!PerformanceMark {
+    pub fn call_mark(instance: *runtime.Instance, markName: DOMString, markOptions: PerformanceMarkOptions) anyerror!*runtime.Instance {
         
         return try PerformanceImpl.call_mark(instance, markName, markOptions);
     }

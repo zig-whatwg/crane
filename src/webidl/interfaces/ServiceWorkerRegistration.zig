@@ -1,5 +1,5 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -179,20 +179,20 @@ pub const ServiceWorkerRegistration = struct {
         ServiceWorkerRegistrationImpl.deinit(instance);
     }
 
-    pub fn get_installing(instance: *runtime.Instance) anyerror!ServiceWorker {
+    pub fn get_installing(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ServiceWorkerRegistrationImpl.get_installing(instance);
     }
 
-    pub fn get_waiting(instance: *runtime.Instance) anyerror!ServiceWorker {
+    pub fn get_waiting(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ServiceWorkerRegistrationImpl.get_waiting(instance);
     }
 
-    pub fn get_active(instance: *runtime.Instance) anyerror!ServiceWorker {
+    pub fn get_active(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ServiceWorkerRegistrationImpl.get_active(instance);
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_navigationPreload(instance: *runtime.Instance) anyerror!NavigationPreloadManager {
+    pub fn get_navigationPreload(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_navigationPreload) |cached| {
@@ -219,12 +219,12 @@ pub const ServiceWorkerRegistration = struct {
         try ServiceWorkerRegistrationImpl.set_onupdatefound(instance, value);
     }
 
-    pub fn get_periodicSync(instance: *runtime.Instance) anyerror!PeriodicSyncManager {
+    pub fn get_periodicSync(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ServiceWorkerRegistrationImpl.get_periodicSync(instance);
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_cookies(instance: *runtime.Instance) anyerror!CookieStoreManager {
+    pub fn get_cookies(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_cookies) |cached| {
@@ -235,12 +235,12 @@ pub const ServiceWorkerRegistration = struct {
         return value;
     }
 
-    pub fn get_sync(instance: *runtime.Instance) anyerror!SyncManager {
+    pub fn get_sync(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ServiceWorkerRegistrationImpl.get_sync(instance);
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_index(instance: *runtime.Instance) anyerror!ContentIndex {
+    pub fn get_index(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_index) |cached| {
@@ -251,12 +251,12 @@ pub const ServiceWorkerRegistration = struct {
         return value;
     }
 
-    pub fn get_backgroundFetch(instance: *runtime.Instance) anyerror!BackgroundFetchManager {
+    pub fn get_backgroundFetch(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ServiceWorkerRegistrationImpl.get_backgroundFetch(instance);
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_paymentManager(instance: *runtime.Instance) anyerror!PaymentManager {
+    pub fn get_paymentManager(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_paymentManager) |cached| {
@@ -267,7 +267,7 @@ pub const ServiceWorkerRegistration = struct {
         return value;
     }
 
-    pub fn get_pushManager(instance: *runtime.Instance) anyerror!PushManager {
+    pub fn get_pushManager(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ServiceWorkerRegistrationImpl.get_pushManager(instance);
     }
 

@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -53,14 +49,14 @@ pub fn get_numberOfItems(instance: *runtime.Instance) ImplError!u32 {
 }
 
 /// Operation: removeItem
-pub fn call_removeItem(instance: *runtime.Instance, index: u32) ImplError!interfaces.SVGTransform {
+pub fn call_removeItem(instance: *runtime.Instance, index: u32) ImplError!*runtime.Instance {
     _ = instance;
     _ = index;
     return error.NotImplemented;
 }
 
 /// Operation: insertItemBefore
-pub fn call_insertItemBefore(instance: *runtime.Instance, newItem: interfaces.SVGTransform, index: u32) ImplError!interfaces.SVGTransform {
+pub fn call_insertItemBefore(instance: *runtime.Instance, newItem: *runtime.Instance, index: u32) ImplError!*runtime.Instance {
     _ = instance;
     _ = newItem;
     _ = index;
@@ -68,21 +64,21 @@ pub fn call_insertItemBefore(instance: *runtime.Instance, newItem: interfaces.SV
 }
 
 /// Operation: createSVGTransformFromMatrix
-pub fn call_createSVGTransformFromMatrix(instance: *runtime.Instance, matrix: dictionaries.DOMMatrix2DInit) ImplError!interfaces.SVGTransform {
+pub fn call_createSVGTransformFromMatrix(instance: *runtime.Instance, matrix: dictionaries.DOMMatrix2DInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = matrix;
     return error.NotImplemented;
 }
 
 /// Operation: getItem
-pub fn call_getItem(instance: *runtime.Instance, index: u32) ImplError!interfaces.SVGTransform {
+pub fn call_getItem(instance: *runtime.Instance, index: u32) ImplError!*runtime.Instance {
     _ = instance;
     _ = index;
     return error.NotImplemented;
 }
 
 /// Operation: replaceItem
-pub fn call_replaceItem(instance: *runtime.Instance, newItem: interfaces.SVGTransform, index: u32) ImplError!interfaces.SVGTransform {
+pub fn call_replaceItem(instance: *runtime.Instance, newItem: *runtime.Instance, index: u32) ImplError!*runtime.Instance {
     _ = instance;
     _ = newItem;
     _ = index;
@@ -96,20 +92,20 @@ pub fn call_clear(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: initialize
-pub fn call_initialize(instance: *runtime.Instance, newItem: interfaces.SVGTransform) ImplError!interfaces.SVGTransform {
+pub fn call_initialize(instance: *runtime.Instance, newItem: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = newItem;
     return error.NotImplemented;
 }
 
 /// Operation: consolidate
-pub fn call_consolidate(instance: *runtime.Instance) ImplError!interfaces.SVGTransform {
+pub fn call_consolidate(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: appendItem
-pub fn call_appendItem(instance: *runtime.Instance, newItem: interfaces.SVGTransform) ImplError!interfaces.SVGTransform {
+pub fn call_appendItem(instance: *runtime.Instance, newItem: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = newItem;
     return error.NotImplemented;

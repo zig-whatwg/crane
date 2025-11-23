@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -153,7 +153,7 @@ pub const Path2D = struct {
         return try Path2DImpl.call_ellipse(instance, x, y, radiusX, radiusY, rotation, startAngle, endAngle, counterclockwise);
     }
 
-    pub fn call_addPath(instance: *runtime.Instance, path: Path2D, transform: DOMMatrix2DInit) anyerror!void {
+    pub fn call_addPath(instance: *runtime.Instance, path: *runtime.Instance, transform: DOMMatrix2DInit) anyerror!void {
         
         return try Path2DImpl.call_addPath(instance, path, transform);
     }

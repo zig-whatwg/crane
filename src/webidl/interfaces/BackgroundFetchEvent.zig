@@ -1,5 +1,5 @@
 //! Generated from: background-fetch.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -95,7 +95,7 @@ pub const BackgroundFetchEvent = struct {
         return try BackgroundFetchEventImpl.call_constructor(allocator, ctx, @"type", init_data);
     }
 
-    pub fn get_registration(instance: *runtime.Instance) anyerror!BackgroundFetchRegistration {
+    pub fn get_registration(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try BackgroundFetchEventImpl.get_registration(instance);
     }
 

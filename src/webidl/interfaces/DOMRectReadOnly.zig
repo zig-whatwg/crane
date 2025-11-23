@@ -1,5 +1,5 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -154,7 +154,7 @@ pub const DOMRectReadOnly = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_fromRect(instance: *runtime.Instance, other: DOMRectInit) anyerror!DOMRectReadOnly {
+    pub fn call_fromRect(instance: *runtime.Instance, other: DOMRectInit) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMRectReadOnlyImpl.call_fromRect(instance, other);

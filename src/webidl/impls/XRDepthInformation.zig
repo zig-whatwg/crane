@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -53,7 +49,7 @@ pub fn get_height(instance: *runtime.Instance) ImplError!u32 {
 }
 
 /// Getter for normDepthBufferFromNormView
-pub fn get_normDepthBufferFromNormView(instance: *runtime.Instance) ImplError!interfaces.XRRigidTransform {
+pub fn get_normDepthBufferFromNormView(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -71,7 +67,7 @@ pub fn get_projectionMatrix(instance: *runtime.Instance) ImplError!*const anyopa
 }
 
 /// Getter for transform
-pub fn get_transform(instance: *runtime.Instance) ImplError!interfaces.XRRigidTransform {
+pub fn get_transform(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

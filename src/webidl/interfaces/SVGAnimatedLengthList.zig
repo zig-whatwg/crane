@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -83,7 +83,7 @@ pub const SVGAnimatedLengthList = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_baseVal(instance: *runtime.Instance) anyerror!SVGLengthList {
+    pub fn get_baseVal(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_baseVal) |cached| {
@@ -95,7 +95,7 @@ pub const SVGAnimatedLengthList = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_animVal(instance: *runtime.Instance) anyerror!SVGLengthList {
+    pub fn get_animVal(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_animVal) |cached| {

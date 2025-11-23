@@ -1,5 +1,5 @@
 //! Generated from: webrtc-encoded-transform.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -87,7 +87,7 @@ pub const SFrameKeyManagement = struct {
         try SFrameKeyManagementImpl.set_onerror(instance, value);
     }
 
-    pub fn call_setEncryptionKey(instance: *runtime.Instance, key: CryptoKey, keyID: CryptoKeyID) anyerror!*const anyopaque {
+    pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyID: CryptoKeyID) anyerror!*const anyopaque {
         
         return try SFrameKeyManagementImpl.call_setEncryptionKey(instance, key, keyID);
     }

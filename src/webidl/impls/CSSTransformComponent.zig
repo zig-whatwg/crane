@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -54,7 +50,7 @@ pub fn set_is2D(instance: *runtime.Instance, value: bool) ImplError!void {
 }
 
 /// Operation: toMatrix
-pub fn call_toMatrix(instance: *runtime.Instance) ImplError!interfaces.DOMMatrix {
+pub fn call_toMatrix(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

@@ -1,5 +1,5 @@
 //! Generated from: document-picture-in-picture.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -101,7 +101,7 @@ pub const DocumentPictureInPicture = struct {
         DocumentPictureInPictureImpl.deinit(instance);
     }
 
-    pub fn get_window(instance: *runtime.Instance) anyerror!Window {
+    pub fn get_window(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentPictureInPictureImpl.get_window(instance);
     }
 

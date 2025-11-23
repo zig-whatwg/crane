@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -53,7 +49,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for rows
-pub fn get_rows(instance: *runtime.Instance) ImplError!interfaces.HTMLCollection {
+pub fn get_rows(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -118,7 +114,7 @@ pub fn call_deleteRow(instance: *runtime.Instance, index: i32) ImplError!void {
 }
 
 /// Operation: insertRow
-pub fn call_insertRow(instance: *runtime.Instance, index: i32) ImplError!interfaces.HTMLTableRowElement {
+pub fn call_insertRow(instance: *runtime.Instance, index: i32) ImplError!*runtime.Instance {
     _ = instance;
     _ = index;
     return error.NotImplemented;

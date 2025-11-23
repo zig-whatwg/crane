@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -48,56 +44,56 @@ pub fn call_equals(instance: *runtime.Instance, value: typedefs.CSSNumberish) Im
 }
 
 /// Operation: max
-pub fn call_max(instance: *runtime.Instance, values: typedefs.CSSNumberish) ImplError!interfaces.CSSNumericValue {
+pub fn call_max(instance: *runtime.Instance, values: typedefs.CSSNumberish) ImplError!*runtime.Instance {
     _ = instance;
     _ = values;
     return error.NotImplemented;
 }
 
 /// Operation: sub
-pub fn call_sub(instance: *runtime.Instance, values: typedefs.CSSNumberish) ImplError!interfaces.CSSNumericValue {
+pub fn call_sub(instance: *runtime.Instance, values: typedefs.CSSNumberish) ImplError!*runtime.Instance {
     _ = instance;
     _ = values;
     return error.NotImplemented;
 }
 
 /// Operation: min
-pub fn call_min(instance: *runtime.Instance, values: typedefs.CSSNumberish) ImplError!interfaces.CSSNumericValue {
+pub fn call_min(instance: *runtime.Instance, values: typedefs.CSSNumberish) ImplError!*runtime.Instance {
     _ = instance;
     _ = values;
     return error.NotImplemented;
 }
 
 /// Operation: mul
-pub fn call_mul(instance: *runtime.Instance, values: typedefs.CSSNumberish) ImplError!interfaces.CSSNumericValue {
+pub fn call_mul(instance: *runtime.Instance, values: typedefs.CSSNumberish) ImplError!*runtime.Instance {
     _ = instance;
     _ = values;
     return error.NotImplemented;
 }
 
 /// Operation: add
-pub fn call_add(instance: *runtime.Instance, values: typedefs.CSSNumberish) ImplError!interfaces.CSSNumericValue {
+pub fn call_add(instance: *runtime.Instance, values: typedefs.CSSNumberish) ImplError!*runtime.Instance {
     _ = instance;
     _ = values;
     return error.NotImplemented;
 }
 
 /// Operation: to
-pub fn call_to(instance: *runtime.Instance, unit: runtime.USVString) ImplError!interfaces.CSSUnitValue {
+pub fn call_to(instance: *runtime.Instance, unit: runtime.USVString) ImplError!*runtime.Instance {
     _ = instance;
     _ = unit;
     return error.NotImplemented;
 }
 
 /// Operation: toSum
-pub fn call_toSum(instance: *runtime.Instance, units: runtime.USVString) ImplError!interfaces.CSSMathSum {
+pub fn call_toSum(instance: *runtime.Instance, units: runtime.USVString) ImplError!*runtime.Instance {
     _ = instance;
     _ = units;
     return error.NotImplemented;
 }
 
 /// Operation: div
-pub fn call_div(instance: *runtime.Instance, values: typedefs.CSSNumberish) ImplError!interfaces.CSSNumericValue {
+pub fn call_div(instance: *runtime.Instance, values: typedefs.CSSNumberish) ImplError!*runtime.Instance {
     _ = instance;
     _ = values;
     return error.NotImplemented;
@@ -110,7 +106,7 @@ pub fn call_type(instance: *runtime.Instance) ImplError!dictionaries.CSSNumericT
 }
 
 /// Operation: parse
-pub fn call_parse(instance: *runtime.Instance, cssText: runtime.USVString) ImplError!interfaces.CSSNumericValue {
+pub fn call_parse(instance: *runtime.Instance, cssText: runtime.USVString) ImplError!*runtime.Instance {
     _ = instance;
     _ = cssText;
     return error.NotImplemented;

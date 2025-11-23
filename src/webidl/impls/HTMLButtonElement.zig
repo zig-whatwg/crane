@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -59,7 +55,7 @@ pub fn get_command(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for commandForElement
-pub fn get_commandForElement(instance: *runtime.Instance) ImplError!interfaces.Element {
+pub fn get_commandForElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -71,7 +67,7 @@ pub fn get_disabled(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Getter for form
-pub fn get_form(instance: *runtime.Instance) ImplError!interfaces.HTMLFormElement {
+pub fn get_form(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -131,7 +127,7 @@ pub fn get_willValidate(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Getter for validity
-pub fn get_validity(instance: *runtime.Instance) ImplError!interfaces.ValidityState {
+pub fn get_validity(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -143,13 +139,13 @@ pub fn get_validationMessage(instance: *runtime.Instance) ImplError!runtime.DOMS
 }
 
 /// Getter for labels
-pub fn get_labels(instance: *runtime.Instance) ImplError!interfaces.NodeList {
+pub fn get_labels(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for popoverTargetElement
-pub fn get_popoverTargetElement(instance: *runtime.Instance) ImplError!interfaces.Element {
+pub fn get_popoverTargetElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -168,7 +164,7 @@ pub fn set_command(instance: *runtime.Instance, value: runtime.DOMString) ImplEr
 }
 
 /// Setter for commandForElement
-pub fn set_commandForElement(instance: *runtime.Instance, value: interfaces.Element) ImplError!void {
+pub fn set_commandForElement(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -238,7 +234,7 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) ImplErro
 }
 
 /// Setter for popoverTargetElement
-pub fn set_popoverTargetElement(instance: *runtime.Instance, value: interfaces.Element) ImplError!void {
+pub fn set_popoverTargetElement(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

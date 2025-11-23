@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -433,7 +433,7 @@ pub const OffscreenCanvasRenderingContext2D = struct {
         OffscreenCanvasRenderingContext2DImpl.deinit(instance);
     }
 
-    pub fn get_canvas(instance: *runtime.Instance) anyerror!OffscreenCanvas {
+    pub fn get_canvas(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try OffscreenCanvasRenderingContext2DImpl.get_canvas(instance);
     }
 
@@ -677,7 +677,7 @@ pub const OffscreenCanvasRenderingContext2D = struct {
         return try OffscreenCanvasRenderingContext2DImpl.call_clearRect(instance, x, y, w, h);
     }
 
-    pub fn call_createConicGradient(instance: *runtime.Instance, startAngle: f64, x: f64, y: f64) anyerror!CanvasGradient {
+    pub fn call_createConicGradient(instance: *runtime.Instance, startAngle: f64, x: f64, y: f64) anyerror!*runtime.Instance {
         
         return try OffscreenCanvasRenderingContext2DImpl.call_createConicGradient(instance, startAngle, x, y);
     }
@@ -714,7 +714,7 @@ pub const OffscreenCanvasRenderingContext2D = struct {
         return try OffscreenCanvasRenderingContext2DImpl.call_drawImage(instance, image, dx, dy);
     }
 
-    pub fn call_getImageData(instance: *runtime.Instance, sx: i32, sy: i32, sw: i32, sh: i32, settings: ImageDataSettings) anyerror!ImageData {
+    pub fn call_getImageData(instance: *runtime.Instance, sx: i32, sy: i32, sw: i32, sh: i32, settings: ImageDataSettings) anyerror!*runtime.Instance {
         // [EnforceRange] on sx
         if (!runtime.isInRange(i32, sx)) return error.TypeError;
         // [EnforceRange] on sy
@@ -733,12 +733,12 @@ pub const OffscreenCanvasRenderingContext2D = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getTransform(instance: *runtime.Instance) anyerror!DOMMatrix {
+    pub fn call_getTransform(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         return try OffscreenCanvasRenderingContext2DImpl.call_getTransform(instance);
     }
 
-    pub fn call_createRadialGradient(instance: *runtime.Instance, x0: f64, y0: f64, r0: f64, x1: f64, y1: f64, r1: f64) anyerror!CanvasGradient {
+    pub fn call_createRadialGradient(instance: *runtime.Instance, x0: f64, y0: f64, r0: f64, x1: f64, y1: f64, r1: f64) anyerror!*runtime.Instance {
         
         return try OffscreenCanvasRenderingContext2DImpl.call_createRadialGradient(instance, x0, y0, r0, x1, y1, r1);
     }
@@ -752,7 +752,7 @@ pub const OffscreenCanvasRenderingContext2D = struct {
         return try OffscreenCanvasRenderingContext2DImpl.call_roundRect(instance, x, y, w, h, radii);
     }
 
-    pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: DOMString) anyerror!CanvasPattern {
+    pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: DOMString) anyerror!*runtime.Instance {
         
         return try OffscreenCanvasRenderingContext2DImpl.call_createPattern(instance, image, repetition);
     }
@@ -813,7 +813,7 @@ pub const OffscreenCanvasRenderingContext2D = struct {
         return try OffscreenCanvasRenderingContext2DImpl.call_rotate(instance, angle);
     }
 
-    pub fn call_createImageData(instance: *runtime.Instance, sw: i32, sh: i32, settings: ImageDataSettings) anyerror!ImageData {
+    pub fn call_createImageData(instance: *runtime.Instance, sw: i32, sh: i32, settings: ImageDataSettings) anyerror!*runtime.Instance {
         // [EnforceRange] on sw
         if (!runtime.isInRange(i32, sw)) return error.TypeError;
         // [EnforceRange] on sh
@@ -832,7 +832,7 @@ pub const OffscreenCanvasRenderingContext2D = struct {
         return try OffscreenCanvasRenderingContext2DImpl.call_translate(instance, x, y);
     }
 
-    pub fn call_createLinearGradient(instance: *runtime.Instance, x0: f64, y0: f64, x1: f64, y1: f64) anyerror!CanvasGradient {
+    pub fn call_createLinearGradient(instance: *runtime.Instance, x0: f64, y0: f64, x1: f64, y1: f64) anyerror!*runtime.Instance {
         
         return try OffscreenCanvasRenderingContext2DImpl.call_createLinearGradient(instance, x0, y0, x1, y1);
     }
@@ -861,7 +861,7 @@ pub const OffscreenCanvasRenderingContext2D = struct {
         return try OffscreenCanvasRenderingContext2DImpl.call_fillText(instance, text, x, y, maxWidth);
     }
 
-    pub fn call_measureText(instance: *runtime.Instance, text: DOMString) anyerror!TextMetrics {
+    pub fn call_measureText(instance: *runtime.Instance, text: DOMString) anyerror!*runtime.Instance {
         
         return try OffscreenCanvasRenderingContext2DImpl.call_measureText(instance, text);
     }
@@ -871,7 +871,7 @@ pub const OffscreenCanvasRenderingContext2D = struct {
         return try OffscreenCanvasRenderingContext2DImpl.call_fill(instance, fillRule);
     }
 
-    pub fn call_putImageData(instance: *runtime.Instance, imageData: ImageData, dx: i32, dy: i32) anyerror!void {
+    pub fn call_putImageData(instance: *runtime.Instance, imageData: *runtime.Instance, dx: i32, dy: i32) anyerror!void {
         // [EnforceRange] on dx
         if (!runtime.isInRange(i32, dx)) return error.TypeError;
         // [EnforceRange] on dy

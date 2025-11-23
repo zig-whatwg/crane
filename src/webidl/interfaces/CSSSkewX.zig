@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -88,16 +88,16 @@ pub const CSSSkewX = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, ax: CSSNumericValue) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, ax: *runtime.Instance) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try CSSSkewXImpl.call_constructor(allocator, ctx, ax);
     }
 
-    pub fn get_ax(instance: *runtime.Instance) anyerror!CSSNumericValue {
+    pub fn get_ax(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSSkewXImpl.get_ax(instance);
     }
 
-    pub fn set_ax(instance: *runtime.Instance, value: CSSNumericValue) anyerror!void {
+    pub fn set_ax(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         try CSSSkewXImpl.set_ax(instance, value);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -109,7 +109,7 @@ pub const ToggleEvent = struct {
         return try ToggleEventImpl.get_newState(instance);
     }
 
-    pub fn get_source(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_source(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ToggleEventImpl.get_source(instance);
     }
 

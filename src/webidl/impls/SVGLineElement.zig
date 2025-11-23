@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,25 +37,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for x1
-pub fn get_x1(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedLength {
+pub fn get_x1(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for y1
-pub fn get_y1(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedLength {
+pub fn get_y1(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for x2
-pub fn get_x2(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedLength {
+pub fn get_x2(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for y2
-pub fn get_y2(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedLength {
+pub fn get_y2(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

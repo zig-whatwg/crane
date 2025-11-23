@@ -1,5 +1,5 @@
 //! Generated from: webnn.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -123,7 +123,7 @@ pub const MLContext = struct {
         return try MLContextImpl.get_lost(instance);
     }
 
-    pub fn call_dispatch(instance: *runtime.Instance, graph: MLGraph, inputs: MLNamedTensors, outputs: MLNamedTensors) anyerror!void {
+    pub fn call_dispatch(instance: *runtime.Instance, graph: *runtime.Instance, inputs: MLNamedTensors, outputs: MLNamedTensors) anyerror!void {
         
         return try MLContextImpl.call_dispatch(instance, graph, inputs, outputs);
     }
@@ -132,12 +132,12 @@ pub const MLContext = struct {
         return try MLContextImpl.call_opSupportLimits(instance);
     }
 
-    pub fn call_writeTensor(instance: *runtime.Instance, tensor: MLTensor, inputData: AllowSharedBufferSource) anyerror!void {
+    pub fn call_writeTensor(instance: *runtime.Instance, tensor: *runtime.Instance, inputData: AllowSharedBufferSource) anyerror!void {
         
         return try MLContextImpl.call_writeTensor(instance, tensor, inputData);
     }
 
-    pub fn call_readTensor(instance: *runtime.Instance, tensor: MLTensor) anyerror!*const anyopaque {
+    pub fn call_readTensor(instance: *runtime.Instance, tensor: *runtime.Instance) anyerror!*const anyopaque {
         
         return try MLContextImpl.call_readTensor(instance, tensor);
     }

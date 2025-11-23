@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -47,13 +43,13 @@ pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for indexedDB
-pub fn get_indexedDB(instance: *runtime.Instance) ImplError!interfaces.IDBFactory {
+pub fn get_indexedDB(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for caches
-pub fn get_caches(instance: *runtime.Instance) ImplError!interfaces.CacheStorage {
+pub fn get_caches(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

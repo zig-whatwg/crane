@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -53,7 +49,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Operation: add
-pub fn call_add(instance: *runtime.Instance, triple: interfaces.RdfTriple) ImplError!void {
+pub fn call_add(instance: *runtime.Instance, triple: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = triple;
     return error.NotImplemented;

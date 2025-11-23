@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -222,7 +222,7 @@ pub const ShadowRoot = struct {
         return try ShadowRootImpl.get_serializable(instance);
     }
 
-    pub fn get_host(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_host(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ShadowRootImpl.get_host(instance);
     }
 
@@ -248,25 +248,25 @@ pub const ShadowRoot = struct {
         try ShadowRootImpl.set_innerHTML(instance, value);
     }
 
-    pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!CustomElementRegistry {
+    pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ShadowRootImpl.get_customElementRegistry(instance);
     }
 
     /// Extended attributes: [LegacyLenientSetter]
-    pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ShadowRootImpl.get_fullscreenElement(instance);
     }
 
-    pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ShadowRootImpl.get_pictureInPictureElement(instance);
     }
 
-    pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ShadowRootImpl.get_pointerLockElement(instance);
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_styleSheets(instance: *runtime.Instance) anyerror!StyleSheetList {
+    pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_styleSheets) |cached| {
@@ -285,7 +285,7 @@ pub const ShadowRoot = struct {
         try ShadowRootImpl.set_adoptedStyleSheets(instance, value);
     }
 
-    pub fn get_activeElement(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_activeElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ShadowRootImpl.get_activeElement(instance);
     }
 

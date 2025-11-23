@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -60,7 +56,7 @@ pub fn set_ongeometrychange(instance: *runtime.Instance, value: typedefs.EventHa
 }
 
 /// Operation: getTitlebarAreaRect
-pub fn call_getTitlebarAreaRect(instance: *runtime.Instance) ImplError!interfaces.DOMRect {
+pub fn call_getTitlebarAreaRect(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

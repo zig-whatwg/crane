@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -135,24 +135,24 @@ pub const AudioBufferSourceNode = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: BaseAudioContext, options: AudioBufferSourceOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: AudioBufferSourceOptions) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try AudioBufferSourceNodeImpl.call_constructor(allocator, ctx, context, options);
     }
 
-    pub fn get_buffer(instance: *runtime.Instance) anyerror!AudioBuffer {
+    pub fn get_buffer(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AudioBufferSourceNodeImpl.get_buffer(instance);
     }
 
-    pub fn set_buffer(instance: *runtime.Instance, value: AudioBuffer) anyerror!void {
+    pub fn set_buffer(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         try AudioBufferSourceNodeImpl.set_buffer(instance, value);
     }
 
-    pub fn get_playbackRate(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_playbackRate(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AudioBufferSourceNodeImpl.get_playbackRate(instance);
     }
 
-    pub fn get_detune(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_detune(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AudioBufferSourceNodeImpl.get_detune(instance);
     }
 

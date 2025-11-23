@@ -1,5 +1,5 @@
 //! Generated from: DOM-Style.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -83,19 +83,19 @@ pub const Rect = struct {
         RectImpl.deinit(instance);
     }
 
-    pub fn get_top(instance: *runtime.Instance) anyerror!CSSPrimitiveValue {
+    pub fn get_top(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RectImpl.get_top(instance);
     }
 
-    pub fn get_right(instance: *runtime.Instance) anyerror!CSSPrimitiveValue {
+    pub fn get_right(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RectImpl.get_right(instance);
     }
 
-    pub fn get_bottom(instance: *runtime.Instance) anyerror!CSSPrimitiveValue {
+    pub fn get_bottom(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RectImpl.get_bottom(instance);
     }
 
-    pub fn get_left(instance: *runtime.Instance) anyerror!CSSPrimitiveValue {
+    pub fn get_left(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RectImpl.get_left(instance);
     }
 

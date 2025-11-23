@@ -1,5 +1,5 @@
 //! Generated from: compression.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -91,11 +91,11 @@ pub const DecompressionStream = struct {
         return try DecompressionStreamImpl.call_constructor(allocator, ctx, format);
     }
 
-    pub fn get_readable(instance: *runtime.Instance) anyerror!ReadableStream {
+    pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DecompressionStreamImpl.get_readable(instance);
     }
 
-    pub fn get_writable(instance: *runtime.Instance) anyerror!WritableStream {
+    pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DecompressionStreamImpl.get_writable(instance);
     }
 

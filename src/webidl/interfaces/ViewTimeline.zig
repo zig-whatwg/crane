@@ -1,5 +1,5 @@
 //! Generated from: scroll-animations.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -99,15 +99,15 @@ pub const ViewTimeline = struct {
         return try ViewTimelineImpl.call_constructor(allocator, ctx, options);
     }
 
-    pub fn get_subject(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_subject(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ViewTimelineImpl.get_subject(instance);
     }
 
-    pub fn get_startOffset(instance: *runtime.Instance) anyerror!CSSNumericValue {
+    pub fn get_startOffset(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ViewTimelineImpl.get_startOffset(instance);
     }
 
-    pub fn get_endOffset(instance: *runtime.Instance) anyerror!CSSNumericValue {
+    pub fn get_endOffset(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ViewTimelineImpl.get_endOffset(instance);
     }
 

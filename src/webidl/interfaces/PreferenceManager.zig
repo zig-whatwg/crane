@@ -1,5 +1,5 @@
 //! Generated from: mediaqueries-5.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -93,23 +93,23 @@ pub const PreferenceManager = struct {
         PreferenceManagerImpl.deinit(instance);
     }
 
-    pub fn get_colorScheme(instance: *runtime.Instance) anyerror!PreferenceObject {
+    pub fn get_colorScheme(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try PreferenceManagerImpl.get_colorScheme(instance);
     }
 
-    pub fn get_contrast(instance: *runtime.Instance) anyerror!PreferenceObject {
+    pub fn get_contrast(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try PreferenceManagerImpl.get_contrast(instance);
     }
 
-    pub fn get_reducedMotion(instance: *runtime.Instance) anyerror!PreferenceObject {
+    pub fn get_reducedMotion(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try PreferenceManagerImpl.get_reducedMotion(instance);
     }
 
-    pub fn get_reducedTransparency(instance: *runtime.Instance) anyerror!PreferenceObject {
+    pub fn get_reducedTransparency(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try PreferenceManagerImpl.get_reducedTransparency(instance);
     }
 
-    pub fn get_reducedData(instance: *runtime.Instance) anyerror!PreferenceObject {
+    pub fn get_reducedData(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try PreferenceManagerImpl.get_reducedData(instance);
     }
 

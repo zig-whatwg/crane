@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -54,7 +50,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, opti
 }
 
 /// Getter for timeline
-pub fn get_timeline(instance: *runtime.Instance) ImplError!interfaces.AnimationTimeline {
+pub fn get_timeline(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -90,7 +86,7 @@ pub fn get_exitRangeEnd(instance: *runtime.Instance) ImplError!*const anyopaque 
 }
 
 /// Setter for timeline
-pub fn set_timeline(instance: *runtime.Instance, value: interfaces.AnimationTimeline) ImplError!void {
+pub fn set_timeline(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

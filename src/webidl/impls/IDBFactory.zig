@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,7 +37,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: open
-pub fn call_open(instance: *runtime.Instance, name: runtime.DOMString, version: u64) ImplError!interfaces.IDBOpenDBRequest {
+pub fn call_open(instance: *runtime.Instance, name: runtime.DOMString, version: u64) ImplError!*runtime.Instance {
     _ = instance;
     _ = name;
     _ = version;
@@ -55,7 +51,7 @@ pub fn call_databases(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Operation: deleteDatabase
-pub fn call_deleteDatabase(instance: *runtime.Instance, name: runtime.DOMString) ImplError!interfaces.IDBOpenDBRequest {
+pub fn call_deleteDatabase(instance: *runtime.Instance, name: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = name;
     return error.NotImplemented;

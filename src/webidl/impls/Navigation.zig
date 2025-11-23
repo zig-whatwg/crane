@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,19 +37,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for currentEntry
-pub fn get_currentEntry(instance: *runtime.Instance) ImplError!interfaces.NavigationHistoryEntry {
+pub fn get_currentEntry(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for transition
-pub fn get_transition(instance: *runtime.Instance) ImplError!interfaces.NavigationTransition {
+pub fn get_transition(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for activation
-pub fn get_activation(instance: *runtime.Instance) ImplError!interfaces.NavigationActivation {
+pub fn get_activation(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

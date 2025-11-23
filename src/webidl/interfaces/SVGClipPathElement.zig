@@ -1,5 +1,5 @@
 //! Generated from: css-masking.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -231,11 +231,11 @@ pub const SVGClipPathElement = struct {
         SVGClipPathElementImpl.deinit(instance);
     }
 
-    pub fn get_clipPathUnits(instance: *runtime.Instance) anyerror!SVGAnimatedEnumeration {
+    pub fn get_clipPathUnits(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGClipPathElementImpl.get_clipPathUnits(instance);
     }
 
-    pub fn get_transform(instance: *runtime.Instance) anyerror!SVGAnimatedTransformList {
+    pub fn get_transform(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGClipPathElementImpl.get_transform(instance);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -110,7 +110,7 @@ pub const CSSMathMin = struct {
         return try CSSMathMinImpl.call_constructor(allocator, ctx, args);
     }
 
-    pub fn get_values(instance: *runtime.Instance) anyerror!CSSNumericArray {
+    pub fn get_values(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSMathMinImpl.get_values(instance);
     }
 

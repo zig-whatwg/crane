@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -125,7 +125,7 @@ pub const BiquadFilterNode = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: BaseAudioContext, options: BiquadFilterOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: BiquadFilterOptions) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try BiquadFilterNodeImpl.call_constructor(allocator, ctx, context, options);
     }
@@ -138,19 +138,19 @@ pub const BiquadFilterNode = struct {
         try BiquadFilterNodeImpl.set_type(instance, value);
     }
 
-    pub fn get_frequency(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_frequency(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try BiquadFilterNodeImpl.get_frequency(instance);
     }
 
-    pub fn get_detune(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_detune(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try BiquadFilterNodeImpl.get_detune(instance);
     }
 
-    pub fn get_Q(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_Q(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try BiquadFilterNodeImpl.get_Q(instance);
     }
 
-    pub fn get_gain(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_gain(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try BiquadFilterNodeImpl.get_gain(instance);
     }
 

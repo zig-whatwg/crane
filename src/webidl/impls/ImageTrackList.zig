@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -59,7 +55,7 @@ pub fn get_selectedIndex(instance: *runtime.Instance) ImplError!i32 {
 }
 
 /// Getter for selectedTrack
-pub fn get_selectedTrack(instance: *runtime.Instance) ImplError!interfaces.ImageTrack {
+pub fn get_selectedTrack(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

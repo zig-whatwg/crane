@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -80,12 +80,12 @@ pub const PopoverTargetAttributes = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_popoverTargetElement(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_popoverTargetElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try PopoverTargetAttributesImpl.get_popoverTargetElement(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_popoverTargetElement(instance: *runtime.Instance, value: Element) anyerror!void {
+    pub fn set_popoverTargetElement(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

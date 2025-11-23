@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -93,7 +93,7 @@ pub const OfflineAudioCompletionEvent = struct {
         return try OfflineAudioCompletionEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
-    pub fn get_renderedBuffer(instance: *runtime.Instance) anyerror!AudioBuffer {
+    pub fn get_renderedBuffer(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try OfflineAudioCompletionEventImpl.get_renderedBuffer(instance);
     }
 

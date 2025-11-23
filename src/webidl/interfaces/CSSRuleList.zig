@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -88,7 +88,7 @@ pub const CSSRuleList = struct {
         return try CSSRuleListImpl.get_length(instance);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!CSSRule {
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
         
         return try CSSRuleListImpl.call_item(instance, index);
     }

@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,61 +37,61 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for patternUnits
-pub fn get_patternUnits(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedEnumeration {
+pub fn get_patternUnits(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for patternContentUnits
-pub fn get_patternContentUnits(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedEnumeration {
+pub fn get_patternContentUnits(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for patternTransform
-pub fn get_patternTransform(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedTransformList {
+pub fn get_patternTransform(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for x
-pub fn get_x(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedLength {
+pub fn get_x(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for y
-pub fn get_y(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedLength {
+pub fn get_y(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for width
-pub fn get_width(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedLength {
+pub fn get_width(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for height
-pub fn get_height(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedLength {
+pub fn get_height(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for viewBox
-pub fn get_viewBox(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedRect {
+pub fn get_viewBox(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for preserveAspectRatio
-pub fn get_preserveAspectRatio(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedPreserveAspectRatio {
+pub fn get_preserveAspectRatio(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for href
-pub fn get_href(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedString {
+pub fn get_href(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

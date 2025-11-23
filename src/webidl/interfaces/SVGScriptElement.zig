@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -257,7 +257,7 @@ pub const SVGScriptElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_href(instance: *runtime.Instance) anyerror!SVGAnimatedString {
+    pub fn get_href(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_href) |cached| {

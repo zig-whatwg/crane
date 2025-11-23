@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -79,13 +75,13 @@ pub fn get_url(instance: *runtime.Instance) ImplError!runtime.USVString {
 }
 
 /// Getter for storageArea
-pub fn get_storageArea(instance: *runtime.Instance) ImplError!interfaces.Storage {
+pub fn get_storageArea(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: initStorageEvent
-pub fn call_initStorageEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: bool, cancelable: bool, key: runtime.DOMString, oldValue: runtime.DOMString, newValue: runtime.DOMString, url: runtime.USVString, storageArea: interfaces.Storage) ImplError!void {
+pub fn call_initStorageEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: bool, cancelable: bool, key: runtime.DOMString, oldValue: runtime.DOMString, newValue: runtime.DOMString, url: runtime.USVString, storageArea: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = @"type";
     _ = bubbles;

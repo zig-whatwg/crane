@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -128,7 +124,7 @@ pub fn call_getModifierState(instance: *runtime.Instance, keyArg: runtime.DOMStr
 }
 
 /// Operation: initKeyboardEvent
-pub fn call_initKeyboardEvent(instance: *runtime.Instance, typeArg: runtime.DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: interfaces.Window, keyArg: runtime.DOMString, locationArg: u32, ctrlKey: bool, altKey: bool, shiftKey: bool, metaKey: bool) ImplError!void {
+pub fn call_initKeyboardEvent(instance: *runtime.Instance, typeArg: runtime.DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: *runtime.Instance, keyArg: runtime.DOMString, locationArg: u32, ctrlKey: bool, altKey: bool, shiftKey: bool, metaKey: bool) ImplError!void {
     _ = instance;
     _ = typeArg;
     _ = bubblesArg;

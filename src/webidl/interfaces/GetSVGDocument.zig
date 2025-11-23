@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -68,7 +68,7 @@ pub const GetSVGDocument = struct {
         GetSVGDocumentImpl.deinit(instance);
     }
 
-    pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!Document {
+    pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try GetSVGDocumentImpl.call_getSVGDocument(instance);
     }
 

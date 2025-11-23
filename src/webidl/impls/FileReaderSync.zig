@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -53,28 +49,28 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Operation: readAsArrayBuffer
-pub fn call_readAsArrayBuffer(instance: *runtime.Instance, blob: interfaces.Blob) ImplError!*const anyopaque {
+pub fn call_readAsArrayBuffer(instance: *runtime.Instance, blob: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     _ = blob;
     return error.NotImplemented;
 }
 
 /// Operation: readAsBinaryString
-pub fn call_readAsBinaryString(instance: *runtime.Instance, blob: interfaces.Blob) ImplError!runtime.DOMString {
+pub fn call_readAsBinaryString(instance: *runtime.Instance, blob: *runtime.Instance) ImplError!runtime.DOMString {
     _ = instance;
     _ = blob;
     return error.NotImplemented;
 }
 
 /// Operation: readAsDataURL
-pub fn call_readAsDataURL(instance: *runtime.Instance, blob: interfaces.Blob) ImplError!runtime.DOMString {
+pub fn call_readAsDataURL(instance: *runtime.Instance, blob: *runtime.Instance) ImplError!runtime.DOMString {
     _ = instance;
     _ = blob;
     return error.NotImplemented;
 }
 
 /// Operation: readAsText
-pub fn call_readAsText(instance: *runtime.Instance, blob: interfaces.Blob, encoding: runtime.DOMString) ImplError!runtime.DOMString {
+pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: runtime.DOMString) ImplError!runtime.DOMString {
     _ = instance;
     _ = blob;
     _ = encoding;

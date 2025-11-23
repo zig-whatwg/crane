@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -332,7 +332,7 @@ pub const SVGAElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_target(instance: *runtime.Instance) anyerror!SVGAnimatedString {
+    pub fn get_target(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_target) |cached| {
@@ -368,7 +368,7 @@ pub const SVGAElement = struct {
     }
 
     /// Extended attributes: [SameObject], [PutForwards=value]
-    pub fn get_relList(instance: *runtime.Instance) anyerror!DOMTokenList {
+    pub fn get_relList(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_relList) |cached| {
@@ -404,7 +404,7 @@ pub const SVGAElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_href(instance: *runtime.Instance) anyerror!SVGAnimatedString {
+    pub fn get_href(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_href) |cached| {

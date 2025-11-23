@@ -1,5 +1,5 @@
 //! Generated from: web-animations.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -218,7 +218,7 @@ pub const Animation = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, effect: AnimationEffect, timeline: AnimationTimeline) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, effect: *runtime.Instance, timeline: *runtime.Instance) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try AnimationImpl.call_constructor(allocator, ctx, effect, timeline);
     }
@@ -231,19 +231,19 @@ pub const Animation = struct {
         try AnimationImpl.set_id(instance, value);
     }
 
-    pub fn get_effect(instance: *runtime.Instance) anyerror!AnimationEffect {
+    pub fn get_effect(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AnimationImpl.get_effect(instance);
     }
 
-    pub fn set_effect(instance: *runtime.Instance, value: AnimationEffect) anyerror!void {
+    pub fn set_effect(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         try AnimationImpl.set_effect(instance, value);
     }
 
-    pub fn get_timeline(instance: *runtime.Instance) anyerror!AnimationTimeline {
+    pub fn get_timeline(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AnimationImpl.get_timeline(instance);
     }
 
-    pub fn set_timeline(instance: *runtime.Instance, value: AnimationTimeline) anyerror!void {
+    pub fn set_timeline(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         try AnimationImpl.set_timeline(instance, value);
     }
 
@@ -315,11 +315,11 @@ pub const Animation = struct {
         try AnimationImpl.set_onremove(instance, value);
     }
 
-    pub fn get_trigger(instance: *runtime.Instance) anyerror!AnimationTrigger {
+    pub fn get_trigger(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AnimationImpl.get_trigger(instance);
     }
 
-    pub fn set_trigger(instance: *runtime.Instance, value: AnimationTrigger) anyerror!void {
+    pub fn set_trigger(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         try AnimationImpl.set_trigger(instance, value);
     }
 

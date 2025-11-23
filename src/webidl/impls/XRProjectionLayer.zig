@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -71,7 +67,7 @@ pub fn get_fixedFoveation(instance: *runtime.Instance) ImplError!f32 {
 }
 
 /// Getter for deltaPose
-pub fn get_deltaPose(instance: *runtime.Instance) ImplError!interfaces.XRRigidTransform {
+pub fn get_deltaPose(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -84,7 +80,7 @@ pub fn set_fixedFoveation(instance: *runtime.Instance, value: f32) ImplError!voi
 }
 
 /// Setter for deltaPose
-pub fn set_deltaPose(instance: *runtime.Instance, value: interfaces.XRRigidTransform) ImplError!void {
+pub fn set_deltaPose(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

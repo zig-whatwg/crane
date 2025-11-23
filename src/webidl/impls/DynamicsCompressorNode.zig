@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -42,7 +38,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: interfaces.BaseAudioContext, options: dictionaries.DynamicsCompressorOptions) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: dictionaries.DynamicsCompressorOptions) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &DynamicsCompressorNode.vtable, ctx);
     errdefer deinit(instance);
@@ -55,19 +51,19 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, cont
 }
 
 /// Getter for threshold
-pub fn get_threshold(instance: *runtime.Instance) ImplError!interfaces.AudioParam {
+pub fn get_threshold(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for knee
-pub fn get_knee(instance: *runtime.Instance) ImplError!interfaces.AudioParam {
+pub fn get_knee(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ratio
-pub fn get_ratio(instance: *runtime.Instance) ImplError!interfaces.AudioParam {
+pub fn get_ratio(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -79,13 +75,13 @@ pub fn get_reduction(instance: *runtime.Instance) ImplError!f32 {
 }
 
 /// Getter for attack
-pub fn get_attack(instance: *runtime.Instance) ImplError!interfaces.AudioParam {
+pub fn get_attack(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for release
-pub fn get_release(instance: *runtime.Instance) ImplError!interfaces.AudioParam {
+pub fn get_release(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

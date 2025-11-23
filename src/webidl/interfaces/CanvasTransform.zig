@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -99,7 +99,7 @@ pub const CanvasTransform = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getTransform(instance: *runtime.Instance) anyerror!DOMMatrix {
+    pub fn call_getTransform(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         return try CanvasTransformImpl.call_getTransform(instance);
     }

@@ -1,5 +1,5 @@
 //! Generated from: OES_vertex_array_object.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -104,22 +104,22 @@ pub const OES_vertex_array_object = struct {
         OES_vertex_array_objectImpl.deinit(instance);
     }
 
-    pub fn call_bindVertexArrayOES(instance: *runtime.Instance, arrayObject: WebGLVertexArrayObjectOES) anyerror!void {
+    pub fn call_bindVertexArrayOES(instance: *runtime.Instance, arrayObject: *runtime.Instance) anyerror!void {
         
         return try OES_vertex_array_objectImpl.call_bindVertexArrayOES(instance, arrayObject);
     }
 
-    pub fn call_createVertexArrayOES(instance: *runtime.Instance) anyerror!WebGLVertexArrayObjectOES {
+    pub fn call_createVertexArrayOES(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try OES_vertex_array_objectImpl.call_createVertexArrayOES(instance);
     }
 
-    pub fn call_deleteVertexArrayOES(instance: *runtime.Instance, arrayObject: WebGLVertexArrayObjectOES) anyerror!void {
+    pub fn call_deleteVertexArrayOES(instance: *runtime.Instance, arrayObject: *runtime.Instance) anyerror!void {
         
         return try OES_vertex_array_objectImpl.call_deleteVertexArrayOES(instance, arrayObject);
     }
 
     /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_isVertexArrayOES(instance: *runtime.Instance, arrayObject: WebGLVertexArrayObjectOES) anyerror!GLboolean {
+    pub fn call_isVertexArrayOES(instance: *runtime.Instance, arrayObject: *runtime.Instance) anyerror!GLboolean {
         
         return try OES_vertex_array_objectImpl.call_isVertexArrayOES(instance, arrayObject);
     }

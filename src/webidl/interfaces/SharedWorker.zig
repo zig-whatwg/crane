@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -107,7 +107,7 @@ pub const SharedWorker = struct {
         return try SharedWorkerImpl.call_constructor(allocator, ctx, scriptURL, options);
     }
 
-    pub fn get_port(instance: *runtime.Instance) anyerror!MessagePort {
+    pub fn get_port(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SharedWorkerImpl.get_port(instance);
     }
 

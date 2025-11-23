@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,7 +37,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for pathLength
-pub fn get_pathLength(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedNumber {
+pub fn get_pathLength(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -60,7 +56,7 @@ pub fn call_getTotalLength(instance: *runtime.Instance) ImplError!f32 {
 }
 
 /// Operation: getPointAtLength
-pub fn call_getPointAtLength(instance: *runtime.Instance, distance: f32) ImplError!interfaces.DOMPoint {
+pub fn call_getPointAtLength(instance: *runtime.Instance, distance: f32) ImplError!*runtime.Instance {
     _ = instance;
     _ = distance;
     return error.NotImplemented;

@@ -1,5 +1,5 @@
 //! Generated from: json-ld-api.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -108,7 +108,7 @@ pub const JsonLdProcessor = struct {
         return try JsonLdProcessorImpl.call_flatten(instance, input, context, options);
     }
 
-    pub fn call_fromRdf(instance: *runtime.Instance, input: RdfDataset, options: JsonLdOptions) anyerror!*const anyopaque {
+    pub fn call_fromRdf(instance: *runtime.Instance, input: *runtime.Instance, options: JsonLdOptions) anyerror!*const anyopaque {
         
         return try JsonLdProcessorImpl.call_fromRdf(instance, input, options);
     }

@@ -1,5 +1,5 @@
 //! Generated from: webxr-hit-test.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -83,7 +83,7 @@ pub const XRHitTestResult = struct {
         return try XRHitTestResultImpl.call_createAnchor(instance);
     }
 
-    pub fn call_getPose(instance: *runtime.Instance, baseSpace: XRSpace) anyerror!XRPose {
+    pub fn call_getPose(instance: *runtime.Instance, baseSpace: *runtime.Instance) anyerror!*runtime.Instance {
         
         return try XRHitTestResultImpl.call_getPose(instance, baseSpace);
     }

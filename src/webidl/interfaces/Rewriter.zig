@@ -1,5 +1,5 @@
 //! Generated from: writing-assistance-apis.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -177,7 +177,7 @@ pub const Rewriter = struct {
         return try RewriterImpl.call_rewrite(instance, input, options);
     }
 
-    pub fn call_rewriteStreaming(instance: *runtime.Instance, input: DOMString, options: RewriterRewriteOptions) anyerror!ReadableStream {
+    pub fn call_rewriteStreaming(instance: *runtime.Instance, input: DOMString, options: RewriterRewriteOptions) anyerror!*runtime.Instance {
         
         return try RewriterImpl.call_rewriteStreaming(instance, input, options);
     }

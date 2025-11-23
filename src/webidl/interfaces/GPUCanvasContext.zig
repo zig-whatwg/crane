@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -116,7 +116,7 @@ pub const GPUCanvasContext = struct {
         return try GPUCanvasContextImpl.call_getConfiguration(instance);
     }
 
-    pub fn call_getCurrentTexture(instance: *runtime.Instance) anyerror!GPUTexture {
+    pub fn call_getCurrentTexture(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try GPUCanvasContextImpl.call_getCurrentTexture(instance);
     }
 

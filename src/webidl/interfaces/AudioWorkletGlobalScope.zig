@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -116,7 +116,7 @@ pub const AudioWorkletGlobalScope = struct {
         return try AudioWorkletGlobalScopeImpl.get_renderQuantumSize(instance);
     }
 
-    pub fn get_port(instance: *runtime.Instance) anyerror!MessagePort {
+    pub fn get_port(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AudioWorkletGlobalScopeImpl.get_port(instance);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: image-capture.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -95,12 +95,12 @@ pub const ImageCapture = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, videoTrack: MediaStreamTrack) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, videoTrack: *runtime.Instance) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try ImageCaptureImpl.call_constructor(allocator, ctx, videoTrack);
     }
 
-    pub fn get_track(instance: *runtime.Instance) anyerror!MediaStreamTrack {
+    pub fn get_track(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ImageCaptureImpl.get_track(instance);
     }
 

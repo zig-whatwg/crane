@@ -1,5 +1,5 @@
 //! Generated from: webmidi.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -97,7 +97,7 @@ pub const MIDIConnectionEvent = struct {
         return try MIDIConnectionEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
-    pub fn get_port(instance: *runtime.Instance) anyerror!MIDIPort {
+    pub fn get_port(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try MIDIConnectionEventImpl.get_port(instance);
     }
 

@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,13 +37,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for presentationArea
-pub fn get_presentationArea(instance: *runtime.Instance) ImplError!interfaces.Element {
+pub fn get_presentationArea(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: updateInkTrailStartPoint
-pub fn call_updateInkTrailStartPoint(instance: *runtime.Instance, event: interfaces.PointerEvent, style: dictionaries.InkTrailStyle) ImplError!void {
+pub fn call_updateInkTrailStartPoint(instance: *runtime.Instance, event: *runtime.Instance, style: dictionaries.InkTrailStyle) ImplError!void {
     _ = instance;
     _ = event;
     _ = style;

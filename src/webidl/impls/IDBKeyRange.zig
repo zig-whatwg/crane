@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -65,7 +61,7 @@ pub fn get_upperOpen(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Operation: only
-pub fn call_only(instance: *runtime.Instance, value: *const anyopaque) ImplError!interfaces.IDBKeyRange {
+pub fn call_only(instance: *runtime.Instance, value: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -79,7 +75,7 @@ pub fn call_includes(instance: *runtime.Instance, key: *const anyopaque) ImplErr
 }
 
 /// Operation: bound
-pub fn call_bound(instance: *runtime.Instance, lower: *const anyopaque, upper: *const anyopaque, lowerOpen: bool, upperOpen: bool) ImplError!interfaces.IDBKeyRange {
+pub fn call_bound(instance: *runtime.Instance, lower: *const anyopaque, upper: *const anyopaque, lowerOpen: bool, upperOpen: bool) ImplError!*runtime.Instance {
     _ = instance;
     _ = lower;
     _ = upper;
@@ -89,7 +85,7 @@ pub fn call_bound(instance: *runtime.Instance, lower: *const anyopaque, upper: *
 }
 
 /// Operation: upperBound
-pub fn call_upperBound(instance: *runtime.Instance, upper: *const anyopaque, open: bool) ImplError!interfaces.IDBKeyRange {
+pub fn call_upperBound(instance: *runtime.Instance, upper: *const anyopaque, open: bool) ImplError!*runtime.Instance {
     _ = instance;
     _ = upper;
     _ = open;
@@ -97,7 +93,7 @@ pub fn call_upperBound(instance: *runtime.Instance, upper: *const anyopaque, ope
 }
 
 /// Operation: lowerBound
-pub fn call_lowerBound(instance: *runtime.Instance, lower: *const anyopaque, open: bool) ImplError!interfaces.IDBKeyRange {
+pub fn call_lowerBound(instance: *runtime.Instance, lower: *const anyopaque, open: bool) ImplError!*runtime.Instance {
     _ = instance;
     _ = lower;
     _ = open;

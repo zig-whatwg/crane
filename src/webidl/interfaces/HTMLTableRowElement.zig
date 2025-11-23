@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -289,7 +289,7 @@ pub const HTMLTableRowElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_cells(instance: *runtime.Instance) anyerror!HTMLCollection {
+    pub fn get_cells(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_cells) |cached| {
@@ -370,7 +370,7 @@ pub const HTMLTableRowElement = struct {
         try HTMLTableRowElementImpl.set_bgColor(instance, value);
     }
 
-    pub fn call_insertCell(instance: *runtime.Instance, index: i32) anyerror!HTMLTableCellElement {
+    pub fn call_insertCell(instance: *runtime.Instance, index: i32) anyerror!*runtime.Instance {
         
         return try HTMLTableRowElementImpl.call_insertCell(instance, index);
     }

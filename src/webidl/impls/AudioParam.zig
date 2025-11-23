@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -85,7 +81,7 @@ pub fn set_automationRate(instance: *runtime.Instance, value: enums.AutomationRa
 }
 
 /// Operation: exponentialRampToValueAtTime
-pub fn call_exponentialRampToValueAtTime(instance: *runtime.Instance, value: f32, endTime: f64) ImplError!interfaces.AudioParam {
+pub fn call_exponentialRampToValueAtTime(instance: *runtime.Instance, value: f32, endTime: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = value;
     _ = endTime;
@@ -93,14 +89,14 @@ pub fn call_exponentialRampToValueAtTime(instance: *runtime.Instance, value: f32
 }
 
 /// Operation: cancelAndHoldAtTime
-pub fn call_cancelAndHoldAtTime(instance: *runtime.Instance, cancelTime: f64) ImplError!interfaces.AudioParam {
+pub fn call_cancelAndHoldAtTime(instance: *runtime.Instance, cancelTime: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = cancelTime;
     return error.NotImplemented;
 }
 
 /// Operation: setValueAtTime
-pub fn call_setValueAtTime(instance: *runtime.Instance, value: f32, startTime: f64) ImplError!interfaces.AudioParam {
+pub fn call_setValueAtTime(instance: *runtime.Instance, value: f32, startTime: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = value;
     _ = startTime;
@@ -108,14 +104,14 @@ pub fn call_setValueAtTime(instance: *runtime.Instance, value: f32, startTime: f
 }
 
 /// Operation: cancelScheduledValues
-pub fn call_cancelScheduledValues(instance: *runtime.Instance, cancelTime: f64) ImplError!interfaces.AudioParam {
+pub fn call_cancelScheduledValues(instance: *runtime.Instance, cancelTime: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = cancelTime;
     return error.NotImplemented;
 }
 
 /// Operation: setValueCurveAtTime
-pub fn call_setValueCurveAtTime(instance: *runtime.Instance, values: *const anyopaque, startTime: f64, duration: f64) ImplError!interfaces.AudioParam {
+pub fn call_setValueCurveAtTime(instance: *runtime.Instance, values: *const anyopaque, startTime: f64, duration: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = values;
     _ = startTime;
@@ -124,7 +120,7 @@ pub fn call_setValueCurveAtTime(instance: *runtime.Instance, values: *const anyo
 }
 
 /// Operation: linearRampToValueAtTime
-pub fn call_linearRampToValueAtTime(instance: *runtime.Instance, value: f32, endTime: f64) ImplError!interfaces.AudioParam {
+pub fn call_linearRampToValueAtTime(instance: *runtime.Instance, value: f32, endTime: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = value;
     _ = endTime;
@@ -132,7 +128,7 @@ pub fn call_linearRampToValueAtTime(instance: *runtime.Instance, value: f32, end
 }
 
 /// Operation: setTargetAtTime
-pub fn call_setTargetAtTime(instance: *runtime.Instance, target: f32, startTime: f64, timeConstant: f32) ImplError!interfaces.AudioParam {
+pub fn call_setTargetAtTime(instance: *runtime.Instance, target: f32, startTime: f64, timeConstant: f32) ImplError!*runtime.Instance {
     _ = instance;
     _ = target;
     _ = startTime;

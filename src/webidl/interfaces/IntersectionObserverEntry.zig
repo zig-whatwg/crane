@@ -1,5 +1,5 @@
 //! Generated from: intersection-observer.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -117,15 +117,15 @@ pub const IntersectionObserverEntry = struct {
         return try IntersectionObserverEntryImpl.get_time(instance);
     }
 
-    pub fn get_rootBounds(instance: *runtime.Instance) anyerror!DOMRectReadOnly {
+    pub fn get_rootBounds(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try IntersectionObserverEntryImpl.get_rootBounds(instance);
     }
 
-    pub fn get_boundingClientRect(instance: *runtime.Instance) anyerror!DOMRectReadOnly {
+    pub fn get_boundingClientRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try IntersectionObserverEntryImpl.get_boundingClientRect(instance);
     }
 
-    pub fn get_intersectionRect(instance: *runtime.Instance) anyerror!DOMRectReadOnly {
+    pub fn get_intersectionRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try IntersectionObserverEntryImpl.get_intersectionRect(instance);
     }
 
@@ -141,7 +141,7 @@ pub const IntersectionObserverEntry = struct {
         return try IntersectionObserverEntryImpl.get_intersectionRatio(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_target(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try IntersectionObserverEntryImpl.get_target(instance);
     }
 

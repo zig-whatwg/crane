@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -367,7 +367,7 @@ pub const HTMLFrameElement = struct {
         try HTMLFrameElementImpl.set_noResize(instance, value);
     }
 
-    pub fn get_contentDocument(instance: *runtime.Instance) anyerror!Document {
+    pub fn get_contentDocument(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLFrameElementImpl.get_contentDocument(instance);
     }
 

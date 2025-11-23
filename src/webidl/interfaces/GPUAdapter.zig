@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -100,7 +100,7 @@ pub const GPUAdapter = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_features(instance: *runtime.Instance) anyerror!GPUSupportedFeatures {
+    pub fn get_features(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_features) |cached| {
@@ -112,7 +112,7 @@ pub const GPUAdapter = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_limits(instance: *runtime.Instance) anyerror!GPUSupportedLimits {
+    pub fn get_limits(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_limits) |cached| {
@@ -124,7 +124,7 @@ pub const GPUAdapter = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_info(instance: *runtime.Instance) anyerror!GPUAdapterInfo {
+    pub fn get_info(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_info) |cached| {

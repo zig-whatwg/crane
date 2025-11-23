@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -42,7 +38,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, configuration: interfaces.USBConfiguration, interfaceNumber: u8) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, configuration: *runtime.Instance, interfaceNumber: u8) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &USBInterface.vtable, ctx);
     errdefer deinit(instance);
@@ -61,7 +57,7 @@ pub fn get_interfaceNumber(instance: *runtime.Instance) ImplError!u8 {
 }
 
 /// Getter for alternate
-pub fn get_alternate(instance: *runtime.Instance) ImplError!interfaces.USBAlternateInterface {
+pub fn get_alternate(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

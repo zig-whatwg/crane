@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -82,7 +82,7 @@ pub const ElementCSSInlineStyle = struct {
     }
 
     /// Extended attributes: [SameObject], [PutForwards=cssText]
-    pub fn get_style(instance: *runtime.Instance) anyerror!CSSStyleProperties {
+    pub fn get_style(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_style) |cached| {
@@ -94,7 +94,7 @@ pub const ElementCSSInlineStyle = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_attributeStyleMap(instance: *runtime.Instance) anyerror!StylePropertyMap {
+    pub fn get_attributeStyleMap(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_attributeStyleMap) |cached| {

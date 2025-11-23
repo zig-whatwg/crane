@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -79,7 +79,7 @@ pub const CanvasImageData = struct {
         CanvasImageDataImpl.deinit(instance);
     }
 
-    pub fn call_getImageData(instance: *runtime.Instance, sx: i32, sy: i32, sw: i32, sh: i32, settings: ImageDataSettings) anyerror!ImageData {
+    pub fn call_getImageData(instance: *runtime.Instance, sx: i32, sy: i32, sw: i32, sh: i32, settings: ImageDataSettings) anyerror!*runtime.Instance {
         // [EnforceRange] on sx
         if (!runtime.isInRange(i32, sx)) return error.TypeError;
         // [EnforceRange] on sy
@@ -92,7 +92,7 @@ pub const CanvasImageData = struct {
         return try CanvasImageDataImpl.call_getImageData(instance, sx, sy, sw, sh, settings);
     }
 
-    pub fn call_createImageData(instance: *runtime.Instance, sw: i32, sh: i32, settings: ImageDataSettings) anyerror!ImageData {
+    pub fn call_createImageData(instance: *runtime.Instance, sw: i32, sh: i32, settings: ImageDataSettings) anyerror!*runtime.Instance {
         // [EnforceRange] on sw
         if (!runtime.isInRange(i32, sw)) return error.TypeError;
         // [EnforceRange] on sh
@@ -101,7 +101,7 @@ pub const CanvasImageData = struct {
         return try CanvasImageDataImpl.call_createImageData(instance, sw, sh, settings);
     }
 
-    pub fn call_putImageData(instance: *runtime.Instance, imageData: ImageData, dx: i32, dy: i32) anyerror!void {
+    pub fn call_putImageData(instance: *runtime.Instance, imageData: *runtime.Instance, dx: i32, dy: i32) anyerror!void {
         // [EnforceRange] on dx
         if (!runtime.isInRange(i32, dx)) return error.TypeError;
         // [EnforceRange] on dy

@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -98,32 +98,32 @@ pub const CSSTranslate = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: CSSNumericValue, y: CSSNumericValue, z: CSSNumericValue) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: *runtime.Instance, y: *runtime.Instance, z: *runtime.Instance) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try CSSTranslateImpl.call_constructor(allocator, ctx, x, y, z);
     }
 
-    pub fn get_x(instance: *runtime.Instance) anyerror!CSSNumericValue {
+    pub fn get_x(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSTranslateImpl.get_x(instance);
     }
 
-    pub fn set_x(instance: *runtime.Instance, value: CSSNumericValue) anyerror!void {
+    pub fn set_x(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         try CSSTranslateImpl.set_x(instance, value);
     }
 
-    pub fn get_y(instance: *runtime.Instance) anyerror!CSSNumericValue {
+    pub fn get_y(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSTranslateImpl.get_y(instance);
     }
 
-    pub fn set_y(instance: *runtime.Instance, value: CSSNumericValue) anyerror!void {
+    pub fn set_y(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         try CSSTranslateImpl.set_y(instance, value);
     }
 
-    pub fn get_z(instance: *runtime.Instance) anyerror!CSSNumericValue {
+    pub fn get_z(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSTranslateImpl.get_z(instance);
     }
 
-    pub fn set_z(instance: *runtime.Instance, value: CSSNumericValue) anyerror!void {
+    pub fn set_z(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         try CSSTranslateImpl.set_z(instance, value);
     }
 

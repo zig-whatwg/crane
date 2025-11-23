@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -53,7 +49,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Operation: parseFromString
-pub fn call_parseFromString(instance: *runtime.Instance, string: *const anyopaque, @"type": enums.DOMParserSupportedType) ImplError!interfaces.Document {
+pub fn call_parseFromString(instance: *runtime.Instance, string: *const anyopaque, @"type": enums.DOMParserSupportedType) ImplError!*runtime.Instance {
     _ = instance;
     _ = string;
     _ = @"type";

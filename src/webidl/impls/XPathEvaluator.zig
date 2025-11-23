@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -53,14 +49,14 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Operation: createNSResolver
-pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: interfaces.Node) ImplError!interfaces.Node {
+pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = nodeResolver;
     return error.NotImplemented;
 }
 
 /// Operation: evaluate
-pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString, contextNode: interfaces.Node, resolver: interfaces.XPathNSResolver, @"type": u16, result: interfaces.XPathResult) ImplError!interfaces.XPathResult {
+pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString, contextNode: *runtime.Instance, resolver: *runtime.Instance, @"type": u16, result: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = expression;
     _ = contextNode;
@@ -71,7 +67,7 @@ pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString,
 }
 
 /// Operation: createExpression
-pub fn call_createExpression(instance: *runtime.Instance, expression: runtime.DOMString, resolver: interfaces.XPathNSResolver) ImplError!interfaces.XPathExpression {
+pub fn call_createExpression(instance: *runtime.Instance, expression: runtime.DOMString, resolver: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = expression;
     _ = resolver;

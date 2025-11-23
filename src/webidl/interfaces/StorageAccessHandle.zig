@@ -1,5 +1,5 @@
 //! Generated from: saa-non-cookie-storage.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -123,23 +123,23 @@ pub const StorageAccessHandle = struct {
         StorageAccessHandleImpl.deinit(instance);
     }
 
-    pub fn get_sessionStorage(instance: *runtime.Instance) anyerror!Storage {
+    pub fn get_sessionStorage(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try StorageAccessHandleImpl.get_sessionStorage(instance);
     }
 
-    pub fn get_localStorage(instance: *runtime.Instance) anyerror!Storage {
+    pub fn get_localStorage(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try StorageAccessHandleImpl.get_localStorage(instance);
     }
 
-    pub fn get_indexedDB(instance: *runtime.Instance) anyerror!IDBFactory {
+    pub fn get_indexedDB(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try StorageAccessHandleImpl.get_indexedDB(instance);
     }
 
-    pub fn get_locks(instance: *runtime.Instance) anyerror!LockManager {
+    pub fn get_locks(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try StorageAccessHandleImpl.get_locks(instance);
     }
 
-    pub fn get_caches(instance: *runtime.Instance) anyerror!CacheStorage {
+    pub fn get_caches(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try StorageAccessHandleImpl.get_caches(instance);
     }
 
@@ -147,7 +147,7 @@ pub const StorageAccessHandle = struct {
         return try StorageAccessHandleImpl.call_getDirectory(instance);
     }
 
-    pub fn call_BroadcastChannel(instance: *runtime.Instance, name: DOMString) anyerror!BroadcastChannel {
+    pub fn call_BroadcastChannel(instance: *runtime.Instance, name: DOMString) anyerror!*runtime.Instance {
         
         return try StorageAccessHandleImpl.call_BroadcastChannel(instance, name);
     }
@@ -161,7 +161,7 @@ pub const StorageAccessHandle = struct {
         return try StorageAccessHandleImpl.call_createObjectURL(instance, obj);
     }
 
-    pub fn call_SharedWorker(instance: *runtime.Instance, scriptURL: runtime.USVString, options: *const anyopaque) anyerror!SharedWorker {
+    pub fn call_SharedWorker(instance: *runtime.Instance, scriptURL: runtime.USVString, options: *const anyopaque) anyerror!*runtime.Instance {
         
         return try StorageAccessHandleImpl.call_SharedWorker(instance, scriptURL, options);
     }

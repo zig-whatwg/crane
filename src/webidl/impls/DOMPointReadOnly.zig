@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -87,14 +83,14 @@ pub fn call_toJSON(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Operation: matrixTransform
-pub fn call_matrixTransform(instance: *runtime.Instance, matrix: dictionaries.DOMMatrixInit) ImplError!interfaces.DOMPoint {
+pub fn call_matrixTransform(instance: *runtime.Instance, matrix: dictionaries.DOMMatrixInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = matrix;
     return error.NotImplemented;
 }
 
 /// Operation: fromPoint
-pub fn call_fromPoint(instance: *runtime.Instance, other: dictionaries.DOMPointInit) ImplError!interfaces.DOMPointReadOnly {
+pub fn call_fromPoint(instance: *runtime.Instance, other: dictionaries.DOMPointInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = other;
     return error.NotImplemented;

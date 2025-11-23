@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,31 +37,31 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for className
-pub fn get_className(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedString {
+pub fn get_className(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ownerSVGElement
-pub fn get_ownerSVGElement(instance: *runtime.Instance) ImplError!interfaces.SVGSVGElement {
+pub fn get_ownerSVGElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for viewportElement
-pub fn get_viewportElement(instance: *runtime.Instance) ImplError!interfaces.SVGElement {
+pub fn get_viewportElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for style
-pub fn get_style(instance: *runtime.Instance) ImplError!interfaces.CSSStyleProperties {
+pub fn get_style(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for attributeStyleMap
-pub fn get_attributeStyleMap(instance: *runtime.Instance) ImplError!interfaces.StylePropertyMap {
+pub fn get_attributeStyleMap(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -701,19 +697,19 @@ pub fn get_onsnapchanging(instance: *runtime.Instance) ImplError!typedefs.EventH
 }
 
 /// Getter for correspondingElement
-pub fn get_correspondingElement(instance: *runtime.Instance) ImplError!interfaces.SVGElement {
+pub fn get_correspondingElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for correspondingUseElement
-pub fn get_correspondingUseElement(instance: *runtime.Instance) ImplError!interfaces.SVGUseElement {
+pub fn get_correspondingUseElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for dataset
-pub fn get_dataset(instance: *runtime.Instance) ImplError!interfaces.DOMStringMap {
+pub fn get_dataset(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -129,7 +125,7 @@ pub fn call_ellipse(instance: *runtime.Instance, x: f64, y: f64, radiusX: f64, r
 }
 
 /// Operation: addPath
-pub fn call_addPath(instance: *runtime.Instance, path: interfaces.Path2D, transform: dictionaries.DOMMatrix2DInit) ImplError!void {
+pub fn call_addPath(instance: *runtime.Instance, path: *runtime.Instance, transform: dictionaries.DOMMatrix2DInit) ImplError!void {
     _ = instance;
     _ = path;
     _ = transform;

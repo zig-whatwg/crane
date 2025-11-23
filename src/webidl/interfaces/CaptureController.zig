@@ -1,5 +1,5 @@
 //! Generated from: screen-capture.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -151,7 +151,7 @@ pub const CaptureController = struct {
         return try CaptureControllerImpl.call_increaseZoomLevel(instance);
     }
 
-    pub fn call_forwardWheel(instance: *runtime.Instance, element: HTMLElement) anyerror!*const anyopaque {
+    pub fn call_forwardWheel(instance: *runtime.Instance, element: *runtime.Instance) anyerror!*const anyopaque {
         
         return try CaptureControllerImpl.call_forwardWheel(instance, element);
     }

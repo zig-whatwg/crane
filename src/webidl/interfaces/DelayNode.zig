@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -102,12 +102,12 @@ pub const DelayNode = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: BaseAudioContext, options: DelayOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: DelayOptions) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try DelayNodeImpl.call_constructor(allocator, ctx, context, options);
     }
 
-    pub fn get_delayTime(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_delayTime(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DelayNodeImpl.get_delayTime(instance);
     }
 

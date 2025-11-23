@@ -1,5 +1,5 @@
 //! Generated from: intersection-observer.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -147,12 +147,12 @@ pub const IntersectionObserver = struct {
         return try IntersectionObserverImpl.get_trackVisibility(instance);
     }
 
-    pub fn call_observe(instance: *runtime.Instance, target: Element) anyerror!void {
+    pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance) anyerror!void {
         
         return try IntersectionObserverImpl.call_observe(instance, target);
     }
 
-    pub fn call_unobserve(instance: *runtime.Instance, target: Element) anyerror!void {
+    pub fn call_unobserve(instance: *runtime.Instance, target: *runtime.Instance) anyerror!void {
         
         return try IntersectionObserverImpl.call_unobserve(instance, target);
     }

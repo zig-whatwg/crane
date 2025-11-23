@@ -1,5 +1,5 @@
 //! Generated from: webusb.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -94,7 +94,7 @@ pub const USBInterface = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, configuration: USBConfiguration, interfaceNumber: u8) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, configuration: *runtime.Instance, interfaceNumber: u8) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try USBInterfaceImpl.call_constructor(allocator, ctx, configuration, interfaceNumber);
     }
@@ -103,7 +103,7 @@ pub const USBInterface = struct {
         return try USBInterfaceImpl.get_interfaceNumber(instance);
     }
 
-    pub fn get_alternate(instance: *runtime.Instance) anyerror!USBAlternateInterface {
+    pub fn get_alternate(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try USBInterfaceImpl.get_alternate(instance);
     }
 

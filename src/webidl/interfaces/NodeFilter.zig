@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -194,7 +194,7 @@ pub const NodeFilter = struct {
         NodeFilterImpl.deinit(instance);
     }
 
-    pub fn call_acceptNode(instance: *runtime.Instance, node: Node) anyerror!u16 {
+    pub fn call_acceptNode(instance: *runtime.Instance, node: *runtime.Instance) anyerror!u16 {
         
         return try NodeFilterImpl.call_acceptNode(instance, node);
     }

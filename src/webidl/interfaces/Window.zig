@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -1255,7 +1255,7 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [LegacyUnforgeable]
-    pub fn get_document(instance: *runtime.Instance) anyerror!Document {
+    pub fn get_document(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_document(instance);
     }
 
@@ -1268,50 +1268,50 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [PutForwards=href], [LegacyUnforgeable]
-    pub fn get_location(instance: *runtime.Instance) anyerror!Location {
+    pub fn get_location(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_location(instance);
     }
 
-    pub fn get_history(instance: *runtime.Instance) anyerror!History {
+    pub fn get_history(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_history(instance);
     }
 
     /// Extended attributes: [Replaceable]
-    pub fn get_navigation(instance: *runtime.Instance) anyerror!Navigation {
+    pub fn get_navigation(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_navigation(instance);
     }
 
-    pub fn get_customElements(instance: *runtime.Instance) anyerror!CustomElementRegistry {
+    pub fn get_customElements(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_customElements(instance);
     }
 
     /// Extended attributes: [Replaceable]
-    pub fn get_locationbar(instance: *runtime.Instance) anyerror!BarProp {
+    pub fn get_locationbar(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_locationbar(instance);
     }
 
     /// Extended attributes: [Replaceable]
-    pub fn get_menubar(instance: *runtime.Instance) anyerror!BarProp {
+    pub fn get_menubar(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_menubar(instance);
     }
 
     /// Extended attributes: [Replaceable]
-    pub fn get_personalbar(instance: *runtime.Instance) anyerror!BarProp {
+    pub fn get_personalbar(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_personalbar(instance);
     }
 
     /// Extended attributes: [Replaceable]
-    pub fn get_scrollbars(instance: *runtime.Instance) anyerror!BarProp {
+    pub fn get_scrollbars(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_scrollbars(instance);
     }
 
     /// Extended attributes: [Replaceable]
-    pub fn get_statusbar(instance: *runtime.Instance) anyerror!BarProp {
+    pub fn get_statusbar(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_statusbar(instance);
     }
 
     /// Extended attributes: [Replaceable]
-    pub fn get_toolbar(instance: *runtime.Instance) anyerror!BarProp {
+    pub fn get_toolbar(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_toolbar(instance);
     }
 
@@ -1355,16 +1355,16 @@ pub const Window = struct {
         return try WindowImpl.get_parent(instance);
     }
 
-    pub fn get_frameElement(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_frameElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_frameElement(instance);
     }
 
-    pub fn get_navigator(instance: *runtime.Instance) anyerror!Navigator {
+    pub fn get_navigator(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_navigator(instance);
     }
 
     /// Extended attributes: [Replaceable]
-    pub fn get_clientInformation(instance: *runtime.Instance) anyerror!Navigator {
+    pub fn get_clientInformation(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_clientInformation(instance);
     }
 
@@ -1403,7 +1403,7 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [SameObject], [Replaceable]
-    pub fn get_viewport(instance: *runtime.Instance) anyerror!Viewport {
+    pub fn get_viewport(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_viewport) |cached| {
@@ -1415,7 +1415,7 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_cookieStore(instance: *runtime.Instance) anyerror!CookieStore {
+    pub fn get_cookieStore(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_cookieStore) |cached| {
@@ -1431,7 +1431,7 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_speechSynthesis(instance: *runtime.Instance) anyerror!SpeechSynthesis {
+    pub fn get_speechSynthesis(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_speechSynthesis) |cached| {
@@ -1442,12 +1442,12 @@ pub const Window = struct {
         return value;
     }
 
-    pub fn get_fence(instance: *runtime.Instance) anyerror!Fence {
+    pub fn get_fence(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_fence(instance);
     }
 
     /// Extended attributes: [SameObject], [SecureContext]
-    pub fn get_documentPictureInPicture(instance: *runtime.Instance) anyerror!DocumentPictureInPicture {
+    pub fn get_documentPictureInPicture(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_documentPictureInPicture) |cached| {
@@ -1476,7 +1476,7 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn get_sharedStorage(instance: *runtime.Instance) anyerror!SharedStorage {
+    pub fn get_sharedStorage(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_sharedStorage(instance);
     }
 
@@ -1497,7 +1497,7 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [Replaceable], [SameObject]
-    pub fn get_external(instance: *runtime.Instance) anyerror!External {
+    pub fn get_external(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_external) |cached| {
@@ -1509,7 +1509,7 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [SameObject], [Replaceable]
-    pub fn get_screen(instance: *runtime.Instance) anyerror!Screen {
+    pub fn get_screen(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_screen) |cached| {
@@ -1521,7 +1521,7 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [SameObject], [Replaceable]
-    pub fn get_visualViewport(instance: *runtime.Instance) anyerror!VisualViewport {
+    pub fn get_visualViewport(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_visualViewport) |cached| {
@@ -1597,15 +1597,15 @@ pub const Window = struct {
         return try WindowImpl.get_devicePixelRatio(instance);
     }
 
-    pub fn get_launchQueue(instance: *runtime.Instance) anyerror!LaunchQueue {
+    pub fn get_launchQueue(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_launchQueue(instance);
     }
 
-    pub fn get_portalHost(instance: *runtime.Instance) anyerror!PortalHost {
+    pub fn get_portalHost(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_portalHost(instance);
     }
 
-    pub fn get_pushManager(instance: *runtime.Instance) anyerror!PushManager {
+    pub fn get_pushManager(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_pushManager(instance);
     }
 
@@ -2637,7 +2637,7 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_indexedDB(instance: *runtime.Instance) anyerror!IDBFactory {
+    pub fn get_indexedDB(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_indexedDB) |cached| {
@@ -2648,17 +2648,17 @@ pub const Window = struct {
         return value;
     }
 
-    pub fn get_trustedTypes(instance: *runtime.Instance) anyerror!TrustedTypePolicyFactory {
+    pub fn get_trustedTypes(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_trustedTypes(instance);
     }
 
     /// Extended attributes: [Replaceable]
-    pub fn get_performance(instance: *runtime.Instance) anyerror!Performance {
+    pub fn get_performance(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_performance(instance);
     }
 
     /// Extended attributes: [SecureContext], [SameObject]
-    pub fn get_caches(instance: *runtime.Instance) anyerror!CacheStorage {
+    pub fn get_caches(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_caches) |cached| {
@@ -2670,12 +2670,12 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [Replaceable]
-    pub fn get_scheduler(instance: *runtime.Instance) anyerror!Scheduler {
+    pub fn get_scheduler(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_scheduler(instance);
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_crypto(instance: *runtime.Instance) anyerror!Crypto {
+    pub fn get_crypto(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_crypto) |cached| {
@@ -2686,11 +2686,11 @@ pub const Window = struct {
         return value;
     }
 
-    pub fn get_sessionStorage(instance: *runtime.Instance) anyerror!Storage {
+    pub fn get_sessionStorage(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_sessionStorage(instance);
     }
 
-    pub fn get_localStorage(instance: *runtime.Instance) anyerror!Storage {
+    pub fn get_localStorage(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_localStorage(instance);
     }
 
@@ -2714,7 +2714,7 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_matchMedia(instance: *runtime.Instance, query: CSSOMString) anyerror!MediaQueryList {
+    pub fn call_matchMedia(instance: *runtime.Instance, query: CSSOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try WindowImpl.call_matchMedia(instance, query);
@@ -2818,7 +2818,7 @@ pub const Window = struct {
         return try WindowImpl.call_moveBy(instance, x, y);
     }
 
-    pub fn call_getSelection(instance: *runtime.Instance) anyerror!Selection {
+    pub fn call_getSelection(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.call_getSelection(instance);
     }
 
@@ -2862,7 +2862,7 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getComputedStyle(instance: *runtime.Instance, elt: Element, pseudoElt: CSSOMString) anyerror!CSSStyleProperties {
+    pub fn call_getComputedStyle(instance: *runtime.Instance, elt: *runtime.Instance, pseudoElt: CSSOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try WindowImpl.call_getComputedStyle(instance, elt, pseudoElt);
@@ -2879,7 +2879,7 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [NewObject], [SecureContext]
-    pub fn call_fetchLater(instance: *runtime.Instance, input: RequestInfo, init_data: DeferredRequestInit) anyerror!FetchLaterResult {
+    pub fn call_fetchLater(instance: *runtime.Instance, input: RequestInfo, init_data: DeferredRequestInit) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try WindowImpl.call_fetchLater(instance, input, init_data);

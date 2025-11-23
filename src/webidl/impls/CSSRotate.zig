@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -73,7 +69,7 @@ pub fn get_z(instance: *runtime.Instance) ImplError!typedefs.CSSNumberish {
 }
 
 /// Getter for angle
-pub fn get_angle(instance: *runtime.Instance) ImplError!interfaces.CSSNumericValue {
+pub fn get_angle(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -100,7 +96,7 @@ pub fn set_z(instance: *runtime.Instance, value: typedefs.CSSNumberish) ImplErro
 }
 
 /// Setter for angle
-pub fn set_angle(instance: *runtime.Instance, value: interfaces.CSSNumericValue) ImplError!void {
+pub fn set_angle(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

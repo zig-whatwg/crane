@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -103,19 +99,19 @@ pub fn get_draining(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Getter for datagrams
-pub fn get_datagrams(instance: *runtime.Instance) ImplError!interfaces.WebTransportDatagramDuplexStream {
+pub fn get_datagrams(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for incomingBidirectionalStreams
-pub fn get_incomingBidirectionalStreams(instance: *runtime.Instance) ImplError!interfaces.ReadableStream {
+pub fn get_incomingBidirectionalStreams(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for incomingUnidirectionalStreams
-pub fn get_incomingUnidirectionalStreams(instance: *runtime.Instance) ImplError!interfaces.ReadableStream {
+pub fn get_incomingUnidirectionalStreams(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -141,7 +137,7 @@ pub fn set_anticipatedConcurrentIncomingBidirectionalStreams(instance: *runtime.
 }
 
 /// Operation: createSendGroup
-pub fn call_createSendGroup(instance: *runtime.Instance) ImplError!interfaces.WebTransportSendGroup {
+pub fn call_createSendGroup(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

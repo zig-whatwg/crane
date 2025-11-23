@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -92,14 +88,14 @@ pub fn set_onloadingerror(instance: *runtime.Instance, value: typedefs.EventHand
 }
 
 /// Operation: delete
-pub fn call_delete(instance: *runtime.Instance, font: interfaces.FontFace) ImplError!bool {
+pub fn call_delete(instance: *runtime.Instance, font: *runtime.Instance) ImplError!bool {
     _ = instance;
     _ = font;
     return error.NotImplemented;
 }
 
 /// Operation: add
-pub fn call_add(instance: *runtime.Instance, font: interfaces.FontFace) ImplError!interfaces.FontFaceSet {
+pub fn call_add(instance: *runtime.Instance, font: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = font;
     return error.NotImplemented;

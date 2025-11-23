@@ -1,5 +1,5 @@
 //! Generated from: resize-observer.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -89,12 +89,12 @@ pub const ResizeObserver = struct {
         return try ResizeObserverImpl.call_constructor(allocator, ctx, callback);
     }
 
-    pub fn call_observe(instance: *runtime.Instance, target: Element, options: ResizeObserverOptions) anyerror!void {
+    pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, options: ResizeObserverOptions) anyerror!void {
         
         return try ResizeObserverImpl.call_observe(instance, target, options);
     }
 
-    pub fn call_unobserve(instance: *runtime.Instance, target: Element) anyerror!void {
+    pub fn call_unobserve(instance: *runtime.Instance, target: *runtime.Instance) anyerror!void {
         
         return try ResizeObserverImpl.call_unobserve(instance, target);
     }

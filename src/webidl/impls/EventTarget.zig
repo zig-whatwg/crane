@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -53,14 +49,14 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Operation: dispatchEvent
-pub fn call_dispatchEvent(instance: *runtime.Instance, event: interfaces.Event) ImplError!bool {
+pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance) ImplError!bool {
     _ = instance;
     _ = event;
     return error.NotImplemented;
 }
 
 /// Operation: when
-pub fn call_when(instance: *runtime.Instance, @"type": runtime.DOMString, options: dictionaries.ObservableEventListenerOptions) ImplError!interfaces.Observable {
+pub fn call_when(instance: *runtime.Instance, @"type": runtime.DOMString, options: dictionaries.ObservableEventListenerOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = @"type";
     _ = options;
@@ -68,7 +64,7 @@ pub fn call_when(instance: *runtime.Instance, @"type": runtime.DOMString, option
 }
 
 /// Operation: addEventListener
-pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: interfaces.EventListener, options: *const anyopaque) ImplError!void {
+pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: *runtime.Instance, options: *const anyopaque) ImplError!void {
     _ = instance;
     _ = @"type";
     _ = callback;
@@ -77,7 +73,7 @@ pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMSt
 }
 
 /// Operation: removeEventListener
-pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: interfaces.EventListener, options: *const anyopaque) ImplError!void {
+pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: *runtime.Instance, options: *const anyopaque) ImplError!void {
     _ = instance;
     _ = @"type";
     _ = callback;

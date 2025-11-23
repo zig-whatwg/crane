@@ -1,5 +1,5 @@
 //! Generated from: web-animations-2.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -84,7 +84,7 @@ pub const AnimationNodeList = struct {
         return try AnimationNodeListImpl.get_length(instance);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!AnimationEffect {
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
         
         return try AnimationNodeListImpl.call_item(instance, index);
     }

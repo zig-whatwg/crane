@@ -1,5 +1,5 @@
 //! Generated from: web-animations-2.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -102,28 +102,28 @@ pub const GroupEffect = struct {
         return try GroupEffectImpl.call_constructor(allocator, ctx, children, timing);
     }
 
-    pub fn get_children(instance: *runtime.Instance) anyerror!AnimationNodeList {
+    pub fn get_children(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try GroupEffectImpl.get_children(instance);
     }
 
-    pub fn get_firstChild(instance: *runtime.Instance) anyerror!AnimationEffect {
+    pub fn get_firstChild(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try GroupEffectImpl.get_firstChild(instance);
     }
 
-    pub fn get_lastChild(instance: *runtime.Instance) anyerror!AnimationEffect {
+    pub fn get_lastChild(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try GroupEffectImpl.get_lastChild(instance);
     }
 
-    pub fn call_clone(instance: *runtime.Instance) anyerror!GroupEffect {
+    pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try GroupEffectImpl.call_clone(instance);
     }
 
-    pub fn call_append(instance: *runtime.Instance, effects: AnimationEffect) anyerror!void {
+    pub fn call_append(instance: *runtime.Instance, effects: *runtime.Instance) anyerror!void {
         
         return try GroupEffectImpl.call_append(instance, effects);
     }
 
-    pub fn call_prepend(instance: *runtime.Instance, effects: AnimationEffect) anyerror!void {
+    pub fn call_prepend(instance: *runtime.Instance, effects: *runtime.Instance) anyerror!void {
         
         return try GroupEffectImpl.call_prepend(instance, effects);
     }

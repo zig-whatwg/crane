@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -128,21 +128,21 @@ pub const AbortSignal = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call__any(instance: *runtime.Instance, signals: *const anyopaque) anyerror!AbortSignal {
+    pub fn call__any(instance: *runtime.Instance, signals: *const anyopaque) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try AbortSignalImpl.call__any(instance, signals);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_abort(instance: *runtime.Instance, reason: *const anyopaque) anyerror!AbortSignal {
+    pub fn call_abort(instance: *runtime.Instance, reason: *const anyopaque) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try AbortSignalImpl.call_abort(instance, reason);
     }
 
     /// Extended attributes: [Exposed=(Window,Worker)], [NewObject]
-    pub fn call_timeout(instance: *runtime.Instance, milliseconds: u64) anyerror!AbortSignal {
+    pub fn call_timeout(instance: *runtime.Instance, milliseconds: u64) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         // [EnforceRange] on milliseconds
         if (!runtime.isInRange(u64, milliseconds)) return error.TypeError;

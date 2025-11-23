@@ -1,5 +1,5 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -130,7 +130,7 @@ pub const ServiceWorkerContainer = struct {
         ServiceWorkerContainerImpl.deinit(instance);
     }
 
-    pub fn get_controller(instance: *runtime.Instance) anyerror!ServiceWorker {
+    pub fn get_controller(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ServiceWorkerContainerImpl.get_controller(instance);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -130,11 +130,11 @@ pub const StorageEvent = struct {
         return try StorageEventImpl.get_url(instance);
     }
 
-    pub fn get_storageArea(instance: *runtime.Instance) anyerror!Storage {
+    pub fn get_storageArea(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try StorageEventImpl.get_storageArea(instance);
     }
 
-    pub fn call_initStorageEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool, key: DOMString, oldValue: DOMString, newValue: DOMString, url: runtime.USVString, storageArea: Storage) anyerror!void {
+    pub fn call_initStorageEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool, key: DOMString, oldValue: DOMString, newValue: DOMString, url: runtime.USVString, storageArea: *runtime.Instance) anyerror!void {
         
         return try StorageEventImpl.call_initStorageEvent(instance, @"type", bubbles, cancelable, key, oldValue, newValue, url, storageArea);
     }

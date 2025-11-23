@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,7 +37,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for context
-pub fn get_context(instance: *runtime.Instance) ImplError!interfaces.BaseAudioContext {
+pub fn get_context(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -104,7 +100,7 @@ pub fn call_disconnect(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: connect
-pub fn call_connect(instance: *runtime.Instance, destinationNode: interfaces.AudioNode, output: u32, input: u32) ImplError!interfaces.AudioNode {
+pub fn call_connect(instance: *runtime.Instance, destinationNode: *runtime.Instance, output: u32, input: u32) ImplError!*runtime.Instance {
     _ = instance;
     _ = destinationNode;
     _ = output;

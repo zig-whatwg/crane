@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -110,7 +110,7 @@ pub const CSSMathProduct = struct {
         return try CSSMathProductImpl.call_constructor(allocator, ctx, args);
     }
 
-    pub fn get_values(instance: *runtime.Instance) anyerror!CSSNumericArray {
+    pub fn get_values(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSMathProductImpl.get_values(instance);
     }
 

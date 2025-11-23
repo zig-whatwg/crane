@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -56,19 +52,19 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, lowe
 }
 
 /// Getter for lower
-pub fn get_lower(instance: *runtime.Instance) ImplError!interfaces.CSSNumericValue {
+pub fn get_lower(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for value
-pub fn get_value(instance: *runtime.Instance) ImplError!interfaces.CSSNumericValue {
+pub fn get_value(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for upper
-pub fn get_upper(instance: *runtime.Instance) ImplError!interfaces.CSSNumericValue {
+pub fn get_upper(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -77,7 +73,7 @@ pub fn get_as(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for relList
-pub fn get_relList(instance: *runtime.Instance) ImplError!interfaces.DOMTokenList {
+pub fn get_relList(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -107,7 +103,7 @@ pub fn get_type(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for sizes
-pub fn get_sizes(instance: *runtime.Instance) ImplError!interfaces.DOMTokenList {
+pub fn get_sizes(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -131,7 +127,7 @@ pub fn get_referrerPolicy(instance: *runtime.Instance) ImplError!runtime.DOMStri
 }
 
 /// Getter for blocking
-pub fn get_blocking(instance: *runtime.Instance) ImplError!interfaces.DOMTokenList {
+pub fn get_blocking(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -167,7 +163,7 @@ pub fn get_target(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for sheet
-pub fn get_sheet(instance: *runtime.Instance) ImplError!interfaces.CSSStyleSheet {
+pub fn get_sheet(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

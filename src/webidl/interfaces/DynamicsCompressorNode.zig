@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -122,20 +122,20 @@ pub const DynamicsCompressorNode = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: BaseAudioContext, options: DynamicsCompressorOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: DynamicsCompressorOptions) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try DynamicsCompressorNodeImpl.call_constructor(allocator, ctx, context, options);
     }
 
-    pub fn get_threshold(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_threshold(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DynamicsCompressorNodeImpl.get_threshold(instance);
     }
 
-    pub fn get_knee(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_knee(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DynamicsCompressorNodeImpl.get_knee(instance);
     }
 
-    pub fn get_ratio(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_ratio(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DynamicsCompressorNodeImpl.get_ratio(instance);
     }
 
@@ -143,11 +143,11 @@ pub const DynamicsCompressorNode = struct {
         return try DynamicsCompressorNodeImpl.get_reduction(instance);
     }
 
-    pub fn get_attack(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_attack(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DynamicsCompressorNodeImpl.get_attack(instance);
     }
 
-    pub fn get_release(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_release(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DynamicsCompressorNodeImpl.get_release(instance);
     }
 

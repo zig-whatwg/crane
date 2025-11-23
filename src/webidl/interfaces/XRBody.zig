@@ -1,5 +1,5 @@
 //! Generated from: body-tracking.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -95,7 +95,7 @@ pub const XRBody = struct {
         return try XRBodyImpl.get_size(instance);
     }
 
-    pub fn call_get(instance: *runtime.Instance, key: XRBodyJoint) anyerror!XRBodySpace {
+    pub fn call_get(instance: *runtime.Instance, key: XRBodyJoint) anyerror!*runtime.Instance {
         
         return try XRBodyImpl.call_get(instance, key);
     }

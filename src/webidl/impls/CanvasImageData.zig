@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,7 +37,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getImageData
-pub fn call_getImageData(instance: *runtime.Instance, sx: i32, sy: i32, sw: i32, sh: i32, settings: dictionaries.ImageDataSettings) ImplError!interfaces.ImageData {
+pub fn call_getImageData(instance: *runtime.Instance, sx: i32, sy: i32, sw: i32, sh: i32, settings: dictionaries.ImageDataSettings) ImplError!*runtime.Instance {
     _ = instance;
     _ = sx;
     _ = sy;
@@ -52,7 +48,7 @@ pub fn call_getImageData(instance: *runtime.Instance, sx: i32, sy: i32, sw: i32,
 }
 
 /// Operation: createImageData
-pub fn call_createImageData(instance: *runtime.Instance, sw: i32, sh: i32, settings: dictionaries.ImageDataSettings) ImplError!interfaces.ImageData {
+pub fn call_createImageData(instance: *runtime.Instance, sw: i32, sh: i32, settings: dictionaries.ImageDataSettings) ImplError!*runtime.Instance {
     _ = instance;
     _ = sw;
     _ = sh;
@@ -61,7 +57,7 @@ pub fn call_createImageData(instance: *runtime.Instance, sw: i32, sh: i32, setti
 }
 
 /// Operation: putImageData
-pub fn call_putImageData(instance: *runtime.Instance, imageData: interfaces.ImageData, dx: i32, dy: i32) ImplError!void {
+pub fn call_putImageData(instance: *runtime.Instance, imageData: *runtime.Instance, dx: i32, dy: i32) ImplError!void {
     _ = instance;
     _ = imageData;
     _ = dx;

@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -136,7 +136,7 @@ pub const AudioNode = struct {
         AudioNodeImpl.deinit(instance);
     }
 
-    pub fn get_context(instance: *runtime.Instance) anyerror!BaseAudioContext {
+    pub fn get_context(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AudioNodeImpl.get_context(instance);
     }
 
@@ -176,7 +176,7 @@ pub const AudioNode = struct {
         return try AudioNodeImpl.call_disconnect(instance);
     }
 
-    pub fn call_connect(instance: *runtime.Instance, destinationNode: AudioNode, output: u32, input: u32) anyerror!AudioNode {
+    pub fn call_connect(instance: *runtime.Instance, destinationNode: *runtime.Instance, output: u32, input: u32) anyerror!*runtime.Instance {
         
         return try AudioNodeImpl.call_connect(instance, destinationNode, output, input);
     }

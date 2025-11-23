@@ -1,5 +1,5 @@
 //! Generated from: css-pseudo.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -131,7 +131,7 @@ pub const CSSPseudoElement = struct {
         return try CSSPseudoElementImpl.get_type(instance);
     }
 
-    pub fn get_element(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_element(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSPseudoElementImpl.get_element(instance);
     }
 
@@ -139,17 +139,17 @@ pub const CSSPseudoElement = struct {
         return try CSSPseudoElementImpl.get_parent(instance);
     }
 
-    pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!DOMQuad {
+    pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!*runtime.Instance {
         
         return try CSSPseudoElementImpl.call_convertQuadFromNode(instance, quad, from, options);
     }
 
-    pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!DOMPoint {
+    pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!*runtime.Instance {
         
         return try CSSPseudoElementImpl.call_convertPointFromNode(instance, point, from, options);
     }
 
-    pub fn call_pseudo(instance: *runtime.Instance, @"type": CSSOMString) anyerror!CSSPseudoElement {
+    pub fn call_pseudo(instance: *runtime.Instance, @"type": CSSOMString) anyerror!*runtime.Instance {
         
         return try CSSPseudoElementImpl.call_pseudo(instance, @"type");
     }
@@ -159,7 +159,7 @@ pub const CSSPseudoElement = struct {
         return try CSSPseudoElementImpl.call_getBoxQuads(instance, options);
     }
 
-    pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: DOMRectReadOnly, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!DOMQuad {
+    pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!*runtime.Instance {
         
         return try CSSPseudoElementImpl.call_convertRectFromNode(instance, rect, from, options);
     }

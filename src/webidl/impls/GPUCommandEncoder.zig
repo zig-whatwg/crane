@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -54,7 +50,7 @@ pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) ImplErro
 }
 
 /// Operation: copyBufferToBuffer
-pub fn call_copyBufferToBuffer(instance: *runtime.Instance, source: interfaces.GPUBuffer, destination: interfaces.GPUBuffer, size: typedefs.GPUSize64) ImplError!void {
+pub fn call_copyBufferToBuffer(instance: *runtime.Instance, source: *runtime.Instance, destination: *runtime.Instance, size: typedefs.GPUSize64) ImplError!void {
     _ = instance;
     _ = source;
     _ = destination;
@@ -96,7 +92,7 @@ pub fn call_copyTextureToTexture(instance: *runtime.Instance, source: dictionari
 }
 
 /// Operation: resolveQuerySet
-pub fn call_resolveQuerySet(instance: *runtime.Instance, querySet: interfaces.GPUQuerySet, firstQuery: typedefs.GPUSize32, queryCount: typedefs.GPUSize32, destination: interfaces.GPUBuffer, destinationOffset: typedefs.GPUSize64) ImplError!void {
+pub fn call_resolveQuerySet(instance: *runtime.Instance, querySet: *runtime.Instance, firstQuery: typedefs.GPUSize32, queryCount: typedefs.GPUSize32, destination: *runtime.Instance, destinationOffset: typedefs.GPUSize64) ImplError!void {
     _ = instance;
     _ = querySet;
     _ = firstQuery;
@@ -121,28 +117,28 @@ pub fn call_pushDebugGroup(instance: *runtime.Instance, groupLabel: runtime.USVS
 }
 
 /// Operation: finish
-pub fn call_finish(instance: *runtime.Instance, descriptor: dictionaries.GPUCommandBufferDescriptor) ImplError!interfaces.GPUCommandBuffer {
+pub fn call_finish(instance: *runtime.Instance, descriptor: dictionaries.GPUCommandBufferDescriptor) ImplError!*runtime.Instance {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
 }
 
 /// Operation: beginComputePass
-pub fn call_beginComputePass(instance: *runtime.Instance, descriptor: dictionaries.GPUComputePassDescriptor) ImplError!interfaces.GPUComputePassEncoder {
+pub fn call_beginComputePass(instance: *runtime.Instance, descriptor: dictionaries.GPUComputePassDescriptor) ImplError!*runtime.Instance {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
 }
 
 /// Operation: beginRenderPass
-pub fn call_beginRenderPass(instance: *runtime.Instance, descriptor: dictionaries.GPURenderPassDescriptor) ImplError!interfaces.GPURenderPassEncoder {
+pub fn call_beginRenderPass(instance: *runtime.Instance, descriptor: dictionaries.GPURenderPassDescriptor) ImplError!*runtime.Instance {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
 }
 
 /// Operation: clearBuffer
-pub fn call_clearBuffer(instance: *runtime.Instance, buffer: interfaces.GPUBuffer, offset: typedefs.GPUSize64, size: typedefs.GPUSize64) ImplError!void {
+pub fn call_clearBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, offset: typedefs.GPUSize64, size: typedefs.GPUSize64) ImplError!void {
     _ = instance;
     _ = buffer;
     _ = offset;

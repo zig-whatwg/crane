@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -42,7 +38,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: interfaces.MLContext) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &MLGraphBuilder.vtable, ctx);
     errdefer deinit(instance);
@@ -54,7 +50,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, cont
 }
 
 /// Operation: reduceL2
-pub fn call_reduceL2(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLReduceOptions) ImplError!interfaces.MLOperand {
+pub fn call_reduceL2(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLReduceOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -62,7 +58,7 @@ pub fn call_reduceL2(instance: *runtime.Instance, input: interfaces.MLOperand, o
 }
 
 /// Operation: reverse
-pub fn call_reverse(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLReverseOptions) ImplError!interfaces.MLOperand {
+pub fn call_reverse(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLReverseOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -70,7 +66,7 @@ pub fn call_reverse(instance: *runtime.Instance, input: interfaces.MLOperand, op
 }
 
 /// Operation: lesserOrEqual
-pub fn call_lesserOrEqual(instance: *runtime.Instance, a: interfaces.MLOperand, b: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_lesserOrEqual(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -79,7 +75,7 @@ pub fn call_lesserOrEqual(instance: *runtime.Instance, a: interfaces.MLOperand, 
 }
 
 /// Operation: reduceSumSquare
-pub fn call_reduceSumSquare(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLReduceOptions) ImplError!interfaces.MLOperand {
+pub fn call_reduceSumSquare(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLReduceOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -87,7 +83,7 @@ pub fn call_reduceSumSquare(instance: *runtime.Instance, input: interfaces.MLOpe
 }
 
 /// Operation: instanceNormalization
-pub fn call_instanceNormalization(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLInstanceNormalizationOptions) ImplError!interfaces.MLOperand {
+pub fn call_instanceNormalization(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLInstanceNormalizationOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -95,7 +91,7 @@ pub fn call_instanceNormalization(instance: *runtime.Instance, input: interfaces
 }
 
 /// Operation: ceil
-pub fn call_ceil(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_ceil(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -103,7 +99,7 @@ pub fn call_ceil(instance: *runtime.Instance, input: interfaces.MLOperand, optio
 }
 
 /// Operation: greater
-pub fn call_greater(instance: *runtime.Instance, a: interfaces.MLOperand, b: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_greater(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -112,7 +108,7 @@ pub fn call_greater(instance: *runtime.Instance, a: interfaces.MLOperand, b: int
 }
 
 /// Operation: exp
-pub fn call_exp(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_exp(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -120,7 +116,7 @@ pub fn call_exp(instance: *runtime.Instance, input: interfaces.MLOperand, option
 }
 
 /// Operation: reduceLogSum
-pub fn call_reduceLogSum(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLReduceOptions) ImplError!interfaces.MLOperand {
+pub fn call_reduceLogSum(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLReduceOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -128,7 +124,7 @@ pub fn call_reduceLogSum(instance: *runtime.Instance, input: interfaces.MLOperan
 }
 
 /// Operation: gatherElements
-pub fn call_gatherElements(instance: *runtime.Instance, input: interfaces.MLOperand, indices: interfaces.MLOperand, options: dictionaries.MLGatherOptions) ImplError!interfaces.MLOperand {
+pub fn call_gatherElements(instance: *runtime.Instance, input: *runtime.Instance, indices: *runtime.Instance, options: dictionaries.MLGatherOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = indices;
@@ -137,7 +133,7 @@ pub fn call_gatherElements(instance: *runtime.Instance, input: interfaces.MLOper
 }
 
 /// Operation: convTranspose2d
-pub fn call_convTranspose2d(instance: *runtime.Instance, input: interfaces.MLOperand, filter: interfaces.MLOperand, options: dictionaries.MLConvTranspose2dOptions) ImplError!interfaces.MLOperand {
+pub fn call_convTranspose2d(instance: *runtime.Instance, input: *runtime.Instance, filter: *runtime.Instance, options: dictionaries.MLConvTranspose2dOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = filter;
@@ -146,7 +142,7 @@ pub fn call_convTranspose2d(instance: *runtime.Instance, input: interfaces.MLOpe
 }
 
 /// Operation: relu
-pub fn call_relu(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_relu(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -154,7 +150,7 @@ pub fn call_relu(instance: *runtime.Instance, input: interfaces.MLOperand, optio
 }
 
 /// Operation: where
-pub fn call_where(instance: *runtime.Instance, condition: interfaces.MLOperand, trueValue: interfaces.MLOperand, falseValue: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_where(instance: *runtime.Instance, condition: *runtime.Instance, trueValue: *runtime.Instance, falseValue: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = condition;
     _ = trueValue;
@@ -171,7 +167,7 @@ pub fn call_build(instance: *runtime.Instance, outputs: typedefs.MLNamedOperands
 }
 
 /// Operation: sub
-pub fn call_sub(instance: *runtime.Instance, a: interfaces.MLOperand, b: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_sub(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -180,7 +176,7 @@ pub fn call_sub(instance: *runtime.Instance, a: interfaces.MLOperand, b: interfa
 }
 
 /// Operation: isInfinite
-pub fn call_isInfinite(instance: *runtime.Instance, a: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_isInfinite(instance: *runtime.Instance, a: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = options;
@@ -188,7 +184,7 @@ pub fn call_isInfinite(instance: *runtime.Instance, a: interfaces.MLOperand, opt
 }
 
 /// Operation: reduceLogSumExp
-pub fn call_reduceLogSumExp(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLReduceOptions) ImplError!interfaces.MLOperand {
+pub fn call_reduceLogSumExp(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLReduceOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -196,7 +192,7 @@ pub fn call_reduceLogSumExp(instance: *runtime.Instance, input: interfaces.MLOpe
 }
 
 /// Operation: transpose
-pub fn call_transpose(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLTransposeOptions) ImplError!interfaces.MLOperand {
+pub fn call_transpose(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLTransposeOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -204,7 +200,7 @@ pub fn call_transpose(instance: *runtime.Instance, input: interfaces.MLOperand, 
 }
 
 /// Operation: gru
-pub fn call_gru(instance: *runtime.Instance, input: interfaces.MLOperand, weight: interfaces.MLOperand, recurrentWeight: interfaces.MLOperand, steps: u32, hiddenSize: u32, options: dictionaries.MLGruOptions) ImplError!*const anyopaque {
+pub fn call_gru(instance: *runtime.Instance, input: *runtime.Instance, weight: *runtime.Instance, recurrentWeight: *runtime.Instance, steps: u32, hiddenSize: u32, options: dictionaries.MLGruOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = weight;
@@ -216,7 +212,7 @@ pub fn call_gru(instance: *runtime.Instance, input: interfaces.MLOperand, weight
 }
 
 /// Operation: conv2d
-pub fn call_conv2d(instance: *runtime.Instance, input: interfaces.MLOperand, filter: interfaces.MLOperand, options: dictionaries.MLConv2dOptions) ImplError!interfaces.MLOperand {
+pub fn call_conv2d(instance: *runtime.Instance, input: *runtime.Instance, filter: *runtime.Instance, options: dictionaries.MLConv2dOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = filter;
@@ -225,7 +221,7 @@ pub fn call_conv2d(instance: *runtime.Instance, input: interfaces.MLOperand, fil
 }
 
 /// Operation: cos
-pub fn call_cos(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_cos(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -233,7 +229,7 @@ pub fn call_cos(instance: *runtime.Instance, input: interfaces.MLOperand, option
 }
 
 /// Operation: quantizeLinear
-pub fn call_quantizeLinear(instance: *runtime.Instance, input: interfaces.MLOperand, scale: interfaces.MLOperand, zeroPoint: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_quantizeLinear(instance: *runtime.Instance, input: *runtime.Instance, scale: *runtime.Instance, zeroPoint: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = scale;
@@ -243,7 +239,7 @@ pub fn call_quantizeLinear(instance: *runtime.Instance, input: interfaces.MLOper
 }
 
 /// Operation: elu
-pub fn call_elu(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLEluOptions) ImplError!interfaces.MLOperand {
+pub fn call_elu(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLEluOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -251,7 +247,7 @@ pub fn call_elu(instance: *runtime.Instance, input: interfaces.MLOperand, option
 }
 
 /// Operation: gather
-pub fn call_gather(instance: *runtime.Instance, input: interfaces.MLOperand, indices: interfaces.MLOperand, options: dictionaries.MLGatherOptions) ImplError!interfaces.MLOperand {
+pub fn call_gather(instance: *runtime.Instance, input: *runtime.Instance, indices: *runtime.Instance, options: dictionaries.MLGatherOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = indices;
@@ -260,7 +256,7 @@ pub fn call_gather(instance: *runtime.Instance, input: interfaces.MLOperand, ind
 }
 
 /// Operation: greaterOrEqual
-pub fn call_greaterOrEqual(instance: *runtime.Instance, a: interfaces.MLOperand, b: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_greaterOrEqual(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -269,7 +265,7 @@ pub fn call_greaterOrEqual(instance: *runtime.Instance, a: interfaces.MLOperand,
 }
 
 /// Operation: gatherND
-pub fn call_gatherND(instance: *runtime.Instance, input: interfaces.MLOperand, indices: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_gatherND(instance: *runtime.Instance, input: *runtime.Instance, indices: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = indices;
@@ -278,7 +274,7 @@ pub fn call_gatherND(instance: *runtime.Instance, input: interfaces.MLOperand, i
 }
 
 /// Operation: l2Pool2d
-pub fn call_l2Pool2d(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLPool2dOptions) ImplError!interfaces.MLOperand {
+pub fn call_l2Pool2d(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLPool2dOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -286,7 +282,7 @@ pub fn call_l2Pool2d(instance: *runtime.Instance, input: interfaces.MLOperand, o
 }
 
 /// Operation: erf
-pub fn call_erf(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_erf(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -294,7 +290,7 @@ pub fn call_erf(instance: *runtime.Instance, input: interfaces.MLOperand, option
 }
 
 /// Operation: add
-pub fn call_add(instance: *runtime.Instance, a: interfaces.MLOperand, b: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_add(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -303,7 +299,7 @@ pub fn call_add(instance: *runtime.Instance, a: interfaces.MLOperand, b: interfa
 }
 
 /// Operation: layerNormalization
-pub fn call_layerNormalization(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLLayerNormalizationOptions) ImplError!interfaces.MLOperand {
+pub fn call_layerNormalization(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLLayerNormalizationOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -311,7 +307,7 @@ pub fn call_layerNormalization(instance: *runtime.Instance, input: interfaces.ML
 }
 
 /// Operation: pad
-pub fn call_pad(instance: *runtime.Instance, input: interfaces.MLOperand, beginningPadding: *const anyopaque, endingPadding: *const anyopaque, options: dictionaries.MLPadOptions) ImplError!interfaces.MLOperand {
+pub fn call_pad(instance: *runtime.Instance, input: *runtime.Instance, beginningPadding: *const anyopaque, endingPadding: *const anyopaque, options: dictionaries.MLPadOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = beginningPadding;
@@ -321,7 +317,7 @@ pub fn call_pad(instance: *runtime.Instance, input: interfaces.MLOperand, beginn
 }
 
 /// Operation: notEqual
-pub fn call_notEqual(instance: *runtime.Instance, a: interfaces.MLOperand, b: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_notEqual(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -330,7 +326,7 @@ pub fn call_notEqual(instance: *runtime.Instance, a: interfaces.MLOperand, b: in
 }
 
 /// Operation: log
-pub fn call_log(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_log(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -338,7 +334,7 @@ pub fn call_log(instance: *runtime.Instance, input: interfaces.MLOperand, option
 }
 
 /// Operation: dequantizeLinear
-pub fn call_dequantizeLinear(instance: *runtime.Instance, input: interfaces.MLOperand, scale: interfaces.MLOperand, zeroPoint: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_dequantizeLinear(instance: *runtime.Instance, input: *runtime.Instance, scale: *runtime.Instance, zeroPoint: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = scale;
@@ -348,7 +344,7 @@ pub fn call_dequantizeLinear(instance: *runtime.Instance, input: interfaces.MLOp
 }
 
 /// Operation: maxPool2d
-pub fn call_maxPool2d(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLPool2dOptions) ImplError!interfaces.MLOperand {
+pub fn call_maxPool2d(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLPool2dOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -356,7 +352,7 @@ pub fn call_maxPool2d(instance: *runtime.Instance, input: interfaces.MLOperand, 
 }
 
 /// Operation: reduceL1
-pub fn call_reduceL1(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLReduceOptions) ImplError!interfaces.MLOperand {
+pub fn call_reduceL1(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLReduceOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -364,7 +360,7 @@ pub fn call_reduceL1(instance: *runtime.Instance, input: interfaces.MLOperand, o
 }
 
 /// Operation: floor
-pub fn call_floor(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_floor(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -372,7 +368,7 @@ pub fn call_floor(instance: *runtime.Instance, input: interfaces.MLOperand, opti
 }
 
 /// Operation: linear
-pub fn call_linear(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLLinearOptions) ImplError!interfaces.MLOperand {
+pub fn call_linear(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLLinearOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -380,7 +376,7 @@ pub fn call_linear(instance: *runtime.Instance, input: interfaces.MLOperand, opt
 }
 
 /// Operation: reduceMax
-pub fn call_reduceMax(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLReduceOptions) ImplError!interfaces.MLOperand {
+pub fn call_reduceMax(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLReduceOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -388,7 +384,7 @@ pub fn call_reduceMax(instance: *runtime.Instance, input: interfaces.MLOperand, 
 }
 
 /// Operation: resample2d
-pub fn call_resample2d(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLResample2dOptions) ImplError!interfaces.MLOperand {
+pub fn call_resample2d(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLResample2dOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -396,7 +392,7 @@ pub fn call_resample2d(instance: *runtime.Instance, input: interfaces.MLOperand,
 }
 
 /// Operation: softmax
-pub fn call_softmax(instance: *runtime.Instance, input: interfaces.MLOperand, axis: u32, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_softmax(instance: *runtime.Instance, input: *runtime.Instance, axis: u32, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = axis;
@@ -405,7 +401,7 @@ pub fn call_softmax(instance: *runtime.Instance, input: interfaces.MLOperand, ax
 }
 
 /// Operation: min
-pub fn call_min(instance: *runtime.Instance, a: interfaces.MLOperand, b: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_min(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -414,7 +410,7 @@ pub fn call_min(instance: *runtime.Instance, a: interfaces.MLOperand, b: interfa
 }
 
 /// Operation: lesser
-pub fn call_lesser(instance: *runtime.Instance, a: interfaces.MLOperand, b: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_lesser(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -423,7 +419,7 @@ pub fn call_lesser(instance: *runtime.Instance, a: interfaces.MLOperand, b: inte
 }
 
 /// Operation: isNaN
-pub fn call_isNaN(instance: *runtime.Instance, a: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_isNaN(instance: *runtime.Instance, a: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = options;
@@ -431,7 +427,7 @@ pub fn call_isNaN(instance: *runtime.Instance, a: interfaces.MLOperand, options:
 }
 
 /// Operation: gemm
-pub fn call_gemm(instance: *runtime.Instance, a: interfaces.MLOperand, b: interfaces.MLOperand, options: dictionaries.MLGemmOptions) ImplError!interfaces.MLOperand {
+pub fn call_gemm(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLGemmOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -440,7 +436,7 @@ pub fn call_gemm(instance: *runtime.Instance, a: interfaces.MLOperand, b: interf
 }
 
 /// Operation: cast
-pub fn call_cast(instance: *runtime.Instance, input: interfaces.MLOperand, dataType: enums.MLOperandDataType, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_cast(instance: *runtime.Instance, input: *runtime.Instance, dataType: enums.MLOperandDataType, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = dataType;
@@ -449,7 +445,7 @@ pub fn call_cast(instance: *runtime.Instance, input: interfaces.MLOperand, dataT
 }
 
 /// Operation: hardSwish
-pub fn call_hardSwish(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_hardSwish(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -457,7 +453,7 @@ pub fn call_hardSwish(instance: *runtime.Instance, input: interfaces.MLOperand, 
 }
 
 /// Operation: reduceSum
-pub fn call_reduceSum(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLReduceOptions) ImplError!interfaces.MLOperand {
+pub fn call_reduceSum(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLReduceOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -465,7 +461,7 @@ pub fn call_reduceSum(instance: *runtime.Instance, input: interfaces.MLOperand, 
 }
 
 /// Operation: roundEven
-pub fn call_roundEven(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_roundEven(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -473,7 +469,7 @@ pub fn call_roundEven(instance: *runtime.Instance, input: interfaces.MLOperand, 
 }
 
 /// Operation: sqrt
-pub fn call_sqrt(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_sqrt(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -481,7 +477,7 @@ pub fn call_sqrt(instance: *runtime.Instance, input: interfaces.MLOperand, optio
 }
 
 /// Operation: averagePool2d
-pub fn call_averagePool2d(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLPool2dOptions) ImplError!interfaces.MLOperand {
+pub fn call_averagePool2d(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLPool2dOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -489,7 +485,7 @@ pub fn call_averagePool2d(instance: *runtime.Instance, input: interfaces.MLOpera
 }
 
 /// Operation: equal
-pub fn call_equal(instance: *runtime.Instance, a: interfaces.MLOperand, b: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_equal(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -498,7 +494,7 @@ pub fn call_equal(instance: *runtime.Instance, a: interfaces.MLOperand, b: inter
 }
 
 /// Operation: slice
-pub fn call_slice(instance: *runtime.Instance, input: interfaces.MLOperand, starts: *const anyopaque, sizes: *const anyopaque, options: dictionaries.MLSliceOptions) ImplError!interfaces.MLOperand {
+pub fn call_slice(instance: *runtime.Instance, input: *runtime.Instance, starts: *const anyopaque, sizes: *const anyopaque, options: dictionaries.MLSliceOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = starts;
@@ -508,7 +504,7 @@ pub fn call_slice(instance: *runtime.Instance, input: interfaces.MLOperand, star
 }
 
 /// Operation: logicalNot
-pub fn call_logicalNot(instance: *runtime.Instance, a: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_logicalNot(instance: *runtime.Instance, a: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = options;
@@ -516,7 +512,7 @@ pub fn call_logicalNot(instance: *runtime.Instance, a: interfaces.MLOperand, opt
 }
 
 /// Operation: mul
-pub fn call_mul(instance: *runtime.Instance, a: interfaces.MLOperand, b: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_mul(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -525,7 +521,7 @@ pub fn call_mul(instance: *runtime.Instance, a: interfaces.MLOperand, b: interfa
 }
 
 /// Operation: sin
-pub fn call_sin(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_sin(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -533,7 +529,7 @@ pub fn call_sin(instance: *runtime.Instance, input: interfaces.MLOperand, option
 }
 
 /// Operation: constant
-pub fn call_constant(instance: *runtime.Instance, descriptor: dictionaries.MLOperandDescriptor, buffer: typedefs.AllowSharedBufferSource) ImplError!interfaces.MLOperand {
+pub fn call_constant(instance: *runtime.Instance, descriptor: dictionaries.MLOperandDescriptor, buffer: typedefs.AllowSharedBufferSource) ImplError!*runtime.Instance {
     _ = instance;
     _ = descriptor;
     _ = buffer;
@@ -541,7 +537,7 @@ pub fn call_constant(instance: *runtime.Instance, descriptor: dictionaries.MLOpe
 }
 
 /// Operation: gruCell
-pub fn call_gruCell(instance: *runtime.Instance, input: interfaces.MLOperand, weight: interfaces.MLOperand, recurrentWeight: interfaces.MLOperand, hiddenState: interfaces.MLOperand, hiddenSize: u32, options: dictionaries.MLGruCellOptions) ImplError!interfaces.MLOperand {
+pub fn call_gruCell(instance: *runtime.Instance, input: *runtime.Instance, weight: *runtime.Instance, recurrentWeight: *runtime.Instance, hiddenState: *runtime.Instance, hiddenSize: u32, options: dictionaries.MLGruCellOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = weight;
@@ -553,7 +549,7 @@ pub fn call_gruCell(instance: *runtime.Instance, input: interfaces.MLOperand, we
 }
 
 /// Operation: split
-pub fn call_split(instance: *runtime.Instance, input: interfaces.MLOperand, splits: *const anyopaque, options: dictionaries.MLSplitOptions) ImplError!*const anyopaque {
+pub fn call_split(instance: *runtime.Instance, input: *runtime.Instance, splits: *const anyopaque, options: dictionaries.MLSplitOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = splits;
@@ -562,7 +558,7 @@ pub fn call_split(instance: *runtime.Instance, input: interfaces.MLOperand, spli
 }
 
 /// Operation: tanh
-pub fn call_tanh(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_tanh(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -570,7 +566,7 @@ pub fn call_tanh(instance: *runtime.Instance, input: interfaces.MLOperand, optio
 }
 
 /// Operation: reshape
-pub fn call_reshape(instance: *runtime.Instance, input: interfaces.MLOperand, newShape: *const anyopaque, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_reshape(instance: *runtime.Instance, input: *runtime.Instance, newShape: *const anyopaque, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = newShape;
@@ -579,7 +575,7 @@ pub fn call_reshape(instance: *runtime.Instance, input: interfaces.MLOperand, ne
 }
 
 /// Operation: hardSigmoid
-pub fn call_hardSigmoid(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLHardSigmoidOptions) ImplError!interfaces.MLOperand {
+pub fn call_hardSigmoid(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLHardSigmoidOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -587,7 +583,7 @@ pub fn call_hardSigmoid(instance: *runtime.Instance, input: interfaces.MLOperand
 }
 
 /// Operation: reciprocal
-pub fn call_reciprocal(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_reciprocal(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -595,7 +591,7 @@ pub fn call_reciprocal(instance: *runtime.Instance, input: interfaces.MLOperand,
 }
 
 /// Operation: expand
-pub fn call_expand(instance: *runtime.Instance, input: interfaces.MLOperand, newShape: *const anyopaque, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_expand(instance: *runtime.Instance, input: *runtime.Instance, newShape: *const anyopaque, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = newShape;
@@ -604,7 +600,7 @@ pub fn call_expand(instance: *runtime.Instance, input: interfaces.MLOperand, new
 }
 
 /// Operation: identity
-pub fn call_identity(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_identity(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -612,7 +608,7 @@ pub fn call_identity(instance: *runtime.Instance, input: interfaces.MLOperand, o
 }
 
 /// Operation: leakyRelu
-pub fn call_leakyRelu(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLLeakyReluOptions) ImplError!interfaces.MLOperand {
+pub fn call_leakyRelu(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLLeakyReluOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -620,7 +616,7 @@ pub fn call_leakyRelu(instance: *runtime.Instance, input: interfaces.MLOperand, 
 }
 
 /// Operation: clamp
-pub fn call_clamp(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLClampOptions) ImplError!interfaces.MLOperand {
+pub fn call_clamp(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLClampOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -628,7 +624,7 @@ pub fn call_clamp(instance: *runtime.Instance, input: interfaces.MLOperand, opti
 }
 
 /// Operation: lstmCell
-pub fn call_lstmCell(instance: *runtime.Instance, input: interfaces.MLOperand, weight: interfaces.MLOperand, recurrentWeight: interfaces.MLOperand, hiddenState: interfaces.MLOperand, cellState: interfaces.MLOperand, hiddenSize: u32, options: dictionaries.MLLstmCellOptions) ImplError!*const anyopaque {
+pub fn call_lstmCell(instance: *runtime.Instance, input: *runtime.Instance, weight: *runtime.Instance, recurrentWeight: *runtime.Instance, hiddenState: *runtime.Instance, cellState: *runtime.Instance, hiddenSize: u32, options: dictionaries.MLLstmCellOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = weight;
@@ -641,7 +637,7 @@ pub fn call_lstmCell(instance: *runtime.Instance, input: interfaces.MLOperand, w
 }
 
 /// Operation: prelu
-pub fn call_prelu(instance: *runtime.Instance, input: interfaces.MLOperand, slope: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_prelu(instance: *runtime.Instance, input: *runtime.Instance, slope: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = slope;
@@ -650,7 +646,7 @@ pub fn call_prelu(instance: *runtime.Instance, input: interfaces.MLOperand, slop
 }
 
 /// Operation: logicalXor
-pub fn call_logicalXor(instance: *runtime.Instance, a: interfaces.MLOperand, b: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_logicalXor(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -659,7 +655,7 @@ pub fn call_logicalXor(instance: *runtime.Instance, a: interfaces.MLOperand, b: 
 }
 
 /// Operation: scatterElements
-pub fn call_scatterElements(instance: *runtime.Instance, input: interfaces.MLOperand, indices: interfaces.MLOperand, updates: interfaces.MLOperand, options: dictionaries.MLScatterOptions) ImplError!interfaces.MLOperand {
+pub fn call_scatterElements(instance: *runtime.Instance, input: *runtime.Instance, indices: *runtime.Instance, updates: *runtime.Instance, options: dictionaries.MLScatterOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = indices;
@@ -669,7 +665,7 @@ pub fn call_scatterElements(instance: *runtime.Instance, input: interfaces.MLOpe
 }
 
 /// Operation: abs
-pub fn call_abs(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_abs(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -677,7 +673,7 @@ pub fn call_abs(instance: *runtime.Instance, input: interfaces.MLOperand, option
 }
 
 /// Operation: input
-pub fn call_input(instance: *runtime.Instance, name: runtime.USVString, descriptor: dictionaries.MLOperandDescriptor) ImplError!interfaces.MLOperand {
+pub fn call_input(instance: *runtime.Instance, name: runtime.USVString, descriptor: dictionaries.MLOperandDescriptor) ImplError!*runtime.Instance {
     _ = instance;
     _ = name;
     _ = descriptor;
@@ -685,7 +681,7 @@ pub fn call_input(instance: *runtime.Instance, name: runtime.USVString, descript
 }
 
 /// Operation: tan
-pub fn call_tan(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_tan(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -693,7 +689,7 @@ pub fn call_tan(instance: *runtime.Instance, input: interfaces.MLOperand, option
 }
 
 /// Operation: logicalAnd
-pub fn call_logicalAnd(instance: *runtime.Instance, a: interfaces.MLOperand, b: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_logicalAnd(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -702,7 +698,7 @@ pub fn call_logicalAnd(instance: *runtime.Instance, a: interfaces.MLOperand, b: 
 }
 
 /// Operation: softsign
-pub fn call_softsign(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_softsign(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -710,7 +706,7 @@ pub fn call_softsign(instance: *runtime.Instance, input: interfaces.MLOperand, o
 }
 
 /// Operation: triangular
-pub fn call_triangular(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLTriangularOptions) ImplError!interfaces.MLOperand {
+pub fn call_triangular(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLTriangularOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -718,7 +714,7 @@ pub fn call_triangular(instance: *runtime.Instance, input: interfaces.MLOperand,
 }
 
 /// Operation: max
-pub fn call_max(instance: *runtime.Instance, a: interfaces.MLOperand, b: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_max(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -727,7 +723,7 @@ pub fn call_max(instance: *runtime.Instance, a: interfaces.MLOperand, b: interfa
 }
 
 /// Operation: sign
-pub fn call_sign(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_sign(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -735,7 +731,7 @@ pub fn call_sign(instance: *runtime.Instance, input: interfaces.MLOperand, optio
 }
 
 /// Operation: logicalOr
-pub fn call_logicalOr(instance: *runtime.Instance, a: interfaces.MLOperand, b: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_logicalOr(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -744,7 +740,7 @@ pub fn call_logicalOr(instance: *runtime.Instance, a: interfaces.MLOperand, b: i
 }
 
 /// Operation: neg
-pub fn call_neg(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_neg(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -752,7 +748,7 @@ pub fn call_neg(instance: *runtime.Instance, input: interfaces.MLOperand, option
 }
 
 /// Operation: lstm
-pub fn call_lstm(instance: *runtime.Instance, input: interfaces.MLOperand, weight: interfaces.MLOperand, recurrentWeight: interfaces.MLOperand, steps: u32, hiddenSize: u32, options: dictionaries.MLLstmOptions) ImplError!*const anyopaque {
+pub fn call_lstm(instance: *runtime.Instance, input: *runtime.Instance, weight: *runtime.Instance, recurrentWeight: *runtime.Instance, steps: u32, hiddenSize: u32, options: dictionaries.MLLstmOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = weight;
@@ -764,7 +760,7 @@ pub fn call_lstm(instance: *runtime.Instance, input: interfaces.MLOperand, weigh
 }
 
 /// Operation: concat
-pub fn call_concat(instance: *runtime.Instance, inputs: *const anyopaque, axis: u32, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_concat(instance: *runtime.Instance, inputs: *const anyopaque, axis: u32, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = inputs;
     _ = axis;
@@ -773,7 +769,7 @@ pub fn call_concat(instance: *runtime.Instance, inputs: *const anyopaque, axis: 
 }
 
 /// Operation: pow
-pub fn call_pow(instance: *runtime.Instance, a: interfaces.MLOperand, b: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_pow(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -782,7 +778,7 @@ pub fn call_pow(instance: *runtime.Instance, a: interfaces.MLOperand, b: interfa
 }
 
 /// Operation: argMax
-pub fn call_argMax(instance: *runtime.Instance, input: interfaces.MLOperand, axis: u32, options: dictionaries.MLArgMinMaxOptions) ImplError!interfaces.MLOperand {
+pub fn call_argMax(instance: *runtime.Instance, input: *runtime.Instance, axis: u32, options: dictionaries.MLArgMinMaxOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = axis;
@@ -791,7 +787,7 @@ pub fn call_argMax(instance: *runtime.Instance, input: interfaces.MLOperand, axi
 }
 
 /// Operation: reduceMean
-pub fn call_reduceMean(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLReduceOptions) ImplError!interfaces.MLOperand {
+pub fn call_reduceMean(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLReduceOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -799,7 +795,7 @@ pub fn call_reduceMean(instance: *runtime.Instance, input: interfaces.MLOperand,
 }
 
 /// Operation: softplus
-pub fn call_softplus(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_softplus(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -807,7 +803,7 @@ pub fn call_softplus(instance: *runtime.Instance, input: interfaces.MLOperand, o
 }
 
 /// Operation: gelu
-pub fn call_gelu(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_gelu(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -815,7 +811,7 @@ pub fn call_gelu(instance: *runtime.Instance, input: interfaces.MLOperand, optio
 }
 
 /// Operation: reduceMin
-pub fn call_reduceMin(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLReduceOptions) ImplError!interfaces.MLOperand {
+pub fn call_reduceMin(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLReduceOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -823,7 +819,7 @@ pub fn call_reduceMin(instance: *runtime.Instance, input: interfaces.MLOperand, 
 }
 
 /// Operation: argMin
-pub fn call_argMin(instance: *runtime.Instance, input: interfaces.MLOperand, axis: u32, options: dictionaries.MLArgMinMaxOptions) ImplError!interfaces.MLOperand {
+pub fn call_argMin(instance: *runtime.Instance, input: *runtime.Instance, axis: u32, options: dictionaries.MLArgMinMaxOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = axis;
@@ -832,7 +828,7 @@ pub fn call_argMin(instance: *runtime.Instance, input: interfaces.MLOperand, axi
 }
 
 /// Operation: batchNormalization
-pub fn call_batchNormalization(instance: *runtime.Instance, input: interfaces.MLOperand, mean: interfaces.MLOperand, variance: interfaces.MLOperand, options: dictionaries.MLBatchNormalizationOptions) ImplError!interfaces.MLOperand {
+pub fn call_batchNormalization(instance: *runtime.Instance, input: *runtime.Instance, mean: *runtime.Instance, variance: *runtime.Instance, options: dictionaries.MLBatchNormalizationOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = mean;
@@ -842,7 +838,7 @@ pub fn call_batchNormalization(instance: *runtime.Instance, input: interfaces.ML
 }
 
 /// Operation: cumulativeSum
-pub fn call_cumulativeSum(instance: *runtime.Instance, input: interfaces.MLOperand, axis: u32, options: dictionaries.MLCumulativeSumOptions) ImplError!interfaces.MLOperand {
+pub fn call_cumulativeSum(instance: *runtime.Instance, input: *runtime.Instance, axis: u32, options: dictionaries.MLCumulativeSumOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = axis;
@@ -851,7 +847,7 @@ pub fn call_cumulativeSum(instance: *runtime.Instance, input: interfaces.MLOpera
 }
 
 /// Operation: matmul
-pub fn call_matmul(instance: *runtime.Instance, a: interfaces.MLOperand, b: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_matmul(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -860,7 +856,7 @@ pub fn call_matmul(instance: *runtime.Instance, a: interfaces.MLOperand, b: inte
 }
 
 /// Operation: scatterND
-pub fn call_scatterND(instance: *runtime.Instance, input: interfaces.MLOperand, indices: interfaces.MLOperand, updates: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_scatterND(instance: *runtime.Instance, input: *runtime.Instance, indices: *runtime.Instance, updates: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = indices;
@@ -870,7 +866,7 @@ pub fn call_scatterND(instance: *runtime.Instance, input: interfaces.MLOperand, 
 }
 
 /// Operation: reduceProduct
-pub fn call_reduceProduct(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLReduceOptions) ImplError!interfaces.MLOperand {
+pub fn call_reduceProduct(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLReduceOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -878,7 +874,7 @@ pub fn call_reduceProduct(instance: *runtime.Instance, input: interfaces.MLOpera
 }
 
 /// Operation: sigmoid
-pub fn call_sigmoid(instance: *runtime.Instance, input: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_sigmoid(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -886,7 +882,7 @@ pub fn call_sigmoid(instance: *runtime.Instance, input: interfaces.MLOperand, op
 }
 
 /// Operation: tile
-pub fn call_tile(instance: *runtime.Instance, input: interfaces.MLOperand, repetitions: *const anyopaque, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_tile(instance: *runtime.Instance, input: *runtime.Instance, repetitions: *const anyopaque, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = repetitions;
@@ -895,7 +891,7 @@ pub fn call_tile(instance: *runtime.Instance, input: interfaces.MLOperand, repet
 }
 
 /// Operation: div
-pub fn call_div(instance: *runtime.Instance, a: interfaces.MLOperand, b: interfaces.MLOperand, options: dictionaries.MLOperatorOptions) ImplError!interfaces.MLOperand {
+pub fn call_div(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;

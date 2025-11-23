@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -151,7 +151,7 @@ pub const GPURenderBundleEncoder = struct {
         try GPURenderBundleEncoderImpl.set_label(instance, value);
     }
 
-    pub fn call_drawIndexedIndirect(instance: *runtime.Instance, indirectBuffer: GPUBuffer, indirectOffset: GPUSize64) anyerror!void {
+    pub fn call_drawIndexedIndirect(instance: *runtime.Instance, indirectBuffer: *runtime.Instance, indirectOffset: GPUSize64) anyerror!void {
         
         return try GPURenderBundleEncoderImpl.call_drawIndexedIndirect(instance, indirectBuffer, indirectOffset);
     }
@@ -165,12 +165,12 @@ pub const GPURenderBundleEncoder = struct {
         return try GPURenderBundleEncoderImpl.call_popDebugGroup(instance);
     }
 
-    pub fn call_setBindGroup(instance: *runtime.Instance, index: GPUIndex32, bindGroup: GPUBindGroup, dynamicOffsets: *const anyopaque) anyerror!void {
+    pub fn call_setBindGroup(instance: *runtime.Instance, index: GPUIndex32, bindGroup: *runtime.Instance, dynamicOffsets: *const anyopaque) anyerror!void {
         
         return try GPURenderBundleEncoderImpl.call_setBindGroup(instance, index, bindGroup, dynamicOffsets);
     }
 
-    pub fn call_setVertexBuffer(instance: *runtime.Instance, slot: GPUIndex32, buffer: GPUBuffer, offset: GPUSize64, size: GPUSize64) anyerror!void {
+    pub fn call_setVertexBuffer(instance: *runtime.Instance, slot: GPUIndex32, buffer: *runtime.Instance, offset: GPUSize64, size: GPUSize64) anyerror!void {
         
         return try GPURenderBundleEncoderImpl.call_setVertexBuffer(instance, slot, buffer, offset, size);
     }
@@ -180,7 +180,7 @@ pub const GPURenderBundleEncoder = struct {
         return try GPURenderBundleEncoderImpl.call_insertDebugMarker(instance, markerLabel);
     }
 
-    pub fn call_setIndexBuffer(instance: *runtime.Instance, buffer: GPUBuffer, indexFormat: GPUIndexFormat, offset: GPUSize64, size: GPUSize64) anyerror!void {
+    pub fn call_setIndexBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, indexFormat: GPUIndexFormat, offset: GPUSize64, size: GPUSize64) anyerror!void {
         
         return try GPURenderBundleEncoderImpl.call_setIndexBuffer(instance, buffer, indexFormat, offset, size);
     }
@@ -190,12 +190,12 @@ pub const GPURenderBundleEncoder = struct {
         return try GPURenderBundleEncoderImpl.call_pushDebugGroup(instance, groupLabel);
     }
 
-    pub fn call_finish(instance: *runtime.Instance, descriptor: GPURenderBundleDescriptor) anyerror!GPURenderBundle {
+    pub fn call_finish(instance: *runtime.Instance, descriptor: GPURenderBundleDescriptor) anyerror!*runtime.Instance {
         
         return try GPURenderBundleEncoderImpl.call_finish(instance, descriptor);
     }
 
-    pub fn call_drawIndirect(instance: *runtime.Instance, indirectBuffer: GPUBuffer, indirectOffset: GPUSize64) anyerror!void {
+    pub fn call_drawIndirect(instance: *runtime.Instance, indirectBuffer: *runtime.Instance, indirectOffset: GPUSize64) anyerror!void {
         
         return try GPURenderBundleEncoderImpl.call_drawIndirect(instance, indirectBuffer, indirectOffset);
     }
@@ -205,7 +205,7 @@ pub const GPURenderBundleEncoder = struct {
         return try GPURenderBundleEncoderImpl.call_drawIndexed(instance, indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
     }
 
-    pub fn call_setPipeline(instance: *runtime.Instance, pipeline: GPURenderPipeline) anyerror!void {
+    pub fn call_setPipeline(instance: *runtime.Instance, pipeline: *runtime.Instance) anyerror!void {
         
         return try GPURenderBundleEncoderImpl.call_setPipeline(instance, pipeline);
     }

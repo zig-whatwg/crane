@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -292,7 +292,7 @@ pub const HTMLCanvasElement = struct {
         try HTMLCanvasElementImpl.set_height(instance, value);
     }
 
-    pub fn call_captureStream(instance: *runtime.Instance, frameRequestRate: f64) anyerror!MediaStream {
+    pub fn call_captureStream(instance: *runtime.Instance, frameRequestRate: f64) anyerror!*runtime.Instance {
         
         return try HTMLCanvasElementImpl.call_captureStream(instance, frameRequestRate);
     }
@@ -312,7 +312,7 @@ pub const HTMLCanvasElement = struct {
         return try HTMLCanvasElementImpl.call_toBlob(instance, _callback, @"type", quality);
     }
 
-    pub fn call_transferControlToOffscreen(instance: *runtime.Instance) anyerror!OffscreenCanvas {
+    pub fn call_transferControlToOffscreen(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLCanvasElementImpl.call_transferControlToOffscreen(instance);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -246,7 +246,7 @@ pub const ServiceWorkerGlobalScope = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_clients(instance: *runtime.Instance) anyerror!Clients {
+    pub fn get_clients(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_clients) |cached| {
@@ -258,7 +258,7 @@ pub const ServiceWorkerGlobalScope = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_registration(instance: *runtime.Instance) anyerror!ServiceWorkerRegistration {
+    pub fn get_registration(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_registration) |cached| {
@@ -270,7 +270,7 @@ pub const ServiceWorkerGlobalScope = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_serviceWorker(instance: *runtime.Instance) anyerror!ServiceWorker {
+    pub fn get_serviceWorker(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_serviceWorker) |cached| {
@@ -330,7 +330,7 @@ pub const ServiceWorkerGlobalScope = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_cookieStore(instance: *runtime.Instance) anyerror!CookieStore {
+    pub fn get_cookieStore(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_cookieStore) |cached| {

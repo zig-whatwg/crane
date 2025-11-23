@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -47,7 +43,7 @@ pub fn get_name(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
 }
 
 /// Getter for cssRules
-pub fn get_cssRules(instance: *runtime.Instance) ImplError!interfaces.CSSRuleList {
+pub fn get_cssRules(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -73,7 +69,7 @@ pub fn call_deleteRule(instance: *runtime.Instance, select: typedefs.CSSOMString
 }
 
 /// Operation: findRule
-pub fn call_findRule(instance: *runtime.Instance, select: typedefs.CSSOMString) ImplError!interfaces.CSSKeyframeRule {
+pub fn call_findRule(instance: *runtime.Instance, select: typedefs.CSSOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = select;
     return error.NotImplemented;

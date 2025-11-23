@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -118,15 +118,15 @@ pub const RTCRtpSender = struct {
         RTCRtpSenderImpl.deinit(instance);
     }
 
-    pub fn get_track(instance: *runtime.Instance) anyerror!MediaStreamTrack {
+    pub fn get_track(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RTCRtpSenderImpl.get_track(instance);
     }
 
-    pub fn get_transport(instance: *runtime.Instance) anyerror!RTCDtlsTransport {
+    pub fn get_transport(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RTCRtpSenderImpl.get_transport(instance);
     }
 
-    pub fn get_dtmf(instance: *runtime.Instance) anyerror!RTCDTMFSender {
+    pub fn get_dtmf(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RTCRtpSenderImpl.get_dtmf(instance);
     }
 
@@ -138,7 +138,7 @@ pub const RTCRtpSender = struct {
         try RTCRtpSenderImpl.set_transform(instance, value);
     }
 
-    pub fn call_replaceTrack(instance: *runtime.Instance, withTrack: MediaStreamTrack) anyerror!*const anyopaque {
+    pub fn call_replaceTrack(instance: *runtime.Instance, withTrack: *runtime.Instance) anyerror!*const anyopaque {
         
         return try RTCRtpSenderImpl.call_replaceTrack(instance, withTrack);
     }
@@ -156,7 +156,7 @@ pub const RTCRtpSender = struct {
         return try RTCRtpSenderImpl.call_getParameters(instance);
     }
 
-    pub fn call_setStreams(instance: *runtime.Instance, streams: MediaStream) anyerror!void {
+    pub fn call_setStreams(instance: *runtime.Instance, streams: *runtime.Instance) anyerror!void {
         
         return try RTCRtpSenderImpl.call_setStreams(instance, streams);
     }

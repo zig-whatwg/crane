@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -459,7 +459,7 @@ pub const HTMLFormElement = struct {
     }
 
     /// Extended attributes: [SameObject], [PutForwards=value], [Reflect="rel"]
-    pub fn get_relList(instance: *runtime.Instance) anyerror!DOMTokenList {
+    pub fn get_relList(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_relList) |cached| {
@@ -471,7 +471,7 @@ pub const HTMLFormElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_elements(instance: *runtime.Instance) anyerror!HTMLFormControlsCollection {
+    pub fn get_elements(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_elements) |cached| {
@@ -486,7 +486,7 @@ pub const HTMLFormElement = struct {
         return try HTMLFormElementImpl.get_length(instance);
     }
 
-    pub fn call_requestSubmit(instance: *runtime.Instance, submitter: HTMLElement) anyerror!void {
+    pub fn call_requestSubmit(instance: *runtime.Instance, submitter: *runtime.Instance) anyerror!void {
         
         return try HTMLFormElementImpl.call_requestSubmit(instance, submitter);
     }

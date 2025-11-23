@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -149,7 +149,7 @@ pub const NavigateEvent = struct {
         return try NavigateEventImpl.get_navigationType(instance);
     }
 
-    pub fn get_destination(instance: *runtime.Instance) anyerror!NavigationDestination {
+    pub fn get_destination(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NavigateEventImpl.get_destination(instance);
     }
 
@@ -165,11 +165,11 @@ pub const NavigateEvent = struct {
         return try NavigateEventImpl.get_hashChange(instance);
     }
 
-    pub fn get_signal(instance: *runtime.Instance) anyerror!AbortSignal {
+    pub fn get_signal(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NavigateEventImpl.get_signal(instance);
     }
 
-    pub fn get_formData(instance: *runtime.Instance) anyerror!FormData {
+    pub fn get_formData(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NavigateEventImpl.get_formData(instance);
     }
 
@@ -185,7 +185,7 @@ pub const NavigateEvent = struct {
         return try NavigateEventImpl.get_hasUAVisualTransition(instance);
     }
 
-    pub fn get_sourceElement(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_sourceElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NavigateEventImpl.get_sourceElement(instance);
     }
 

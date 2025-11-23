@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -53,13 +49,13 @@ pub fn get_keyPath(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Getter for indexNames
-pub fn get_indexNames(instance: *runtime.Instance) ImplError!interfaces.DOMStringList {
+pub fn get_indexNames(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for transaction
-pub fn get_transaction(instance: *runtime.Instance) ImplError!interfaces.IDBTransaction {
+pub fn get_transaction(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -78,7 +74,7 @@ pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) ImplError
 }
 
 /// Operation: delete
-pub fn call_delete(instance: *runtime.Instance, query: *const anyopaque) ImplError!interfaces.IDBRequest {
+pub fn call_delete(instance: *runtime.Instance, query: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = query;
     return error.NotImplemented;
@@ -92,7 +88,7 @@ pub fn call_deleteIndex(instance: *runtime.Instance, name: runtime.DOMString) Im
 }
 
 /// Operation: getAll
-pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: *const anyopaque, count: u32) ImplError!interfaces.IDBRequest {
+pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: *const anyopaque, count: u32) ImplError!*runtime.Instance {
     _ = instance;
     _ = queryOrOptions;
     _ = count;
@@ -100,7 +96,7 @@ pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: *const anyopaque
 }
 
 /// Operation: openKeyCursor
-pub fn call_openKeyCursor(instance: *runtime.Instance, query: *const anyopaque, direction: enums.IDBCursorDirection) ImplError!interfaces.IDBRequest {
+pub fn call_openKeyCursor(instance: *runtime.Instance, query: *const anyopaque, direction: enums.IDBCursorDirection) ImplError!*runtime.Instance {
     _ = instance;
     _ = query;
     _ = direction;
@@ -108,21 +104,21 @@ pub fn call_openKeyCursor(instance: *runtime.Instance, query: *const anyopaque, 
 }
 
 /// Operation: index
-pub fn call_index(instance: *runtime.Instance, name: runtime.DOMString) ImplError!interfaces.IDBIndex {
+pub fn call_index(instance: *runtime.Instance, name: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = name;
     return error.NotImplemented;
 }
 
 /// Operation: count
-pub fn call_count(instance: *runtime.Instance, query: *const anyopaque) ImplError!interfaces.IDBRequest {
+pub fn call_count(instance: *runtime.Instance, query: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = query;
     return error.NotImplemented;
 }
 
 /// Operation: add
-pub fn call_add(instance: *runtime.Instance, value: *const anyopaque, key: *const anyopaque) ImplError!interfaces.IDBRequest {
+pub fn call_add(instance: *runtime.Instance, value: *const anyopaque, key: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = value;
     _ = key;
@@ -130,13 +126,13 @@ pub fn call_add(instance: *runtime.Instance, value: *const anyopaque, key: *cons
 }
 
 /// Operation: clear
-pub fn call_clear(instance: *runtime.Instance) ImplError!interfaces.IDBRequest {
+pub fn call_clear(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: openCursor
-pub fn call_openCursor(instance: *runtime.Instance, query: *const anyopaque, direction: enums.IDBCursorDirection) ImplError!interfaces.IDBRequest {
+pub fn call_openCursor(instance: *runtime.Instance, query: *const anyopaque, direction: enums.IDBCursorDirection) ImplError!*runtime.Instance {
     _ = instance;
     _ = query;
     _ = direction;
@@ -144,7 +140,7 @@ pub fn call_openCursor(instance: *runtime.Instance, query: *const anyopaque, dir
 }
 
 /// Operation: getAllKeys
-pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: *const anyopaque, count: u32) ImplError!interfaces.IDBRequest {
+pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: *const anyopaque, count: u32) ImplError!*runtime.Instance {
     _ = instance;
     _ = queryOrOptions;
     _ = count;
@@ -152,7 +148,7 @@ pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: *const anyop
 }
 
 /// Operation: put
-pub fn call_put(instance: *runtime.Instance, value: *const anyopaque, key: *const anyopaque) ImplError!interfaces.IDBRequest {
+pub fn call_put(instance: *runtime.Instance, value: *const anyopaque, key: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = value;
     _ = key;
@@ -160,28 +156,28 @@ pub fn call_put(instance: *runtime.Instance, value: *const anyopaque, key: *cons
 }
 
 /// Operation: getAllRecords
-pub fn call_getAllRecords(instance: *runtime.Instance, options: dictionaries.IDBGetAllOptions) ImplError!interfaces.IDBRequest {
+pub fn call_getAllRecords(instance: *runtime.Instance, options: dictionaries.IDBGetAllOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: getKey
-pub fn call_getKey(instance: *runtime.Instance, query: *const anyopaque) ImplError!interfaces.IDBRequest {
+pub fn call_getKey(instance: *runtime.Instance, query: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = query;
     return error.NotImplemented;
 }
 
 /// Operation: get
-pub fn call_get(instance: *runtime.Instance, query: *const anyopaque) ImplError!interfaces.IDBRequest {
+pub fn call_get(instance: *runtime.Instance, query: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = query;
     return error.NotImplemented;
 }
 
 /// Operation: createIndex
-pub fn call_createIndex(instance: *runtime.Instance, name: runtime.DOMString, keyPath: *const anyopaque, options: dictionaries.IDBIndexParameters) ImplError!interfaces.IDBIndex {
+pub fn call_createIndex(instance: *runtime.Instance, name: runtime.DOMString, keyPath: *const anyopaque, options: dictionaries.IDBIndexParameters) ImplError!*runtime.Instance {
     _ = instance;
     _ = name;
     _ = keyPath;

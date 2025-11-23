@@ -1,5 +1,5 @@
 //! Generated from: web-animations-2.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -111,11 +111,11 @@ pub const AnimationTrigger = struct {
         return try AnimationTriggerImpl.call_constructor(allocator, ctx, options);
     }
 
-    pub fn get_timeline(instance: *runtime.Instance) anyerror!AnimationTimeline {
+    pub fn get_timeline(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AnimationTriggerImpl.get_timeline(instance);
     }
 
-    pub fn set_timeline(instance: *runtime.Instance, value: AnimationTimeline) anyerror!void {
+    pub fn set_timeline(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         try AnimationTriggerImpl.set_timeline(instance, value);
     }
 

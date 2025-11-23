@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -427,7 +427,7 @@ pub const HTMLTextAreaElement = struct {
         try HTMLTextAreaElementImpl.set_disabled(instance, value);
     }
 
-    pub fn get_form(instance: *runtime.Instance) anyerror!HTMLFormElement {
+    pub fn get_form(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLTextAreaElementImpl.get_form(instance);
     }
 
@@ -579,7 +579,7 @@ pub const HTMLTextAreaElement = struct {
         return try HTMLTextAreaElementImpl.get_willValidate(instance);
     }
 
-    pub fn get_validity(instance: *runtime.Instance) anyerror!ValidityState {
+    pub fn get_validity(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLTextAreaElementImpl.get_validity(instance);
     }
 
@@ -587,7 +587,7 @@ pub const HTMLTextAreaElement = struct {
         return try HTMLTextAreaElementImpl.get_validationMessage(instance);
     }
 
-    pub fn get_labels(instance: *runtime.Instance) anyerror!NodeList {
+    pub fn get_labels(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLTextAreaElementImpl.get_labels(instance);
     }
 

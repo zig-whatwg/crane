@@ -1,5 +1,5 @@
 //! Generated from: webrtc-encoded-transform.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -121,11 +121,11 @@ pub const SFrameDecrypterStream = struct {
         return try SFrameDecrypterStreamImpl.call_constructor(allocator, ctx, options);
     }
 
-    pub fn get_readable(instance: *runtime.Instance) anyerror!ReadableStream {
+    pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SFrameDecrypterStreamImpl.get_readable(instance);
     }
 
-    pub fn get_writable(instance: *runtime.Instance) anyerror!WritableStream {
+    pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SFrameDecrypterStreamImpl.get_writable(instance);
     }
 
@@ -137,7 +137,7 @@ pub const SFrameDecrypterStream = struct {
         try SFrameDecrypterStreamImpl.set_onerror(instance, value);
     }
 
-    pub fn call_setEncryptionKey(instance: *runtime.Instance, key: CryptoKey, keyID: CryptoKeyID) anyerror!*const anyopaque {
+    pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyID: CryptoKeyID) anyerror!*const anyopaque {
         
         return try SFrameDecrypterStreamImpl.call_setEncryptionKey(instance, key, keyID);
     }

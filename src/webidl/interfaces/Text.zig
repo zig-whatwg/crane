@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -161,23 +161,23 @@ pub const Text = struct {
         return try TextImpl.get_wholeText(instance);
     }
 
-    pub fn get_assignedSlot(instance: *runtime.Instance) anyerror!HTMLSlotElement {
+    pub fn get_assignedSlot(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try TextImpl.get_assignedSlot(instance);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_splitText(instance: *runtime.Instance, offset: u32) anyerror!Text {
+    pub fn call_splitText(instance: *runtime.Instance, offset: u32) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try TextImpl.call_splitText(instance, offset);
     }
 
-    pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!DOMQuad {
+    pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!*runtime.Instance {
         
         return try TextImpl.call_convertQuadFromNode(instance, quad, from, options);
     }
 
-    pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!DOMPoint {
+    pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!*runtime.Instance {
         
         return try TextImpl.call_convertPointFromNode(instance, point, from, options);
     }
@@ -187,7 +187,7 @@ pub const Text = struct {
         return try TextImpl.call_getBoxQuads(instance, options);
     }
 
-    pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: DOMRectReadOnly, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!DOMQuad {
+    pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!*runtime.Instance {
         
         return try TextImpl.call_convertRectFromNode(instance, rect, from, options);
     }

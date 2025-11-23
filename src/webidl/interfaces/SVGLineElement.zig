@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -256,7 +256,7 @@ pub const SVGLineElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_x1(instance: *runtime.Instance) anyerror!SVGAnimatedLength {
+    pub fn get_x1(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_x1) |cached| {
@@ -268,7 +268,7 @@ pub const SVGLineElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_y1(instance: *runtime.Instance) anyerror!SVGAnimatedLength {
+    pub fn get_y1(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_y1) |cached| {
@@ -280,7 +280,7 @@ pub const SVGLineElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_x2(instance: *runtime.Instance) anyerror!SVGAnimatedLength {
+    pub fn get_x2(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_x2) |cached| {
@@ -292,7 +292,7 @@ pub const SVGLineElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_y2(instance: *runtime.Instance) anyerror!SVGAnimatedLength {
+    pub fn get_y2(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_y2) |cached| {

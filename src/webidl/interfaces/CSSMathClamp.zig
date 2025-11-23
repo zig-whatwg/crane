@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -117,15 +117,15 @@ pub const CSSMathClamp = struct {
         return try CSSMathClampImpl.call_constructor(allocator, ctx, lower, value, upper);
     }
 
-    pub fn get_lower(instance: *runtime.Instance) anyerror!CSSNumericValue {
+    pub fn get_lower(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSMathClampImpl.get_lower(instance);
     }
 
-    pub fn get_value(instance: *runtime.Instance) anyerror!CSSNumericValue {
+    pub fn get_value(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSMathClampImpl.get_value(instance);
     }
 
-    pub fn get_upper(instance: *runtime.Instance) anyerror!CSSNumericValue {
+    pub fn get_upper(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSMathClampImpl.get_upper(instance);
     }
 

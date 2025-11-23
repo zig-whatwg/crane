@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -816,7 +816,7 @@ pub const SVGElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_className(instance: *runtime.Instance) anyerror!SVGAnimatedString {
+    pub fn get_className(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_className) |cached| {
@@ -827,16 +827,16 @@ pub const SVGElement = struct {
         return value;
     }
 
-    pub fn get_ownerSVGElement(instance: *runtime.Instance) anyerror!SVGSVGElement {
+    pub fn get_ownerSVGElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGElementImpl.get_ownerSVGElement(instance);
     }
 
-    pub fn get_viewportElement(instance: *runtime.Instance) anyerror!SVGElement {
+    pub fn get_viewportElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGElementImpl.get_viewportElement(instance);
     }
 
     /// Extended attributes: [SameObject], [PutForwards=cssText]
-    pub fn get_style(instance: *runtime.Instance) anyerror!CSSStyleProperties {
+    pub fn get_style(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_style) |cached| {
@@ -848,7 +848,7 @@ pub const SVGElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_attributeStyleMap(instance: *runtime.Instance) anyerror!StylePropertyMap {
+    pub fn get_attributeStyleMap(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_attributeStyleMap) |cached| {
@@ -1706,7 +1706,7 @@ pub const SVGElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_correspondingElement(instance: *runtime.Instance) anyerror!SVGElement {
+    pub fn get_correspondingElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_correspondingElement) |cached| {
@@ -1718,7 +1718,7 @@ pub const SVGElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_correspondingUseElement(instance: *runtime.Instance) anyerror!SVGUseElement {
+    pub fn get_correspondingUseElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_correspondingUseElement) |cached| {
@@ -1730,7 +1730,7 @@ pub const SVGElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_dataset(instance: *runtime.Instance) anyerror!DOMStringMap {
+    pub fn get_dataset(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_dataset) |cached| {

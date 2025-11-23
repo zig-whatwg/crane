@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -249,7 +249,7 @@ pub const SVGGeometryElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_pathLength(instance: *runtime.Instance) anyerror!SVGAnimatedNumber {
+    pub fn get_pathLength(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_pathLength) |cached| {
@@ -269,7 +269,7 @@ pub const SVGGeometryElement = struct {
         return try SVGGeometryElementImpl.call_getTotalLength(instance);
     }
 
-    pub fn call_getPointAtLength(instance: *runtime.Instance, distance: f32) anyerror!DOMPoint {
+    pub fn call_getPointAtLength(instance: *runtime.Instance, distance: f32) anyerror!*runtime.Instance {
         
         return try SVGGeometryElementImpl.call_getPointAtLength(instance, distance);
     }

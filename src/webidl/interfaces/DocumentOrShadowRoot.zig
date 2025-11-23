@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -106,25 +106,25 @@ pub const DocumentOrShadowRoot = struct {
         DocumentOrShadowRootImpl.deinit(instance);
     }
 
-    pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!CustomElementRegistry {
+    pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentOrShadowRootImpl.get_customElementRegistry(instance);
     }
 
     /// Extended attributes: [LegacyLenientSetter]
-    pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentOrShadowRootImpl.get_fullscreenElement(instance);
     }
 
-    pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentOrShadowRootImpl.get_pictureInPictureElement(instance);
     }
 
-    pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentOrShadowRootImpl.get_pointerLockElement(instance);
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_styleSheets(instance: *runtime.Instance) anyerror!StyleSheetList {
+    pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_styleSheets) |cached| {
@@ -143,7 +143,7 @@ pub const DocumentOrShadowRoot = struct {
         try DocumentOrShadowRootImpl.set_adoptedStyleSheets(instance, value);
     }
 
-    pub fn get_activeElement(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_activeElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentOrShadowRootImpl.get_activeElement(instance);
     }
 

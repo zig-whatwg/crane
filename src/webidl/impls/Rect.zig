@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,25 +37,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for top
-pub fn get_top(instance: *runtime.Instance) ImplError!interfaces.CSSPrimitiveValue {
+pub fn get_top(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for right
-pub fn get_right(instance: *runtime.Instance) ImplError!interfaces.CSSPrimitiveValue {
+pub fn get_right(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for bottom
-pub fn get_bottom(instance: *runtime.Instance) ImplError!interfaces.CSSPrimitiveValue {
+pub fn get_bottom(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for left
-pub fn get_left(instance: *runtime.Instance) ImplError!interfaces.CSSPrimitiveValue {
+pub fn get_left(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

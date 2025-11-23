@@ -1,5 +1,5 @@
 //! Generated from: css-masking.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -247,27 +247,27 @@ pub const SVGMaskElement = struct {
         SVGMaskElementImpl.deinit(instance);
     }
 
-    pub fn get_maskUnits(instance: *runtime.Instance) anyerror!SVGAnimatedEnumeration {
+    pub fn get_maskUnits(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGMaskElementImpl.get_maskUnits(instance);
     }
 
-    pub fn get_maskContentUnits(instance: *runtime.Instance) anyerror!SVGAnimatedEnumeration {
+    pub fn get_maskContentUnits(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGMaskElementImpl.get_maskContentUnits(instance);
     }
 
-    pub fn get_x(instance: *runtime.Instance) anyerror!SVGAnimatedLength {
+    pub fn get_x(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGMaskElementImpl.get_x(instance);
     }
 
-    pub fn get_y(instance: *runtime.Instance) anyerror!SVGAnimatedLength {
+    pub fn get_y(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGMaskElementImpl.get_y(instance);
     }
 
-    pub fn get_width(instance: *runtime.Instance) anyerror!SVGAnimatedLength {
+    pub fn get_width(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGMaskElementImpl.get_width(instance);
     }
 
-    pub fn get_height(instance: *runtime.Instance) anyerror!SVGAnimatedLength {
+    pub fn get_height(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGMaskElementImpl.get_height(instance);
     }
 

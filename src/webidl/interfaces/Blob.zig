@@ -1,5 +1,5 @@
 //! Generated from: FileAPI.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -124,7 +124,7 @@ pub const Blob = struct {
         return try BlobImpl.call_text(instance);
     }
 
-    pub fn call_slice(instance: *runtime.Instance, start: i64, end: i64, contentType: DOMString) anyerror!Blob {
+    pub fn call_slice(instance: *runtime.Instance, start: i64, end: i64, contentType: DOMString) anyerror!*runtime.Instance {
         // [Clamp] on start
         const clamped_start = runtime.clamp(i64, start);
         // [Clamp] on end
@@ -134,7 +134,7 @@ pub const Blob = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_stream(instance: *runtime.Instance) anyerror!ReadableStream {
+    pub fn call_stream(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         return try BlobImpl.call_stream(instance);
     }

@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -53,40 +49,40 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for commonAncestorContainer
-pub fn get_commonAncestorContainer(instance: *runtime.Instance) ImplError!interfaces.Node {
+pub fn get_commonAncestorContainer(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: setStartBefore
-pub fn call_setStartBefore(instance: *runtime.Instance, node: interfaces.Node) ImplError!void {
+pub fn call_setStartBefore(instance: *runtime.Instance, node: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = node;
     return error.NotImplemented;
 }
 
 /// Operation: setEndBefore
-pub fn call_setEndBefore(instance: *runtime.Instance, node: interfaces.Node) ImplError!void {
+pub fn call_setEndBefore(instance: *runtime.Instance, node: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = node;
     return error.NotImplemented;
 }
 
 /// Operation: extractContents
-pub fn call_extractContents(instance: *runtime.Instance) ImplError!interfaces.DocumentFragment {
+pub fn call_extractContents(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: selectNode
-pub fn call_selectNode(instance: *runtime.Instance, node: interfaces.Node) ImplError!void {
+pub fn call_selectNode(instance: *runtime.Instance, node: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = node;
     return error.NotImplemented;
 }
 
 /// Operation: surroundContents
-pub fn call_surroundContents(instance: *runtime.Instance, newParent: interfaces.Node) ImplError!void {
+pub fn call_surroundContents(instance: *runtime.Instance, newParent: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = newParent;
     return error.NotImplemented;
@@ -99,7 +95,7 @@ pub fn call_detach(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: isPointInRange
-pub fn call_isPointInRange(instance: *runtime.Instance, node: interfaces.Node, offset: u32) ImplError!bool {
+pub fn call_isPointInRange(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) ImplError!bool {
     _ = instance;
     _ = node;
     _ = offset;
@@ -107,21 +103,21 @@ pub fn call_isPointInRange(instance: *runtime.Instance, node: interfaces.Node, o
 }
 
 /// Operation: setEndAfter
-pub fn call_setEndAfter(instance: *runtime.Instance, node: interfaces.Node) ImplError!void {
+pub fn call_setEndAfter(instance: *runtime.Instance, node: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = node;
     return error.NotImplemented;
 }
 
 /// Operation: insertNode
-pub fn call_insertNode(instance: *runtime.Instance, node: interfaces.Node) ImplError!void {
+pub fn call_insertNode(instance: *runtime.Instance, node: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = node;
     return error.NotImplemented;
 }
 
 /// Operation: setEnd
-pub fn call_setEnd(instance: *runtime.Instance, node: interfaces.Node, offset: u32) ImplError!void {
+pub fn call_setEnd(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) ImplError!void {
     _ = instance;
     _ = node;
     _ = offset;
@@ -129,21 +125,21 @@ pub fn call_setEnd(instance: *runtime.Instance, node: interfaces.Node, offset: u
 }
 
 /// Operation: setStartAfter
-pub fn call_setStartAfter(instance: *runtime.Instance, node: interfaces.Node) ImplError!void {
+pub fn call_setStartAfter(instance: *runtime.Instance, node: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = node;
     return error.NotImplemented;
 }
 
 /// Operation: selectNodeContents
-pub fn call_selectNodeContents(instance: *runtime.Instance, node: interfaces.Node) ImplError!void {
+pub fn call_selectNodeContents(instance: *runtime.Instance, node: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = node;
     return error.NotImplemented;
 }
 
 /// Operation: createContextualFragment
-pub fn call_createContextualFragment(instance: *runtime.Instance, string: *const anyopaque) ImplError!interfaces.DocumentFragment {
+pub fn call_createContextualFragment(instance: *runtime.Instance, string: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = string;
     return error.NotImplemented;
@@ -157,7 +153,7 @@ pub fn call_collapse(instance: *runtime.Instance, toStart: bool) ImplError!void 
 }
 
 /// Operation: comparePoint
-pub fn call_comparePoint(instance: *runtime.Instance, node: interfaces.Node, offset: u32) ImplError!i16 {
+pub fn call_comparePoint(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) ImplError!i16 {
     _ = instance;
     _ = node;
     _ = offset;
@@ -165,19 +161,19 @@ pub fn call_comparePoint(instance: *runtime.Instance, node: interfaces.Node, off
 }
 
 /// Operation: getClientRects
-pub fn call_getClientRects(instance: *runtime.Instance) ImplError!interfaces.DOMRectList {
+pub fn call_getClientRects(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: cloneRange
-pub fn call_cloneRange(instance: *runtime.Instance) ImplError!interfaces.Range {
+pub fn call_cloneRange(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: setStart
-pub fn call_setStart(instance: *runtime.Instance, node: interfaces.Node, offset: u32) ImplError!void {
+pub fn call_setStart(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) ImplError!void {
     _ = instance;
     _ = node;
     _ = offset;
@@ -191,26 +187,26 @@ pub fn call_deleteContents(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: getBoundingClientRect
-pub fn call_getBoundingClientRect(instance: *runtime.Instance) ImplError!interfaces.DOMRect {
+pub fn call_getBoundingClientRect(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: cloneContents
-pub fn call_cloneContents(instance: *runtime.Instance) ImplError!interfaces.DocumentFragment {
+pub fn call_cloneContents(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: intersectsNode
-pub fn call_intersectsNode(instance: *runtime.Instance, node: interfaces.Node) ImplError!bool {
+pub fn call_intersectsNode(instance: *runtime.Instance, node: *runtime.Instance) ImplError!bool {
     _ = instance;
     _ = node;
     return error.NotImplemented;
 }
 
 /// Operation: compareBoundaryPoints
-pub fn call_compareBoundaryPoints(instance: *runtime.Instance, how: u16, sourceRange: interfaces.Range) ImplError!i16 {
+pub fn call_compareBoundaryPoints(instance: *runtime.Instance, how: u16, sourceRange: *runtime.Instance) ImplError!i16 {
     _ = instance;
     _ = how;
     _ = sourceRange;

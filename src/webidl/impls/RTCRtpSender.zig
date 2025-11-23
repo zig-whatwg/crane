@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,19 +37,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for track
-pub fn get_track(instance: *runtime.Instance) ImplError!interfaces.MediaStreamTrack {
+pub fn get_track(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for transport
-pub fn get_transport(instance: *runtime.Instance) ImplError!interfaces.RTCDtlsTransport {
+pub fn get_transport(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for dtmf
-pub fn get_dtmf(instance: *runtime.Instance) ImplError!interfaces.RTCDTMFSender {
+pub fn get_dtmf(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -72,7 +68,7 @@ pub fn set_transform(instance: *runtime.Instance, value: typedefs.RTCRtpTransfor
 }
 
 /// Operation: replaceTrack
-pub fn call_replaceTrack(instance: *runtime.Instance, withTrack: interfaces.MediaStreamTrack) ImplError!*const anyopaque {
+pub fn call_replaceTrack(instance: *runtime.Instance, withTrack: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     _ = withTrack;
     return error.NotImplemented;
@@ -98,7 +94,7 @@ pub fn call_getParameters(instance: *runtime.Instance) ImplError!dictionaries.RT
 }
 
 /// Operation: setStreams
-pub fn call_setStreams(instance: *runtime.Instance, streams: interfaces.MediaStream) ImplError!void {
+pub fn call_setStreams(instance: *runtime.Instance, streams: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = streams;
     return error.NotImplemented;

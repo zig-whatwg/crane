@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -110,7 +110,7 @@ pub const CSSMathMax = struct {
         return try CSSMathMaxImpl.call_constructor(allocator, ctx, args);
     }
 
-    pub fn get_values(instance: *runtime.Instance) anyerror!CSSNumericArray {
+    pub fn get_values(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSMathMaxImpl.get_values(instance);
     }
 

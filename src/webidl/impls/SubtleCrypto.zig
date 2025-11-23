@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -50,7 +46,7 @@ pub fn call_generateKey(instance: *runtime.Instance, algorithm: typedefs.Algorit
 }
 
 /// Operation: exportKey
-pub fn call_exportKey(instance: *runtime.Instance, format: enums.KeyFormat, key: interfaces.CryptoKey) ImplError!*const anyopaque {
+pub fn call_exportKey(instance: *runtime.Instance, format: enums.KeyFormat, key: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     _ = format;
     _ = key;
@@ -58,7 +54,7 @@ pub fn call_exportKey(instance: *runtime.Instance, format: enums.KeyFormat, key:
 }
 
 /// Operation: sign
-pub fn call_sign(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, key: interfaces.CryptoKey, data: typedefs.BufferSource) ImplError!*const anyopaque {
+pub fn call_sign(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, key: *runtime.Instance, data: typedefs.BufferSource) ImplError!*const anyopaque {
     _ = instance;
     _ = algorithm;
     _ = key;
@@ -67,7 +63,7 @@ pub fn call_sign(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdent
 }
 
 /// Operation: encapsulateBits
-pub fn call_encapsulateBits(instance: *runtime.Instance, encapsulationAlgorithm: typedefs.AlgorithmIdentifier, encapsulationKey: interfaces.CryptoKey) ImplError!*const anyopaque {
+pub fn call_encapsulateBits(instance: *runtime.Instance, encapsulationAlgorithm: typedefs.AlgorithmIdentifier, encapsulationKey: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     _ = encapsulationAlgorithm;
     _ = encapsulationKey;
@@ -75,7 +71,7 @@ pub fn call_encapsulateBits(instance: *runtime.Instance, encapsulationAlgorithm:
 }
 
 /// Operation: decapsulateKey
-pub fn call_decapsulateKey(instance: *runtime.Instance, decapsulationAlgorithm: typedefs.AlgorithmIdentifier, decapsulationKey: interfaces.CryptoKey, ciphertext: typedefs.BufferSource, sharedKeyAlgorithm: typedefs.AlgorithmIdentifier, extractable: bool, keyUsages: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_decapsulateKey(instance: *runtime.Instance, decapsulationAlgorithm: typedefs.AlgorithmIdentifier, decapsulationKey: *runtime.Instance, ciphertext: typedefs.BufferSource, sharedKeyAlgorithm: typedefs.AlgorithmIdentifier, extractable: bool, keyUsages: *const anyopaque) ImplError!*const anyopaque {
     _ = instance;
     _ = decapsulationAlgorithm;
     _ = decapsulationKey;
@@ -87,7 +83,7 @@ pub fn call_decapsulateKey(instance: *runtime.Instance, decapsulationAlgorithm: 
 }
 
 /// Operation: deriveBits
-pub fn call_deriveBits(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, baseKey: interfaces.CryptoKey, length: u32) ImplError!*const anyopaque {
+pub fn call_deriveBits(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, baseKey: *runtime.Instance, length: u32) ImplError!*const anyopaque {
     _ = instance;
     _ = algorithm;
     _ = baseKey;
@@ -96,7 +92,7 @@ pub fn call_deriveBits(instance: *runtime.Instance, algorithm: typedefs.Algorith
 }
 
 /// Operation: getPublicKey
-pub fn call_getPublicKey(instance: *runtime.Instance, key: interfaces.CryptoKey, keyUsages: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_getPublicKey(instance: *runtime.Instance, key: *runtime.Instance, keyUsages: *const anyopaque) ImplError!*const anyopaque {
     _ = instance;
     _ = key;
     _ = keyUsages;
@@ -104,7 +100,7 @@ pub fn call_getPublicKey(instance: *runtime.Instance, key: interfaces.CryptoKey,
 }
 
 /// Operation: deriveKey
-pub fn call_deriveKey(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, baseKey: interfaces.CryptoKey, derivedKeyType: typedefs.AlgorithmIdentifier, extractable: bool, keyUsages: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_deriveKey(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, baseKey: *runtime.Instance, derivedKeyType: typedefs.AlgorithmIdentifier, extractable: bool, keyUsages: *const anyopaque) ImplError!*const anyopaque {
     _ = instance;
     _ = algorithm;
     _ = baseKey;
@@ -115,7 +111,7 @@ pub fn call_deriveKey(instance: *runtime.Instance, algorithm: typedefs.Algorithm
 }
 
 /// Operation: verify
-pub fn call_verify(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, key: interfaces.CryptoKey, signature: typedefs.BufferSource, data: typedefs.BufferSource) ImplError!*const anyopaque {
+pub fn call_verify(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, key: *runtime.Instance, signature: typedefs.BufferSource, data: typedefs.BufferSource) ImplError!*const anyopaque {
     _ = instance;
     _ = algorithm;
     _ = key;
@@ -153,7 +149,7 @@ pub fn call_importKey(instance: *runtime.Instance, format: enums.KeyFormat, keyD
 }
 
 /// Operation: wrapKey
-pub fn call_wrapKey(instance: *runtime.Instance, format: enums.KeyFormat, key: interfaces.CryptoKey, wrappingKey: interfaces.CryptoKey, wrapAlgorithm: typedefs.AlgorithmIdentifier) ImplError!*const anyopaque {
+pub fn call_wrapKey(instance: *runtime.Instance, format: enums.KeyFormat, key: *runtime.Instance, wrappingKey: *runtime.Instance, wrapAlgorithm: typedefs.AlgorithmIdentifier) ImplError!*const anyopaque {
     _ = instance;
     _ = format;
     _ = key;
@@ -163,7 +159,7 @@ pub fn call_wrapKey(instance: *runtime.Instance, format: enums.KeyFormat, key: i
 }
 
 /// Operation: decapsulateBits
-pub fn call_decapsulateBits(instance: *runtime.Instance, decapsulationAlgorithm: typedefs.AlgorithmIdentifier, decapsulationKey: interfaces.CryptoKey, ciphertext: typedefs.BufferSource) ImplError!*const anyopaque {
+pub fn call_decapsulateBits(instance: *runtime.Instance, decapsulationAlgorithm: typedefs.AlgorithmIdentifier, decapsulationKey: *runtime.Instance, ciphertext: typedefs.BufferSource) ImplError!*const anyopaque {
     _ = instance;
     _ = decapsulationAlgorithm;
     _ = decapsulationKey;
@@ -172,7 +168,7 @@ pub fn call_decapsulateBits(instance: *runtime.Instance, decapsulationAlgorithm:
 }
 
 /// Operation: unwrapKey
-pub fn call_unwrapKey(instance: *runtime.Instance, format: enums.KeyFormat, wrappedKey: typedefs.BufferSource, unwrappingKey: interfaces.CryptoKey, unwrapAlgorithm: typedefs.AlgorithmIdentifier, unwrappedKeyAlgorithm: typedefs.AlgorithmIdentifier, extractable: bool, keyUsages: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_unwrapKey(instance: *runtime.Instance, format: enums.KeyFormat, wrappedKey: typedefs.BufferSource, unwrappingKey: *runtime.Instance, unwrapAlgorithm: typedefs.AlgorithmIdentifier, unwrappedKeyAlgorithm: typedefs.AlgorithmIdentifier, extractable: bool, keyUsages: *const anyopaque) ImplError!*const anyopaque {
     _ = instance;
     _ = format;
     _ = wrappedKey;
@@ -185,7 +181,7 @@ pub fn call_unwrapKey(instance: *runtime.Instance, format: enums.KeyFormat, wrap
 }
 
 /// Operation: encapsulateKey
-pub fn call_encapsulateKey(instance: *runtime.Instance, encapsulationAlgorithm: typedefs.AlgorithmIdentifier, encapsulationKey: interfaces.CryptoKey, sharedKeyAlgorithm: typedefs.AlgorithmIdentifier, extractable: bool, keyUsages: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_encapsulateKey(instance: *runtime.Instance, encapsulationAlgorithm: typedefs.AlgorithmIdentifier, encapsulationKey: *runtime.Instance, sharedKeyAlgorithm: typedefs.AlgorithmIdentifier, extractable: bool, keyUsages: *const anyopaque) ImplError!*const anyopaque {
     _ = instance;
     _ = encapsulationAlgorithm;
     _ = encapsulationKey;
@@ -196,7 +192,7 @@ pub fn call_encapsulateKey(instance: *runtime.Instance, encapsulationAlgorithm: 
 }
 
 /// Operation: decrypt
-pub fn call_decrypt(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, key: interfaces.CryptoKey, data: typedefs.BufferSource) ImplError!*const anyopaque {
+pub fn call_decrypt(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, key: *runtime.Instance, data: typedefs.BufferSource) ImplError!*const anyopaque {
     _ = instance;
     _ = algorithm;
     _ = key;
@@ -205,7 +201,7 @@ pub fn call_decrypt(instance: *runtime.Instance, algorithm: typedefs.AlgorithmId
 }
 
 /// Operation: encrypt
-pub fn call_encrypt(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, key: interfaces.CryptoKey, data: typedefs.BufferSource) ImplError!*const anyopaque {
+pub fn call_encrypt(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, key: *runtime.Instance, data: typedefs.BufferSource) ImplError!*const anyopaque {
     _ = instance;
     _ = algorithm;
     _ = key;

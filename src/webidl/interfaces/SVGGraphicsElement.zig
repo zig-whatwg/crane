@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -254,7 +254,7 @@ pub const SVGGraphicsElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_transform(instance: *runtime.Instance) anyerror!SVGAnimatedTransformList {
+    pub fn get_transform(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_transform) |cached| {
@@ -266,7 +266,7 @@ pub const SVGGraphicsElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_requiredExtensions(instance: *runtime.Instance) anyerror!SVGStringList {
+    pub fn get_requiredExtensions(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_requiredExtensions) |cached| {
@@ -278,7 +278,7 @@ pub const SVGGraphicsElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_systemLanguage(instance: *runtime.Instance) anyerror!SVGStringList {
+    pub fn get_systemLanguage(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_systemLanguage) |cached| {
@@ -289,15 +289,15 @@ pub const SVGGraphicsElement = struct {
         return value;
     }
 
-    pub fn call_getScreenCTM(instance: *runtime.Instance) anyerror!DOMMatrix {
+    pub fn call_getScreenCTM(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGGraphicsElementImpl.call_getScreenCTM(instance);
     }
 
-    pub fn call_getCTM(instance: *runtime.Instance) anyerror!DOMMatrix {
+    pub fn call_getCTM(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGGraphicsElementImpl.call_getCTM(instance);
     }
 
-    pub fn call_getBBox(instance: *runtime.Instance, options: SVGBoundingBoxOptions) anyerror!DOMRect {
+    pub fn call_getBBox(instance: *runtime.Instance, options: SVGBoundingBoxOptions) anyerror!*runtime.Instance {
         
         return try SVGGraphicsElementImpl.call_getBBox(instance, options);
     }

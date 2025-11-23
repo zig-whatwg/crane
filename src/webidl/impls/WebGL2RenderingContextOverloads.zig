@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -80,7 +76,7 @@ pub fn call_texSubImage2D(instance: *runtime.Instance, target: typedefs.GLenum, 
 }
 
 /// Operation: uniformMatrix2fv
-pub fn call_uniformMatrix2fv(instance: *runtime.Instance, location: interfaces.WebGLUniformLocation, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniformMatrix2fv(instance: *runtime.Instance, location: *runtime.Instance, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
     _ = instance;
     _ = location;
     _ = transpose;
@@ -104,7 +100,7 @@ pub fn call_readPixels(instance: *runtime.Instance, x: typedefs.GLint, y: typede
 }
 
 /// Operation: uniform4fv
-pub fn call_uniform4fv(instance: *runtime.Instance, location: interfaces.WebGLUniformLocation, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniform4fv(instance: *runtime.Instance, location: *runtime.Instance, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
     _ = instance;
     _ = location;
     _ = data;
@@ -114,7 +110,7 @@ pub fn call_uniform4fv(instance: *runtime.Instance, location: interfaces.WebGLUn
 }
 
 /// Operation: uniform2fv
-pub fn call_uniform2fv(instance: *runtime.Instance, location: interfaces.WebGLUniformLocation, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniform2fv(instance: *runtime.Instance, location: *runtime.Instance, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
     _ = instance;
     _ = location;
     _ = data;
@@ -133,7 +129,7 @@ pub fn call_bufferSubData(instance: *runtime.Instance, target: typedefs.GLenum, 
 }
 
 /// Operation: uniform4iv
-pub fn call_uniform4iv(instance: *runtime.Instance, location: interfaces.WebGLUniformLocation, data: typedefs.Int32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniform4iv(instance: *runtime.Instance, location: *runtime.Instance, data: typedefs.Int32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
     _ = instance;
     _ = location;
     _ = data;
@@ -143,7 +139,7 @@ pub fn call_uniform4iv(instance: *runtime.Instance, location: interfaces.WebGLUn
 }
 
 /// Operation: uniformMatrix4fv
-pub fn call_uniformMatrix4fv(instance: *runtime.Instance, location: interfaces.WebGLUniformLocation, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniformMatrix4fv(instance: *runtime.Instance, location: *runtime.Instance, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
     _ = instance;
     _ = location;
     _ = transpose;
@@ -169,7 +165,7 @@ pub fn call_texImage2D(instance: *runtime.Instance, target: typedefs.GLenum, lev
 }
 
 /// Operation: uniform1fv
-pub fn call_uniform1fv(instance: *runtime.Instance, location: interfaces.WebGLUniformLocation, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniform1fv(instance: *runtime.Instance, location: *runtime.Instance, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
     _ = instance;
     _ = location;
     _ = data;
@@ -193,7 +189,7 @@ pub fn call_compressedTexImage2D(instance: *runtime.Instance, target: typedefs.G
 }
 
 /// Operation: uniform1iv
-pub fn call_uniform1iv(instance: *runtime.Instance, location: interfaces.WebGLUniformLocation, data: typedefs.Int32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniform1iv(instance: *runtime.Instance, location: *runtime.Instance, data: typedefs.Int32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
     _ = instance;
     _ = location;
     _ = data;
@@ -203,7 +199,7 @@ pub fn call_uniform1iv(instance: *runtime.Instance, location: interfaces.WebGLUn
 }
 
 /// Operation: uniform2iv
-pub fn call_uniform2iv(instance: *runtime.Instance, location: interfaces.WebGLUniformLocation, data: typedefs.Int32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniform2iv(instance: *runtime.Instance, location: *runtime.Instance, data: typedefs.Int32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
     _ = instance;
     _ = location;
     _ = data;
@@ -213,7 +209,7 @@ pub fn call_uniform2iv(instance: *runtime.Instance, location: interfaces.WebGLUn
 }
 
 /// Operation: uniformMatrix3fv
-pub fn call_uniformMatrix3fv(instance: *runtime.Instance, location: interfaces.WebGLUniformLocation, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniformMatrix3fv(instance: *runtime.Instance, location: *runtime.Instance, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
     _ = instance;
     _ = location;
     _ = transpose;
@@ -224,7 +220,7 @@ pub fn call_uniformMatrix3fv(instance: *runtime.Instance, location: interfaces.W
 }
 
 /// Operation: uniform3iv
-pub fn call_uniform3iv(instance: *runtime.Instance, location: interfaces.WebGLUniformLocation, data: typedefs.Int32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniform3iv(instance: *runtime.Instance, location: *runtime.Instance, data: typedefs.Int32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
     _ = instance;
     _ = location;
     _ = data;
@@ -234,7 +230,7 @@ pub fn call_uniform3iv(instance: *runtime.Instance, location: interfaces.WebGLUn
 }
 
 /// Operation: uniform3fv
-pub fn call_uniform3fv(instance: *runtime.Instance, location: interfaces.WebGLUniformLocation, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniform3fv(instance: *runtime.Instance, location: *runtime.Instance, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
     _ = instance;
     _ = location;
     _ = data;

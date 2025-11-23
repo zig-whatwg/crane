@@ -1,5 +1,5 @@
 //! Generated from: edit-context.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -222,7 +222,7 @@ pub const EditContext = struct {
         return try EditContextImpl.call_characterBounds(instance);
     }
 
-    pub fn call_updateSelectionBounds(instance: *runtime.Instance, selectionBounds: DOMRect) anyerror!void {
+    pub fn call_updateSelectionBounds(instance: *runtime.Instance, selectionBounds: *runtime.Instance) anyerror!void {
         
         return try EditContextImpl.call_updateSelectionBounds(instance, selectionBounds);
     }
@@ -231,7 +231,7 @@ pub const EditContext = struct {
         return try EditContextImpl.call_attachedElements(instance);
     }
 
-    pub fn call_updateControlBounds(instance: *runtime.Instance, controlBounds: DOMRect) anyerror!void {
+    pub fn call_updateControlBounds(instance: *runtime.Instance, controlBounds: *runtime.Instance) anyerror!void {
         
         return try EditContextImpl.call_updateControlBounds(instance, controlBounds);
     }

@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -105,13 +105,13 @@ pub const MediaStreamAudioSourceNode = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: AudioContext, options: MediaStreamAudioSourceOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: MediaStreamAudioSourceOptions) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try MediaStreamAudioSourceNodeImpl.call_constructor(allocator, ctx, context, options);
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_mediaStream(instance: *runtime.Instance) anyerror!MediaStream {
+    pub fn get_mediaStream(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_mediaStream) |cached| {

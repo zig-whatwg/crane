@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -47,7 +43,7 @@ pub fn get_timeOrigin(instance: *runtime.Instance) ImplError!typedefs.DOMHighRes
 }
 
 /// Getter for eventCounts
-pub fn get_eventCounts(instance: *runtime.Instance) ImplError!interfaces.EventCounts {
+pub fn get_eventCounts(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -59,13 +55,13 @@ pub fn get_interactionCount(instance: *runtime.Instance) ImplError!u64 {
 }
 
 /// Getter for timing
-pub fn get_timing(instance: *runtime.Instance) ImplError!interfaces.PerformanceTiming {
+pub fn get_timing(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for navigation
-pub fn get_navigation(instance: *runtime.Instance) ImplError!interfaces.PerformanceNavigation {
+pub fn get_navigation(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -84,7 +80,7 @@ pub fn set_onresourcetimingbufferfull(instance: *runtime.Instance, value: typede
 }
 
 /// Operation: measure
-pub fn call_measure(instance: *runtime.Instance, measureName: runtime.DOMString, startOrMeasureOptions: *const anyopaque, endMark: runtime.DOMString) ImplError!interfaces.PerformanceMeasure {
+pub fn call_measure(instance: *runtime.Instance, measureName: runtime.DOMString, startOrMeasureOptions: *const anyopaque, endMark: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = measureName;
     _ = startOrMeasureOptions;
@@ -113,7 +109,7 @@ pub fn call_clearMeasures(instance: *runtime.Instance, measureName: runtime.DOMS
 }
 
 /// Operation: mark
-pub fn call_mark(instance: *runtime.Instance, markName: runtime.DOMString, markOptions: dictionaries.PerformanceMarkOptions) ImplError!interfaces.PerformanceMark {
+pub fn call_mark(instance: *runtime.Instance, markName: runtime.DOMString, markOptions: dictionaries.PerformanceMarkOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = markName;
     _ = markOptions;

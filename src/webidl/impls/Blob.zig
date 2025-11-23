@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -73,7 +69,7 @@ pub fn call_text(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Operation: slice
-pub fn call_slice(instance: *runtime.Instance, start: i64, end: i64, contentType: runtime.DOMString) ImplError!interfaces.Blob {
+pub fn call_slice(instance: *runtime.Instance, start: i64, end: i64, contentType: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = start;
     _ = end;
@@ -82,7 +78,7 @@ pub fn call_slice(instance: *runtime.Instance, start: i64, end: i64, contentType
 }
 
 /// Operation: stream
-pub fn call_stream(instance: *runtime.Instance) ImplError!interfaces.ReadableStream {
+pub fn call_stream(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

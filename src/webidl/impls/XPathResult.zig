@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -65,7 +61,7 @@ pub fn get_booleanValue(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Getter for singleNodeValue
-pub fn get_singleNodeValue(instance: *runtime.Instance) ImplError!interfaces.Node {
+pub fn get_singleNodeValue(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -83,14 +79,14 @@ pub fn get_snapshotLength(instance: *runtime.Instance) ImplError!u32 {
 }
 
 /// Operation: snapshotItem
-pub fn call_snapshotItem(instance: *runtime.Instance, index: u32) ImplError!interfaces.Node {
+pub fn call_snapshotItem(instance: *runtime.Instance, index: u32) ImplError!*runtime.Instance {
     _ = instance;
     _ = index;
     return error.NotImplemented;
 }
 
 /// Operation: iterateNext
-pub fn call_iterateNext(instance: *runtime.Instance) ImplError!interfaces.Node {
+pub fn call_iterateNext(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

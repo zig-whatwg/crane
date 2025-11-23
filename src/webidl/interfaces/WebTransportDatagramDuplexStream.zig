@@ -1,5 +1,5 @@
 //! Generated from: webtransport.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -111,7 +111,7 @@ pub const WebTransportDatagramDuplexStream = struct {
         WebTransportDatagramDuplexStreamImpl.deinit(instance);
     }
 
-    pub fn get_readable(instance: *runtime.Instance) anyerror!ReadableStream {
+    pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WebTransportDatagramDuplexStreamImpl.get_readable(instance);
     }
 
@@ -151,7 +151,7 @@ pub const WebTransportDatagramDuplexStream = struct {
         try WebTransportDatagramDuplexStreamImpl.set_outgoingHighWaterMark(instance, value);
     }
 
-    pub fn call_createWritable(instance: *runtime.Instance, options: WebTransportSendOptions) anyerror!WebTransportDatagramsWritable {
+    pub fn call_createWritable(instance: *runtime.Instance, options: WebTransportSendOptions) anyerror!*runtime.Instance {
         
         return try WebTransportDatagramDuplexStreamImpl.call_createWritable(instance, options);
     }

@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -71,7 +67,7 @@ pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for sandbox
-pub fn get_sandbox(instance: *runtime.Instance) ImplError!interfaces.DOMTokenList {
+pub fn get_sandbox(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -113,7 +109,7 @@ pub fn get_loading(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for contentDocument
-pub fn get_contentDocument(instance: *runtime.Instance) ImplError!interfaces.Document {
+pub fn get_contentDocument(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -191,7 +187,7 @@ pub fn get_privateToken(instance: *runtime.Instance) ImplError!runtime.DOMString
 }
 
 /// Getter for permissionsPolicy
-pub fn get_permissionsPolicy(instance: *runtime.Instance) ImplError!interfaces.PermissionsPolicy {
+pub fn get_permissionsPolicy(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -350,7 +346,7 @@ pub fn set_sharedStorageWritable(instance: *runtime.Instance, value: bool) ImplE
 }
 
 /// Operation: getSVGDocument
-pub fn call_getSVGDocument(instance: *runtime.Instance) ImplError!interfaces.Document {
+pub fn call_getSVGDocument(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

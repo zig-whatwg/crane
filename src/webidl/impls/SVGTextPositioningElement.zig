@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,31 +37,31 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for x
-pub fn get_x(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedLengthList {
+pub fn get_x(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for y
-pub fn get_y(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedLengthList {
+pub fn get_y(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for dx
-pub fn get_dx(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedLengthList {
+pub fn get_dx(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for dy
-pub fn get_dy(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedLengthList {
+pub fn get_dy(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for rotate
-pub fn get_rotate(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedNumberList {
+pub fn get_rotate(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

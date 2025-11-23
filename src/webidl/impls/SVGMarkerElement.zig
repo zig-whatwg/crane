@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,43 +37,43 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for refX
-pub fn get_refX(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedLength {
+pub fn get_refX(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for refY
-pub fn get_refY(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedLength {
+pub fn get_refY(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for markerUnits
-pub fn get_markerUnits(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedEnumeration {
+pub fn get_markerUnits(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for markerWidth
-pub fn get_markerWidth(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedLength {
+pub fn get_markerWidth(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for markerHeight
-pub fn get_markerHeight(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedLength {
+pub fn get_markerHeight(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for orientType
-pub fn get_orientType(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedEnumeration {
+pub fn get_orientType(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for orientAngle
-pub fn get_orientAngle(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedAngle {
+pub fn get_orientAngle(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -89,13 +85,13 @@ pub fn get_orient(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for viewBox
-pub fn get_viewBox(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedRect {
+pub fn get_viewBox(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for preserveAspectRatio
-pub fn get_preserveAspectRatio(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedPreserveAspectRatio {
+pub fn get_preserveAspectRatio(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -108,7 +104,7 @@ pub fn set_orient(instance: *runtime.Instance, value: runtime.DOMString) ImplErr
 }
 
 /// Operation: setOrientToAngle
-pub fn call_setOrientToAngle(instance: *runtime.Instance, angle: interfaces.SVGAngle) ImplError!void {
+pub fn call_setOrientToAngle(instance: *runtime.Instance, angle: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = angle;
     return error.NotImplemented;

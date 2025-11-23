@@ -1,5 +1,5 @@
 //! Generated from: writing-assistance-apis.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -172,7 +172,7 @@ pub const Summarizer = struct {
         return try SummarizerImpl.call_availability(instance, options);
     }
 
-    pub fn call_summarizeStreaming(instance: *runtime.Instance, input: DOMString, options: SummarizerSummarizeOptions) anyerror!ReadableStream {
+    pub fn call_summarizeStreaming(instance: *runtime.Instance, input: DOMString, options: SummarizerSummarizeOptions) anyerror!*runtime.Instance {
         
         return try SummarizerImpl.call_summarizeStreaming(instance, input, options);
     }

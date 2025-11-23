@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -142,12 +142,12 @@ pub const GPUComputePassEncoder = struct {
         return try GPUComputePassEncoderImpl.call_popDebugGroup(instance);
     }
 
-    pub fn call_setBindGroup(instance: *runtime.Instance, index: GPUIndex32, bindGroup: GPUBindGroup, dynamicOffsets: *const anyopaque) anyerror!void {
+    pub fn call_setBindGroup(instance: *runtime.Instance, index: GPUIndex32, bindGroup: *runtime.Instance, dynamicOffsets: *const anyopaque) anyerror!void {
         
         return try GPUComputePassEncoderImpl.call_setBindGroup(instance, index, bindGroup, dynamicOffsets);
     }
 
-    pub fn call_dispatchWorkgroupsIndirect(instance: *runtime.Instance, indirectBuffer: GPUBuffer, indirectOffset: GPUSize64) anyerror!void {
+    pub fn call_dispatchWorkgroupsIndirect(instance: *runtime.Instance, indirectBuffer: *runtime.Instance, indirectOffset: GPUSize64) anyerror!void {
         
         return try GPUComputePassEncoderImpl.call_dispatchWorkgroupsIndirect(instance, indirectBuffer, indirectOffset);
     }
@@ -166,7 +166,7 @@ pub const GPUComputePassEncoder = struct {
         return try GPUComputePassEncoderImpl.call_end(instance);
     }
 
-    pub fn call_setPipeline(instance: *runtime.Instance, pipeline: GPUComputePipeline) anyerror!void {
+    pub fn call_setPipeline(instance: *runtime.Instance, pipeline: *runtime.Instance) anyerror!void {
         
         return try GPUComputePassEncoderImpl.call_setPipeline(instance, pipeline);
     }

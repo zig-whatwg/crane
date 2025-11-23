@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,13 +37,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for shadowRoot
-pub fn get_shadowRoot(instance: *runtime.Instance) ImplError!interfaces.ShadowRoot {
+pub fn get_shadowRoot(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for form
-pub fn get_form(instance: *runtime.Instance) ImplError!interfaces.HTMLFormElement {
+pub fn get_form(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -59,7 +55,7 @@ pub fn get_willValidate(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Getter for validity
-pub fn get_validity(instance: *runtime.Instance) ImplError!interfaces.ValidityState {
+pub fn get_validity(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -71,13 +67,13 @@ pub fn get_validationMessage(instance: *runtime.Instance) ImplError!runtime.DOMS
 }
 
 /// Getter for labels
-pub fn get_labels(instance: *runtime.Instance) ImplError!interfaces.NodeList {
+pub fn get_labels(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for states
-pub fn get_states(instance: *runtime.Instance) ImplError!interfaces.CustomStateSet {
+pub fn get_states(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -89,7 +85,7 @@ pub fn get_role(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for ariaActiveDescendantElement
-pub fn get_ariaActiveDescendantElement(instance: *runtime.Instance) ImplError!interfaces.Element {
+pub fn get_ariaActiveDescendantElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -402,7 +398,7 @@ pub fn set_role(instance: *runtime.Instance, value: runtime.DOMString) ImplError
 }
 
 /// Setter for ariaActiveDescendantElement
-pub fn set_ariaActiveDescendantElement(instance: *runtime.Instance, value: interfaces.Element) ImplError!void {
+pub fn set_ariaActiveDescendantElement(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -759,7 +755,7 @@ pub fn set_ariaValueText(instance: *runtime.Instance, value: runtime.DOMString) 
 }
 
 /// Operation: setValidity
-pub fn call_setValidity(instance: *runtime.Instance, flags: dictionaries.ValidityStateFlags, message: runtime.DOMString, anchor: interfaces.HTMLElement) ImplError!void {
+pub fn call_setValidity(instance: *runtime.Instance, flags: dictionaries.ValidityStateFlags, message: runtime.DOMString, anchor: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = flags;
     _ = message;

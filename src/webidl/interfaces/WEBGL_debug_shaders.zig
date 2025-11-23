@@ -1,5 +1,5 @@
 //! Generated from: WEBGL_debug_shaders.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -78,7 +78,7 @@ pub const WEBGL_debug_shaders = struct {
         WEBGL_debug_shadersImpl.deinit(instance);
     }
 
-    pub fn call_getTranslatedShaderSource(instance: *runtime.Instance, shader: WebGLShader) anyerror!DOMString {
+    pub fn call_getTranslatedShaderSource(instance: *runtime.Instance, shader: *runtime.Instance) anyerror!DOMString {
         
         return try WEBGL_debug_shadersImpl.call_getTranslatedShaderSource(instance, shader);
     }

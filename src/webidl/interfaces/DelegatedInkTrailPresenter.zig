@@ -1,5 +1,5 @@
 //! Generated from: ink-enhancement.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -82,11 +82,11 @@ pub const DelegatedInkTrailPresenter = struct {
         DelegatedInkTrailPresenterImpl.deinit(instance);
     }
 
-    pub fn get_presentationArea(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_presentationArea(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DelegatedInkTrailPresenterImpl.get_presentationArea(instance);
     }
 
-    pub fn call_updateInkTrailStartPoint(instance: *runtime.Instance, event: PointerEvent, style: InkTrailStyle) anyerror!void {
+    pub fn call_updateInkTrailStartPoint(instance: *runtime.Instance, event: *runtime.Instance, style: InkTrailStyle) anyerror!void {
         
         return try DelegatedInkTrailPresenterImpl.call_updateInkTrailStartPoint(instance, event, style);
     }

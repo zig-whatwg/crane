@@ -1,5 +1,5 @@
 //! Generated from: font-metrics-api.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -173,7 +173,7 @@ pub const FontMetrics = struct {
         return try FontMetricsImpl.get_fontBoundingBoxDescent(instance);
     }
 
-    pub fn get_dominantBaseline(instance: *runtime.Instance) anyerror!Baseline {
+    pub fn get_dominantBaseline(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try FontMetricsImpl.get_dominantBaseline(instance);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: webtransport.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -208,15 +208,15 @@ pub const WebTransport = struct {
         return try WebTransportImpl.get_draining(instance);
     }
 
-    pub fn get_datagrams(instance: *runtime.Instance) anyerror!WebTransportDatagramDuplexStream {
+    pub fn get_datagrams(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WebTransportImpl.get_datagrams(instance);
     }
 
-    pub fn get_incomingBidirectionalStreams(instance: *runtime.Instance) anyerror!ReadableStream {
+    pub fn get_incomingBidirectionalStreams(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WebTransportImpl.get_incomingBidirectionalStreams(instance);
     }
 
-    pub fn get_incomingUnidirectionalStreams(instance: *runtime.Instance) anyerror!ReadableStream {
+    pub fn get_incomingUnidirectionalStreams(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WebTransportImpl.get_incomingUnidirectionalStreams(instance);
     }
 
@@ -224,7 +224,7 @@ pub const WebTransport = struct {
         return try WebTransportImpl.get_supportsReliableOnly(instance);
     }
 
-    pub fn call_createSendGroup(instance: *runtime.Instance) anyerror!WebTransportSendGroup {
+    pub fn call_createSendGroup(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WebTransportImpl.call_createSendGroup(instance);
     }
 

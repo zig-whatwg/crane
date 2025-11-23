@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -47,7 +43,7 @@ pub fn get_rawId(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Getter for response
-pub fn get_response(instance: *runtime.Instance) ImplError!interfaces.AuthenticatorResponse {
+pub fn get_response(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -47,7 +43,7 @@ pub fn get_size(instance: *runtime.Instance) ImplError!u32 {
 }
 
 /// Operation: get
-pub fn call_get(instance: *runtime.Instance, key: enums.XRHandJoint) ImplError!interfaces.XRJointSpace {
+pub fn call_get(instance: *runtime.Instance, key: enums.XRHandJoint) ImplError!*runtime.Instance {
     _ = instance;
     _ = key;
     return error.NotImplemented;

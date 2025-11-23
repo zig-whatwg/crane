@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,7 +37,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: drawIndexedIndirect
-pub fn call_drawIndexedIndirect(instance: *runtime.Instance, indirectBuffer: interfaces.GPUBuffer, indirectOffset: typedefs.GPUSize64) ImplError!void {
+pub fn call_drawIndexedIndirect(instance: *runtime.Instance, indirectBuffer: *runtime.Instance, indirectOffset: typedefs.GPUSize64) ImplError!void {
     _ = instance;
     _ = indirectBuffer;
     _ = indirectOffset;
@@ -59,7 +55,7 @@ pub fn call_draw(instance: *runtime.Instance, vertexCount: typedefs.GPUSize32, i
 }
 
 /// Operation: setVertexBuffer
-pub fn call_setVertexBuffer(instance: *runtime.Instance, slot: typedefs.GPUIndex32, buffer: interfaces.GPUBuffer, offset: typedefs.GPUSize64, size: typedefs.GPUSize64) ImplError!void {
+pub fn call_setVertexBuffer(instance: *runtime.Instance, slot: typedefs.GPUIndex32, buffer: *runtime.Instance, offset: typedefs.GPUSize64, size: typedefs.GPUSize64) ImplError!void {
     _ = instance;
     _ = slot;
     _ = buffer;
@@ -69,7 +65,7 @@ pub fn call_setVertexBuffer(instance: *runtime.Instance, slot: typedefs.GPUIndex
 }
 
 /// Operation: setIndexBuffer
-pub fn call_setIndexBuffer(instance: *runtime.Instance, buffer: interfaces.GPUBuffer, indexFormat: enums.GPUIndexFormat, offset: typedefs.GPUSize64, size: typedefs.GPUSize64) ImplError!void {
+pub fn call_setIndexBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, indexFormat: enums.GPUIndexFormat, offset: typedefs.GPUSize64, size: typedefs.GPUSize64) ImplError!void {
     _ = instance;
     _ = buffer;
     _ = indexFormat;
@@ -79,7 +75,7 @@ pub fn call_setIndexBuffer(instance: *runtime.Instance, buffer: interfaces.GPUBu
 }
 
 /// Operation: drawIndirect
-pub fn call_drawIndirect(instance: *runtime.Instance, indirectBuffer: interfaces.GPUBuffer, indirectOffset: typedefs.GPUSize64) ImplError!void {
+pub fn call_drawIndirect(instance: *runtime.Instance, indirectBuffer: *runtime.Instance, indirectOffset: typedefs.GPUSize64) ImplError!void {
     _ = instance;
     _ = indirectBuffer;
     _ = indirectOffset;
@@ -98,7 +94,7 @@ pub fn call_drawIndexed(instance: *runtime.Instance, indexCount: typedefs.GPUSiz
 }
 
 /// Operation: setPipeline
-pub fn call_setPipeline(instance: *runtime.Instance, pipeline: interfaces.GPURenderPipeline) ImplError!void {
+pub fn call_setPipeline(instance: *runtime.Instance, pipeline: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = pipeline;
     return error.NotImplemented;

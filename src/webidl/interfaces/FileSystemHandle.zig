@@ -1,5 +1,5 @@
 //! Generated from: fs.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -106,7 +106,7 @@ pub const FileSystemHandle = struct {
         return try FileSystemHandleImpl.get_name(instance);
     }
 
-    pub fn call_isSameEntry(instance: *runtime.Instance, other: FileSystemHandle) anyerror!*const anyopaque {
+    pub fn call_isSameEntry(instance: *runtime.Instance, other: *runtime.Instance) anyerror!*const anyopaque {
         
         return try FileSystemHandleImpl.call_isSameEntry(instance, other);
     }

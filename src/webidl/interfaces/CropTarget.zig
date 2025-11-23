@@ -1,5 +1,5 @@
 //! Generated from: mediacapture-region.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -78,7 +78,7 @@ pub const CropTarget = struct {
     }
 
     /// Extended attributes: [Exposed=Window], [SecureContext]
-    pub fn call_fromElement(instance: *runtime.Instance, element: Element) anyerror!*const anyopaque {
+    pub fn call_fromElement(instance: *runtime.Instance, element: *runtime.Instance) anyerror!*const anyopaque {
         
         return try CropTargetImpl.call_fromElement(instance, element);
     }

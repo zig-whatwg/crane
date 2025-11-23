@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -91,13 +87,13 @@ pub fn get_statusText(instance: *runtime.Instance) ImplError!runtime.ByteString 
 }
 
 /// Getter for headers
-pub fn get_headers(instance: *runtime.Instance) ImplError!interfaces.Headers {
+pub fn get_headers(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for body
-pub fn get_body(instance: *runtime.Instance) ImplError!interfaces.ReadableStream {
+pub fn get_body(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -109,13 +105,13 @@ pub fn get_bodyUsed(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Operation: error
-pub fn call_error(instance: *runtime.Instance) ImplError!interfaces.Response {
+pub fn call_error(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: clone
-pub fn call_clone(instance: *runtime.Instance) ImplError!interfaces.Response {
+pub fn call_clone(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -145,7 +141,7 @@ pub fn call_text(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Operation: redirect
-pub fn call_redirect(instance: *runtime.Instance, url: runtime.USVString, status: u16) ImplError!interfaces.Response {
+pub fn call_redirect(instance: *runtime.Instance, url: runtime.USVString, status: u16) ImplError!*runtime.Instance {
     _ = instance;
     _ = url;
     _ = status;
@@ -153,7 +149,7 @@ pub fn call_redirect(instance: *runtime.Instance, url: runtime.USVString, status
 }
 
 /// Operation: json
-pub fn call_json(instance: *runtime.Instance, data: *const anyopaque, init_data: dictionaries.ResponseInit) ImplError!interfaces.Response {
+pub fn call_json(instance: *runtime.Instance, data: *const anyopaque, init_data: dictionaries.ResponseInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = data;
     _ = init_data;

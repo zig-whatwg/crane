@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -157,7 +153,7 @@ pub fn call_characterBounds(instance: *runtime.Instance) ImplError!*const anyopa
 }
 
 /// Operation: updateSelectionBounds
-pub fn call_updateSelectionBounds(instance: *runtime.Instance, selectionBounds: interfaces.DOMRect) ImplError!void {
+pub fn call_updateSelectionBounds(instance: *runtime.Instance, selectionBounds: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = selectionBounds;
     return error.NotImplemented;
@@ -170,7 +166,7 @@ pub fn call_attachedElements(instance: *runtime.Instance) ImplError!*const anyop
 }
 
 /// Operation: updateControlBounds
-pub fn call_updateControlBounds(instance: *runtime.Instance, controlBounds: interfaces.DOMRect) ImplError!void {
+pub fn call_updateControlBounds(instance: *runtime.Instance, controlBounds: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = controlBounds;
     return error.NotImplemented;

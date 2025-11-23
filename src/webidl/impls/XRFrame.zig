@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,7 +37,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for session
-pub fn get_session(instance: *runtime.Instance) ImplError!interfaces.XRSession {
+pub fn get_session(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -53,25 +49,25 @@ pub fn get_predictedDisplayTime(instance: *runtime.Instance) ImplError!typedefs.
 }
 
 /// Getter for body
-pub fn get_body(instance: *runtime.Instance) ImplError!interfaces.XRBody {
+pub fn get_body(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for trackedAnchors
-pub fn get_trackedAnchors(instance: *runtime.Instance) ImplError!interfaces.XRAnchorSet {
+pub fn get_trackedAnchors(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for detectedPlanes
-pub fn get_detectedPlanes(instance: *runtime.Instance) ImplError!interfaces.XRPlaneSet {
+pub fn get_detectedPlanes(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for detectedMeshes
-pub fn get_detectedMeshes(instance: *runtime.Instance) ImplError!interfaces.XRMeshSet {
+pub fn get_detectedMeshes(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -83,7 +79,7 @@ pub fn get_metaData(instance: *runtime.Instance) ImplError!dictionaries.XRMetada
 }
 
 /// Operation: createAnchor
-pub fn call_createAnchor(instance: *runtime.Instance, pose: interfaces.XRRigidTransform, space: interfaces.XRSpace) ImplError!*const anyopaque {
+pub fn call_createAnchor(instance: *runtime.Instance, pose: *runtime.Instance, space: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     _ = pose;
     _ = space;
@@ -91,28 +87,28 @@ pub fn call_createAnchor(instance: *runtime.Instance, pose: interfaces.XRRigidTr
 }
 
 /// Operation: getViewerPose
-pub fn call_getViewerPose(instance: *runtime.Instance, referenceSpace: interfaces.XRReferenceSpace) ImplError!interfaces.XRViewerPose {
+pub fn call_getViewerPose(instance: *runtime.Instance, referenceSpace: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = referenceSpace;
     return error.NotImplemented;
 }
 
 /// Operation: getHitTestResults
-pub fn call_getHitTestResults(instance: *runtime.Instance, hitTestSource: interfaces.XRHitTestSource) ImplError!*const anyopaque {
+pub fn call_getHitTestResults(instance: *runtime.Instance, hitTestSource: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     _ = hitTestSource;
     return error.NotImplemented;
 }
 
 /// Operation: getLightEstimate
-pub fn call_getLightEstimate(instance: *runtime.Instance, lightProbe: interfaces.XRLightProbe) ImplError!interfaces.XRLightEstimate {
+pub fn call_getLightEstimate(instance: *runtime.Instance, lightProbe: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = lightProbe;
     return error.NotImplemented;
 }
 
 /// Operation: getPose
-pub fn call_getPose(instance: *runtime.Instance, space: interfaces.XRSpace, baseSpace: interfaces.XRSpace) ImplError!interfaces.XRPose {
+pub fn call_getPose(instance: *runtime.Instance, space: *runtime.Instance, baseSpace: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = space;
     _ = baseSpace;
@@ -120,14 +116,14 @@ pub fn call_getPose(instance: *runtime.Instance, space: interfaces.XRSpace, base
 }
 
 /// Operation: getHitTestResultsForTransientInput
-pub fn call_getHitTestResultsForTransientInput(instance: *runtime.Instance, hitTestSource: interfaces.XRTransientInputHitTestSource) ImplError!*const anyopaque {
+pub fn call_getHitTestResultsForTransientInput(instance: *runtime.Instance, hitTestSource: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     _ = hitTestSource;
     return error.NotImplemented;
 }
 
 /// Operation: fillPoses
-pub fn call_fillPoses(instance: *runtime.Instance, spaces: *const anyopaque, baseSpace: interfaces.XRSpace, transforms: *const anyopaque) ImplError!bool {
+pub fn call_fillPoses(instance: *runtime.Instance, spaces: *const anyopaque, baseSpace: *runtime.Instance, transforms: *const anyopaque) ImplError!bool {
     _ = instance;
     _ = spaces;
     _ = baseSpace;
@@ -136,7 +132,7 @@ pub fn call_fillPoses(instance: *runtime.Instance, spaces: *const anyopaque, bas
 }
 
 /// Operation: getJointPose
-pub fn call_getJointPose(instance: *runtime.Instance, joint: interfaces.XRJointSpace, baseSpace: interfaces.XRSpace) ImplError!interfaces.XRJointPose {
+pub fn call_getJointPose(instance: *runtime.Instance, joint: *runtime.Instance, baseSpace: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = joint;
     _ = baseSpace;
@@ -152,7 +148,7 @@ pub fn call_fillJointRadii(instance: *runtime.Instance, jointSpaces: *const anyo
 }
 
 /// Operation: getDepthInformation
-pub fn call_getDepthInformation(instance: *runtime.Instance, view: interfaces.XRView) ImplError!interfaces.XRCPUDepthInformation {
+pub fn call_getDepthInformation(instance: *runtime.Instance, view: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = view;
     return error.NotImplemented;

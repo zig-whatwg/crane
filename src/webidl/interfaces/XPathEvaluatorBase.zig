@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -78,18 +78,18 @@ pub const XPathEvaluatorBase = struct {
         XPathEvaluatorBaseImpl.deinit(instance);
     }
 
-    pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: Node) anyerror!Node {
+    pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime.Instance) anyerror!*runtime.Instance {
         
         return try XPathEvaluatorBaseImpl.call_createNSResolver(instance, nodeResolver);
     }
 
-    pub fn call_evaluate(instance: *runtime.Instance, expression: DOMString, contextNode: Node, resolver: XPathNSResolver, @"type": u16, result: XPathResult) anyerror!XPathResult {
+    pub fn call_evaluate(instance: *runtime.Instance, expression: DOMString, contextNode: *runtime.Instance, resolver: *runtime.Instance, @"type": u16, result: *runtime.Instance) anyerror!*runtime.Instance {
         
         return try XPathEvaluatorBaseImpl.call_evaluate(instance, expression, contextNode, resolver, @"type", result);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createExpression(instance: *runtime.Instance, expression: DOMString, resolver: XPathNSResolver) anyerror!XPathExpression {
+    pub fn call_createExpression(instance: *runtime.Instance, expression: DOMString, resolver: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try XPathEvaluatorBaseImpl.call_createExpression(instance, expression, resolver);

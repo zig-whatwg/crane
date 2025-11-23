@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -105,7 +105,7 @@ pub const NodeIterator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_root(instance: *runtime.Instance) anyerror!Node {
+    pub fn get_root(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_root) |cached| {
@@ -116,7 +116,7 @@ pub const NodeIterator = struct {
         return value;
     }
 
-    pub fn get_referenceNode(instance: *runtime.Instance) anyerror!Node {
+    pub fn get_referenceNode(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NodeIteratorImpl.get_referenceNode(instance);
     }
 
@@ -128,11 +128,11 @@ pub const NodeIterator = struct {
         return try NodeIteratorImpl.get_whatToShow(instance);
     }
 
-    pub fn get_filter(instance: *runtime.Instance) anyerror!NodeFilter {
+    pub fn get_filter(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NodeIteratorImpl.get_filter(instance);
     }
 
-    pub fn call_nextNode(instance: *runtime.Instance) anyerror!Node {
+    pub fn call_nextNode(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NodeIteratorImpl.call_nextNode(instance);
     }
 
@@ -140,7 +140,7 @@ pub const NodeIterator = struct {
         return try NodeIteratorImpl.call_detach(instance);
     }
 
-    pub fn call_previousNode(instance: *runtime.Instance) anyerror!Node {
+    pub fn call_previousNode(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NodeIteratorImpl.call_previousNode(instance);
     }
 

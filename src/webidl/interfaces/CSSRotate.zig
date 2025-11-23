@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -146,11 +146,11 @@ pub const CSSRotate = struct {
         try CSSRotateImpl.set_z(instance, value);
     }
 
-    pub fn get_angle(instance: *runtime.Instance) anyerror!CSSNumericValue {
+    pub fn get_angle(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSRotateImpl.get_angle(instance);
     }
 
-    pub fn set_angle(instance: *runtime.Instance, value: CSSNumericValue) anyerror!void {
+    pub fn set_angle(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         try CSSRotateImpl.set_angle(instance, value);
     }
 

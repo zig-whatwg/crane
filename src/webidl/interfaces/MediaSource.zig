@@ -1,5 +1,5 @@
 //! Generated from: media-source.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -159,7 +159,7 @@ pub const MediaSource = struct {
     }
 
     /// Extended attributes: [SameObject], [Exposed=DedicatedWorker]
-    pub fn get_handle(instance: *runtime.Instance) anyerror!MediaSourceHandle {
+    pub fn get_handle(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_handle) |cached| {
@@ -170,11 +170,11 @@ pub const MediaSource = struct {
         return value;
     }
 
-    pub fn get_sourceBuffers(instance: *runtime.Instance) anyerror!SourceBufferList {
+    pub fn get_sourceBuffers(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try MediaSourceImpl.get_sourceBuffers(instance);
     }
 
-    pub fn get_activeSourceBuffers(instance: *runtime.Instance) anyerror!SourceBufferList {
+    pub fn get_activeSourceBuffers(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try MediaSourceImpl.get_activeSourceBuffers(instance);
     }
 
@@ -232,12 +232,12 @@ pub const MediaSource = struct {
         return try MediaSourceImpl.call_clearLiveSeekableRange(instance);
     }
 
-    pub fn call_addSourceBuffer(instance: *runtime.Instance, @"type": DOMString) anyerror!SourceBuffer {
+    pub fn call_addSourceBuffer(instance: *runtime.Instance, @"type": DOMString) anyerror!*runtime.Instance {
         
         return try MediaSourceImpl.call_addSourceBuffer(instance, @"type");
     }
 
-    pub fn call_removeSourceBuffer(instance: *runtime.Instance, sourceBuffer: SourceBuffer) anyerror!void {
+    pub fn call_removeSourceBuffer(instance: *runtime.Instance, sourceBuffer: *runtime.Instance) anyerror!void {
         
         return try MediaSourceImpl.call_removeSourceBuffer(instance, sourceBuffer);
     }

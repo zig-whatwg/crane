@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -53,7 +49,7 @@ pub fn get_version(instance: *runtime.Instance) ImplError!u64 {
 }
 
 /// Getter for objectStoreNames
-pub fn get_objectStoreNames(instance: *runtime.Instance) ImplError!interfaces.DOMStringList {
+pub fn get_objectStoreNames(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -111,7 +107,7 @@ pub fn set_onversionchange(instance: *runtime.Instance, value: typedefs.EventHan
 }
 
 /// Operation: transaction
-pub fn call_transaction(instance: *runtime.Instance, storeNames: *const anyopaque, mode: enums.IDBTransactionMode, options: dictionaries.IDBTransactionOptions) ImplError!interfaces.IDBTransaction {
+pub fn call_transaction(instance: *runtime.Instance, storeNames: *const anyopaque, mode: enums.IDBTransactionMode, options: dictionaries.IDBTransactionOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = storeNames;
     _ = mode;
@@ -120,7 +116,7 @@ pub fn call_transaction(instance: *runtime.Instance, storeNames: *const anyopaqu
 }
 
 /// Operation: createObjectStore
-pub fn call_createObjectStore(instance: *runtime.Instance, name: runtime.DOMString, options: dictionaries.IDBObjectStoreParameters) ImplError!interfaces.IDBObjectStore {
+pub fn call_createObjectStore(instance: *runtime.Instance, name: runtime.DOMString, options: dictionaries.IDBObjectStoreParameters) ImplError!*runtime.Instance {
     _ = instance;
     _ = name;
     _ = options;

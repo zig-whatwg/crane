@@ -9,7 +9,7 @@ pub fn call_compile(ctx: runtime.Context, bytes: *const anyopaque, options: *con
     _ = ctx;
     _ = bytes;
     _ = options;
-    @panic("WebAssembly.compile() not implemented");
+    return error.NotImplemented;
 }
 
 pub fn call_instantiate_BufferSource_object_WebAssemblyCompileOptions(ctx: runtime.Context, bytes: *const anyopaque, importObject: *const anyopaque, options: *const anyopaque) *const anyopaque {
@@ -17,19 +17,20 @@ pub fn call_instantiate_BufferSource_object_WebAssemblyCompileOptions(ctx: runti
     _ = bytes;
     _ = importObject;
     _ = options;
-    @panic("WebAssembly.instantiate() not implemented");
+    return error.NotImplemented;
 }
 
 pub fn call_instantiate_Module_object(ctx: runtime.Context, moduleObject: *const anyopaque, importObject: *const anyopaque) *const anyopaque {
     _ = ctx;
     _ = moduleObject;
     _ = importObject;
-    @panic("WebAssembly.instantiate() not implemented");
+    return error.NotImplemented;
 }
 
 pub fn call_validate(ctx: runtime.Context, bytes: *const anyopaque, options: *const anyopaque) bool {
     _ = ctx;
     _ = bytes;
     _ = options;
-    @panic("WebAssembly.validate() not implemented");
+    return error.NotImplemented;
 }
+

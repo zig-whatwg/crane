@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -291,7 +291,7 @@ pub const HTMLOutputElement = struct {
     }
 
     /// Extended attributes: [SameObject], [PutForwards=value], [Reflect="for"]
-    pub fn get_htmlFor(instance: *runtime.Instance) anyerror!DOMTokenList {
+    pub fn get_htmlFor(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_htmlFor) |cached| {
@@ -302,7 +302,7 @@ pub const HTMLOutputElement = struct {
         return value;
     }
 
-    pub fn get_form(instance: *runtime.Instance) anyerror!HTMLFormElement {
+    pub fn get_form(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLOutputElementImpl.get_form(instance);
     }
 
@@ -356,7 +356,7 @@ pub const HTMLOutputElement = struct {
         return try HTMLOutputElementImpl.get_willValidate(instance);
     }
 
-    pub fn get_validity(instance: *runtime.Instance) anyerror!ValidityState {
+    pub fn get_validity(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLOutputElementImpl.get_validity(instance);
     }
 
@@ -364,7 +364,7 @@ pub const HTMLOutputElement = struct {
         return try HTMLOutputElementImpl.get_validationMessage(instance);
     }
 
-    pub fn get_labels(instance: *runtime.Instance) anyerror!NodeList {
+    pub fn get_labels(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLOutputElementImpl.get_labels(instance);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: EXT_disjoint_timer_query.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -157,12 +157,12 @@ pub const EXT_disjoint_timer_query = struct {
         EXT_disjoint_timer_queryImpl.deinit(instance);
     }
 
-    pub fn call_queryCounterEXT(instance: *runtime.Instance, query: WebGLTimerQueryEXT, target: GLenum) anyerror!void {
+    pub fn call_queryCounterEXT(instance: *runtime.Instance, query: *runtime.Instance, target: GLenum) anyerror!void {
         
         return try EXT_disjoint_timer_queryImpl.call_queryCounterEXT(instance, query, target);
     }
 
-    pub fn call_createQueryEXT(instance: *runtime.Instance) anyerror!WebGLTimerQueryEXT {
+    pub fn call_createQueryEXT(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try EXT_disjoint_timer_queryImpl.call_createQueryEXT(instance);
     }
 
@@ -172,17 +172,17 @@ pub const EXT_disjoint_timer_query = struct {
     }
 
     /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_isQueryEXT(instance: *runtime.Instance, query: WebGLTimerQueryEXT) anyerror!bool {
+    pub fn call_isQueryEXT(instance: *runtime.Instance, query: *runtime.Instance) anyerror!bool {
         
         return try EXT_disjoint_timer_queryImpl.call_isQueryEXT(instance, query);
     }
 
-    pub fn call_beginQueryEXT(instance: *runtime.Instance, target: GLenum, query: WebGLTimerQueryEXT) anyerror!void {
+    pub fn call_beginQueryEXT(instance: *runtime.Instance, target: GLenum, query: *runtime.Instance) anyerror!void {
         
         return try EXT_disjoint_timer_queryImpl.call_beginQueryEXT(instance, target, query);
     }
 
-    pub fn call_getQueryObjectEXT(instance: *runtime.Instance, query: WebGLTimerQueryEXT, pname: GLenum) anyerror!*const anyopaque {
+    pub fn call_getQueryObjectEXT(instance: *runtime.Instance, query: *runtime.Instance, pname: GLenum) anyerror!*const anyopaque {
         
         return try EXT_disjoint_timer_queryImpl.call_getQueryObjectEXT(instance, query, pname);
     }
@@ -192,7 +192,7 @@ pub const EXT_disjoint_timer_query = struct {
         return try EXT_disjoint_timer_queryImpl.call_getQueryEXT(instance, target, pname);
     }
 
-    pub fn call_deleteQueryEXT(instance: *runtime.Instance, query: WebGLTimerQueryEXT) anyerror!void {
+    pub fn call_deleteQueryEXT(instance: *runtime.Instance, query: *runtime.Instance) anyerror!void {
         
         return try EXT_disjoint_timer_queryImpl.call_deleteQueryEXT(instance, query);
     }

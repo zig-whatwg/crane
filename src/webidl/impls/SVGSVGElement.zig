@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,25 +37,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for x
-pub fn get_x(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedLength {
+pub fn get_x(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for y
-pub fn get_y(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedLength {
+pub fn get_y(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for width
-pub fn get_width(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedLength {
+pub fn get_width(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for height
-pub fn get_height(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedLength {
+pub fn get_height(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -71,19 +67,19 @@ pub fn get_currentScale(instance: *runtime.Instance) ImplError!f32 {
 }
 
 /// Getter for currentTranslate
-pub fn get_currentTranslate(instance: *runtime.Instance) ImplError!interfaces.DOMPointReadOnly {
+pub fn get_currentTranslate(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for viewBox
-pub fn get_viewBox(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedRect {
+pub fn get_viewBox(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for preserveAspectRatio
-pub fn get_preserveAspectRatio(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedPreserveAspectRatio {
+pub fn get_preserveAspectRatio(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -369,7 +365,7 @@ pub fn set_onportalactivate(instance: *runtime.Instance, value: typedefs.EventHa
 }
 
 /// Operation: createSVGPoint
-pub fn call_createSVGPoint(instance: *runtime.Instance) ImplError!interfaces.DOMPoint {
+pub fn call_createSVGPoint(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -389,7 +385,7 @@ pub fn call_setCurrentTime(instance: *runtime.Instance, seconds: f32) ImplError!
 }
 
 /// Operation: createSVGLength
-pub fn call_createSVGLength(instance: *runtime.Instance) ImplError!interfaces.SVGLength {
+pub fn call_createSVGLength(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -401,7 +397,7 @@ pub fn call_animationsPaused(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Operation: getIntersectionList
-pub fn call_getIntersectionList(instance: *runtime.Instance, rect: interfaces.DOMRectReadOnly, referenceElement: interfaces.SVGElement) ImplError!interfaces.NodeList {
+pub fn call_getIntersectionList(instance: *runtime.Instance, rect: *runtime.Instance, referenceElement: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = rect;
     _ = referenceElement;
@@ -409,7 +405,7 @@ pub fn call_getIntersectionList(instance: *runtime.Instance, rect: interfaces.DO
 }
 
 /// Operation: getElementById
-pub fn call_getElementById(instance: *runtime.Instance, elementId: runtime.DOMString) ImplError!interfaces.Element {
+pub fn call_getElementById(instance: *runtime.Instance, elementId: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = elementId;
     return error.NotImplemented;
@@ -423,7 +419,7 @@ pub fn call_unsuspendRedraw(instance: *runtime.Instance, suspendHandleID: u32) I
 }
 
 /// Operation: getEnclosureList
-pub fn call_getEnclosureList(instance: *runtime.Instance, rect: interfaces.DOMRectReadOnly, referenceElement: interfaces.SVGElement) ImplError!interfaces.NodeList {
+pub fn call_getEnclosureList(instance: *runtime.Instance, rect: *runtime.Instance, referenceElement: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = rect;
     _ = referenceElement;
@@ -437,13 +433,13 @@ pub fn call_pauseAnimations(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: createSVGAngle
-pub fn call_createSVGAngle(instance: *runtime.Instance) ImplError!interfaces.SVGAngle {
+pub fn call_createSVGAngle(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: createSVGTransformFromMatrix
-pub fn call_createSVGTransformFromMatrix(instance: *runtime.Instance, matrix: dictionaries.DOMMatrix2DInit) ImplError!interfaces.SVGTransform {
+pub fn call_createSVGTransformFromMatrix(instance: *runtime.Instance, matrix: dictionaries.DOMMatrix2DInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = matrix;
     return error.NotImplemented;
@@ -462,7 +458,7 @@ pub fn call_unsuspendRedrawAll(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: createSVGMatrix
-pub fn call_createSVGMatrix(instance: *runtime.Instance) ImplError!interfaces.DOMMatrix {
+pub fn call_createSVGMatrix(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -474,7 +470,7 @@ pub fn call_getCurrentTime(instance: *runtime.Instance) ImplError!f32 {
 }
 
 /// Operation: checkIntersection
-pub fn call_checkIntersection(instance: *runtime.Instance, element: interfaces.SVGElement, rect: interfaces.DOMRectReadOnly) ImplError!bool {
+pub fn call_checkIntersection(instance: *runtime.Instance, element: *runtime.Instance, rect: *runtime.Instance) ImplError!bool {
     _ = instance;
     _ = element;
     _ = rect;
@@ -482,7 +478,7 @@ pub fn call_checkIntersection(instance: *runtime.Instance, element: interfaces.S
 }
 
 /// Operation: checkEnclosure
-pub fn call_checkEnclosure(instance: *runtime.Instance, element: interfaces.SVGElement, rect: interfaces.DOMRectReadOnly) ImplError!bool {
+pub fn call_checkEnclosure(instance: *runtime.Instance, element: *runtime.Instance, rect: *runtime.Instance) ImplError!bool {
     _ = instance;
     _ = element;
     _ = rect;
@@ -496,19 +492,19 @@ pub fn call_unpauseAnimations(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: createSVGRect
-pub fn call_createSVGRect(instance: *runtime.Instance) ImplError!interfaces.DOMRect {
+pub fn call_createSVGRect(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: createSVGTransform
-pub fn call_createSVGTransform(instance: *runtime.Instance) ImplError!interfaces.SVGTransform {
+pub fn call_createSVGTransform(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: createSVGNumber
-pub fn call_createSVGNumber(instance: *runtime.Instance) ImplError!interfaces.SVGNumber {
+pub fn call_createSVGNumber(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

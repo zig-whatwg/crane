@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -268,7 +268,7 @@ pub const HTMLTableSectionElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_rows(instance: *runtime.Instance) anyerror!HTMLCollection {
+    pub fn get_rows(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_rows) |cached| {
@@ -345,7 +345,7 @@ pub const HTMLTableSectionElement = struct {
         return try HTMLTableSectionElementImpl.call_deleteRow(instance, index);
     }
 
-    pub fn call_insertRow(instance: *runtime.Instance, index: i32) anyerror!HTMLTableRowElement {
+    pub fn call_insertRow(instance: *runtime.Instance, index: i32) anyerror!*runtime.Instance {
         
         return try HTMLTableSectionElementImpl.call_insertRow(instance, index);
     }

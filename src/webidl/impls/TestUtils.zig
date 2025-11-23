@@ -7,5 +7,6 @@ const runtime = @import("runtime");
 
 pub fn call_gc(ctx: runtime.Context) *const anyopaque {
     _ = ctx;
-    @panic("TestUtils.gc() not implemented");
+    return error.NotImplemented;
 }
+

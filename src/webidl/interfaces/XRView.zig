@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -125,7 +125,7 @@ pub const XRView = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_camera(instance: *runtime.Instance) anyerror!XRCamera {
+    pub fn get_camera(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_camera) |cached| {
@@ -145,7 +145,7 @@ pub const XRView = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_transform(instance: *runtime.Instance) anyerror!XRRigidTransform {
+    pub fn get_transform(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_transform) |cached| {

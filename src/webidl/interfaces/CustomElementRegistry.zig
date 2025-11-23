@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -118,7 +118,7 @@ pub const CustomElementRegistry = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_upgrade(instance: *runtime.Instance, root: Node) anyerror!void {
+    pub fn call_upgrade(instance: *runtime.Instance, root: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -127,7 +127,7 @@ pub const CustomElementRegistry = struct {
         return try CustomElementRegistryImpl.call_upgrade(instance, root);
     }
 
-    pub fn call_initialize(instance: *runtime.Instance, root: Node) anyerror!void {
+    pub fn call_initialize(instance: *runtime.Instance, root: *runtime.Instance) anyerror!void {
         
         return try CustomElementRegistryImpl.call_initialize(instance, root);
     }

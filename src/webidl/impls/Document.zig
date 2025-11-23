@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -53,7 +49,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for implementation
-pub fn get_implementation(instance: *runtime.Instance) ImplError!interfaces.DOMImplementation {
+pub fn get_implementation(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -101,19 +97,19 @@ pub fn get_contentType(instance: *runtime.Instance) ImplError!runtime.DOMString 
 }
 
 /// Getter for doctype
-pub fn get_doctype(instance: *runtime.Instance) ImplError!interfaces.DocumentType {
+pub fn get_doctype(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for documentElement
-pub fn get_documentElement(instance: *runtime.Instance) ImplError!interfaces.Element {
+pub fn get_documentElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for fragmentDirective
-pub fn get_fragmentDirective(instance: *runtime.Instance) ImplError!interfaces.FragmentDirective {
+pub fn get_fragmentDirective(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -155,7 +151,7 @@ pub fn get_onfullscreenerror(instance: *runtime.Instance) ImplError!typedefs.Eve
 }
 
 /// Getter for timeline
-pub fn get_timeline(instance: *runtime.Instance) ImplError!interfaces.DocumentTimeline {
+pub fn get_timeline(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -197,25 +193,25 @@ pub fn get_wasDiscarded(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Getter for namedFlows
-pub fn get_namedFlows(instance: *runtime.Instance) ImplError!interfaces.NamedFlowMap {
+pub fn get_namedFlows(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for rootElement
-pub fn get_rootElement(instance: *runtime.Instance) ImplError!interfaces.SVGSVGElement {
+pub fn get_rootElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for activeViewTransition
-pub fn get_activeViewTransition(instance: *runtime.Instance) ImplError!interfaces.ViewTransition {
+pub fn get_activeViewTransition(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for location
-pub fn get_location(instance: *runtime.Instance) ImplError!interfaces.Location {
+pub fn get_location(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -263,49 +259,49 @@ pub fn get_dir(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for body
-pub fn get_body(instance: *runtime.Instance) ImplError!interfaces.HTMLElement {
+pub fn get_body(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for head
-pub fn get_head(instance: *runtime.Instance) ImplError!interfaces.HTMLHeadElement {
+pub fn get_head(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for images
-pub fn get_images(instance: *runtime.Instance) ImplError!interfaces.HTMLCollection {
+pub fn get_images(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for embeds
-pub fn get_embeds(instance: *runtime.Instance) ImplError!interfaces.HTMLCollection {
+pub fn get_embeds(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for plugins
-pub fn get_plugins(instance: *runtime.Instance) ImplError!interfaces.HTMLCollection {
+pub fn get_plugins(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for links
-pub fn get_links(instance: *runtime.Instance) ImplError!interfaces.HTMLCollection {
+pub fn get_links(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for forms
-pub fn get_forms(instance: *runtime.Instance) ImplError!interfaces.HTMLCollection {
+pub fn get_forms(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for scripts
-pub fn get_scripts(instance: *runtime.Instance) ImplError!interfaces.HTMLCollection {
+pub fn get_scripts(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -383,67 +379,67 @@ pub fn get_bgColor(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for anchors
-pub fn get_anchors(instance: *runtime.Instance) ImplError!interfaces.HTMLCollection {
+pub fn get_anchors(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for applets
-pub fn get_applets(instance: *runtime.Instance) ImplError!interfaces.HTMLCollection {
+pub fn get_applets(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for all
-pub fn get_all(instance: *runtime.Instance) ImplError!interfaces.HTMLAllCollection {
+pub fn get_all(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for scrollingElement
-pub fn get_scrollingElement(instance: *runtime.Instance) ImplError!interfaces.Element {
+pub fn get_scrollingElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for permissionsPolicy
-pub fn get_permissionsPolicy(instance: *runtime.Instance) ImplError!interfaces.PermissionsPolicy {
+pub fn get_permissionsPolicy(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for fonts
-pub fn get_fonts(instance: *runtime.Instance) ImplError!interfaces.FontFaceSet {
+pub fn get_fonts(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for customElementRegistry
-pub fn get_customElementRegistry(instance: *runtime.Instance) ImplError!interfaces.CustomElementRegistry {
+pub fn get_customElementRegistry(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for fullscreenElement
-pub fn get_fullscreenElement(instance: *runtime.Instance) ImplError!interfaces.Element {
+pub fn get_fullscreenElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for pictureInPictureElement
-pub fn get_pictureInPictureElement(instance: *runtime.Instance) ImplError!interfaces.Element {
+pub fn get_pictureInPictureElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for pointerLockElement
-pub fn get_pointerLockElement(instance: *runtime.Instance) ImplError!interfaces.Element {
+pub fn get_pointerLockElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for styleSheets
-pub fn get_styleSheets(instance: *runtime.Instance) ImplError!interfaces.StyleSheetList {
+pub fn get_styleSheets(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -455,25 +451,25 @@ pub fn get_adoptedStyleSheets(instance: *runtime.Instance) ImplError!*const anyo
 }
 
 /// Getter for activeElement
-pub fn get_activeElement(instance: *runtime.Instance) ImplError!interfaces.Element {
+pub fn get_activeElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for children
-pub fn get_children(instance: *runtime.Instance) ImplError!interfaces.HTMLCollection {
+pub fn get_children(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for firstElementChild
-pub fn get_firstElementChild(instance: *runtime.Instance) ImplError!interfaces.Element {
+pub fn get_firstElementChild(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for lastElementChild
-pub fn get_lastElementChild(instance: *runtime.Instance) ImplError!interfaces.Element {
+pub fn get_lastElementChild(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -1192,7 +1188,7 @@ pub fn set_dir(instance: *runtime.Instance, value: runtime.DOMString) ImplError!
 }
 
 /// Setter for body
-pub fn set_body(instance: *runtime.Instance, value: interfaces.HTMLElement) ImplError!void {
+pub fn set_body(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -2010,7 +2006,7 @@ pub fn call_queryCommandState(instance: *runtime.Instance, commandId: runtime.DO
 }
 
 /// Operation: parseHTMLUnsafe
-pub fn call_parseHTMLUnsafe(instance: *runtime.Instance, html: *const anyopaque) ImplError!interfaces.Document {
+pub fn call_parseHTMLUnsafe(instance: *runtime.Instance, html: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = html;
     return error.NotImplemented;
@@ -2023,7 +2019,7 @@ pub fn call_exitPictureInPicture(instance: *runtime.Instance) ImplError!*const a
 }
 
 /// Operation: createExpression
-pub fn call_createExpression(instance: *runtime.Instance, expression: runtime.DOMString, resolver: interfaces.XPathNSResolver) ImplError!interfaces.XPathExpression {
+pub fn call_createExpression(instance: *runtime.Instance, expression: runtime.DOMString, resolver: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = expression;
     _ = resolver;
@@ -2031,7 +2027,7 @@ pub fn call_createExpression(instance: *runtime.Instance, expression: runtime.DO
 }
 
 /// Operation: elementFromPoint
-pub fn call_elementFromPoint(instance: *runtime.Instance, x: f64, y: f64) ImplError!interfaces.Element {
+pub fn call_elementFromPoint(instance: *runtime.Instance, x: f64, y: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = x;
     _ = y;
@@ -2039,7 +2035,7 @@ pub fn call_elementFromPoint(instance: *runtime.Instance, x: f64, y: f64) ImplEr
 }
 
 /// Operation: createElement
-pub fn call_createElement(instance: *runtime.Instance, localName: runtime.DOMString, options: *const anyopaque) ImplError!interfaces.Element {
+pub fn call_createElement(instance: *runtime.Instance, localName: runtime.DOMString, options: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = localName;
     _ = options;
@@ -2060,7 +2056,7 @@ pub fn call_prepend(instance: *runtime.Instance, nodes: *const anyopaque) ImplEr
 }
 
 /// Operation: convertQuadFromNode
-pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: dictionaries.DOMQuadInit, from: typedefs.GeometryNode, options: dictionaries.ConvertCoordinateOptions) ImplError!interfaces.DOMQuad {
+pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: dictionaries.DOMQuadInit, from: typedefs.GeometryNode, options: dictionaries.ConvertCoordinateOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = quad;
     _ = from;
@@ -2090,7 +2086,7 @@ pub fn call_requestStorageAccessFor(instance: *runtime.Instance, requestedOrigin
 }
 
 /// Operation: open
-pub fn call_open(instance: *runtime.Instance, unused1: runtime.DOMString, unused2: runtime.DOMString) ImplError!interfaces.Document {
+pub fn call_open(instance: *runtime.Instance, unused1: runtime.DOMString, unused2: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = unused1;
     _ = unused2;
@@ -2120,7 +2116,7 @@ pub fn call_execCommand(instance: *runtime.Instance, commandId: runtime.DOMStrin
 }
 
 /// Operation: measureElement
-pub fn call_measureElement(instance: *runtime.Instance, element: interfaces.Element) ImplError!interfaces.FontMetrics {
+pub fn call_measureElement(instance: *runtime.Instance, element: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = element;
     return error.NotImplemented;
@@ -2134,7 +2130,7 @@ pub fn call_write(instance: *runtime.Instance, text: *const anyopaque) ImplError
 }
 
 /// Operation: createAttribute
-pub fn call_createAttribute(instance: *runtime.Instance, localName: runtime.DOMString) ImplError!interfaces.Attr {
+pub fn call_createAttribute(instance: *runtime.Instance, localName: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = localName;
     return error.NotImplemented;
@@ -2154,7 +2150,7 @@ pub fn call_queryCommandIndeterm(instance: *runtime.Instance, commandId: runtime
 }
 
 /// Operation: getElementsByTagNameNS
-pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: runtime.DOMString, localName: runtime.DOMString) ImplError!interfaces.HTMLCollection {
+pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: runtime.DOMString, localName: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = namespace;
     _ = localName;
@@ -2170,7 +2166,7 @@ pub fn call_elementsFromPoint(instance: *runtime.Instance, x: f64, y: f64) ImplE
 }
 
 /// Operation: createProcessingInstruction
-pub fn call_createProcessingInstruction(instance: *runtime.Instance, target: runtime.DOMString, data: runtime.DOMString) ImplError!interfaces.ProcessingInstruction {
+pub fn call_createProcessingInstruction(instance: *runtime.Instance, target: runtime.DOMString, data: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = target;
     _ = data;
@@ -2178,7 +2174,7 @@ pub fn call_createProcessingInstruction(instance: *runtime.Instance, target: run
 }
 
 /// Operation: createEvent
-pub fn call_createEvent(instance: *runtime.Instance, interface: runtime.DOMString) ImplError!interfaces.Event {
+pub fn call_createEvent(instance: *runtime.Instance, interface: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = interface;
     return error.NotImplemented;
@@ -2199,7 +2195,7 @@ pub fn call_getBoxQuads(instance: *runtime.Instance, options: dictionaries.BoxQu
 }
 
 /// Operation: convertPointFromNode
-pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionaries.DOMPointInit, from: typedefs.GeometryNode, options: dictionaries.ConvertCoordinateOptions) ImplError!interfaces.DOMPoint {
+pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionaries.DOMPointInit, from: typedefs.GeometryNode, options: dictionaries.ConvertCoordinateOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = point;
     _ = from;
@@ -2214,21 +2210,21 @@ pub fn call_getAnimations(instance: *runtime.Instance) ImplError!*const anyopaqu
 }
 
 /// Operation: getElementsByClassName
-pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: runtime.DOMString) ImplError!interfaces.HTMLCollection {
+pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = classNames;
     return error.NotImplemented;
 }
 
 /// Operation: getElementsByTagName
-pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: runtime.DOMString) ImplError!interfaces.HTMLCollection {
+pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = qualifiedName;
     return error.NotImplemented;
 }
 
 /// Operation: evaluate
-pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString, contextNode: interfaces.Node, resolver: interfaces.XPathNSResolver, @"type": u16, result: interfaces.XPathResult) ImplError!interfaces.XPathResult {
+pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString, contextNode: *runtime.Instance, resolver: *runtime.Instance, @"type": u16, result: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = expression;
     _ = contextNode;
@@ -2239,7 +2235,7 @@ pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString,
 }
 
 /// Operation: querySelector
-pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!interfaces.Element {
+pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = selectors;
     return error.NotImplemented;
@@ -2252,7 +2248,7 @@ pub fn call_hasStorageAccess(instance: *runtime.Instance) ImplError!*const anyop
 }
 
 /// Operation: importNode
-pub fn call_importNode(instance: *runtime.Instance, node: interfaces.Node, options: *const anyopaque) ImplError!interfaces.Node {
+pub fn call_importNode(instance: *runtime.Instance, node: *runtime.Instance, options: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = node;
     _ = options;
@@ -2260,7 +2256,7 @@ pub fn call_importNode(instance: *runtime.Instance, node: interfaces.Node, optio
 }
 
 /// Operation: createCDATASection
-pub fn call_createCDATASection(instance: *runtime.Instance, data: runtime.DOMString) ImplError!interfaces.CDATASection {
+pub fn call_createCDATASection(instance: *runtime.Instance, data: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = data;
     return error.NotImplemented;
@@ -2274,20 +2270,20 @@ pub fn call_queryCommandEnabled(instance: *runtime.Instance, commandId: runtime.
 }
 
 /// Operation: createRange
-pub fn call_createRange(instance: *runtime.Instance) ImplError!interfaces.Range {
+pub fn call_createRange(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getElementById
-pub fn call_getElementById(instance: *runtime.Instance, elementId: runtime.DOMString) ImplError!interfaces.Element {
+pub fn call_getElementById(instance: *runtime.Instance, elementId: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = elementId;
     return error.NotImplemented;
 }
 
 /// Operation: createAttributeNS
-pub fn call_createAttributeNS(instance: *runtime.Instance, namespace: runtime.DOMString, qualifiedName: runtime.DOMString) ImplError!interfaces.Attr {
+pub fn call_createAttributeNS(instance: *runtime.Instance, namespace: runtime.DOMString, qualifiedName: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = namespace;
     _ = qualifiedName;
@@ -2307,21 +2303,21 @@ pub fn call_exitFullscreen(instance: *runtime.Instance) ImplError!*const anyopaq
 }
 
 /// Operation: adoptNode
-pub fn call_adoptNode(instance: *runtime.Instance, node: interfaces.Node) ImplError!interfaces.Node {
+pub fn call_adoptNode(instance: *runtime.Instance, node: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = node;
     return error.NotImplemented;
 }
 
 /// Operation: createTextNode
-pub fn call_createTextNode(instance: *runtime.Instance, data: runtime.DOMString) ImplError!interfaces.Text {
+pub fn call_createTextNode(instance: *runtime.Instance, data: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = data;
     return error.NotImplemented;
 }
 
 /// Operation: createTreeWalker
-pub fn call_createTreeWalker(instance: *runtime.Instance, root: interfaces.Node, whatToShow: u32, filter: interfaces.NodeFilter) ImplError!interfaces.TreeWalker {
+pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: u32, filter: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = root;
     _ = whatToShow;
@@ -2330,7 +2326,7 @@ pub fn call_createTreeWalker(instance: *runtime.Instance, root: interfaces.Node,
 }
 
 /// Operation: getElementsByName
-pub fn call_getElementsByName(instance: *runtime.Instance, elementName: runtime.DOMString) ImplError!interfaces.NodeList {
+pub fn call_getElementsByName(instance: *runtime.Instance, elementName: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = elementName;
     return error.NotImplemented;
@@ -2351,7 +2347,7 @@ pub fn call_append(instance: *runtime.Instance, nodes: *const anyopaque) ImplErr
 }
 
 /// Operation: moveBefore
-pub fn call_moveBefore(instance: *runtime.Instance, node: interfaces.Node, child: interfaces.Node) ImplError!void {
+pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = node;
     _ = child;
@@ -2359,7 +2355,7 @@ pub fn call_moveBefore(instance: *runtime.Instance, node: interfaces.Node, child
 }
 
 /// Operation: convertRectFromNode
-pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: interfaces.DOMRectReadOnly, from: typedefs.GeometryNode, options: dictionaries.ConvertCoordinateOptions) ImplError!interfaces.DOMQuad {
+pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: typedefs.GeometryNode, options: dictionaries.ConvertCoordinateOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = rect;
     _ = from;
@@ -2375,7 +2371,7 @@ pub fn call_queryCommandValue(instance: *runtime.Instance, commandId: runtime.DO
 }
 
 /// Operation: caretPositionFromPoint
-pub fn call_caretPositionFromPoint(instance: *runtime.Instance, x: f64, y: f64, options: dictionaries.CaretPositionFromPointOptions) ImplError!interfaces.CaretPosition {
+pub fn call_caretPositionFromPoint(instance: *runtime.Instance, x: f64, y: f64, options: dictionaries.CaretPositionFromPointOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = x;
     _ = y;
@@ -2384,27 +2380,27 @@ pub fn call_caretPositionFromPoint(instance: *runtime.Instance, x: f64, y: f64, 
 }
 
 /// Operation: startViewTransition
-pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: *const anyopaque) ImplError!interfaces.ViewTransition {
+pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = callbackOptions;
     return error.NotImplemented;
 }
 
 /// Operation: createComment
-pub fn call_createComment(instance: *runtime.Instance, data: runtime.DOMString) ImplError!interfaces.Comment {
+pub fn call_createComment(instance: *runtime.Instance, data: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = data;
     return error.NotImplemented;
 }
 
 /// Operation: createDocumentFragment
-pub fn call_createDocumentFragment(instance: *runtime.Instance) ImplError!interfaces.DocumentFragment {
+pub fn call_createDocumentFragment(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getSelection
-pub fn call_getSelection(instance: *runtime.Instance) ImplError!interfaces.Selection {
+pub fn call_getSelection(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -2422,7 +2418,7 @@ pub fn call_requestStorageAccess(instance: *runtime.Instance) ImplError!*const a
 }
 
 /// Operation: createElementNS
-pub fn call_createElementNS(instance: *runtime.Instance, namespace: runtime.DOMString, qualifiedName: runtime.DOMString, options: *const anyopaque) ImplError!interfaces.Element {
+pub fn call_createElementNS(instance: *runtime.Instance, namespace: runtime.DOMString, qualifiedName: runtime.DOMString, options: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = namespace;
     _ = qualifiedName;
@@ -2437,7 +2433,7 @@ pub fn call_captureEvents(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: querySelectorAll
-pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!interfaces.NodeList {
+pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = selectors;
     return error.NotImplemented;
@@ -2451,14 +2447,14 @@ pub fn call_browsingTopics(instance: *runtime.Instance, options: dictionaries.Br
 }
 
 /// Operation: createNSResolver
-pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: interfaces.Node) ImplError!interfaces.Node {
+pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = nodeResolver;
     return error.NotImplemented;
 }
 
 /// Operation: createNodeIterator
-pub fn call_createNodeIterator(instance: *runtime.Instance, root: interfaces.Node, whatToShow: u32, filter: interfaces.NodeFilter) ImplError!interfaces.NodeIterator {
+pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: u32, filter: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = root;
     _ = whatToShow;
@@ -2467,7 +2463,7 @@ pub fn call_createNodeIterator(instance: *runtime.Instance, root: interfaces.Nod
 }
 
 /// Operation: measureText
-pub fn call_measureText(instance: *runtime.Instance, text: runtime.DOMString, styleMap: interfaces.StylePropertyMapReadOnly) ImplError!interfaces.FontMetrics {
+pub fn call_measureText(instance: *runtime.Instance, text: runtime.DOMString, styleMap: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = text;
     _ = styleMap;

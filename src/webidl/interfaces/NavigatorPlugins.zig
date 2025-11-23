@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -87,7 +87,7 @@ pub const NavigatorPlugins = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_plugins(instance: *runtime.Instance) anyerror!PluginArray {
+    pub fn get_plugins(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_plugins) |cached| {
@@ -99,7 +99,7 @@ pub const NavigatorPlugins = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_mimeTypes(instance: *runtime.Instance) anyerror!MimeTypeArray {
+    pub fn get_mimeTypes(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_mimeTypes) |cached| {

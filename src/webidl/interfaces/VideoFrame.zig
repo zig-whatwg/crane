@@ -1,5 +1,5 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -167,11 +167,11 @@ pub const VideoFrame = struct {
         return try VideoFrameImpl.get_codedHeight(instance);
     }
 
-    pub fn get_codedRect(instance: *runtime.Instance) anyerror!DOMRectReadOnly {
+    pub fn get_codedRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try VideoFrameImpl.get_codedRect(instance);
     }
 
-    pub fn get_visibleRect(instance: *runtime.Instance) anyerror!DOMRectReadOnly {
+    pub fn get_visibleRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try VideoFrameImpl.get_visibleRect(instance);
     }
 
@@ -199,7 +199,7 @@ pub const VideoFrame = struct {
         return try VideoFrameImpl.get_timestamp(instance);
     }
 
-    pub fn get_colorSpace(instance: *runtime.Instance) anyerror!VideoColorSpace {
+    pub fn get_colorSpace(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try VideoFrameImpl.get_colorSpace(instance);
     }
 
@@ -213,7 +213,7 @@ pub const VideoFrame = struct {
         return try VideoFrameImpl.call_copyTo(instance, destination, options);
     }
 
-    pub fn call_clone(instance: *runtime.Instance) anyerror!VideoFrame {
+    pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try VideoFrameImpl.call_clone(instance);
     }
 

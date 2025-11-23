@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -134,19 +130,19 @@ pub fn get_loaded(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Getter for features
-pub fn get_features(instance: *runtime.Instance) ImplError!interfaces.FontFaceFeatures {
+pub fn get_features(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for variations
-pub fn get_variations(instance: *runtime.Instance) ImplError!interfaces.FontFaceVariations {
+pub fn get_variations(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for palettes
-pub fn get_palettes(instance: *runtime.Instance) ImplError!interfaces.FontFacePalettes {
+pub fn get_palettes(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

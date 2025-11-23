@@ -1,5 +1,5 @@
 //! Generated from: mediacapture-streams.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -172,21 +172,21 @@ pub const MediaStream = struct {
         return try MediaStreamImpl.call_getVideoTracks(instance);
     }
 
-    pub fn call_clone(instance: *runtime.Instance) anyerror!MediaStream {
+    pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try MediaStreamImpl.call_clone(instance);
     }
 
-    pub fn call_getTrackById(instance: *runtime.Instance, trackId: DOMString) anyerror!MediaStreamTrack {
+    pub fn call_getTrackById(instance: *runtime.Instance, trackId: DOMString) anyerror!*runtime.Instance {
         
         return try MediaStreamImpl.call_getTrackById(instance, trackId);
     }
 
-    pub fn call_addTrack(instance: *runtime.Instance, track: MediaStreamTrack) anyerror!void {
+    pub fn call_addTrack(instance: *runtime.Instance, track: *runtime.Instance) anyerror!void {
         
         return try MediaStreamImpl.call_addTrack(instance, track);
     }
 
-    pub fn call_removeTrack(instance: *runtime.Instance, track: MediaStreamTrack) anyerror!void {
+    pub fn call_removeTrack(instance: *runtime.Instance, track: *runtime.Instance) anyerror!void {
         
         return try MediaStreamImpl.call_removeTrack(instance, track);
     }

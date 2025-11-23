@@ -1,5 +1,5 @@
 //! Generated from: payment-request.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -149,7 +149,7 @@ pub const PaymentResponse = struct {
         return try PaymentResponseImpl.get_details(instance);
     }
 
-    pub fn get_shippingAddress(instance: *runtime.Instance) anyerror!ContactAddress {
+    pub fn get_shippingAddress(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try PaymentResponseImpl.get_shippingAddress(instance);
     }
 

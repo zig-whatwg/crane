@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -67,7 +63,7 @@ pub fn get_url(instance: *runtime.Instance) ImplError!runtime.USVString {
 }
 
 /// Getter for headers
-pub fn get_headers(instance: *runtime.Instance) ImplError!interfaces.Headers {
+pub fn get_headers(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -139,7 +135,7 @@ pub fn get_isHistoryNavigation(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Getter for signal
-pub fn get_signal(instance: *runtime.Instance) ImplError!interfaces.AbortSignal {
+pub fn get_signal(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -157,7 +153,7 @@ pub fn get_targetAddressSpace(instance: *runtime.Instance) ImplError!enums.IPAdd
 }
 
 /// Getter for body
-pub fn get_body(instance: *runtime.Instance) ImplError!interfaces.ReadableStream {
+pub fn get_body(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -169,7 +165,7 @@ pub fn get_bodyUsed(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Operation: clone
-pub fn call_clone(instance: *runtime.Instance) ImplError!interfaces.Request {
+pub fn call_clone(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

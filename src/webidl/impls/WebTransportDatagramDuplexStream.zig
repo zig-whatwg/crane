@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,7 +37,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for readable
-pub fn get_readable(instance: *runtime.Instance) ImplError!interfaces.ReadableStream {
+pub fn get_readable(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -105,7 +101,7 @@ pub fn set_outgoingHighWaterMark(instance: *runtime.Instance, value: f64) ImplEr
 }
 
 /// Operation: createWritable
-pub fn call_createWritable(instance: *runtime.Instance, options: dictionaries.WebTransportSendOptions) ImplError!interfaces.WebTransportDatagramsWritable {
+pub fn call_createWritable(instance: *runtime.Instance, options: dictionaries.WebTransportSendOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = options;
     return error.NotImplemented;

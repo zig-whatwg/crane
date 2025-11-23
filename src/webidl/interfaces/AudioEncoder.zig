@@ -1,5 +1,5 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -153,7 +153,7 @@ pub const AudioEncoder = struct {
         return try AudioEncoderImpl.call_isConfigSupported(instance, config);
     }
 
-    pub fn call_encode(instance: *runtime.Instance, data: AudioData) anyerror!void {
+    pub fn call_encode(instance: *runtime.Instance, data: *runtime.Instance) anyerror!void {
         
         return try AudioEncoderImpl.call_encode(instance, data);
     }

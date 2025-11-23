@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -96,7 +96,7 @@ pub const CSSTransformComponent = struct {
         try CSSTransformComponentImpl.set_is2D(instance, value);
     }
 
-    pub fn call_toMatrix(instance: *runtime.Instance) anyerror!DOMMatrix {
+    pub fn call_toMatrix(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSTransformComponentImpl.call_toMatrix(instance);
     }
 

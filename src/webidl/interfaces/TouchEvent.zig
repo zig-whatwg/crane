@@ -1,5 +1,5 @@
 //! Generated from: touch-events.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -125,15 +125,15 @@ pub const TouchEvent = struct {
         return try TouchEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
-    pub fn get_touches(instance: *runtime.Instance) anyerror!TouchList {
+    pub fn get_touches(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try TouchEventImpl.get_touches(instance);
     }
 
-    pub fn get_targetTouches(instance: *runtime.Instance) anyerror!TouchList {
+    pub fn get_targetTouches(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try TouchEventImpl.get_targetTouches(instance);
     }
 
-    pub fn get_changedTouches(instance: *runtime.Instance) anyerror!TouchList {
+    pub fn get_changedTouches(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try TouchEventImpl.get_changedTouches(instance);
     }
 

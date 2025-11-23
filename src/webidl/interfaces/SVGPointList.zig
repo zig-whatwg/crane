@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -110,22 +110,22 @@ pub const SVGPointList = struct {
         return try SVGPointListImpl.get_numberOfItems(instance);
     }
 
-    pub fn call_removeItem(instance: *runtime.Instance, index: u32) anyerror!DOMPoint {
+    pub fn call_removeItem(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
         
         return try SVGPointListImpl.call_removeItem(instance, index);
     }
 
-    pub fn call_insertItemBefore(instance: *runtime.Instance, newItem: DOMPoint, index: u32) anyerror!DOMPoint {
+    pub fn call_insertItemBefore(instance: *runtime.Instance, newItem: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
         
         return try SVGPointListImpl.call_insertItemBefore(instance, newItem, index);
     }
 
-    pub fn call_getItem(instance: *runtime.Instance, index: u32) anyerror!DOMPoint {
+    pub fn call_getItem(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
         
         return try SVGPointListImpl.call_getItem(instance, index);
     }
 
-    pub fn call_replaceItem(instance: *runtime.Instance, newItem: DOMPoint, index: u32) anyerror!DOMPoint {
+    pub fn call_replaceItem(instance: *runtime.Instance, newItem: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
         
         return try SVGPointListImpl.call_replaceItem(instance, newItem, index);
     }
@@ -134,12 +134,12 @@ pub const SVGPointList = struct {
         return try SVGPointListImpl.call_clear(instance);
     }
 
-    pub fn call_initialize(instance: *runtime.Instance, newItem: DOMPoint) anyerror!DOMPoint {
+    pub fn call_initialize(instance: *runtime.Instance, newItem: *runtime.Instance) anyerror!*runtime.Instance {
         
         return try SVGPointListImpl.call_initialize(instance, newItem);
     }
 
-    pub fn call_appendItem(instance: *runtime.Instance, newItem: DOMPoint) anyerror!DOMPoint {
+    pub fn call_appendItem(instance: *runtime.Instance, newItem: *runtime.Instance) anyerror!*runtime.Instance {
         
         return try SVGPointListImpl.call_appendItem(instance, newItem);
     }

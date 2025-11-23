@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -54,37 +50,37 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, conf
 }
 
 /// Getter for localDescription
-pub fn get_localDescription(instance: *runtime.Instance) ImplError!interfaces.RTCSessionDescription {
+pub fn get_localDescription(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for currentLocalDescription
-pub fn get_currentLocalDescription(instance: *runtime.Instance) ImplError!interfaces.RTCSessionDescription {
+pub fn get_currentLocalDescription(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for pendingLocalDescription
-pub fn get_pendingLocalDescription(instance: *runtime.Instance) ImplError!interfaces.RTCSessionDescription {
+pub fn get_pendingLocalDescription(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for remoteDescription
-pub fn get_remoteDescription(instance: *runtime.Instance) ImplError!interfaces.RTCSessionDescription {
+pub fn get_remoteDescription(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for currentRemoteDescription
-pub fn get_currentRemoteDescription(instance: *runtime.Instance) ImplError!interfaces.RTCSessionDescription {
+pub fn get_currentRemoteDescription(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for pendingRemoteDescription
-pub fn get_pendingRemoteDescription(instance: *runtime.Instance) ImplError!interfaces.RTCSessionDescription {
+pub fn get_pendingRemoteDescription(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -168,7 +164,7 @@ pub fn get_ontrack(instance: *runtime.Instance) ImplError!typedefs.EventHandler 
 }
 
 /// Getter for sctp
-pub fn get_sctp(instance: *runtime.Instance) ImplError!interfaces.RTCSctpTransport {
+pub fn get_sctp(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -261,7 +257,7 @@ pub fn set_ondatachannel(instance: *runtime.Instance, value: typedefs.EventHandl
 }
 
 /// Operation: addTransceiver
-pub fn call_addTransceiver(instance: *runtime.Instance, trackOrKind: *const anyopaque, init_data: dictionaries.RTCRtpTransceiverInit) ImplError!interfaces.RTCRtpTransceiver {
+pub fn call_addTransceiver(instance: *runtime.Instance, trackOrKind: *const anyopaque, init_data: dictionaries.RTCRtpTransceiverInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = trackOrKind;
     _ = init_data;
@@ -311,7 +307,7 @@ pub fn call_setLocalDescription(instance: *runtime.Instance, description: dictio
 }
 
 /// Operation: addTrack
-pub fn call_addTrack(instance: *runtime.Instance, track: interfaces.MediaStreamTrack, streams: interfaces.MediaStream) ImplError!interfaces.RTCRtpSender {
+pub fn call_addTrack(instance: *runtime.Instance, track: *runtime.Instance, streams: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = track;
     _ = streams;
@@ -325,7 +321,7 @@ pub fn call_getIdentityAssertion(instance: *runtime.Instance) ImplError!*const a
 }
 
 /// Operation: removeTrack
-pub fn call_removeTrack(instance: *runtime.Instance, sender: interfaces.RTCRtpSender) ImplError!void {
+pub fn call_removeTrack(instance: *runtime.Instance, sender: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = sender;
     return error.NotImplemented;
@@ -351,7 +347,7 @@ pub fn call_generateCertificate(instance: *runtime.Instance, keygenAlgorithm: ty
 }
 
 /// Operation: createDataChannel
-pub fn call_createDataChannel(instance: *runtime.Instance, label: runtime.USVString, dataChannelDict: dictionaries.RTCDataChannelInit) ImplError!interfaces.RTCDataChannel {
+pub fn call_createDataChannel(instance: *runtime.Instance, label: runtime.USVString, dataChannelDict: dictionaries.RTCDataChannelInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = label;
     _ = dataChannelDict;
@@ -359,7 +355,7 @@ pub fn call_createDataChannel(instance: *runtime.Instance, label: runtime.USVStr
 }
 
 /// Operation: getStats
-pub fn call_getStats(instance: *runtime.Instance, selector: interfaces.MediaStreamTrack) ImplError!*const anyopaque {
+pub fn call_getStats(instance: *runtime.Instance, selector: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     _ = selector;
     return error.NotImplemented;

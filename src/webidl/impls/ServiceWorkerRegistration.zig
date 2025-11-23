@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,25 +37,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for installing
-pub fn get_installing(instance: *runtime.Instance) ImplError!interfaces.ServiceWorker {
+pub fn get_installing(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for waiting
-pub fn get_waiting(instance: *runtime.Instance) ImplError!interfaces.ServiceWorker {
+pub fn get_waiting(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for active
-pub fn get_active(instance: *runtime.Instance) ImplError!interfaces.ServiceWorker {
+pub fn get_active(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for navigationPreload
-pub fn get_navigationPreload(instance: *runtime.Instance) ImplError!interfaces.NavigationPreloadManager {
+pub fn get_navigationPreload(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -83,43 +79,43 @@ pub fn get_onupdatefound(instance: *runtime.Instance) ImplError!typedefs.EventHa
 }
 
 /// Getter for periodicSync
-pub fn get_periodicSync(instance: *runtime.Instance) ImplError!interfaces.PeriodicSyncManager {
+pub fn get_periodicSync(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for cookies
-pub fn get_cookies(instance: *runtime.Instance) ImplError!interfaces.CookieStoreManager {
+pub fn get_cookies(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for sync
-pub fn get_sync(instance: *runtime.Instance) ImplError!interfaces.SyncManager {
+pub fn get_sync(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for index
-pub fn get_index(instance: *runtime.Instance) ImplError!interfaces.ContentIndex {
+pub fn get_index(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for backgroundFetch
-pub fn get_backgroundFetch(instance: *runtime.Instance) ImplError!interfaces.BackgroundFetchManager {
+pub fn get_backgroundFetch(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for paymentManager
-pub fn get_paymentManager(instance: *runtime.Instance) ImplError!interfaces.PaymentManager {
+pub fn get_paymentManager(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for pushManager
-pub fn get_pushManager(instance: *runtime.Instance) ImplError!interfaces.PushManager {
+pub fn get_pushManager(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

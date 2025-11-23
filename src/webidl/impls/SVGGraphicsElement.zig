@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,37 +37,37 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for transform
-pub fn get_transform(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedTransformList {
+pub fn get_transform(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for requiredExtensions
-pub fn get_requiredExtensions(instance: *runtime.Instance) ImplError!interfaces.SVGStringList {
+pub fn get_requiredExtensions(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for systemLanguage
-pub fn get_systemLanguage(instance: *runtime.Instance) ImplError!interfaces.SVGStringList {
+pub fn get_systemLanguage(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getScreenCTM
-pub fn call_getScreenCTM(instance: *runtime.Instance) ImplError!interfaces.DOMMatrix {
+pub fn call_getScreenCTM(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getCTM
-pub fn call_getCTM(instance: *runtime.Instance) ImplError!interfaces.DOMMatrix {
+pub fn call_getCTM(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getBBox
-pub fn call_getBBox(instance: *runtime.Instance, options: dictionaries.SVGBoundingBoxOptions) ImplError!interfaces.DOMRect {
+pub fn call_getBBox(instance: *runtime.Instance, options: dictionaries.SVGBoundingBoxOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = options;
     return error.NotImplemented;

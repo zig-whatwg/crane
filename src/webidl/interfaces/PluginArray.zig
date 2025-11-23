@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -92,12 +92,12 @@ pub const PluginArray = struct {
         return try PluginArrayImpl.get_length(instance);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!Plugin {
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
         
         return try PluginArrayImpl.call_item(instance, index);
     }
 
-    pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!Plugin {
+    pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!*runtime.Instance {
         
         return try PluginArrayImpl.call_namedItem(instance, name);
     }

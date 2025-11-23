@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -47,13 +43,13 @@ pub fn get_mid(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for sender
-pub fn get_sender(instance: *runtime.Instance) ImplError!interfaces.RTCRtpSender {
+pub fn get_sender(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for receiver
-pub fn get_receiver(instance: *runtime.Instance) ImplError!interfaces.RTCRtpReceiver {
+pub fn get_receiver(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

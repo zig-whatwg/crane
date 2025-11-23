@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -282,7 +282,7 @@ pub const SVGPatternElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_patternUnits(instance: *runtime.Instance) anyerror!SVGAnimatedEnumeration {
+    pub fn get_patternUnits(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_patternUnits) |cached| {
@@ -294,7 +294,7 @@ pub const SVGPatternElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_patternContentUnits(instance: *runtime.Instance) anyerror!SVGAnimatedEnumeration {
+    pub fn get_patternContentUnits(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_patternContentUnits) |cached| {
@@ -306,7 +306,7 @@ pub const SVGPatternElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_patternTransform(instance: *runtime.Instance) anyerror!SVGAnimatedTransformList {
+    pub fn get_patternTransform(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_patternTransform) |cached| {
@@ -318,7 +318,7 @@ pub const SVGPatternElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_x(instance: *runtime.Instance) anyerror!SVGAnimatedLength {
+    pub fn get_x(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_x) |cached| {
@@ -330,7 +330,7 @@ pub const SVGPatternElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_y(instance: *runtime.Instance) anyerror!SVGAnimatedLength {
+    pub fn get_y(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_y) |cached| {
@@ -342,7 +342,7 @@ pub const SVGPatternElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_width(instance: *runtime.Instance) anyerror!SVGAnimatedLength {
+    pub fn get_width(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_width) |cached| {
@@ -354,7 +354,7 @@ pub const SVGPatternElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_height(instance: *runtime.Instance) anyerror!SVGAnimatedLength {
+    pub fn get_height(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_height) |cached| {
@@ -366,7 +366,7 @@ pub const SVGPatternElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_viewBox(instance: *runtime.Instance) anyerror!SVGAnimatedRect {
+    pub fn get_viewBox(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_viewBox) |cached| {
@@ -378,7 +378,7 @@ pub const SVGPatternElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_preserveAspectRatio(instance: *runtime.Instance) anyerror!SVGAnimatedPreserveAspectRatio {
+    pub fn get_preserveAspectRatio(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_preserveAspectRatio) |cached| {
@@ -390,7 +390,7 @@ pub const SVGPatternElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_href(instance: *runtime.Instance) anyerror!SVGAnimatedString {
+    pub fn get_href(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_href) |cached| {

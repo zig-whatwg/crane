@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -142,7 +142,7 @@ pub const CSSStyleDeclaration = struct {
         return try CSSStyleDeclarationImpl.get_length(instance);
     }
 
-    pub fn get_parentRule(instance: *runtime.Instance) anyerror!CSSRule {
+    pub fn get_parentRule(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSStyleDeclarationImpl.get_parentRule(instance);
     }
 
@@ -161,7 +161,7 @@ pub const CSSStyleDeclaration = struct {
         return try CSSStyleDeclarationImpl.call_removeProperty(instance, property);
     }
 
-    pub fn call_getPropertyCSSValue(instance: *runtime.Instance, propertyName: DOMString) anyerror!CSSValue {
+    pub fn call_getPropertyCSSValue(instance: *runtime.Instance, propertyName: DOMString) anyerror!*runtime.Instance {
         
         return try CSSStyleDeclarationImpl.call_getPropertyCSSValue(instance, propertyName);
     }

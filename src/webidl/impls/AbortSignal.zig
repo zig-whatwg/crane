@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -66,21 +62,21 @@ pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) Im
 }
 
 /// Operation: _any
-pub fn call__any(instance: *runtime.Instance, signals: *const anyopaque) ImplError!interfaces.AbortSignal {
+pub fn call__any(instance: *runtime.Instance, signals: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = signals;
     return error.NotImplemented;
 }
 
 /// Operation: abort
-pub fn call_abort(instance: *runtime.Instance, reason: *const anyopaque) ImplError!interfaces.AbortSignal {
+pub fn call_abort(instance: *runtime.Instance, reason: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = reason;
     return error.NotImplemented;
 }
 
 /// Operation: timeout
-pub fn call_timeout(instance: *runtime.Instance, milliseconds: u64) ImplError!interfaces.AbortSignal {
+pub fn call_timeout(instance: *runtime.Instance, milliseconds: u64) ImplError!*runtime.Instance {
     _ = instance;
     _ = milliseconds;
     return error.NotImplemented;

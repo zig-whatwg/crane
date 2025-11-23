@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -66,7 +62,7 @@ pub fn get_lang(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for voice
-pub fn get_voice(instance: *runtime.Instance) ImplError!interfaces.SpeechSynthesisVoice {
+pub fn get_voice(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -146,7 +142,7 @@ pub fn set_lang(instance: *runtime.Instance, value: runtime.DOMString) ImplError
 }
 
 /// Setter for voice
-pub fn set_voice(instance: *runtime.Instance, value: interfaces.SpeechSynthesisVoice) ImplError!void {
+pub fn set_voice(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

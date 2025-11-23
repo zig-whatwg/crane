@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -124,7 +124,7 @@ pub const XRInputSource = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_targetRaySpace(instance: *runtime.Instance) anyerror!XRSpace {
+    pub fn get_targetRaySpace(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_targetRaySpace) |cached| {
@@ -136,7 +136,7 @@ pub const XRInputSource = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_gripSpace(instance: *runtime.Instance) anyerror!XRSpace {
+    pub fn get_gripSpace(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_gripSpace) |cached| {
@@ -164,7 +164,7 @@ pub const XRInputSource = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_gamepad(instance: *runtime.Instance) anyerror!Gamepad {
+    pub fn get_gamepad(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_gamepad) |cached| {
@@ -176,7 +176,7 @@ pub const XRInputSource = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_hand(instance: *runtime.Instance) anyerror!XRHand {
+    pub fn get_hand(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_hand) |cached| {

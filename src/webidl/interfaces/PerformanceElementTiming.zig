@@ -1,5 +1,5 @@
 //! Generated from: element-timing.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -136,7 +136,7 @@ pub const PerformanceElementTiming = struct {
         return try PerformanceElementTimingImpl.get_loadTime(instance);
     }
 
-    pub fn get_intersectionRect(instance: *runtime.Instance) anyerror!DOMRectReadOnly {
+    pub fn get_intersectionRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try PerformanceElementTimingImpl.get_intersectionRect(instance);
     }
 
@@ -156,7 +156,7 @@ pub const PerformanceElementTiming = struct {
         return try PerformanceElementTimingImpl.get_id(instance);
     }
 
-    pub fn get_element(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_element(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try PerformanceElementTimingImpl.get_element(instance);
     }
 

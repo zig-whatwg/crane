@@ -1,5 +1,5 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -98,7 +98,7 @@ pub const WritableStream = struct {
         return try WritableStreamImpl.get_locked(instance);
     }
 
-    pub fn call_getWriter(instance: *runtime.Instance) anyerror!WritableStreamDefaultWriter {
+    pub fn call_getWriter(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WritableStreamImpl.call_getWriter(instance);
     }
 

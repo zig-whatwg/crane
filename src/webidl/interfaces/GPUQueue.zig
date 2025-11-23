@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -122,7 +122,7 @@ pub const GPUQueue = struct {
         return try GPUQueueImpl.call_onSubmittedWorkDone(instance);
     }
 
-    pub fn call_writeBuffer(instance: *runtime.Instance, buffer: GPUBuffer, bufferOffset: GPUSize64, data: AllowSharedBufferSource, dataOffset: GPUSize64, size: GPUSize64) anyerror!void {
+    pub fn call_writeBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, bufferOffset: GPUSize64, data: AllowSharedBufferSource, dataOffset: GPUSize64, size: GPUSize64) anyerror!void {
         
         return try GPUQueueImpl.call_writeBuffer(instance, buffer, bufferOffset, data, dataOffset, size);
     }

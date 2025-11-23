@@ -1,5 +1,5 @@
 //! Generated from: svg-animations.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -277,7 +277,7 @@ pub const SVGAnimationElement = struct {
         SVGAnimationElementImpl.deinit(instance);
     }
 
-    pub fn get_targetElement(instance: *runtime.Instance) anyerror!SVGElement {
+    pub fn get_targetElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGAnimationElementImpl.get_targetElement(instance);
     }
 
@@ -306,7 +306,7 @@ pub const SVGAnimationElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_requiredExtensions(instance: *runtime.Instance) anyerror!SVGStringList {
+    pub fn get_requiredExtensions(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_requiredExtensions) |cached| {
@@ -318,7 +318,7 @@ pub const SVGAnimationElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_systemLanguage(instance: *runtime.Instance) anyerror!SVGStringList {
+    pub fn get_systemLanguage(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_systemLanguage) |cached| {

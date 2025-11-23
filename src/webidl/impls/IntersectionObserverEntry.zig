@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -60,19 +56,19 @@ pub fn get_time(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeSt
 }
 
 /// Getter for rootBounds
-pub fn get_rootBounds(instance: *runtime.Instance) ImplError!interfaces.DOMRectReadOnly {
+pub fn get_rootBounds(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for boundingClientRect
-pub fn get_boundingClientRect(instance: *runtime.Instance) ImplError!interfaces.DOMRectReadOnly {
+pub fn get_boundingClientRect(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for intersectionRect
-pub fn get_intersectionRect(instance: *runtime.Instance) ImplError!interfaces.DOMRectReadOnly {
+pub fn get_intersectionRect(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -96,7 +92,7 @@ pub fn get_intersectionRatio(instance: *runtime.Instance) ImplError!f64 {
 }
 
 /// Getter for target
-pub fn get_target(instance: *runtime.Instance) ImplError!interfaces.Element {
+pub fn get_target(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

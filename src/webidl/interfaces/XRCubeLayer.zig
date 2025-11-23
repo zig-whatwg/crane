@@ -1,5 +1,5 @@
 //! Generated from: webxrlayers.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -105,19 +105,19 @@ pub const XRCubeLayer = struct {
         XRCubeLayerImpl.deinit(instance);
     }
 
-    pub fn get_space(instance: *runtime.Instance) anyerror!XRSpace {
+    pub fn get_space(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try XRCubeLayerImpl.get_space(instance);
     }
 
-    pub fn set_space(instance: *runtime.Instance, value: XRSpace) anyerror!void {
+    pub fn set_space(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         try XRCubeLayerImpl.set_space(instance, value);
     }
 
-    pub fn get_orientation(instance: *runtime.Instance) anyerror!DOMPointReadOnly {
+    pub fn get_orientation(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try XRCubeLayerImpl.get_orientation(instance);
     }
 
-    pub fn set_orientation(instance: *runtime.Instance, value: DOMPointReadOnly) anyerror!void {
+    pub fn set_orientation(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         try XRCubeLayerImpl.set_orientation(instance, value);
     }
 

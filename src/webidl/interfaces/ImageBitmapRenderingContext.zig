@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -92,7 +92,7 @@ pub const ImageBitmapRenderingContext = struct {
         return try ImageBitmapRenderingContextImpl.get_canvas(instance);
     }
 
-    pub fn call_transferFromImageBitmap(instance: *runtime.Instance, bitmap: ImageBitmap) anyerror!void {
+    pub fn call_transferFromImageBitmap(instance: *runtime.Instance, bitmap: *runtime.Instance) anyerror!void {
         
         return try ImageBitmapRenderingContextImpl.call_transferFromImageBitmap(instance, bitmap);
     }

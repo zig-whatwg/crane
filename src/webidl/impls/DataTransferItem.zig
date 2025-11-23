@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -66,13 +62,13 @@ pub fn call_getAsFileSystemHandle(instance: *runtime.Instance) ImplError!*const 
 }
 
 /// Operation: webkitGetAsEntry
-pub fn call_webkitGetAsEntry(instance: *runtime.Instance) ImplError!interfaces.FileSystemEntry {
+pub fn call_webkitGetAsEntry(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getAsFile
-pub fn call_getAsFile(instance: *runtime.Instance) ImplError!interfaces.File {
+pub fn call_getAsFile(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

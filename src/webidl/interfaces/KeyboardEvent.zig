@@ -1,5 +1,5 @@
 //! Generated from: uievents.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -228,7 +228,7 @@ pub const KeyboardEvent = struct {
         return try KeyboardEventImpl.call_getModifierState(instance, keyArg);
     }
 
-    pub fn call_initKeyboardEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: Window, keyArg: DOMString, locationArg: u32, ctrlKey: bool, altKey: bool, shiftKey: bool, metaKey: bool) anyerror!void {
+    pub fn call_initKeyboardEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: *runtime.Instance, keyArg: DOMString, locationArg: u32, ctrlKey: bool, altKey: bool, shiftKey: bool, metaKey: bool) anyerror!void {
         
         return try KeyboardEventImpl.call_initKeyboardEvent(instance, typeArg, bubblesArg, cancelableArg, viewArg, keyArg, locationArg, ctrlKey, altKey, shiftKey, metaKey);
     }

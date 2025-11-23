@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -93,7 +93,7 @@ pub const SubmitEvent = struct {
         return try SubmitEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
-    pub fn get_submitter(instance: *runtime.Instance) anyerror!HTMLElement {
+    pub fn get_submitter(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SubmitEventImpl.get_submitter(instance);
     }
 

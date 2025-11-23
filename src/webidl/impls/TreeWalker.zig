@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,7 +37,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for root
-pub fn get_root(instance: *runtime.Instance) ImplError!interfaces.Node {
+pub fn get_root(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -53,62 +49,62 @@ pub fn get_whatToShow(instance: *runtime.Instance) ImplError!u32 {
 }
 
 /// Getter for filter
-pub fn get_filter(instance: *runtime.Instance) ImplError!interfaces.NodeFilter {
+pub fn get_filter(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for currentNode
-pub fn get_currentNode(instance: *runtime.Instance) ImplError!interfaces.Node {
+pub fn get_currentNode(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for currentNode
-pub fn set_currentNode(instance: *runtime.Instance, value: interfaces.Node) ImplError!void {
+pub fn set_currentNode(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: parentNode
-pub fn call_parentNode(instance: *runtime.Instance) ImplError!interfaces.Node {
+pub fn call_parentNode(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: previousNode
-pub fn call_previousNode(instance: *runtime.Instance) ImplError!interfaces.Node {
+pub fn call_previousNode(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: lastChild
-pub fn call_lastChild(instance: *runtime.Instance) ImplError!interfaces.Node {
+pub fn call_lastChild(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: nextNode
-pub fn call_nextNode(instance: *runtime.Instance) ImplError!interfaces.Node {
+pub fn call_nextNode(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: firstChild
-pub fn call_firstChild(instance: *runtime.Instance) ImplError!interfaces.Node {
+pub fn call_firstChild(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: previousSibling
-pub fn call_previousSibling(instance: *runtime.Instance) ImplError!interfaces.Node {
+pub fn call_previousSibling(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: nextSibling
-pub fn call_nextSibling(instance: *runtime.Instance) ImplError!interfaces.Node {
+pub fn call_nextSibling(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

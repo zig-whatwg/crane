@@ -1,5 +1,5 @@
 //! Generated from: ua-client-hints.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -72,7 +72,7 @@ pub const NavigatorUA = struct {
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn get_userAgentData(instance: *runtime.Instance) anyerror!NavigatorUAData {
+    pub fn get_userAgentData(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NavigatorUAImpl.get_userAgentData(instance);
     }
 

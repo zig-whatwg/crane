@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -59,19 +55,19 @@ pub fn get_finished(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Getter for types
-pub fn get_types(instance: *runtime.Instance) ImplError!interfaces.ViewTransitionTypeSet {
+pub fn get_types(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for transitionRoot
-pub fn get_transitionRoot(instance: *runtime.Instance) ImplError!interfaces.Element {
+pub fn get_transitionRoot(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for types
-pub fn set_types(instance: *runtime.Instance, value: interfaces.ViewTransitionTypeSet) ImplError!void {
+pub fn set_types(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

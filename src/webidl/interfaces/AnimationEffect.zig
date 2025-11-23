@@ -1,5 +1,5 @@
 //! Generated from: web-animations.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -109,15 +109,15 @@ pub const AnimationEffect = struct {
         AnimationEffectImpl.deinit(instance);
     }
 
-    pub fn get_parent(instance: *runtime.Instance) anyerror!GroupEffect {
+    pub fn get_parent(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AnimationEffectImpl.get_parent(instance);
     }
 
-    pub fn get_previousSibling(instance: *runtime.Instance) anyerror!AnimationEffect {
+    pub fn get_previousSibling(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AnimationEffectImpl.get_previousSibling(instance);
     }
 
-    pub fn get_nextSibling(instance: *runtime.Instance) anyerror!AnimationEffect {
+    pub fn get_nextSibling(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AnimationEffectImpl.get_nextSibling(instance);
     }
 
@@ -126,17 +126,17 @@ pub const AnimationEffect = struct {
         return try AnimationEffectImpl.call_updateTiming(instance, timing);
     }
 
-    pub fn call_replace(instance: *runtime.Instance, effects: AnimationEffect) anyerror!void {
+    pub fn call_replace(instance: *runtime.Instance, effects: *runtime.Instance) anyerror!void {
         
         return try AnimationEffectImpl.call_replace(instance, effects);
     }
 
-    pub fn call_before(instance: *runtime.Instance, effects: AnimationEffect) anyerror!void {
+    pub fn call_before(instance: *runtime.Instance, effects: *runtime.Instance) anyerror!void {
         
         return try AnimationEffectImpl.call_before(instance, effects);
     }
 
-    pub fn call_after(instance: *runtime.Instance, effects: AnimationEffect) anyerror!void {
+    pub fn call_after(instance: *runtime.Instance, effects: *runtime.Instance) anyerror!void {
         
         return try AnimationEffectImpl.call_after(instance, effects);
     }

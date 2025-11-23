@@ -1,5 +1,5 @@
 //! Generated from: DOM-Style.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -301,7 +301,7 @@ pub const CSSPrimitiveValue = struct {
         return try CSSPrimitiveValueImpl.call_getFloatValue(instance, unitType);
     }
 
-    pub fn call_getRGBColorValue(instance: *runtime.Instance) anyerror!RGBColor {
+    pub fn call_getRGBColorValue(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSPrimitiveValueImpl.call_getRGBColorValue(instance);
     }
 
@@ -314,11 +314,11 @@ pub const CSSPrimitiveValue = struct {
         return try CSSPrimitiveValueImpl.call_getStringValue(instance);
     }
 
-    pub fn call_getRectValue(instance: *runtime.Instance) anyerror!Rect {
+    pub fn call_getRectValue(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSPrimitiveValueImpl.call_getRectValue(instance);
     }
 
-    pub fn call_getCounterValue(instance: *runtime.Instance) anyerror!Counter {
+    pub fn call_getCounterValue(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSPrimitiveValueImpl.call_getCounterValue(instance);
     }
 

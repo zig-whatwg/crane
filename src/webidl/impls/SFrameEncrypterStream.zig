@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -54,13 +50,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, opti
 }
 
 /// Getter for readable
-pub fn get_readable(instance: *runtime.Instance) ImplError!interfaces.ReadableStream {
+pub fn get_readable(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for writable
-pub fn get_writable(instance: *runtime.Instance) ImplError!interfaces.WritableStream {
+pub fn get_writable(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -79,7 +75,7 @@ pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) Im
 }
 
 /// Operation: setEncryptionKey
-pub fn call_setEncryptionKey(instance: *runtime.Instance, key: interfaces.CryptoKey, keyID: typedefs.CryptoKeyID) ImplError!*const anyopaque {
+pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyID: typedefs.CryptoKeyID) ImplError!*const anyopaque {
     _ = instance;
     _ = key;
     _ = keyID;

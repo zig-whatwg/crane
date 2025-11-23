@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,31 +37,31 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for sessionStorage
-pub fn get_sessionStorage(instance: *runtime.Instance) ImplError!interfaces.Storage {
+pub fn get_sessionStorage(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for localStorage
-pub fn get_localStorage(instance: *runtime.Instance) ImplError!interfaces.Storage {
+pub fn get_localStorage(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for indexedDB
-pub fn get_indexedDB(instance: *runtime.Instance) ImplError!interfaces.IDBFactory {
+pub fn get_indexedDB(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for locks
-pub fn get_locks(instance: *runtime.Instance) ImplError!interfaces.LockManager {
+pub fn get_locks(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for caches
-pub fn get_caches(instance: *runtime.Instance) ImplError!interfaces.CacheStorage {
+pub fn get_caches(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -77,7 +73,7 @@ pub fn call_getDirectory(instance: *runtime.Instance) ImplError!*const anyopaque
 }
 
 /// Operation: BroadcastChannel
-pub fn call_BroadcastChannel(instance: *runtime.Instance, name: runtime.DOMString) ImplError!interfaces.BroadcastChannel {
+pub fn call_BroadcastChannel(instance: *runtime.Instance, name: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = name;
     return error.NotImplemented;
@@ -97,7 +93,7 @@ pub fn call_createObjectURL(instance: *runtime.Instance, obj: *const anyopaque) 
 }
 
 /// Operation: SharedWorker
-pub fn call_SharedWorker(instance: *runtime.Instance, scriptURL: runtime.USVString, options: *const anyopaque) ImplError!interfaces.SharedWorker {
+pub fn call_SharedWorker(instance: *runtime.Instance, scriptURL: runtime.USVString, options: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = scriptURL;
     _ = options;

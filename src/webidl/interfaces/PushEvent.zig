@@ -1,5 +1,5 @@
 //! Generated from: push-api.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -101,11 +101,11 @@ pub const PushEvent = struct {
         return try PushEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
-    pub fn get_data(instance: *runtime.Instance) anyerror!PushMessageData {
+    pub fn get_data(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try PushEventImpl.get_data(instance);
     }
 
-    pub fn get_notification(instance: *runtime.Instance) anyerror!Notification {
+    pub fn get_notification(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try PushEventImpl.get_notification(instance);
     }
 

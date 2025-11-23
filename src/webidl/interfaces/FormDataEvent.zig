@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -93,7 +93,7 @@ pub const FormDataEvent = struct {
         return try FormDataEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
-    pub fn get_formData(instance: *runtime.Instance) anyerror!FormData {
+    pub fn get_formData(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try FormDataEventImpl.get_formData(instance);
     }
 

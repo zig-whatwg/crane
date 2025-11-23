@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -389,11 +389,11 @@ pub const ElementInternals = struct {
         ElementInternalsImpl.deinit(instance);
     }
 
-    pub fn get_shadowRoot(instance: *runtime.Instance) anyerror!ShadowRoot {
+    pub fn get_shadowRoot(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ElementInternalsImpl.get_shadowRoot(instance);
     }
 
-    pub fn get_form(instance: *runtime.Instance) anyerror!HTMLFormElement {
+    pub fn get_form(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ElementInternalsImpl.get_form(instance);
     }
 
@@ -401,7 +401,7 @@ pub const ElementInternals = struct {
         return try ElementInternalsImpl.get_willValidate(instance);
     }
 
-    pub fn get_validity(instance: *runtime.Instance) anyerror!ValidityState {
+    pub fn get_validity(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ElementInternalsImpl.get_validity(instance);
     }
 
@@ -409,12 +409,12 @@ pub const ElementInternals = struct {
         return try ElementInternalsImpl.get_validationMessage(instance);
     }
 
-    pub fn get_labels(instance: *runtime.Instance) anyerror!NodeList {
+    pub fn get_labels(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ElementInternalsImpl.get_labels(instance);
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_states(instance: *runtime.Instance) anyerror!CustomStateSet {
+    pub fn get_states(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_states) |cached| {
@@ -440,12 +440,12 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-activedescendant"]
-    pub fn get_ariaActiveDescendantElement(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_ariaActiveDescendantElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ElementInternalsImpl.get_ariaActiveDescendantElement(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-activedescendant"]
-    pub fn set_ariaActiveDescendantElement(instance: *runtime.Instance, value: Element) anyerror!void {
+    pub fn set_ariaActiveDescendantElement(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1153,7 +1153,7 @@ pub const ElementInternals = struct {
         try ElementInternalsImpl.set_ariaValueText(instance, value);
     }
 
-    pub fn call_setValidity(instance: *runtime.Instance, flags: ValidityStateFlags, message: DOMString, anchor: HTMLElement) anyerror!void {
+    pub fn call_setValidity(instance: *runtime.Instance, flags: ValidityStateFlags, message: DOMString, anchor: *runtime.Instance) anyerror!void {
         
         return try ElementInternalsImpl.call_setValidity(instance, flags, message, anchor);
     }

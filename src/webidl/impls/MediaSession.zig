@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,7 +37,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for metadata
-pub fn get_metadata(instance: *runtime.Instance) ImplError!interfaces.MediaMetadata {
+pub fn get_metadata(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -53,7 +49,7 @@ pub fn get_playbackState(instance: *runtime.Instance) ImplError!enums.MediaSessi
 }
 
 /// Setter for metadata
-pub fn set_metadata(instance: *runtime.Instance, value: interfaces.MediaMetadata) ImplError!void {
+pub fn set_metadata(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

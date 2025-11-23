@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,13 +37,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for plugins
-pub fn get_plugins(instance: *runtime.Instance) ImplError!interfaces.PluginArray {
+pub fn get_plugins(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for mimeTypes
-pub fn get_mimeTypes(instance: *runtime.Instance) ImplError!interfaces.MimeTypeArray {
+pub fn get_mimeTypes(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

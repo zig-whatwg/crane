@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,7 +37,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: queryCounterEXT
-pub fn call_queryCounterEXT(instance: *runtime.Instance, query: interfaces.WebGLTimerQueryEXT, target: typedefs.GLenum) ImplError!void {
+pub fn call_queryCounterEXT(instance: *runtime.Instance, query: *runtime.Instance, target: typedefs.GLenum) ImplError!void {
     _ = instance;
     _ = query;
     _ = target;
@@ -49,7 +45,7 @@ pub fn call_queryCounterEXT(instance: *runtime.Instance, query: interfaces.WebGL
 }
 
 /// Operation: createQueryEXT
-pub fn call_createQueryEXT(instance: *runtime.Instance) ImplError!interfaces.WebGLTimerQueryEXT {
+pub fn call_createQueryEXT(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -62,14 +58,14 @@ pub fn call_endQueryEXT(instance: *runtime.Instance, target: typedefs.GLenum) Im
 }
 
 /// Operation: isQueryEXT
-pub fn call_isQueryEXT(instance: *runtime.Instance, query: interfaces.WebGLTimerQueryEXT) ImplError!bool {
+pub fn call_isQueryEXT(instance: *runtime.Instance, query: *runtime.Instance) ImplError!bool {
     _ = instance;
     _ = query;
     return error.NotImplemented;
 }
 
 /// Operation: beginQueryEXT
-pub fn call_beginQueryEXT(instance: *runtime.Instance, target: typedefs.GLenum, query: interfaces.WebGLTimerQueryEXT) ImplError!void {
+pub fn call_beginQueryEXT(instance: *runtime.Instance, target: typedefs.GLenum, query: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = target;
     _ = query;
@@ -77,7 +73,7 @@ pub fn call_beginQueryEXT(instance: *runtime.Instance, target: typedefs.GLenum, 
 }
 
 /// Operation: getQueryObjectEXT
-pub fn call_getQueryObjectEXT(instance: *runtime.Instance, query: interfaces.WebGLTimerQueryEXT, pname: typedefs.GLenum) ImplError!*const anyopaque {
+pub fn call_getQueryObjectEXT(instance: *runtime.Instance, query: *runtime.Instance, pname: typedefs.GLenum) ImplError!*const anyopaque {
     _ = instance;
     _ = query;
     _ = pname;
@@ -93,7 +89,7 @@ pub fn call_getQueryEXT(instance: *runtime.Instance, target: typedefs.GLenum, pn
 }
 
 /// Operation: deleteQueryEXT
-pub fn call_deleteQueryEXT(instance: *runtime.Instance, query: interfaces.WebGLTimerQueryEXT) ImplError!void {
+pub fn call_deleteQueryEXT(instance: *runtime.Instance, query: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = query;
     return error.NotImplemented;

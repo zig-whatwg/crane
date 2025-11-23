@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -42,7 +38,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, effect: interfaces.AnimationEffect, timeline: interfaces.AnimationTimeline) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, effect: *runtime.Instance, timeline: *runtime.Instance) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &Animation.vtable, ctx);
     errdefer deinit(instance);
@@ -61,13 +57,13 @@ pub fn get_id(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for effect
-pub fn get_effect(instance: *runtime.Instance) ImplError!interfaces.AnimationEffect {
+pub fn get_effect(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for timeline
-pub fn get_timeline(instance: *runtime.Instance) ImplError!interfaces.AnimationTimeline {
+pub fn get_timeline(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -139,7 +135,7 @@ pub fn get_onremove(instance: *runtime.Instance) ImplError!typedefs.EventHandler
 }
 
 /// Getter for trigger
-pub fn get_trigger(instance: *runtime.Instance) ImplError!interfaces.AnimationTrigger {
+pub fn get_trigger(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -170,14 +166,14 @@ pub fn set_id(instance: *runtime.Instance, value: runtime.DOMString) ImplError!v
 }
 
 /// Setter for effect
-pub fn set_effect(instance: *runtime.Instance, value: interfaces.AnimationEffect) ImplError!void {
+pub fn set_effect(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for timeline
-pub fn set_timeline(instance: *runtime.Instance, value: interfaces.AnimationTimeline) ImplError!void {
+pub fn set_timeline(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -226,7 +222,7 @@ pub fn set_onremove(instance: *runtime.Instance, value: typedefs.EventHandler) I
 }
 
 /// Setter for trigger
-pub fn set_trigger(instance: *runtime.Instance, value: interfaces.AnimationTrigger) ImplError!void {
+pub fn set_trigger(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

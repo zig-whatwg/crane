@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -53,7 +49,7 @@ pub fn get_name(instance: *runtime.Instance) ImplError!runtime.USVString {
 }
 
 /// Operation: isSameEntry
-pub fn call_isSameEntry(instance: *runtime.Instance, other: interfaces.FileSystemHandle) ImplError!*const anyopaque {
+pub fn call_isSameEntry(instance: *runtime.Instance, other: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     _ = other;
     return error.NotImplemented;

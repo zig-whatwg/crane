@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -264,7 +264,7 @@ pub const HTMLTemplateElement = struct {
         return try HTMLTemplateElementImpl.call_constructor(allocator, ctx);
     }
 
-    pub fn get_content(instance: *runtime.Instance) anyerror!DocumentFragment {
+    pub fn get_content(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLTemplateElementImpl.get_content(instance);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -123,7 +123,7 @@ pub const IDBKeyRange = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_only(instance: *runtime.Instance, value: *const anyopaque) anyerror!IDBKeyRange {
+    pub fn call_only(instance: *runtime.Instance, value: *const anyopaque) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBKeyRangeImpl.call_only(instance, value);
@@ -135,21 +135,21 @@ pub const IDBKeyRange = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_bound(instance: *runtime.Instance, lower: *const anyopaque, upper: *const anyopaque, lowerOpen: bool, upperOpen: bool) anyerror!IDBKeyRange {
+    pub fn call_bound(instance: *runtime.Instance, lower: *const anyopaque, upper: *const anyopaque, lowerOpen: bool, upperOpen: bool) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBKeyRangeImpl.call_bound(instance, lower, upper, lowerOpen, upperOpen);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_upperBound(instance: *runtime.Instance, upper: *const anyopaque, open: bool) anyerror!IDBKeyRange {
+    pub fn call_upperBound(instance: *runtime.Instance, upper: *const anyopaque, open: bool) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBKeyRangeImpl.call_upperBound(instance, upper, open);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_lowerBound(instance: *runtime.Instance, lower: *const anyopaque, open: bool) anyerror!IDBKeyRange {
+    pub fn call_lowerBound(instance: *runtime.Instance, lower: *const anyopaque, open: bool) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBKeyRangeImpl.call_lowerBound(instance, lower, open);

@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -79,7 +75,7 @@ pub fn set_height(instance: *runtime.Instance, value: u32) ImplError!void {
 }
 
 /// Operation: captureStream
-pub fn call_captureStream(instance: *runtime.Instance, frameRequestRate: f64) ImplError!interfaces.MediaStream {
+pub fn call_captureStream(instance: *runtime.Instance, frameRequestRate: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = frameRequestRate;
     return error.NotImplemented;
@@ -111,7 +107,7 @@ pub fn call_toBlob(instance: *runtime.Instance, _callback: callbacks.BlobCallbac
 }
 
 /// Operation: transferControlToOffscreen
-pub fn call_transferControlToOffscreen(instance: *runtime.Instance) ImplError!interfaces.OffscreenCanvas {
+pub fn call_transferControlToOffscreen(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

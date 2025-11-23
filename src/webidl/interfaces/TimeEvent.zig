@@ -1,5 +1,5 @@
 //! Generated from: svg-animations.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -103,7 +103,7 @@ pub const TimeEvent = struct {
         return try TimeEventImpl.get_detail(instance);
     }
 
-    pub fn call_initTimeEvent(instance: *runtime.Instance, typeArg: DOMString, viewArg: Window, detailArg: i32) anyerror!void {
+    pub fn call_initTimeEvent(instance: *runtime.Instance, typeArg: DOMString, viewArg: *runtime.Instance, detailArg: i32) anyerror!void {
         
         return try TimeEventImpl.call_initTimeEvent(instance, typeArg, viewArg, detailArg);
     }

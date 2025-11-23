@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -170,11 +170,11 @@ pub const TextTrack = struct {
         try TextTrackImpl.set_mode(instance, value);
     }
 
-    pub fn get_cues(instance: *runtime.Instance) anyerror!TextTrackCueList {
+    pub fn get_cues(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try TextTrackImpl.get_cues(instance);
     }
 
-    pub fn get_activeCues(instance: *runtime.Instance) anyerror!TextTrackCueList {
+    pub fn get_activeCues(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try TextTrackImpl.get_activeCues(instance);
     }
 
@@ -186,16 +186,16 @@ pub const TextTrack = struct {
         try TextTrackImpl.set_oncuechange(instance, value);
     }
 
-    pub fn get_sourceBuffer(instance: *runtime.Instance) anyerror!SourceBuffer {
+    pub fn get_sourceBuffer(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try TextTrackImpl.get_sourceBuffer(instance);
     }
 
-    pub fn call_addCue(instance: *runtime.Instance, cue: TextTrackCue) anyerror!void {
+    pub fn call_addCue(instance: *runtime.Instance, cue: *runtime.Instance) anyerror!void {
         
         return try TextTrackImpl.call_addCue(instance, cue);
     }
 
-    pub fn call_removeCue(instance: *runtime.Instance, cue: TextTrackCue) anyerror!void {
+    pub fn call_removeCue(instance: *runtime.Instance, cue: *runtime.Instance) anyerror!void {
         
         return try TextTrackImpl.call_removeCue(instance, cue);
     }

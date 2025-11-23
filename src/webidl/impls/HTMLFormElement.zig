@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -113,13 +109,13 @@ pub fn get_rel(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for relList
-pub fn get_relList(instance: *runtime.Instance) ImplError!interfaces.DOMTokenList {
+pub fn get_relList(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for elements
-pub fn get_elements(instance: *runtime.Instance) ImplError!interfaces.HTMLFormControlsCollection {
+pub fn get_elements(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -201,7 +197,7 @@ pub fn set_rel(instance: *runtime.Instance, value: runtime.DOMString) ImplError!
 }
 
 /// Operation: requestSubmit
-pub fn call_requestSubmit(instance: *runtime.Instance, submitter: interfaces.HTMLElement) ImplError!void {
+pub fn call_requestSubmit(instance: *runtime.Instance, submitter: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = submitter;
     return error.NotImplemented;

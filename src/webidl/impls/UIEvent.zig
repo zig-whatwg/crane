@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -55,7 +51,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for view
-pub fn get_view(instance: *runtime.Instance) ImplError!interfaces.Window {
+pub fn get_view(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -73,13 +69,13 @@ pub fn get_which(instance: *runtime.Instance) ImplError!u32 {
 }
 
 /// Getter for sourceCapabilities
-pub fn get_sourceCapabilities(instance: *runtime.Instance) ImplError!interfaces.InputDeviceCapabilities {
+pub fn get_sourceCapabilities(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: initUIEvent
-pub fn call_initUIEvent(instance: *runtime.Instance, typeArg: runtime.DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: interfaces.Window, detailArg: i32) ImplError!void {
+pub fn call_initUIEvent(instance: *runtime.Instance, typeArg: runtime.DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: *runtime.Instance, detailArg: i32) ImplError!void {
     _ = instance;
     _ = typeArg;
     _ = bubblesArg;

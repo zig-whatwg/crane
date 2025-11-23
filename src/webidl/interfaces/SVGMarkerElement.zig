@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -346,7 +346,7 @@ pub const SVGMarkerElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_refX(instance: *runtime.Instance) anyerror!SVGAnimatedLength {
+    pub fn get_refX(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_refX) |cached| {
@@ -358,7 +358,7 @@ pub const SVGMarkerElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_refY(instance: *runtime.Instance) anyerror!SVGAnimatedLength {
+    pub fn get_refY(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_refY) |cached| {
@@ -370,7 +370,7 @@ pub const SVGMarkerElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_markerUnits(instance: *runtime.Instance) anyerror!SVGAnimatedEnumeration {
+    pub fn get_markerUnits(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_markerUnits) |cached| {
@@ -382,7 +382,7 @@ pub const SVGMarkerElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_markerWidth(instance: *runtime.Instance) anyerror!SVGAnimatedLength {
+    pub fn get_markerWidth(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_markerWidth) |cached| {
@@ -394,7 +394,7 @@ pub const SVGMarkerElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_markerHeight(instance: *runtime.Instance) anyerror!SVGAnimatedLength {
+    pub fn get_markerHeight(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_markerHeight) |cached| {
@@ -406,7 +406,7 @@ pub const SVGMarkerElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_orientType(instance: *runtime.Instance) anyerror!SVGAnimatedEnumeration {
+    pub fn get_orientType(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_orientType) |cached| {
@@ -418,7 +418,7 @@ pub const SVGMarkerElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_orientAngle(instance: *runtime.Instance) anyerror!SVGAnimatedAngle {
+    pub fn get_orientAngle(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_orientAngle) |cached| {
@@ -438,7 +438,7 @@ pub const SVGMarkerElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_viewBox(instance: *runtime.Instance) anyerror!SVGAnimatedRect {
+    pub fn get_viewBox(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_viewBox) |cached| {
@@ -450,7 +450,7 @@ pub const SVGMarkerElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_preserveAspectRatio(instance: *runtime.Instance) anyerror!SVGAnimatedPreserveAspectRatio {
+    pub fn get_preserveAspectRatio(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_preserveAspectRatio) |cached| {
@@ -461,7 +461,7 @@ pub const SVGMarkerElement = struct {
         return value;
     }
 
-    pub fn call_setOrientToAngle(instance: *runtime.Instance, angle: SVGAngle) anyerror!void {
+    pub fn call_setOrientToAngle(instance: *runtime.Instance, angle: *runtime.Instance) anyerror!void {
         
         return try SVGMarkerElementImpl.call_setOrientToAngle(instance, angle);
     }

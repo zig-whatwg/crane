@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -42,7 +38,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, session: interfaces.XRSession, context: typedefs.XRWebGLRenderingContext, layerInit: dictionaries.XRWebGLLayerInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, session: *runtime.Instance, context: typedefs.XRWebGLRenderingContext, layerInit: dictionaries.XRWebGLLayerInit) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &XRWebGLLayer.vtable, ctx);
     errdefer deinit(instance);
@@ -74,7 +70,7 @@ pub fn get_fixedFoveation(instance: *runtime.Instance) ImplError!f32 {
 }
 
 /// Getter for framebuffer
-pub fn get_framebuffer(instance: *runtime.Instance) ImplError!interfaces.WebGLFramebuffer {
+pub fn get_framebuffer(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -99,14 +95,14 @@ pub fn set_fixedFoveation(instance: *runtime.Instance, value: f32) ImplError!voi
 }
 
 /// Operation: getNativeFramebufferScaleFactor
-pub fn call_getNativeFramebufferScaleFactor(instance: *runtime.Instance, session: interfaces.XRSession) ImplError!f64 {
+pub fn call_getNativeFramebufferScaleFactor(instance: *runtime.Instance, session: *runtime.Instance) ImplError!f64 {
     _ = instance;
     _ = session;
     return error.NotImplemented;
 }
 
 /// Operation: getViewport
-pub fn call_getViewport(instance: *runtime.Instance, view: interfaces.XRView) ImplError!interfaces.XRViewport {
+pub fn call_getViewport(instance: *runtime.Instance, view: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = view;
     return error.NotImplemented;

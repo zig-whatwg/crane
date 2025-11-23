@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,19 +37,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for parent
-pub fn get_parent(instance: *runtime.Instance) ImplError!interfaces.GroupEffect {
+pub fn get_parent(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for previousSibling
-pub fn get_previousSibling(instance: *runtime.Instance) ImplError!interfaces.AnimationEffect {
+pub fn get_previousSibling(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for nextSibling
-pub fn get_nextSibling(instance: *runtime.Instance) ImplError!interfaces.AnimationEffect {
+pub fn get_nextSibling(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -66,21 +62,21 @@ pub fn call_updateTiming(instance: *runtime.Instance, timing: dictionaries.Optio
 }
 
 /// Operation: replace
-pub fn call_replace(instance: *runtime.Instance, effects: interfaces.AnimationEffect) ImplError!void {
+pub fn call_replace(instance: *runtime.Instance, effects: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = effects;
     return error.NotImplemented;
 }
 
 /// Operation: before
-pub fn call_before(instance: *runtime.Instance, effects: interfaces.AnimationEffect) ImplError!void {
+pub fn call_before(instance: *runtime.Instance, effects: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = effects;
     return error.NotImplemented;
 }
 
 /// Operation: after
-pub fn call_after(instance: *runtime.Instance, effects: interfaces.AnimationEffect) ImplError!void {
+pub fn call_after(instance: *runtime.Instance, effects: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = effects;
     return error.NotImplemented;

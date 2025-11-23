@@ -1,5 +1,5 @@
 //! Generated from: trusted-types.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -110,19 +110,19 @@ pub const TrustedTypePolicyFactory = struct {
         TrustedTypePolicyFactoryImpl.deinit(instance);
     }
 
-    pub fn get_emptyHTML(instance: *runtime.Instance) anyerror!TrustedHTML {
+    pub fn get_emptyHTML(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try TrustedTypePolicyFactoryImpl.get_emptyHTML(instance);
     }
 
-    pub fn get_emptyScript(instance: *runtime.Instance) anyerror!TrustedScript {
+    pub fn get_emptyScript(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try TrustedTypePolicyFactoryImpl.get_emptyScript(instance);
     }
 
-    pub fn get_defaultPolicy(instance: *runtime.Instance) anyerror!TrustedTypePolicy {
+    pub fn get_defaultPolicy(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try TrustedTypePolicyFactoryImpl.get_defaultPolicy(instance);
     }
 
-    pub fn call_createPolicy(instance: *runtime.Instance, policyName: DOMString, policyOptions: TrustedTypePolicyOptions) anyerror!TrustedTypePolicy {
+    pub fn call_createPolicy(instance: *runtime.Instance, policyName: DOMString, policyOptions: TrustedTypePolicyOptions) anyerror!*runtime.Instance {
         
         return try TrustedTypePolicyFactoryImpl.call_createPolicy(instance, policyName, policyOptions);
     }

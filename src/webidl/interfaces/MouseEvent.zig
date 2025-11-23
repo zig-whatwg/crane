@@ -1,5 +1,5 @@
 //! Generated from: uievents.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -239,7 +239,7 @@ pub const MouseEvent = struct {
         return try MouseEventImpl.get_buttons(instance);
     }
 
-    pub fn get_relatedTarget(instance: *runtime.Instance) anyerror!EventTarget {
+    pub fn get_relatedTarget(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try MouseEventImpl.get_relatedTarget(instance);
     }
 
@@ -275,7 +275,7 @@ pub const MouseEvent = struct {
         return try MouseEventImpl.get_offsetY(instance);
     }
 
-    pub fn call_initMouseEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: Window, detailArg: i32, screenXArg: i32, screenYArg: i32, clientXArg: i32, clientYArg: i32, ctrlKeyArg: bool, altKeyArg: bool, shiftKeyArg: bool, metaKeyArg: bool, buttonArg: i16, relatedTargetArg: EventTarget) anyerror!void {
+    pub fn call_initMouseEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: *runtime.Instance, detailArg: i32, screenXArg: i32, screenYArg: i32, clientXArg: i32, clientYArg: i32, ctrlKeyArg: bool, altKeyArg: bool, shiftKeyArg: bool, metaKeyArg: bool, buttonArg: i16, relatedTargetArg: *runtime.Instance) anyerror!void {
         
         return try MouseEventImpl.call_initMouseEvent(instance, typeArg, bubblesArg, cancelableArg, viewArg, detailArg, screenXArg, screenYArg, clientXArg, clientYArg, ctrlKeyArg, altKeyArg, shiftKeyArg, metaKeyArg, buttonArg, relatedTargetArg);
     }

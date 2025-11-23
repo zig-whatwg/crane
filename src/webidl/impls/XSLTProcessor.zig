@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -53,7 +49,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Operation: transformToDocument
-pub fn call_transformToDocument(instance: *runtime.Instance, source: interfaces.Node) ImplError!interfaces.Document {
+pub fn call_transformToDocument(instance: *runtime.Instance, source: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = source;
     return error.NotImplemented;
@@ -85,7 +81,7 @@ pub fn call_setParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMS
 }
 
 /// Operation: importStylesheet
-pub fn call_importStylesheet(instance: *runtime.Instance, style: interfaces.Node) ImplError!void {
+pub fn call_importStylesheet(instance: *runtime.Instance, style: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = style;
     return error.NotImplemented;
@@ -104,7 +100,7 @@ pub fn call_reset(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: transformToFragment
-pub fn call_transformToFragment(instance: *runtime.Instance, source: interfaces.Node, output: interfaces.Document) ImplError!interfaces.DocumentFragment {
+pub fn call_transformToFragment(instance: *runtime.Instance, source: *runtime.Instance, output: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = source;
     _ = output;

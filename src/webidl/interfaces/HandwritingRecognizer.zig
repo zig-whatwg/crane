@@ -1,5 +1,5 @@
 //! Generated from: handwriting-recognition.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -82,7 +82,7 @@ pub const HandwritingRecognizer = struct {
         return try HandwritingRecognizerImpl.call_finish(instance);
     }
 
-    pub fn call_startDrawing(instance: *runtime.Instance, hints: HandwritingHints) anyerror!HandwritingDrawing {
+    pub fn call_startDrawing(instance: *runtime.Instance, hints: HandwritingHints) anyerror!*runtime.Instance {
         
         return try HandwritingRecognizerImpl.call_startDrawing(instance, hints);
     }

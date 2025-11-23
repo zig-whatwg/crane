@@ -1,5 +1,5 @@
 //! Generated from: webcrypto.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -89,7 +89,7 @@ pub const Crypto = struct {
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn get_subtle(instance: *runtime.Instance) anyerror!SubtleCrypto {
+    pub fn get_subtle(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CryptoImpl.get_subtle(instance);
     }
 

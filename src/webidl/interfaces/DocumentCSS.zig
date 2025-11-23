@@ -1,5 +1,5 @@
 //! Generated from: DOM-Style.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -72,7 +72,7 @@ pub const DocumentCSS = struct {
         DocumentCSSImpl.deinit(instance);
     }
 
-    pub fn call_getOverrideStyle(instance: *runtime.Instance, elt: Element, pseudoElt: DOMString) anyerror!CSSStyleDeclaration {
+    pub fn call_getOverrideStyle(instance: *runtime.Instance, elt: *runtime.Instance, pseudoElt: DOMString) anyerror!*runtime.Instance {
         
         return try DocumentCSSImpl.call_getOverrideStyle(instance, elt, pseudoElt);
     }

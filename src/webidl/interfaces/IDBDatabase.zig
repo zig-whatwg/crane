@@ -1,5 +1,5 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -148,7 +148,7 @@ pub const IDBDatabase = struct {
         return try IDBDatabaseImpl.get_version(instance);
     }
 
-    pub fn get_objectStoreNames(instance: *runtime.Instance) anyerror!DOMStringList {
+    pub fn get_objectStoreNames(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try IDBDatabaseImpl.get_objectStoreNames(instance);
     }
 
@@ -185,14 +185,14 @@ pub const IDBDatabase = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_transaction(instance: *runtime.Instance, storeNames: *const anyopaque, mode: IDBTransactionMode, options: IDBTransactionOptions) anyerror!IDBTransaction {
+    pub fn call_transaction(instance: *runtime.Instance, storeNames: *const anyopaque, mode: IDBTransactionMode, options: IDBTransactionOptions) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBDatabaseImpl.call_transaction(instance, storeNames, mode, options);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createObjectStore(instance: *runtime.Instance, name: DOMString, options: IDBObjectStoreParameters) anyerror!IDBObjectStore {
+    pub fn call_createObjectStore(instance: *runtime.Instance, name: DOMString, options: IDBObjectStoreParameters) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBDatabaseImpl.call_createObjectStore(instance, name, options);

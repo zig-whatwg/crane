@@ -1,5 +1,5 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -127,7 +127,7 @@ pub const ImageDecoder = struct {
         return try ImageDecoderImpl.get_completed(instance);
     }
 
-    pub fn get_tracks(instance: *runtime.Instance) anyerror!ImageTrackList {
+    pub fn get_tracks(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ImageDecoderImpl.get_tracks(instance);
     }
 

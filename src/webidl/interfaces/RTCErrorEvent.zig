@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -95,7 +95,7 @@ pub const RTCErrorEvent = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_error(instance: *runtime.Instance) anyerror!RTCError {
+    pub fn get_error(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_error) |cached| {

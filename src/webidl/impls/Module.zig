@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -55,21 +51,21 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, byte
 }
 
 /// Operation: exports
-pub fn call_exports(instance: *runtime.Instance, moduleObject: interfaces.Module) ImplError!*const anyopaque {
+pub fn call_exports(instance: *runtime.Instance, moduleObject: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     _ = moduleObject;
     return error.NotImplemented;
 }
 
 /// Operation: imports
-pub fn call_imports(instance: *runtime.Instance, moduleObject: interfaces.Module) ImplError!*const anyopaque {
+pub fn call_imports(instance: *runtime.Instance, moduleObject: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     _ = moduleObject;
     return error.NotImplemented;
 }
 
 /// Operation: customSections
-pub fn call_customSections(instance: *runtime.Instance, moduleObject: interfaces.Module, sectionName: runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_customSections(instance: *runtime.Instance, moduleObject: *runtime.Instance, sectionName: runtime.DOMString) ImplError!*const anyopaque {
     _ = instance;
     _ = moduleObject;
     _ = sectionName;

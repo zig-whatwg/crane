@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -53,13 +49,13 @@ pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
 }
 
 /// Getter for previousElementSibling
-pub fn get_previousElementSibling(instance: *runtime.Instance) ImplError!interfaces.Element {
+pub fn get_previousElementSibling(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for nextElementSibling
-pub fn get_nextElementSibling(instance: *runtime.Instance) ImplError!interfaces.Element {
+pub fn get_nextElementSibling(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

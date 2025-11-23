@@ -1,5 +1,5 @@
 //! Generated from: translation-api.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -143,7 +143,7 @@ pub const Translator = struct {
         return try TranslatorImpl.call_destroy(instance);
     }
 
-    pub fn call_translateStreaming(instance: *runtime.Instance, input: DOMString, options: TranslatorTranslateOptions) anyerror!ReadableStream {
+    pub fn call_translateStreaming(instance: *runtime.Instance, input: DOMString, options: TranslatorTranslateOptions) anyerror!*runtime.Instance {
         
         return try TranslatorImpl.call_translateStreaming(instance, input, options);
     }

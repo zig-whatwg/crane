@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,7 +37,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for anchorNode
-pub fn get_anchorNode(instance: *runtime.Instance) ImplError!interfaces.Node {
+pub fn get_anchorNode(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -53,7 +49,7 @@ pub fn get_anchorOffset(instance: *runtime.Instance) ImplError!u32 {
 }
 
 /// Getter for focusNode
-pub fn get_focusNode(instance: *runtime.Instance) ImplError!interfaces.Node {
+pub fn get_focusNode(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -89,7 +85,7 @@ pub fn get_direction(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Operation: setPosition
-pub fn call_setPosition(instance: *runtime.Instance, node: interfaces.Node, offset: u32) ImplError!void {
+pub fn call_setPosition(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) ImplError!void {
     _ = instance;
     _ = node;
     _ = offset;
@@ -103,7 +99,7 @@ pub fn call_removeAllRanges(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: selectAllChildren
-pub fn call_selectAllChildren(instance: *runtime.Instance, node: interfaces.Node) ImplError!void {
+pub fn call_selectAllChildren(instance: *runtime.Instance, node: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = node;
     return error.NotImplemented;
@@ -135,7 +131,7 @@ pub fn call_getComposedRanges(instance: *runtime.Instance, options: dictionaries
 }
 
 /// Operation: collapse
-pub fn call_collapse(instance: *runtime.Instance, node: interfaces.Node, offset: u32) ImplError!void {
+pub fn call_collapse(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) ImplError!void {
     _ = instance;
     _ = node;
     _ = offset;
@@ -143,7 +139,7 @@ pub fn call_collapse(instance: *runtime.Instance, node: interfaces.Node, offset:
 }
 
 /// Operation: extend
-pub fn call_extend(instance: *runtime.Instance, node: interfaces.Node, offset: u32) ImplError!void {
+pub fn call_extend(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) ImplError!void {
     _ = instance;
     _ = node;
     _ = offset;
@@ -157,14 +153,14 @@ pub fn call_collapseToStart(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: addRange
-pub fn call_addRange(instance: *runtime.Instance, range: interfaces.Range) ImplError!void {
+pub fn call_addRange(instance: *runtime.Instance, range: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = range;
     return error.NotImplemented;
 }
 
 /// Operation: setBaseAndExtent
-pub fn call_setBaseAndExtent(instance: *runtime.Instance, anchorNode: interfaces.Node, anchorOffset: u32, focusNode: interfaces.Node, focusOffset: u32) ImplError!void {
+pub fn call_setBaseAndExtent(instance: *runtime.Instance, anchorNode: *runtime.Instance, anchorOffset: u32, focusNode: *runtime.Instance, focusOffset: u32) ImplError!void {
     _ = instance;
     _ = anchorNode;
     _ = anchorOffset;
@@ -174,7 +170,7 @@ pub fn call_setBaseAndExtent(instance: *runtime.Instance, anchorNode: interfaces
 }
 
 /// Operation: getRangeAt
-pub fn call_getRangeAt(instance: *runtime.Instance, index: u32) ImplError!interfaces.Range {
+pub fn call_getRangeAt(instance: *runtime.Instance, index: u32) ImplError!*runtime.Instance {
     _ = instance;
     _ = index;
     return error.NotImplemented;
@@ -190,7 +186,7 @@ pub fn call_modify(instance: *runtime.Instance, alter: runtime.DOMString, direct
 }
 
 /// Operation: containsNode
-pub fn call_containsNode(instance: *runtime.Instance, node: interfaces.Node, allowPartialContainment: bool) ImplError!bool {
+pub fn call_containsNode(instance: *runtime.Instance, node: *runtime.Instance, allowPartialContainment: bool) ImplError!bool {
     _ = instance;
     _ = node;
     _ = allowPartialContainment;
@@ -198,7 +194,7 @@ pub fn call_containsNode(instance: *runtime.Instance, node: interfaces.Node, all
 }
 
 /// Operation: removeRange
-pub fn call_removeRange(instance: *runtime.Instance, range: interfaces.Range) ImplError!void {
+pub fn call_removeRange(instance: *runtime.Instance, range: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = range;
     return error.NotImplemented;

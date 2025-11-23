@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -54,7 +50,7 @@ pub fn set_onreset(instance: *runtime.Instance, value: typedefs.EventHandler) Im
 }
 
 /// Operation: getOffsetReferenceSpace
-pub fn call_getOffsetReferenceSpace(instance: *runtime.Instance, originOffset: interfaces.XRRigidTransform) ImplError!interfaces.XRReferenceSpace {
+pub fn call_getOffsetReferenceSpace(instance: *runtime.Instance, originOffset: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = originOffset;
     return error.NotImplemented;

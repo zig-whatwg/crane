@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -425,7 +425,7 @@ pub const HTMLVideoElement = struct {
         return try HTMLVideoElementImpl.call_requestVideoFrameCallback(instance, callback);
     }
 
-    pub fn call_getVideoPlaybackQuality(instance: *runtime.Instance) anyerror!VideoPlaybackQuality {
+    pub fn call_getVideoPlaybackQuality(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLVideoElementImpl.call_getVideoPlaybackQuality(instance);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: observable.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -145,12 +145,12 @@ pub const Observable = struct {
         return try ObservableImpl.call_constructor(allocator, ctx, callback);
     }
 
-    pub fn call_map(instance: *runtime.Instance, mapper: Mapper) anyerror!Observable {
+    pub fn call_map(instance: *runtime.Instance, mapper: Mapper) anyerror!*runtime.Instance {
         
         return try ObservableImpl.call_map(instance, mapper);
     }
 
-    pub fn call_inspect(instance: *runtime.Instance, inspectorUnion: ObservableInspectorUnion) anyerror!Observable {
+    pub fn call_inspect(instance: *runtime.Instance, inspectorUnion: ObservableInspectorUnion) anyerror!*runtime.Instance {
         
         return try ObservableImpl.call_inspect(instance, inspectorUnion);
     }
@@ -175,7 +175,7 @@ pub const Observable = struct {
         return try ObservableImpl.call_first(instance, options);
     }
 
-    pub fn call_takeUntil(instance: *runtime.Instance, value: *const anyopaque) anyerror!Observable {
+    pub fn call_takeUntil(instance: *runtime.Instance, value: *const anyopaque) anyerror!*runtime.Instance {
         
         return try ObservableImpl.call_takeUntil(instance, value);
     }
@@ -190,22 +190,22 @@ pub const Observable = struct {
         return try ObservableImpl.call_last(instance, options);
     }
 
-    pub fn call_filter(instance: *runtime.Instance, predicate: Predicate) anyerror!Observable {
+    pub fn call_filter(instance: *runtime.Instance, predicate: Predicate) anyerror!*runtime.Instance {
         
         return try ObservableImpl.call_filter(instance, predicate);
     }
 
-    pub fn call_switchMap(instance: *runtime.Instance, mapper: Mapper) anyerror!Observable {
+    pub fn call_switchMap(instance: *runtime.Instance, mapper: Mapper) anyerror!*runtime.Instance {
         
         return try ObservableImpl.call_switchMap(instance, mapper);
     }
 
-    pub fn call_finally(instance: *runtime.Instance, callback: VoidFunction) anyerror!Observable {
+    pub fn call_finally(instance: *runtime.Instance, callback: VoidFunction) anyerror!*runtime.Instance {
         
         return try ObservableImpl.call_finally(instance, callback);
     }
 
-    pub fn call_take(instance: *runtime.Instance, amount: u64) anyerror!Observable {
+    pub fn call_take(instance: *runtime.Instance, amount: u64) anyerror!*runtime.Instance {
         
         return try ObservableImpl.call_take(instance, amount);
     }
@@ -220,22 +220,22 @@ pub const Observable = struct {
         return try ObservableImpl.call_reduce(instance, reducer, initialValue, options);
     }
 
-    pub fn call_drop(instance: *runtime.Instance, amount: u64) anyerror!Observable {
+    pub fn call_drop(instance: *runtime.Instance, amount: u64) anyerror!*runtime.Instance {
         
         return try ObservableImpl.call_drop(instance, amount);
     }
 
-    pub fn call_flatMap(instance: *runtime.Instance, mapper: Mapper) anyerror!Observable {
+    pub fn call_flatMap(instance: *runtime.Instance, mapper: Mapper) anyerror!*runtime.Instance {
         
         return try ObservableImpl.call_flatMap(instance, mapper);
     }
 
-    pub fn call_from(instance: *runtime.Instance, value: *const anyopaque) anyerror!Observable {
+    pub fn call_from(instance: *runtime.Instance, value: *const anyopaque) anyerror!*runtime.Instance {
         
         return try ObservableImpl.call_from(instance, value);
     }
 
-    pub fn call_catch(instance: *runtime.Instance, callback: CatchCallback) anyerror!Observable {
+    pub fn call_catch(instance: *runtime.Instance, callback: CatchCallback) anyerror!*runtime.Instance {
         
         return try ObservableImpl.call_catch(instance, callback);
     }

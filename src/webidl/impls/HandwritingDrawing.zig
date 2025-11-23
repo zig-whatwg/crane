@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,7 +37,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: addStroke
-pub fn call_addStroke(instance: *runtime.Instance, stroke: interfaces.HandwritingStroke) ImplError!void {
+pub fn call_addStroke(instance: *runtime.Instance, stroke: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = stroke;
     return error.NotImplemented;
@@ -66,7 +62,7 @@ pub fn call_clear(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: removeStroke
-pub fn call_removeStroke(instance: *runtime.Instance, stroke: interfaces.HandwritingStroke) ImplError!void {
+pub fn call_removeStroke(instance: *runtime.Instance, stroke: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = stroke;
     return error.NotImplemented;

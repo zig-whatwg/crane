@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -352,7 +352,7 @@ pub const HTMLEmbedElement = struct {
         try HTMLEmbedElementImpl.set_name(instance, value);
     }
 
-    pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!Document {
+    pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLEmbedElementImpl.call_getSVGDocument(instance);
     }
 

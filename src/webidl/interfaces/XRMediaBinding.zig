@@ -1,5 +1,5 @@
 //! Generated from: webxrlayers.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -87,22 +87,22 @@ pub const XRMediaBinding = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, session: XRSession) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, session: *runtime.Instance) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try XRMediaBindingImpl.call_constructor(allocator, ctx, session);
     }
 
-    pub fn call_createCylinderLayer(instance: *runtime.Instance, video: HTMLVideoElement, init_data: XRMediaCylinderLayerInit) anyerror!XRCylinderLayer {
+    pub fn call_createCylinderLayer(instance: *runtime.Instance, video: *runtime.Instance, init_data: XRMediaCylinderLayerInit) anyerror!*runtime.Instance {
         
         return try XRMediaBindingImpl.call_createCylinderLayer(instance, video, init_data);
     }
 
-    pub fn call_createQuadLayer(instance: *runtime.Instance, video: HTMLVideoElement, init_data: XRMediaQuadLayerInit) anyerror!XRQuadLayer {
+    pub fn call_createQuadLayer(instance: *runtime.Instance, video: *runtime.Instance, init_data: XRMediaQuadLayerInit) anyerror!*runtime.Instance {
         
         return try XRMediaBindingImpl.call_createQuadLayer(instance, video, init_data);
     }
 
-    pub fn call_createEquirectLayer(instance: *runtime.Instance, video: HTMLVideoElement, init_data: XRMediaEquirectLayerInit) anyerror!XREquirectLayer {
+    pub fn call_createEquirectLayer(instance: *runtime.Instance, video: *runtime.Instance, init_data: XRMediaEquirectLayerInit) anyerror!*runtime.Instance {
         
         return try XRMediaBindingImpl.call_createEquirectLayer(instance, video, init_data);
     }

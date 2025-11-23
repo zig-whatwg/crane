@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,13 +37,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for local
-pub fn get_local(instance: *runtime.Instance) ImplError!interfaces.RTCIceCandidate {
+pub fn get_local(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for remote
-pub fn get_remote(instance: *runtime.Instance) ImplError!interfaces.RTCIceCandidate {
+pub fn get_remote(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

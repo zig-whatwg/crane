@@ -1,5 +1,5 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -124,7 +124,7 @@ pub const DOMPoint = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_fromPoint(instance: *runtime.Instance, other: DOMPointInit) anyerror!DOMPoint {
+    pub fn call_fromPoint(instance: *runtime.Instance, other: DOMPointInit) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMPointImpl.call_fromPoint(instance, other);

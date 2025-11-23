@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -397,7 +397,7 @@ pub const HTMLLinkElement = struct {
     }
 
     /// Extended attributes: [SameObject], [PutForwards=value], [Reflect="rel"]
-    pub fn get_relList(instance: *runtime.Instance) anyerror!DOMTokenList {
+    pub fn get_relList(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_relList) |cached| {
@@ -465,7 +465,7 @@ pub const HTMLLinkElement = struct {
     }
 
     /// Extended attributes: [SameObject], [PutForwards=value], [Reflect]
-    pub fn get_sizes(instance: *runtime.Instance) anyerror!DOMTokenList {
+    pub fn get_sizes(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_sizes) |cached| {
@@ -519,7 +519,7 @@ pub const HTMLLinkElement = struct {
     }
 
     /// Extended attributes: [SameObject], [PutForwards=value], [Reflect]
-    pub fn get_blocking(instance: *runtime.Instance) anyerror!DOMTokenList {
+    pub fn get_blocking(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_blocking) |cached| {
@@ -600,7 +600,7 @@ pub const HTMLLinkElement = struct {
         try HTMLLinkElementImpl.set_target(instance, value);
     }
 
-    pub fn get_sheet(instance: *runtime.Instance) anyerror!CSSStyleSheet {
+    pub fn get_sheet(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLLinkElementImpl.get_sheet(instance);
     }
 

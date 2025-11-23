@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,19 +37,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for colorTexture
-pub fn get_colorTexture(instance: *runtime.Instance) ImplError!interfaces.WebGLTexture {
+pub fn get_colorTexture(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for depthStencilTexture
-pub fn get_depthStencilTexture(instance: *runtime.Instance) ImplError!interfaces.WebGLTexture {
+pub fn get_depthStencilTexture(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for motionVectorTexture
-pub fn get_motionVectorTexture(instance: *runtime.Instance) ImplError!interfaces.WebGLTexture {
+pub fn get_motionVectorTexture(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

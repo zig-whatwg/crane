@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -137,7 +137,7 @@ pub const TextTrackList = struct {
         try TextTrackListImpl.set_onremovetrack(instance, value);
     }
 
-    pub fn call_getTrackById(instance: *runtime.Instance, id: DOMString) anyerror!TextTrack {
+    pub fn call_getTrackById(instance: *runtime.Instance, id: DOMString) anyerror!*runtime.Instance {
         
         return try TextTrackListImpl.call_getTrackById(instance, id);
     }

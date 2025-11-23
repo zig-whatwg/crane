@@ -1,5 +1,5 @@
 //! Generated from: touch-events.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -84,7 +84,7 @@ pub const TouchList = struct {
         return try TouchListImpl.get_length(instance);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!Touch {
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
         
         return try TouchListImpl.call_item(instance, index);
     }

@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -53,13 +49,13 @@ pub fn get_targetRayMode(instance: *runtime.Instance) ImplError!enums.XRTargetRa
 }
 
 /// Getter for targetRaySpace
-pub fn get_targetRaySpace(instance: *runtime.Instance) ImplError!interfaces.XRSpace {
+pub fn get_targetRaySpace(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for gripSpace
-pub fn get_gripSpace(instance: *runtime.Instance) ImplError!interfaces.XRSpace {
+pub fn get_gripSpace(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -77,13 +73,13 @@ pub fn get_skipRendering(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Getter for gamepad
-pub fn get_gamepad(instance: *runtime.Instance) ImplError!interfaces.Gamepad {
+pub fn get_gamepad(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for hand
-pub fn get_hand(instance: *runtime.Instance) ImplError!interfaces.XRHand {
+pub fn get_hand(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -285,7 +285,7 @@ pub const SVGStyleElement = struct {
         try SVGStyleElementImpl.set_disabled(instance, value);
     }
 
-    pub fn get_sheet(instance: *runtime.Instance) anyerror!CSSStyleSheet {
+    pub fn get_sheet(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGStyleElementImpl.get_sheet(instance);
     }
 

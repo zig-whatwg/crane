@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,55 +37,55 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for mediaCapabilities
-pub fn get_mediaCapabilities(instance: *runtime.Instance) ImplError!interfaces.MediaCapabilities {
+pub fn get_mediaCapabilities(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for serial
-pub fn get_serial(instance: *runtime.Instance) ImplError!interfaces.Serial {
+pub fn get_serial(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for permissions
-pub fn get_permissions(instance: *runtime.Instance) ImplError!interfaces.Permissions {
+pub fn get_permissions(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for smartCard
-pub fn get_smartCard(instance: *runtime.Instance) ImplError!interfaces.SmartCardResourceManager {
+pub fn get_smartCard(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for usb
-pub fn get_usb(instance: *runtime.Instance) ImplError!interfaces.USB {
+pub fn get_usb(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for hid
-pub fn get_hid(instance: *runtime.Instance) ImplError!interfaces.HID {
+pub fn get_hid(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for serviceWorker
-pub fn get_serviceWorker(instance: *runtime.Instance) ImplError!interfaces.ServiceWorkerContainer {
+pub fn get_serviceWorker(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for locks
-pub fn get_locks(instance: *runtime.Instance) ImplError!interfaces.LockManager {
+pub fn get_locks(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for gpu
-pub fn get_gpu(instance: *runtime.Instance) ImplError!interfaces.GPU {
+pub fn get_gpu(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -101,13 +97,13 @@ pub fn get_globalPrivacyControl(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Getter for connection
-pub fn get_connection(instance: *runtime.Instance) ImplError!interfaces.NetworkInformation {
+pub fn get_connection(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ml
-pub fn get_ml(instance: *runtime.Instance) ImplError!interfaces.ML {
+pub fn get_ml(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -119,13 +115,13 @@ pub fn get_deviceMemory(instance: *runtime.Instance) ImplError!f64 {
 }
 
 /// Getter for storage
-pub fn get_storage(instance: *runtime.Instance) ImplError!interfaces.StorageManager {
+pub fn get_storage(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for storageBuckets
-pub fn get_storageBuckets(instance: *runtime.Instance) ImplError!interfaces.StorageBucketManager {
+pub fn get_storageBuckets(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -215,7 +211,7 @@ pub fn get_hardwareConcurrency(instance: *runtime.Instance) ImplError!u64 {
 }
 
 /// Getter for userAgentData
-pub fn get_userAgentData(instance: *runtime.Instance) ImplError!interfaces.NavigatorUAData {
+pub fn get_userAgentData(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

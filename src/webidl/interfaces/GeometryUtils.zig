@@ -1,5 +1,5 @@
 //! Generated from: cssom-view.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -84,12 +84,12 @@ pub const GeometryUtils = struct {
         GeometryUtilsImpl.deinit(instance);
     }
 
-    pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!DOMQuad {
+    pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!*runtime.Instance {
         
         return try GeometryUtilsImpl.call_convertQuadFromNode(instance, quad, from, options);
     }
 
-    pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!DOMPoint {
+    pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!*runtime.Instance {
         
         return try GeometryUtilsImpl.call_convertPointFromNode(instance, point, from, options);
     }
@@ -99,7 +99,7 @@ pub const GeometryUtils = struct {
         return try GeometryUtilsImpl.call_getBoxQuads(instance, options);
     }
 
-    pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: DOMRectReadOnly, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!DOMQuad {
+    pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!*runtime.Instance {
         
         return try GeometryUtilsImpl.call_convertRectFromNode(instance, rect, from, options);
     }

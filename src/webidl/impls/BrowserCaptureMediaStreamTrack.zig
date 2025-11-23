@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,20 +37,20 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: clone
-pub fn call_clone(instance: *runtime.Instance) ImplError!interfaces.BrowserCaptureMediaStreamTrack {
+pub fn call_clone(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: cropTo
-pub fn call_cropTo(instance: *runtime.Instance, cropTarget: interfaces.CropTarget) ImplError!*const anyopaque {
+pub fn call_cropTo(instance: *runtime.Instance, cropTarget: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     _ = cropTarget;
     return error.NotImplemented;
 }
 
 /// Operation: restrictTo
-pub fn call_restrictTo(instance: *runtime.Instance, RestrictionTarget: interfaces.RestrictionTarget) ImplError!*const anyopaque {
+pub fn call_restrictTo(instance: *runtime.Instance, RestrictionTarget: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     _ = RestrictionTarget;
     return error.NotImplemented;

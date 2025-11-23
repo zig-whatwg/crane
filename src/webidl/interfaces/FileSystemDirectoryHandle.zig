@@ -1,5 +1,5 @@
 //! Generated from: fs.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -113,7 +113,7 @@ pub const FileSystemDirectoryHandle = struct {
         return try FileSystemDirectoryHandleImpl.call_getFileHandle(instance, name, options);
     }
 
-    pub fn call_resolve(instance: *runtime.Instance, possibleDescendant: FileSystemHandle) anyerror!*const anyopaque {
+    pub fn call_resolve(instance: *runtime.Instance, possibleDescendant: *runtime.Instance) anyerror!*const anyopaque {
         
         return try FileSystemDirectoryHandleImpl.call_resolve(instance, possibleDescendant);
     }

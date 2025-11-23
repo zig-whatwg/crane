@@ -1,5 +1,5 @@
 //! Generated from: webtransport.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -102,11 +102,11 @@ pub const WebTransportSendStream = struct {
         WebTransportSendStreamImpl.deinit(instance);
     }
 
-    pub fn get_sendGroup(instance: *runtime.Instance) anyerror!WebTransportSendGroup {
+    pub fn get_sendGroup(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WebTransportSendStreamImpl.get_sendGroup(instance);
     }
 
-    pub fn set_sendGroup(instance: *runtime.Instance, value: WebTransportSendGroup) anyerror!void {
+    pub fn set_sendGroup(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         try WebTransportSendStreamImpl.set_sendGroup(instance, value);
     }
 
@@ -118,7 +118,7 @@ pub const WebTransportSendStream = struct {
         try WebTransportSendStreamImpl.set_sendOrder(instance, value);
     }
 
-    pub fn call_getWriter(instance: *runtime.Instance) anyerror!WebTransportWriter {
+    pub fn call_getWriter(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WebTransportSendStreamImpl.call_getWriter(instance);
     }
 

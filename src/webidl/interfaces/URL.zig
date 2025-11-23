@@ -1,5 +1,5 @@
 //! Generated from: url.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -240,7 +240,7 @@ pub const URL = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_searchParams(instance: *runtime.Instance) anyerror!URLSearchParams {
+    pub fn get_searchParams(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_searchParams) |cached| {
@@ -273,7 +273,7 @@ pub const URL = struct {
         return try URLImpl.call_canParse(instance, url, base);
     }
 
-    pub fn call_parse(instance: *runtime.Instance, url: runtime.USVString, base: runtime.USVString) anyerror!URL {
+    pub fn call_parse(instance: *runtime.Instance, url: runtime.USVString, base: runtime.USVString) anyerror!*runtime.Instance {
         
         return try URLImpl.call_parse(instance, url, base);
     }

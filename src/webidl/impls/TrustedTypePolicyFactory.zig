@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,25 +37,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for emptyHTML
-pub fn get_emptyHTML(instance: *runtime.Instance) ImplError!interfaces.TrustedHTML {
+pub fn get_emptyHTML(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for emptyScript
-pub fn get_emptyScript(instance: *runtime.Instance) ImplError!interfaces.TrustedScript {
+pub fn get_emptyScript(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for defaultPolicy
-pub fn get_defaultPolicy(instance: *runtime.Instance) ImplError!interfaces.TrustedTypePolicy {
+pub fn get_defaultPolicy(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: createPolicy
-pub fn call_createPolicy(instance: *runtime.Instance, policyName: runtime.DOMString, policyOptions: dictionaries.TrustedTypePolicyOptions) ImplError!interfaces.TrustedTypePolicy {
+pub fn call_createPolicy(instance: *runtime.Instance, policyName: runtime.DOMString, policyOptions: dictionaries.TrustedTypePolicyOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = policyName;
     _ = policyOptions;

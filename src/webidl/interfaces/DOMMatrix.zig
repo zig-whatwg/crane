@@ -1,5 +1,5 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -327,83 +327,83 @@ pub const DOMMatrix = struct {
         return try DOMMatrixImpl.get_m44(instance);
     }
 
-    pub fn call_scaleSelf(instance: *runtime.Instance, scaleX: f64, scaleY: f64, scaleZ: f64, originX: f64, originY: f64, originZ: f64) anyerror!DOMMatrix {
+    pub fn call_scaleSelf(instance: *runtime.Instance, scaleX: f64, scaleY: f64, scaleZ: f64, originX: f64, originY: f64, originZ: f64) anyerror!*runtime.Instance {
         
         return try DOMMatrixImpl.call_scaleSelf(instance, scaleX, scaleY, scaleZ, originX, originY, originZ);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_fromFloat32Array(instance: *runtime.Instance, array32: *const anyopaque) anyerror!DOMMatrix {
+    pub fn call_fromFloat32Array(instance: *runtime.Instance, array32: *const anyopaque) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMMatrixImpl.call_fromFloat32Array(instance, array32);
     }
 
-    pub fn call_rotateFromVectorSelf(instance: *runtime.Instance, x: f64, y: f64) anyerror!DOMMatrix {
+    pub fn call_rotateFromVectorSelf(instance: *runtime.Instance, x: f64, y: f64) anyerror!*runtime.Instance {
         
         return try DOMMatrixImpl.call_rotateFromVectorSelf(instance, x, y);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_fromFloat64Array(instance: *runtime.Instance, array64: *const anyopaque) anyerror!DOMMatrix {
+    pub fn call_fromFloat64Array(instance: *runtime.Instance, array64: *const anyopaque) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMMatrixImpl.call_fromFloat64Array(instance, array64);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_fromMatrix(instance: *runtime.Instance, other: DOMMatrixInit) anyerror!DOMMatrix {
+    pub fn call_fromMatrix(instance: *runtime.Instance, other: DOMMatrixInit) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMMatrixImpl.call_fromMatrix(instance, other);
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn call_setMatrixValue(instance: *runtime.Instance, transformList: DOMString) anyerror!DOMMatrix {
+    pub fn call_setMatrixValue(instance: *runtime.Instance, transformList: DOMString) anyerror!*runtime.Instance {
         
         return try DOMMatrixImpl.call_setMatrixValue(instance, transformList);
     }
 
-    pub fn call_rotateAxisAngleSelf(instance: *runtime.Instance, x: f64, y: f64, z: f64, angle: f64) anyerror!DOMMatrix {
+    pub fn call_rotateAxisAngleSelf(instance: *runtime.Instance, x: f64, y: f64, z: f64, angle: f64) anyerror!*runtime.Instance {
         
         return try DOMMatrixImpl.call_rotateAxisAngleSelf(instance, x, y, z, angle);
     }
 
-    pub fn call_scale3dSelf(instance: *runtime.Instance, scale: f64, originX: f64, originY: f64, originZ: f64) anyerror!DOMMatrix {
+    pub fn call_scale3dSelf(instance: *runtime.Instance, scale: f64, originX: f64, originY: f64, originZ: f64) anyerror!*runtime.Instance {
         
         return try DOMMatrixImpl.call_scale3dSelf(instance, scale, originX, originY, originZ);
     }
 
-    pub fn call_rotateSelf(instance: *runtime.Instance, rotX: f64, rotY: f64, rotZ: f64) anyerror!DOMMatrix {
+    pub fn call_rotateSelf(instance: *runtime.Instance, rotX: f64, rotY: f64, rotZ: f64) anyerror!*runtime.Instance {
         
         return try DOMMatrixImpl.call_rotateSelf(instance, rotX, rotY, rotZ);
     }
 
-    pub fn call_translateSelf(instance: *runtime.Instance, tx: f64, ty: f64, tz: f64) anyerror!DOMMatrix {
+    pub fn call_translateSelf(instance: *runtime.Instance, tx: f64, ty: f64, tz: f64) anyerror!*runtime.Instance {
         
         return try DOMMatrixImpl.call_translateSelf(instance, tx, ty, tz);
     }
 
-    pub fn call_multiplySelf(instance: *runtime.Instance, other: DOMMatrixInit) anyerror!DOMMatrix {
+    pub fn call_multiplySelf(instance: *runtime.Instance, other: DOMMatrixInit) anyerror!*runtime.Instance {
         
         return try DOMMatrixImpl.call_multiplySelf(instance, other);
     }
 
-    pub fn call_skewXSelf(instance: *runtime.Instance, sx: f64) anyerror!DOMMatrix {
+    pub fn call_skewXSelf(instance: *runtime.Instance, sx: f64) anyerror!*runtime.Instance {
         
         return try DOMMatrixImpl.call_skewXSelf(instance, sx);
     }
 
-    pub fn call_skewYSelf(instance: *runtime.Instance, sy: f64) anyerror!DOMMatrix {
+    pub fn call_skewYSelf(instance: *runtime.Instance, sy: f64) anyerror!*runtime.Instance {
         
         return try DOMMatrixImpl.call_skewYSelf(instance, sy);
     }
 
-    pub fn call_invertSelf(instance: *runtime.Instance) anyerror!DOMMatrix {
+    pub fn call_invertSelf(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DOMMatrixImpl.call_invertSelf(instance);
     }
 
-    pub fn call_preMultiplySelf(instance: *runtime.Instance, other: DOMMatrixInit) anyerror!DOMMatrix {
+    pub fn call_preMultiplySelf(instance: *runtime.Instance, other: DOMMatrixInit) anyerror!*runtime.Instance {
         
         return try DOMMatrixImpl.call_preMultiplySelf(instance, other);
     }

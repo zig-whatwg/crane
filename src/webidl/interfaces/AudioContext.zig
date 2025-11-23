@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -228,7 +228,7 @@ pub const AudioContext = struct {
         try AudioContextImpl.set_onerror(instance, value);
     }
 
-    pub fn call_createMediaStreamSource(instance: *runtime.Instance, mediaStream: MediaStream) anyerror!MediaStreamAudioSourceNode {
+    pub fn call_createMediaStreamSource(instance: *runtime.Instance, mediaStream: *runtime.Instance) anyerror!*runtime.Instance {
         
         return try AudioContextImpl.call_createMediaStreamSource(instance, mediaStream);
     }
@@ -237,7 +237,7 @@ pub const AudioContext = struct {
         return try AudioContextImpl.call_suspend(instance);
     }
 
-    pub fn call_createMediaStreamDestination(instance: *runtime.Instance) anyerror!MediaStreamAudioDestinationNode {
+    pub fn call_createMediaStreamDestination(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AudioContextImpl.call_createMediaStreamDestination(instance);
     }
 
@@ -245,12 +245,12 @@ pub const AudioContext = struct {
         return try AudioContextImpl.call_getOutputTimestamp(instance);
     }
 
-    pub fn call_createMediaStreamTrackSource(instance: *runtime.Instance, mediaStreamTrack: MediaStreamTrack) anyerror!MediaStreamTrackAudioSourceNode {
+    pub fn call_createMediaStreamTrackSource(instance: *runtime.Instance, mediaStreamTrack: *runtime.Instance) anyerror!*runtime.Instance {
         
         return try AudioContextImpl.call_createMediaStreamTrackSource(instance, mediaStreamTrack);
     }
 
-    pub fn call_createMediaElementSource(instance: *runtime.Instance, mediaElement: HTMLMediaElement) anyerror!MediaElementAudioSourceNode {
+    pub fn call_createMediaElementSource(instance: *runtime.Instance, mediaElement: *runtime.Instance) anyerror!*runtime.Instance {
         
         return try AudioContextImpl.call_createMediaElementSource(instance, mediaElement);
     }

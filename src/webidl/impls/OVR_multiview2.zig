@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,7 +37,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: framebufferTextureMultiviewOVR
-pub fn call_framebufferTextureMultiviewOVR(instance: *runtime.Instance, target: typedefs.GLenum, attachment: typedefs.GLenum, texture: interfaces.WebGLTexture, level: typedefs.GLint, baseViewIndex: typedefs.GLint, numViews: typedefs.GLsizei) ImplError!void {
+pub fn call_framebufferTextureMultiviewOVR(instance: *runtime.Instance, target: typedefs.GLenum, attachment: typedefs.GLenum, texture: *runtime.Instance, level: typedefs.GLint, baseViewIndex: typedefs.GLint, numViews: typedefs.GLsizei) ImplError!void {
     _ = instance;
     _ = target;
     _ = attachment;

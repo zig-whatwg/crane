@@ -1,5 +1,5 @@
 //! Generated from: event-timing.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -115,7 +115,7 @@ pub const PerformanceEventTiming = struct {
         return try PerformanceEventTimingImpl.get_cancelable(instance);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!Node {
+    pub fn get_target(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try PerformanceEventTimingImpl.get_target(instance);
     }
 

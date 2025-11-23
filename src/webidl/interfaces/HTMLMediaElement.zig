@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -499,7 +499,7 @@ pub const HTMLMediaElement = struct {
         HTMLMediaElementImpl.deinit(instance);
     }
 
-    pub fn get_error(instance: *runtime.Instance) anyerror!MediaError {
+    pub fn get_error(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLMediaElementImpl.get_error(instance);
     }
 
@@ -561,7 +561,7 @@ pub const HTMLMediaElement = struct {
         try HTMLMediaElementImpl.set_preload(instance, value);
     }
 
-    pub fn get_buffered(instance: *runtime.Instance) anyerror!TimeRanges {
+    pub fn get_buffered(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLMediaElementImpl.get_buffered(instance);
     }
 
@@ -613,11 +613,11 @@ pub const HTMLMediaElement = struct {
         try HTMLMediaElementImpl.set_preservesPitch(instance, value);
     }
 
-    pub fn get_played(instance: *runtime.Instance) anyerror!TimeRanges {
+    pub fn get_played(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLMediaElementImpl.get_played(instance);
     }
 
-    pub fn get_seekable(instance: *runtime.Instance) anyerror!TimeRanges {
+    pub fn get_seekable(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLMediaElementImpl.get_seekable(instance);
     }
 
@@ -698,7 +698,7 @@ pub const HTMLMediaElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_audioTracks(instance: *runtime.Instance) anyerror!AudioTrackList {
+    pub fn get_audioTracks(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_audioTracks) |cached| {
@@ -710,7 +710,7 @@ pub const HTMLMediaElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_videoTracks(instance: *runtime.Instance) anyerror!VideoTrackList {
+    pub fn get_videoTracks(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_videoTracks) |cached| {
@@ -722,7 +722,7 @@ pub const HTMLMediaElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_textTracks(instance: *runtime.Instance) anyerror!TextTrackList {
+    pub fn get_textTracks(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_textTracks) |cached| {
@@ -739,7 +739,7 @@ pub const HTMLMediaElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_remote(instance: *runtime.Instance) anyerror!RemotePlayback {
+    pub fn get_remote(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_remote) |cached| {
@@ -765,7 +765,7 @@ pub const HTMLMediaElement = struct {
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn get_mediaKeys(instance: *runtime.Instance) anyerror!MediaKeys {
+    pub fn get_mediaKeys(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLMediaElementImpl.get_mediaKeys(instance);
     }
 
@@ -796,7 +796,7 @@ pub const HTMLMediaElement = struct {
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn call_setMediaKeys(instance: *runtime.Instance, mediaKeys: MediaKeys) anyerror!*const anyopaque {
+    pub fn call_setMediaKeys(instance: *runtime.Instance, mediaKeys: *runtime.Instance) anyerror!*const anyopaque {
         
         return try HTMLMediaElementImpl.call_setMediaKeys(instance, mediaKeys);
     }
@@ -815,7 +815,7 @@ pub const HTMLMediaElement = struct {
         return try HTMLMediaElementImpl.call_fastSeek(instance, time);
     }
 
-    pub fn call_captureStream(instance: *runtime.Instance) anyerror!MediaStream {
+    pub fn call_captureStream(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLMediaElementImpl.call_captureStream(instance);
     }
 
@@ -827,7 +827,7 @@ pub const HTMLMediaElement = struct {
         return try HTMLMediaElementImpl.call_getStartDate(instance);
     }
 
-    pub fn call_addTextTrack(instance: *runtime.Instance, kind: TextTrackKind, label: DOMString, language: DOMString) anyerror!TextTrack {
+    pub fn call_addTextTrack(instance: *runtime.Instance, kind: TextTrackKind, label: DOMString, language: DOMString) anyerror!*runtime.Instance {
         
         return try HTMLMediaElementImpl.call_addTextTrack(instance, kind, label, language);
     }

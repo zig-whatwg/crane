@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -115,39 +115,39 @@ pub const AudioListener = struct {
         AudioListenerImpl.deinit(instance);
     }
 
-    pub fn get_positionX(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_positionX(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AudioListenerImpl.get_positionX(instance);
     }
 
-    pub fn get_positionY(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_positionY(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AudioListenerImpl.get_positionY(instance);
     }
 
-    pub fn get_positionZ(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_positionZ(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AudioListenerImpl.get_positionZ(instance);
     }
 
-    pub fn get_forwardX(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_forwardX(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AudioListenerImpl.get_forwardX(instance);
     }
 
-    pub fn get_forwardY(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_forwardY(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AudioListenerImpl.get_forwardY(instance);
     }
 
-    pub fn get_forwardZ(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_forwardZ(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AudioListenerImpl.get_forwardZ(instance);
     }
 
-    pub fn get_upX(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_upX(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AudioListenerImpl.get_upX(instance);
     }
 
-    pub fn get_upY(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_upY(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AudioListenerImpl.get_upY(instance);
     }
 
-    pub fn get_upZ(instance: *runtime.Instance) anyerror!AudioParam {
+    pub fn get_upZ(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AudioListenerImpl.get_upZ(instance);
     }
 

@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -69,7 +65,7 @@ pub fn call_popDebugGroup(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: setBindGroup
-pub fn call_setBindGroup(instance: *runtime.Instance, index: typedefs.GPUIndex32, bindGroup: interfaces.GPUBindGroup, dynamicOffsets: *const anyopaque) ImplError!void {
+pub fn call_setBindGroup(instance: *runtime.Instance, index: typedefs.GPUIndex32, bindGroup: *runtime.Instance, dynamicOffsets: *const anyopaque) ImplError!void {
     _ = instance;
     _ = index;
     _ = bindGroup;
@@ -78,7 +74,7 @@ pub fn call_setBindGroup(instance: *runtime.Instance, index: typedefs.GPUIndex32
 }
 
 /// Operation: dispatchWorkgroupsIndirect
-pub fn call_dispatchWorkgroupsIndirect(instance: *runtime.Instance, indirectBuffer: interfaces.GPUBuffer, indirectOffset: typedefs.GPUSize64) ImplError!void {
+pub fn call_dispatchWorkgroupsIndirect(instance: *runtime.Instance, indirectBuffer: *runtime.Instance, indirectOffset: typedefs.GPUSize64) ImplError!void {
     _ = instance;
     _ = indirectBuffer;
     _ = indirectOffset;
@@ -106,7 +102,7 @@ pub fn call_end(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: setPipeline
-pub fn call_setPipeline(instance: *runtime.Instance, pipeline: interfaces.GPUComputePipeline) ImplError!void {
+pub fn call_setPipeline(instance: *runtime.Instance, pipeline: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = pipeline;
     return error.NotImplemented;

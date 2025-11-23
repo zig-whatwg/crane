@@ -1,5 +1,5 @@
 //! Generated from: FileAPI.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -92,22 +92,22 @@ pub const FileReaderSync = struct {
         return try FileReaderSyncImpl.call_constructor(allocator, ctx);
     }
 
-    pub fn call_readAsArrayBuffer(instance: *runtime.Instance, blob: Blob) anyerror!*const anyopaque {
+    pub fn call_readAsArrayBuffer(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!*const anyopaque {
         
         return try FileReaderSyncImpl.call_readAsArrayBuffer(instance, blob);
     }
 
-    pub fn call_readAsBinaryString(instance: *runtime.Instance, blob: Blob) anyerror!DOMString {
+    pub fn call_readAsBinaryString(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!DOMString {
         
         return try FileReaderSyncImpl.call_readAsBinaryString(instance, blob);
     }
 
-    pub fn call_readAsDataURL(instance: *runtime.Instance, blob: Blob) anyerror!DOMString {
+    pub fn call_readAsDataURL(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!DOMString {
         
         return try FileReaderSyncImpl.call_readAsDataURL(instance, blob);
     }
 
-    pub fn call_readAsText(instance: *runtime.Instance, blob: Blob, encoding: DOMString) anyerror!DOMString {
+    pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: DOMString) anyerror!DOMString {
         
         return try FileReaderSyncImpl.call_readAsText(instance, blob, encoding);
     }

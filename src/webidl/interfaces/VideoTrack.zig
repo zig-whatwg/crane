@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -126,7 +126,7 @@ pub const VideoTrack = struct {
         try VideoTrackImpl.set_selected(instance, value);
     }
 
-    pub fn get_sourceBuffer(instance: *runtime.Instance) anyerror!SourceBuffer {
+    pub fn get_sourceBuffer(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try VideoTrackImpl.get_sourceBuffer(instance);
     }
 

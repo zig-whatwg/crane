@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -91,7 +87,7 @@ pub fn call_increaseZoomLevel(instance: *runtime.Instance) ImplError!*const anyo
 }
 
 /// Operation: forwardWheel
-pub fn call_forwardWheel(instance: *runtime.Instance, element: interfaces.HTMLElement) ImplError!*const anyopaque {
+pub fn call_forwardWheel(instance: *runtime.Instance, element: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     _ = element;
     return error.NotImplemented;

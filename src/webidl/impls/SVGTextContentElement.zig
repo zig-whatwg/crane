@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,13 +37,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for textLength
-pub fn get_textLength(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedLength {
+pub fn get_textLength(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for lengthAdjust
-pub fn get_lengthAdjust(instance: *runtime.Instance) ImplError!interfaces.SVGAnimatedEnumeration {
+pub fn get_lengthAdjust(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -61,7 +57,7 @@ pub fn call_selectSubString(instance: *runtime.Instance, charnum: u32, nchars: u
 }
 
 /// Operation: getExtentOfChar
-pub fn call_getExtentOfChar(instance: *runtime.Instance, charnum: u32) ImplError!interfaces.DOMRect {
+pub fn call_getExtentOfChar(instance: *runtime.Instance, charnum: u32) ImplError!*runtime.Instance {
     _ = instance;
     _ = charnum;
     return error.NotImplemented;
@@ -74,14 +70,14 @@ pub fn call_getNumberOfChars(instance: *runtime.Instance) ImplError!i32 {
 }
 
 /// Operation: getStartPositionOfChar
-pub fn call_getStartPositionOfChar(instance: *runtime.Instance, charnum: u32) ImplError!interfaces.DOMPoint {
+pub fn call_getStartPositionOfChar(instance: *runtime.Instance, charnum: u32) ImplError!*runtime.Instance {
     _ = instance;
     _ = charnum;
     return error.NotImplemented;
 }
 
 /// Operation: getEndPositionOfChar
-pub fn call_getEndPositionOfChar(instance: *runtime.Instance, charnum: u32) ImplError!interfaces.DOMPoint {
+pub fn call_getEndPositionOfChar(instance: *runtime.Instance, charnum: u32) ImplError!*runtime.Instance {
     _ = instance;
     _ = charnum;
     return error.NotImplemented;

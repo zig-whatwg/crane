@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,7 +37,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getTranslatedShaderSource
-pub fn call_getTranslatedShaderSource(instance: *runtime.Instance, shader: interfaces.WebGLShader) ImplError!runtime.DOMString {
+pub fn call_getTranslatedShaderSource(instance: *runtime.Instance, shader: *runtime.Instance) ImplError!runtime.DOMString {
     _ = instance;
     _ = shader;
     return error.NotImplemented;

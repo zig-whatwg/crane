@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -53,7 +49,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for writable
-pub fn get_writable(instance: *runtime.Instance) ImplError!interfaces.WritableStream {
+pub fn get_writable(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -65,7 +61,7 @@ pub fn get_muted(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Getter for track
-pub fn get_track(instance: *runtime.Instance) ImplError!interfaces.MediaStreamTrack {
+pub fn get_track(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

@@ -1,5 +1,5 @@
 //! Generated from: svg-paths.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -252,7 +252,7 @@ pub const SVGPathElement = struct {
         SVGPathElementImpl.deinit(instance);
     }
 
-    pub fn get_pathLength(instance: *runtime.Instance) anyerror!SVGAnimatedNumber {
+    pub fn get_pathLength(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGPathElementImpl.get_pathLength(instance);
     }
 
@@ -265,7 +265,7 @@ pub const SVGPathElement = struct {
         return try SVGPathElementImpl.call_getTotalLength(instance);
     }
 
-    pub fn call_getPointAtLength(instance: *runtime.Instance, distance: f32) anyerror!DOMPoint {
+    pub fn call_getPointAtLength(instance: *runtime.Instance, distance: f32) anyerror!*runtime.Instance {
         
         return try SVGPathElementImpl.call_getPointAtLength(instance, distance);
     }
@@ -275,7 +275,7 @@ pub const SVGPathElement = struct {
         return try SVGPathElementImpl.call_getPathData(instance, settings);
     }
 
-    pub fn call_getPathSegmentAtLength(instance: *runtime.Instance, distance: f32) anyerror!SVGPathSegment {
+    pub fn call_getPathSegmentAtLength(instance: *runtime.Instance, distance: f32) anyerror!*runtime.Instance {
         
         return try SVGPathElementImpl.call_getPathSegmentAtLength(instance, distance);
     }

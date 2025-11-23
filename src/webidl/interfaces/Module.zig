@@ -1,5 +1,5 @@
 //! Generated from: wasm-js-api.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -90,17 +90,17 @@ pub const Module = struct {
         return try ModuleImpl.call_constructor(allocator, ctx, bytes, options);
     }
 
-    pub fn call_exports(instance: *runtime.Instance, moduleObject: Module) anyerror!*const anyopaque {
+    pub fn call_exports(instance: *runtime.Instance, moduleObject: *runtime.Instance) anyerror!*const anyopaque {
         
         return try ModuleImpl.call_exports(instance, moduleObject);
     }
 
-    pub fn call_imports(instance: *runtime.Instance, moduleObject: Module) anyerror!*const anyopaque {
+    pub fn call_imports(instance: *runtime.Instance, moduleObject: *runtime.Instance) anyerror!*const anyopaque {
         
         return try ModuleImpl.call_imports(instance, moduleObject);
     }
 
-    pub fn call_customSections(instance: *runtime.Instance, moduleObject: Module, sectionName: DOMString) anyerror!*const anyopaque {
+    pub fn call_customSections(instance: *runtime.Instance, moduleObject: *runtime.Instance, sectionName: DOMString) anyerror!*const anyopaque {
         
         return try ModuleImpl.call_customSections(instance, moduleObject, sectionName);
     }

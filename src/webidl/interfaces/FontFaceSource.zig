@@ -1,5 +1,5 @@
 //! Generated from: css-font-loading.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -71,7 +71,7 @@ pub const FontFaceSource = struct {
         FontFaceSourceImpl.deinit(instance);
     }
 
-    pub fn get_fonts(instance: *runtime.Instance) anyerror!FontFaceSet {
+    pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try FontFaceSourceImpl.get_fonts(instance);
     }
 

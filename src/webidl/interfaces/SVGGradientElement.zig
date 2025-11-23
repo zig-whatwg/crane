@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -283,7 +283,7 @@ pub const SVGGradientElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_gradientUnits(instance: *runtime.Instance) anyerror!SVGAnimatedEnumeration {
+    pub fn get_gradientUnits(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_gradientUnits) |cached| {
@@ -295,7 +295,7 @@ pub const SVGGradientElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_gradientTransform(instance: *runtime.Instance) anyerror!SVGAnimatedTransformList {
+    pub fn get_gradientTransform(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_gradientTransform) |cached| {
@@ -307,7 +307,7 @@ pub const SVGGradientElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_spreadMethod(instance: *runtime.Instance) anyerror!SVGAnimatedEnumeration {
+    pub fn get_spreadMethod(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_spreadMethod) |cached| {
@@ -319,7 +319,7 @@ pub const SVGGradientElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_href(instance: *runtime.Instance) anyerror!SVGAnimatedString {
+    pub fn get_href(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_href) |cached| {

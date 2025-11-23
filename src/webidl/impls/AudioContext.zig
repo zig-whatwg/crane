@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -98,7 +94,7 @@ pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) Im
 }
 
 /// Operation: createMediaStreamSource
-pub fn call_createMediaStreamSource(instance: *runtime.Instance, mediaStream: interfaces.MediaStream) ImplError!interfaces.MediaStreamAudioSourceNode {
+pub fn call_createMediaStreamSource(instance: *runtime.Instance, mediaStream: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = mediaStream;
     return error.NotImplemented;
@@ -111,7 +107,7 @@ pub fn call_suspend(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Operation: createMediaStreamDestination
-pub fn call_createMediaStreamDestination(instance: *runtime.Instance) ImplError!interfaces.MediaStreamAudioDestinationNode {
+pub fn call_createMediaStreamDestination(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -123,14 +119,14 @@ pub fn call_getOutputTimestamp(instance: *runtime.Instance) ImplError!dictionari
 }
 
 /// Operation: createMediaStreamTrackSource
-pub fn call_createMediaStreamTrackSource(instance: *runtime.Instance, mediaStreamTrack: interfaces.MediaStreamTrack) ImplError!interfaces.MediaStreamTrackAudioSourceNode {
+pub fn call_createMediaStreamTrackSource(instance: *runtime.Instance, mediaStreamTrack: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = mediaStreamTrack;
     return error.NotImplemented;
 }
 
 /// Operation: createMediaElementSource
-pub fn call_createMediaElementSource(instance: *runtime.Instance, mediaElement: interfaces.HTMLMediaElement) ImplError!interfaces.MediaElementAudioSourceNode {
+pub fn call_createMediaElementSource(instance: *runtime.Instance, mediaElement: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = mediaElement;
     return error.NotImplemented;

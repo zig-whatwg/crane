@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,31 +37,31 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for colorScheme
-pub fn get_colorScheme(instance: *runtime.Instance) ImplError!interfaces.PreferenceObject {
+pub fn get_colorScheme(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for contrast
-pub fn get_contrast(instance: *runtime.Instance) ImplError!interfaces.PreferenceObject {
+pub fn get_contrast(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for reducedMotion
-pub fn get_reducedMotion(instance: *runtime.Instance) ImplError!interfaces.PreferenceObject {
+pub fn get_reducedMotion(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for reducedTransparency
-pub fn get_reducedTransparency(instance: *runtime.Instance) ImplError!interfaces.PreferenceObject {
+pub fn get_reducedTransparency(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for reducedData
-pub fn get_reducedData(instance: *runtime.Instance) ImplError!interfaces.PreferenceObject {
+pub fn get_reducedData(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:31Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -236,15 +236,15 @@ pub const WorkerGlobalScope = struct {
         WorkerGlobalScopeImpl.deinit(instance);
     }
 
-    pub fn get_self(instance: *runtime.Instance) anyerror!WorkerGlobalScope {
+    pub fn get_self(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WorkerGlobalScopeImpl.get_self(instance);
     }
 
-    pub fn get_location(instance: *runtime.Instance) anyerror!WorkerLocation {
+    pub fn get_location(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WorkerGlobalScopeImpl.get_location(instance);
     }
 
-    pub fn get_navigator(instance: *runtime.Instance) anyerror!WorkerNavigator {
+    pub fn get_navigator(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WorkerGlobalScopeImpl.get_navigator(instance);
     }
 
@@ -296,7 +296,7 @@ pub const WorkerGlobalScope = struct {
         try WorkerGlobalScopeImpl.set_onunhandledrejection(instance, value);
     }
 
-    pub fn get_fonts(instance: *runtime.Instance) anyerror!FontFaceSet {
+    pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WorkerGlobalScopeImpl.get_fonts(instance);
     }
 
@@ -314,7 +314,7 @@ pub const WorkerGlobalScope = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_indexedDB(instance: *runtime.Instance) anyerror!IDBFactory {
+    pub fn get_indexedDB(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_indexedDB) |cached| {
@@ -325,17 +325,17 @@ pub const WorkerGlobalScope = struct {
         return value;
     }
 
-    pub fn get_trustedTypes(instance: *runtime.Instance) anyerror!TrustedTypePolicyFactory {
+    pub fn get_trustedTypes(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WorkerGlobalScopeImpl.get_trustedTypes(instance);
     }
 
     /// Extended attributes: [Replaceable]
-    pub fn get_performance(instance: *runtime.Instance) anyerror!Performance {
+    pub fn get_performance(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WorkerGlobalScopeImpl.get_performance(instance);
     }
 
     /// Extended attributes: [SecureContext], [SameObject]
-    pub fn get_caches(instance: *runtime.Instance) anyerror!CacheStorage {
+    pub fn get_caches(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_caches) |cached| {
@@ -347,12 +347,12 @@ pub const WorkerGlobalScope = struct {
     }
 
     /// Extended attributes: [Replaceable]
-    pub fn get_scheduler(instance: *runtime.Instance) anyerror!Scheduler {
+    pub fn get_scheduler(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WorkerGlobalScopeImpl.get_scheduler(instance);
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_crypto(instance: *runtime.Instance) anyerror!Crypto {
+    pub fn get_crypto(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_crypto) |cached| {

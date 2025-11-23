@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -256,7 +256,7 @@ pub const SVGEllipseElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_cx(instance: *runtime.Instance) anyerror!SVGAnimatedLength {
+    pub fn get_cx(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_cx) |cached| {
@@ -268,7 +268,7 @@ pub const SVGEllipseElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_cy(instance: *runtime.Instance) anyerror!SVGAnimatedLength {
+    pub fn get_cy(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_cy) |cached| {
@@ -280,7 +280,7 @@ pub const SVGEllipseElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_rx(instance: *runtime.Instance) anyerror!SVGAnimatedLength {
+    pub fn get_rx(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_rx) |cached| {
@@ -292,7 +292,7 @@ pub const SVGEllipseElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_ry(instance: *runtime.Instance) anyerror!SVGAnimatedLength {
+    pub fn get_ry(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_ry) |cached| {

@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -41,19 +37,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for self
-pub fn get_self(instance: *runtime.Instance) ImplError!interfaces.WorkerGlobalScope {
+pub fn get_self(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for location
-pub fn get_location(instance: *runtime.Instance) ImplError!interfaces.WorkerLocation {
+pub fn get_location(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for navigator
-pub fn get_navigator(instance: *runtime.Instance) ImplError!interfaces.WorkerNavigator {
+pub fn get_navigator(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -95,7 +91,7 @@ pub fn get_onunhandledrejection(instance: *runtime.Instance) ImplError!typedefs.
 }
 
 /// Getter for fonts
-pub fn get_fonts(instance: *runtime.Instance) ImplError!interfaces.FontFaceSet {
+pub fn get_fonts(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -119,37 +115,37 @@ pub fn get_crossOriginIsolated(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Getter for indexedDB
-pub fn get_indexedDB(instance: *runtime.Instance) ImplError!interfaces.IDBFactory {
+pub fn get_indexedDB(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for trustedTypes
-pub fn get_trustedTypes(instance: *runtime.Instance) ImplError!interfaces.TrustedTypePolicyFactory {
+pub fn get_trustedTypes(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for performance
-pub fn get_performance(instance: *runtime.Instance) ImplError!interfaces.Performance {
+pub fn get_performance(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for caches
-pub fn get_caches(instance: *runtime.Instance) ImplError!interfaces.CacheStorage {
+pub fn get_caches(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for scheduler
-pub fn get_scheduler(instance: *runtime.Instance) ImplError!interfaces.Scheduler {
+pub fn get_scheduler(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for crypto
-pub fn get_crypto(instance: *runtime.Instance) ImplError!interfaces.Crypto {
+pub fn get_crypto(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

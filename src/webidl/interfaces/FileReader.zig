@@ -1,5 +1,5 @@
 //! Generated from: FileAPI.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -194,7 +194,7 @@ pub const FileReader = struct {
         return try FileReaderImpl.get_result(instance);
     }
 
-    pub fn get_error(instance: *runtime.Instance) anyerror!DOMException {
+    pub fn get_error(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try FileReaderImpl.get_error(instance);
     }
 
@@ -246,17 +246,17 @@ pub const FileReader = struct {
         try FileReaderImpl.set_onloadend(instance, value);
     }
 
-    pub fn call_readAsArrayBuffer(instance: *runtime.Instance, blob: Blob) anyerror!void {
+    pub fn call_readAsArrayBuffer(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!void {
         
         return try FileReaderImpl.call_readAsArrayBuffer(instance, blob);
     }
 
-    pub fn call_readAsBinaryString(instance: *runtime.Instance, blob: Blob) anyerror!void {
+    pub fn call_readAsBinaryString(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!void {
         
         return try FileReaderImpl.call_readAsBinaryString(instance, blob);
     }
 
-    pub fn call_readAsDataURL(instance: *runtime.Instance, blob: Blob) anyerror!void {
+    pub fn call_readAsDataURL(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!void {
         
         return try FileReaderImpl.call_readAsDataURL(instance, blob);
     }
@@ -265,7 +265,7 @@ pub const FileReader = struct {
         return try FileReaderImpl.call_abort(instance);
     }
 
-    pub fn call_readAsText(instance: *runtime.Instance, blob: Blob, encoding: DOMString) anyerror!void {
+    pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: DOMString) anyerror!void {
         
         return try FileReaderImpl.call_readAsText(instance, blob, encoding);
     }

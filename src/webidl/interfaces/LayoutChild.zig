@@ -1,5 +1,5 @@
 //! Generated from: css-layout-api.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -87,7 +87,7 @@ pub const LayoutChild = struct {
         LayoutChildImpl.deinit(instance);
     }
 
-    pub fn get_styleMap(instance: *runtime.Instance) anyerror!StylePropertyMapReadOnly {
+    pub fn get_styleMap(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try LayoutChildImpl.get_styleMap(instance);
     }
 
@@ -95,7 +95,7 @@ pub const LayoutChild = struct {
         return try LayoutChildImpl.call_intrinsicSizes(instance);
     }
 
-    pub fn call_layoutNextFragment(instance: *runtime.Instance, constraints: LayoutConstraintsOptions, breakToken: ChildBreakToken) anyerror!*const anyopaque {
+    pub fn call_layoutNextFragment(instance: *runtime.Instance, constraints: LayoutConstraintsOptions, breakToken: *runtime.Instance) anyerror!*const anyopaque {
         
         return try LayoutChildImpl.call_layoutNextFragment(instance, constraints, breakToken);
     }

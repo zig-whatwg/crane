@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -65,7 +61,7 @@ pub fn get_disabled(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Getter for form
-pub fn get_form(instance: *runtime.Instance) ImplError!interfaces.HTMLFormElement {
+pub fn get_form(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -101,7 +97,7 @@ pub fn get_type(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for options
-pub fn get_options(instance: *runtime.Instance) ImplError!interfaces.HTMLOptionsCollection {
+pub fn get_options(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -113,7 +109,7 @@ pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
 }
 
 /// Getter for selectedOptions
-pub fn get_selectedOptions(instance: *runtime.Instance) ImplError!interfaces.HTMLCollection {
+pub fn get_selectedOptions(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -137,7 +133,7 @@ pub fn get_willValidate(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Getter for validity
-pub fn get_validity(instance: *runtime.Instance) ImplError!interfaces.ValidityState {
+pub fn get_validity(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -149,7 +145,7 @@ pub fn get_validationMessage(instance: *runtime.Instance) ImplError!runtime.DOMS
 }
 
 /// Getter for labels
-pub fn get_labels(instance: *runtime.Instance) ImplError!interfaces.NodeList {
+pub fn get_labels(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -218,14 +214,14 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) ImplErro
 }
 
 /// Operation: item
-pub fn call_item(instance: *runtime.Instance, index: u32) ImplError!interfaces.HTMLOptionElement {
+pub fn call_item(instance: *runtime.Instance, index: u32) ImplError!*runtime.Instance {
     _ = instance;
     _ = index;
     return error.NotImplemented;
 }
 
 /// Operation: namedItem
-pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) ImplError!interfaces.HTMLOptionElement {
+pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = name;
     return error.NotImplemented;

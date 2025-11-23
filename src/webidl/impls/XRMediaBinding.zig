@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -42,7 +38,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, session: interfaces.XRSession) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, session: *runtime.Instance) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &XRMediaBinding.vtable, ctx);
     errdefer deinit(instance);
@@ -54,7 +50,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, sess
 }
 
 /// Operation: createCylinderLayer
-pub fn call_createCylinderLayer(instance: *runtime.Instance, video: interfaces.HTMLVideoElement, init_data: dictionaries.XRMediaCylinderLayerInit) ImplError!interfaces.XRCylinderLayer {
+pub fn call_createCylinderLayer(instance: *runtime.Instance, video: *runtime.Instance, init_data: dictionaries.XRMediaCylinderLayerInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = video;
     _ = init_data;
@@ -62,7 +58,7 @@ pub fn call_createCylinderLayer(instance: *runtime.Instance, video: interfaces.H
 }
 
 /// Operation: createQuadLayer
-pub fn call_createQuadLayer(instance: *runtime.Instance, video: interfaces.HTMLVideoElement, init_data: dictionaries.XRMediaQuadLayerInit) ImplError!interfaces.XRQuadLayer {
+pub fn call_createQuadLayer(instance: *runtime.Instance, video: *runtime.Instance, init_data: dictionaries.XRMediaQuadLayerInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = video;
     _ = init_data;
@@ -70,7 +66,7 @@ pub fn call_createQuadLayer(instance: *runtime.Instance, video: interfaces.HTMLV
 }
 
 /// Operation: createEquirectLayer
-pub fn call_createEquirectLayer(instance: *runtime.Instance, video: interfaces.HTMLVideoElement, init_data: dictionaries.XRMediaEquirectLayerInit) ImplError!interfaces.XREquirectLayer {
+pub fn call_createEquirectLayer(instance: *runtime.Instance, video: *runtime.Instance, init_data: dictionaries.XRMediaEquirectLayerInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = video;
     _ = init_data;

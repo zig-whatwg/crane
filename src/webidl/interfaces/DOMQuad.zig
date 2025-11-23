@@ -1,5 +1,5 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -120,7 +120,7 @@ pub const DOMQuad = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_p1(instance: *runtime.Instance) anyerror!DOMPoint {
+    pub fn get_p1(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_p1) |cached| {
@@ -132,7 +132,7 @@ pub const DOMQuad = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_p2(instance: *runtime.Instance) anyerror!DOMPoint {
+    pub fn get_p2(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_p2) |cached| {
@@ -144,7 +144,7 @@ pub const DOMQuad = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_p3(instance: *runtime.Instance) anyerror!DOMPoint {
+    pub fn get_p3(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_p3) |cached| {
@@ -156,7 +156,7 @@ pub const DOMQuad = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_p4(instance: *runtime.Instance) anyerror!DOMPoint {
+    pub fn get_p4(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_p4) |cached| {
@@ -168,20 +168,20 @@ pub const DOMQuad = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getBounds(instance: *runtime.Instance) anyerror!DOMRect {
+    pub fn call_getBounds(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         return try DOMQuadImpl.call_getBounds(instance);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_fromQuad(instance: *runtime.Instance, other: DOMQuadInit) anyerror!DOMQuad {
+    pub fn call_fromQuad(instance: *runtime.Instance, other: DOMQuadInit) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMQuadImpl.call_fromQuad(instance, other);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_fromRect(instance: *runtime.Instance, other: DOMRectInit) anyerror!DOMQuad {
+    pub fn call_fromRect(instance: *runtime.Instance, other: DOMRectInit) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMQuadImpl.call_fromRect(instance, other);

@@ -1,7 +1,6 @@
 //! WebIDL namespace: console
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
-//! TEMPORARY: Manually updated to use ConsoleValue instead of anyopaque (TODO: fix codegen)
 
 const runtime = @import("runtime");
 const console_impl = @import("impls").console;
@@ -12,7 +11,7 @@ pub const console = struct {
         pub const is_namespace = true;
         pub const BaseType = ?*anyopaque;
         pub const MixinTypes = &.{};
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name)
         pub const methods = .{
             .{ "info", "call_info" },
@@ -35,22 +34,22 @@ pub const console = struct {
             .{ "dirxml", "call_dirxml" },
             .{ "countReset", "call_countReset" },
         };
-
+        
         pub const has_constructor = false;
         pub const properties = .{};
     };
 
     pub const State = struct {};
 
-    pub fn call_info(ctx: runtime.Context, data: []const runtime.ConsoleValue) void {
+    pub fn call_info(ctx: runtime.Context, data: []const *const anyopaque) void {
         return console_impl.call_info(ctx, data);
     }
 
-    pub fn call_group(ctx: runtime.Context, data: []const runtime.ConsoleValue) void {
+    pub fn call_group(ctx: runtime.Context, data: []const *const anyopaque) void {
         return console_impl.call_group(ctx, data);
     }
 
-    pub fn call_groupCollapsed(ctx: runtime.Context, data: []const runtime.ConsoleValue) void {
+    pub fn call_groupCollapsed(ctx: runtime.Context, data: []const *const anyopaque) void {
         return console_impl.call_groupCollapsed(ctx, data);
     }
 
@@ -58,11 +57,11 @@ pub const console = struct {
         return console_impl.call_groupEnd(ctx);
     }
 
-    pub fn call_timeLog(ctx: runtime.Context, label: runtime.DOMString, data: []const runtime.ConsoleValue) void {
+    pub fn call_timeLog(ctx: runtime.Context, label: runtime.DOMString, data: []const *const anyopaque) void {
         return console_impl.call_timeLog(ctx, label, data);
     }
 
-    pub fn call_trace(ctx: runtime.Context, data: []const runtime.ConsoleValue) void {
+    pub fn call_trace(ctx: runtime.Context, data: []const *const anyopaque) void {
         return console_impl.call_trace(ctx, data);
     }
 
@@ -78,7 +77,7 @@ pub const console = struct {
         return console_impl.call_time(ctx, label);
     }
 
-    pub fn call_warn(ctx: runtime.Context, data: []const runtime.ConsoleValue) void {
+    pub fn call_warn(ctx: runtime.Context, data: []const *const anyopaque) void {
         return console_impl.call_warn(ctx, data);
     }
 
@@ -86,15 +85,15 @@ pub const console = struct {
         return console_impl.call_clear(ctx);
     }
 
-    pub fn call_log(ctx: runtime.Context, data: []const runtime.ConsoleValue) void {
+    pub fn call_log(ctx: runtime.Context, data: []const *const anyopaque) void {
         return console_impl.call_log(ctx, data);
     }
 
-    pub fn call_error(ctx: runtime.Context, data: []const runtime.ConsoleValue) void {
+    pub fn call_error(ctx: runtime.Context, data: []const *const anyopaque) void {
         return console_impl.call_error(ctx, data);
     }
 
-    pub fn call_assert(ctx: runtime.Context, condition: bool, data: []const runtime.ConsoleValue) void {
+    pub fn call_assert(ctx: runtime.Context, condition: bool, data: []const *const anyopaque) void {
         return console_impl.call_assert(ctx, condition, data);
     }
 
@@ -102,7 +101,7 @@ pub const console = struct {
         return console_impl.call_table(ctx, tabularData, properties);
     }
 
-    pub fn call_debug(ctx: runtime.Context, data: []const runtime.ConsoleValue) void {
+    pub fn call_debug(ctx: runtime.Context, data: []const *const anyopaque) void {
         return console_impl.call_debug(ctx, data);
     }
 
@@ -117,4 +116,5 @@ pub const console = struct {
     pub fn call_countReset(ctx: runtime.Context, label: runtime.DOMString) void {
         return console_impl.call_countReset(ctx, label);
     }
+
 };

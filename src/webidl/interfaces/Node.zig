@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -344,20 +344,20 @@ pub const Node = struct {
         return try NodeImpl.get_isConnected(instance);
     }
 
-    pub fn get_ownerDocument(instance: *runtime.Instance) anyerror!Document {
+    pub fn get_ownerDocument(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NodeImpl.get_ownerDocument(instance);
     }
 
-    pub fn get_parentNode(instance: *runtime.Instance) anyerror!Node {
+    pub fn get_parentNode(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NodeImpl.get_parentNode(instance);
     }
 
-    pub fn get_parentElement(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_parentElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NodeImpl.get_parentElement(instance);
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_childNodes(instance: *runtime.Instance) anyerror!NodeList {
+    pub fn get_childNodes(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_childNodes) |cached| {
@@ -368,19 +368,19 @@ pub const Node = struct {
         return value;
     }
 
-    pub fn get_firstChild(instance: *runtime.Instance) anyerror!Node {
+    pub fn get_firstChild(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NodeImpl.get_firstChild(instance);
     }
 
-    pub fn get_lastChild(instance: *runtime.Instance) anyerror!Node {
+    pub fn get_lastChild(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NodeImpl.get_lastChild(instance);
     }
 
-    pub fn get_previousSibling(instance: *runtime.Instance) anyerror!Node {
+    pub fn get_previousSibling(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NodeImpl.get_previousSibling(instance);
     }
 
-    pub fn get_nextSibling(instance: *runtime.Instance) anyerror!Node {
+    pub fn get_nextSibling(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NodeImpl.get_nextSibling(instance);
     }
 
@@ -417,18 +417,18 @@ pub const Node = struct {
         return try NodeImpl.call_isDefaultNamespace(instance, namespace);
     }
 
-    pub fn call_compareDocumentPosition(instance: *runtime.Instance, other: Node) anyerror!u16 {
+    pub fn call_compareDocumentPosition(instance: *runtime.Instance, other: *runtime.Instance) anyerror!u16 {
         
         return try NodeImpl.call_compareDocumentPosition(instance, other);
     }
 
-    pub fn call_contains(instance: *runtime.Instance, other: Node) anyerror!bool {
+    pub fn call_contains(instance: *runtime.Instance, other: *runtime.Instance) anyerror!bool {
         
         return try NodeImpl.call_contains(instance, other);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_insertBefore(instance: *runtime.Instance, node: Node, child: Node) anyerror!Node {
+    pub fn call_insertBefore(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -443,7 +443,7 @@ pub const Node = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_appendChild(instance: *runtime.Instance, node: Node) anyerror!Node {
+    pub fn call_appendChild(instance: *runtime.Instance, node: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -457,7 +457,7 @@ pub const Node = struct {
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
-    pub fn call_cloneNode(instance: *runtime.Instance, subtree: bool) anyerror!Node {
+    pub fn call_cloneNode(instance: *runtime.Instance, subtree: bool) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -467,13 +467,13 @@ pub const Node = struct {
         return try NodeImpl.call_cloneNode(instance, subtree);
     }
 
-    pub fn call_getRootNode(instance: *runtime.Instance, options: GetRootNodeOptions) anyerror!Node {
+    pub fn call_getRootNode(instance: *runtime.Instance, options: GetRootNodeOptions) anyerror!*runtime.Instance {
         
         return try NodeImpl.call_getRootNode(instance, options);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_removeChild(instance: *runtime.Instance, child: Node) anyerror!Node {
+    pub fn call_removeChild(instance: *runtime.Instance, child: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -482,7 +482,7 @@ pub const Node = struct {
         return try NodeImpl.call_removeChild(instance, child);
     }
 
-    pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: Node) anyerror!bool {
+    pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: *runtime.Instance) anyerror!bool {
         
         return try NodeImpl.call_isEqualNode(instance, otherNode);
     }
@@ -497,7 +497,7 @@ pub const Node = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_replaceChild(instance: *runtime.Instance, node: Node, child: Node) anyerror!Node {
+    pub fn call_replaceChild(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -506,7 +506,7 @@ pub const Node = struct {
         return try NodeImpl.call_replaceChild(instance, node, child);
     }
 
-    pub fn call_isSameNode(instance: *runtime.Instance, otherNode: Node) anyerror!bool {
+    pub fn call_isSameNode(instance: *runtime.Instance, otherNode: *runtime.Instance) anyerror!bool {
         
         return try NodeImpl.call_isSameNode(instance, otherNode);
     }

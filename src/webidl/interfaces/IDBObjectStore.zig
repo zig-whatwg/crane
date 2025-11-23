@@ -1,5 +1,5 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -164,12 +164,12 @@ pub const IDBObjectStore = struct {
         return try IDBObjectStoreImpl.get_keyPath(instance);
     }
 
-    pub fn get_indexNames(instance: *runtime.Instance) anyerror!DOMStringList {
+    pub fn get_indexNames(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try IDBObjectStoreImpl.get_indexNames(instance);
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_transaction(instance: *runtime.Instance) anyerror!IDBTransaction {
+    pub fn get_transaction(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_transaction) |cached| {
@@ -185,7 +185,7 @@ pub const IDBObjectStore = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_delete(instance: *runtime.Instance, query: *const anyopaque) anyerror!IDBRequest {
+    pub fn call_delete(instance: *runtime.Instance, query: *const anyopaque) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBObjectStoreImpl.call_delete(instance, query);
@@ -197,7 +197,7 @@ pub const IDBObjectStore = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: *const anyopaque, count: u32) anyerror!IDBRequest {
+    pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: *const anyopaque, count: u32) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         // [EnforceRange] on count
         if (!runtime.isInRange(u32, count)) return error.TypeError;
@@ -206,46 +206,46 @@ pub const IDBObjectStore = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_openKeyCursor(instance: *runtime.Instance, query: *const anyopaque, direction: IDBCursorDirection) anyerror!IDBRequest {
+    pub fn call_openKeyCursor(instance: *runtime.Instance, query: *const anyopaque, direction: IDBCursorDirection) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBObjectStoreImpl.call_openKeyCursor(instance, query, direction);
     }
 
-    pub fn call_index(instance: *runtime.Instance, name: DOMString) anyerror!IDBIndex {
+    pub fn call_index(instance: *runtime.Instance, name: DOMString) anyerror!*runtime.Instance {
         
         return try IDBObjectStoreImpl.call_index(instance, name);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_count(instance: *runtime.Instance, query: *const anyopaque) anyerror!IDBRequest {
+    pub fn call_count(instance: *runtime.Instance, query: *const anyopaque) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBObjectStoreImpl.call_count(instance, query);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_add(instance: *runtime.Instance, value: *const anyopaque, key: *const anyopaque) anyerror!IDBRequest {
+    pub fn call_add(instance: *runtime.Instance, value: *const anyopaque, key: *const anyopaque) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBObjectStoreImpl.call_add(instance, value, key);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_clear(instance: *runtime.Instance) anyerror!IDBRequest {
+    pub fn call_clear(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         return try IDBObjectStoreImpl.call_clear(instance);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_openCursor(instance: *runtime.Instance, query: *const anyopaque, direction: IDBCursorDirection) anyerror!IDBRequest {
+    pub fn call_openCursor(instance: *runtime.Instance, query: *const anyopaque, direction: IDBCursorDirection) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBObjectStoreImpl.call_openCursor(instance, query, direction);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: *const anyopaque, count: u32) anyerror!IDBRequest {
+    pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: *const anyopaque, count: u32) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         // [EnforceRange] on count
         if (!runtime.isInRange(u32, count)) return error.TypeError;
@@ -254,35 +254,35 @@ pub const IDBObjectStore = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_put(instance: *runtime.Instance, value: *const anyopaque, key: *const anyopaque) anyerror!IDBRequest {
+    pub fn call_put(instance: *runtime.Instance, value: *const anyopaque, key: *const anyopaque) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBObjectStoreImpl.call_put(instance, value, key);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getAllRecords(instance: *runtime.Instance, options: IDBGetAllOptions) anyerror!IDBRequest {
+    pub fn call_getAllRecords(instance: *runtime.Instance, options: IDBGetAllOptions) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBObjectStoreImpl.call_getAllRecords(instance, options);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getKey(instance: *runtime.Instance, query: *const anyopaque) anyerror!IDBRequest {
+    pub fn call_getKey(instance: *runtime.Instance, query: *const anyopaque) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBObjectStoreImpl.call_getKey(instance, query);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_get(instance: *runtime.Instance, query: *const anyopaque) anyerror!IDBRequest {
+    pub fn call_get(instance: *runtime.Instance, query: *const anyopaque) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBObjectStoreImpl.call_get(instance, query);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createIndex(instance: *runtime.Instance, name: DOMString, keyPath: *const anyopaque, options: IDBIndexParameters) anyerror!IDBIndex {
+    pub fn call_createIndex(instance: *runtime.Instance, name: DOMString, keyPath: *const anyopaque, options: IDBIndexParameters) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBObjectStoreImpl.call_createIndex(instance, name, keyPath, options);

@@ -1,5 +1,5 @@
 //! Generated from: webtransport.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -85,11 +85,11 @@ pub const WebTransportBidirectionalStream = struct {
         WebTransportBidirectionalStreamImpl.deinit(instance);
     }
 
-    pub fn get_readable(instance: *runtime.Instance) anyerror!WebTransportReceiveStream {
+    pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WebTransportBidirectionalStreamImpl.get_readable(instance);
     }
 
-    pub fn get_writable(instance: *runtime.Instance) anyerror!WebTransportSendStream {
+    pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WebTransportBidirectionalStreamImpl.get_writable(instance);
     }
 

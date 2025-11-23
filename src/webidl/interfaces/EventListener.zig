@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -68,7 +68,7 @@ pub const EventListener = struct {
         EventListenerImpl.deinit(instance);
     }
 
-    pub fn call_handleEvent(instance: *runtime.Instance, event: Event) anyerror!void {
+    pub fn call_handleEvent(instance: *runtime.Instance, event: *runtime.Instance) anyerror!void {
         
         return try EventListenerImpl.call_handleEvent(instance, event);
     }

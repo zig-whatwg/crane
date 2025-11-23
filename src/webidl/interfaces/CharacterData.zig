@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -168,11 +168,11 @@ pub const CharacterData = struct {
         return try CharacterDataImpl.get_length(instance);
     }
 
-    pub fn get_previousElementSibling(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_previousElementSibling(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CharacterDataImpl.get_previousElementSibling(instance);
     }
 
-    pub fn get_nextElementSibling(instance: *runtime.Instance) anyerror!Element {
+    pub fn get_nextElementSibling(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CharacterDataImpl.get_nextElementSibling(instance);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: webxrlayers.idl
-//! Generated at: 2025-11-23T16:59:12Z
+//! Generated at: 2025-11-23T19:17:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -120,19 +120,19 @@ pub const XRCylinderLayer = struct {
         XRCylinderLayerImpl.deinit(instance);
     }
 
-    pub fn get_space(instance: *runtime.Instance) anyerror!XRSpace {
+    pub fn get_space(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try XRCylinderLayerImpl.get_space(instance);
     }
 
-    pub fn set_space(instance: *runtime.Instance, value: XRSpace) anyerror!void {
+    pub fn set_space(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         try XRCylinderLayerImpl.set_space(instance, value);
     }
 
-    pub fn get_transform(instance: *runtime.Instance) anyerror!XRRigidTransform {
+    pub fn get_transform(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try XRCylinderLayerImpl.get_transform(instance);
     }
 
-    pub fn set_transform(instance: *runtime.Instance, value: XRRigidTransform) anyerror!void {
+    pub fn set_transform(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         try XRCylinderLayerImpl.set_transform(instance, value);
     }
 

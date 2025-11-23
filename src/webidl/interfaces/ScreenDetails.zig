@@ -1,5 +1,5 @@
 //! Generated from: window-management.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -109,7 +109,7 @@ pub const ScreenDetails = struct {
         return try ScreenDetailsImpl.get_screens(instance);
     }
 
-    pub fn get_currentScreen(instance: *runtime.Instance) anyerror!ScreenDetailed {
+    pub fn get_currentScreen(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ScreenDetailsImpl.get_currentScreen(instance);
     }
 

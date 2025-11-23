@@ -1,5 +1,5 @@
 //! Generated from: fenced-frame.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -106,7 +106,7 @@ pub const Fence = struct {
         return try FenceImpl.call_disableUntrustedNetwork(instance);
     }
 
-    pub fn call_notifyEvent(instance: *runtime.Instance, event: Event) anyerror!void {
+    pub fn call_notifyEvent(instance: *runtime.Instance, event: *runtime.Instance) anyerror!void {
         
         return try FenceImpl.call_notifyEvent(instance, event);
     }

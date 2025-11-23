@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T16:59:14Z
+//! Generated at: 2025-11-23T19:17:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -88,7 +88,7 @@ pub const MutationObserver = struct {
         return try MutationObserverImpl.call_constructor(allocator, ctx, callback);
     }
 
-    pub fn call_observe(instance: *runtime.Instance, target: Node, options: MutationObserverInit) anyerror!void {
+    pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, options: MutationObserverInit) anyerror!void {
         
         return try MutationObserverImpl.call_observe(instance, target, options);
     }

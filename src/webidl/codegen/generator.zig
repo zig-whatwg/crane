@@ -515,8 +515,9 @@ fn writeTypeSimple(w: anytype, webidl_type: types.IDLType, type_registry: ?*cons
             if (reg.lookup(type_str)) |kind| {
                 switch (kind) {
                     .interface => {
-                        // Qualify with module (impls import `const interfaces = @import("interfaces")`)
-                        try w.print("interfaces.{s}", .{type_str});
+                        // For impl files, interface parameters should be *runtime.Instance
+                        // so they can access the runtime object's internal state
+                        try w.writeAll("*runtime.Instance");
                     },
                     .typedef => {
                         // Qualify with module

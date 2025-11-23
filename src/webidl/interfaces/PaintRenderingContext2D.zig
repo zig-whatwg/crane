@@ -1,5 +1,5 @@
 //! Generated from: css-paint-api.idl
-//! Generated at: 2025-11-23T16:59:13Z
+//! Generated at: 2025-11-23T19:17:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -458,7 +458,7 @@ pub const PaintRenderingContext2D = struct {
         return try PaintRenderingContext2DImpl.call_clearRect(instance, x, y, w, h);
     }
 
-    pub fn call_createConicGradient(instance: *runtime.Instance, startAngle: f64, x: f64, y: f64) anyerror!CanvasGradient {
+    pub fn call_createConicGradient(instance: *runtime.Instance, startAngle: f64, x: f64, y: f64) anyerror!*runtime.Instance {
         
         return try PaintRenderingContext2DImpl.call_createConicGradient(instance, startAngle, x, y);
     }
@@ -496,12 +496,12 @@ pub const PaintRenderingContext2D = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getTransform(instance: *runtime.Instance) anyerror!DOMMatrix {
+    pub fn call_getTransform(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         return try PaintRenderingContext2DImpl.call_getTransform(instance);
     }
 
-    pub fn call_createRadialGradient(instance: *runtime.Instance, x0: f64, y0: f64, r0: f64, x1: f64, y1: f64, r1: f64) anyerror!CanvasGradient {
+    pub fn call_createRadialGradient(instance: *runtime.Instance, x0: f64, y0: f64, r0: f64, x1: f64, y1: f64, r1: f64) anyerror!*runtime.Instance {
         
         return try PaintRenderingContext2DImpl.call_createRadialGradient(instance, x0, y0, r0, x1, y1, r1);
     }
@@ -515,7 +515,7 @@ pub const PaintRenderingContext2D = struct {
         return try PaintRenderingContext2DImpl.call_roundRect(instance, x, y, w, h, radii);
     }
 
-    pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: DOMString) anyerror!CanvasPattern {
+    pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: DOMString) anyerror!*runtime.Instance {
         
         return try PaintRenderingContext2DImpl.call_createPattern(instance, image, repetition);
     }
@@ -582,7 +582,7 @@ pub const PaintRenderingContext2D = struct {
         return try PaintRenderingContext2DImpl.call_translate(instance, x, y);
     }
 
-    pub fn call_createLinearGradient(instance: *runtime.Instance, x0: f64, y0: f64, x1: f64, y1: f64) anyerror!CanvasGradient {
+    pub fn call_createLinearGradient(instance: *runtime.Instance, x0: f64, y0: f64, x1: f64, y1: f64) anyerror!*runtime.Instance {
         
         return try PaintRenderingContext2DImpl.call_createLinearGradient(instance, x0, y0, x1, y1);
     }

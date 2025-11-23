@@ -18,10 +18,6 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -53,7 +49,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for grammars
-pub fn get_grammars(instance: *runtime.Instance) ImplError!interfaces.SpeechGrammarList {
+pub fn get_grammars(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -161,7 +157,7 @@ pub fn get_onend(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
 }
 
 /// Setter for grammars
-pub fn set_grammars(instance: *runtime.Instance, value: interfaces.SpeechGrammarList) ImplError!void {
+pub fn set_grammars(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
