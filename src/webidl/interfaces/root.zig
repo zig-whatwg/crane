@@ -1144,6 +1144,7 @@ pub const WebTransportWriter = @import("WebTransportWriter.zig").WebTransportWri
 pub const WheelEvent = @import("WheelEvent.zig").WheelEvent;
 pub const Window = @import("Window.zig").Window;
 pub const WindowClient = @import("WindowClient.zig").WindowClient;
+pub const WindowProxy = @import("WindowProxy.zig").WindowProxy;
 pub const WindowControlsOverlay = @import("WindowControlsOverlay.zig").WindowControlsOverlay;
 pub const WindowControlsOverlayGeometryChangeEvent = @import("WindowControlsOverlayGeometryChangeEvent.zig").WindowControlsOverlayGeometryChangeEvent;
 pub const WindowEventHandlers = @import("WindowEventHandlers.zig").WindowEventHandlers;
@@ -1232,3 +1233,6 @@ pub const XRWebGLLayer = @import("XRWebGLLayer.zig").XRWebGLLayer;
 pub const XRWebGLSubImage = @import("XRWebGLSubImage.zig").XRWebGLSubImage;
 pub const XRWorldMesh = @import("XRWorldMesh.zig").XRWorldMesh;
 pub const XSLTProcessor = @import("XSLTProcessor.zig").XSLTProcessor;
+
+// Re-export commonly used typedefs for convenience
+pub const CSSOMString = @import("typedefs").CSSOMString;

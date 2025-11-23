@@ -137,6 +137,56 @@ pub fn build(b: *std.Build) void {
     codegen_mod.addImport("infra", infra_mod);
 
     // ========================================================================
+    // WEBIDL CALLBACKS MODULE
+    // ========================================================================
+
+    const callbacks_mod = b.addModule("callbacks", .{
+        .root_source_file = b.path("src/webidl/callbacks/root.zig"),
+        .target = target,
+    });
+    callbacks_mod.addImport("runtime", runtime_mod);
+
+    // ========================================================================
+    // WEBIDL DICTIONARIES MODULE
+    // ========================================================================
+
+    const dictionaries_mod = b.addModule("dictionaries", .{
+        .root_source_file = b.path("src/webidl/dictionaries/root.zig"),
+        .target = target,
+    });
+    dictionaries_mod.addImport("runtime", runtime_mod);
+
+    // ========================================================================
+    // WEBIDL ENUMS MODULE
+    // ========================================================================
+
+    const enums_mod = b.addModule("enums", .{
+        .root_source_file = b.path("src/webidl/enums/root.zig"),
+        .target = target,
+    });
+
+    // ========================================================================
+    // WEBIDL NAMESPACES MODULE
+    // ========================================================================
+
+    const namespaces_mod = b.addModule("namespaces", .{
+        .root_source_file = b.path("src/webidl/namespaces/root.zig"),
+        .target = target,
+    });
+    namespaces_mod.addImport("runtime", runtime_mod);
+
+    // ========================================================================
+    // WEBIDL TYPEDEFS MODULE
+    // ========================================================================
+
+    const typedefs_mod = b.addModule("typedefs", .{
+        .root_source_file = b.path("src/webidl/typedefs/root.zig"),
+        .target = target,
+    });
+    typedefs_mod.addImport("runtime", runtime_mod);
+    typedefs_mod.addImport("callbacks", callbacks_mod);
+
+    // ========================================================================
     // INTERFACES MODULE (WebIDL interface definitions)
     // All interfaces in one module so they can import each other with relative paths
     // ========================================================================
@@ -158,10 +208,17 @@ pub fn build(b: *std.Build) void {
     impls_mod.addImport("runtime", runtime_mod);
 
     // Cross-imports for WebIDL modules
+    interfaces_mod.addImport("interfaces", interfaces_mod); // Self-import for cross-interface refs
     interfaces_mod.addImport("impls", impls_mod);
-    interfaces_mod.addImport("typedefs", runtime_mod);
+    interfaces_mod.addImport("typedefs", typedefs_mod);
+    interfaces_mod.addImport("dictionaries", dictionaries_mod);
+    interfaces_mod.addImport("enums", enums_mod);
+    interfaces_mod.addImport("callbacks", callbacks_mod);
     impls_mod.addImport("interfaces", interfaces_mod);
-    impls_mod.addImport("typedefs", runtime_mod);
+    impls_mod.addImport("typedefs", typedefs_mod);
+    impls_mod.addImport("dictionaries", dictionaries_mod);
+    impls_mod.addImport("enums", enums_mod);
+    impls_mod.addImport("callbacks", callbacks_mod);
 
     // DOM module
     const dom_mod = b.addModule("dom", .{
@@ -920,9 +977,34 @@ pub fn build(b: *std.Build) void {
             .imports = &.{
                 .{ .name = "runtime", .module = runtime_mod },
                 .{ .name = "v8", .module = v8_mod },
+                .{ .name = "interfaces", .module = interfaces_mod },
+                .{ .name = "namespaces", .module = namespaces_mod },
             },
         }),
     });
+
+    // Add V8 C++ wrapper
+    repl_exe.addCSourceFile(.{
+        .file = b.path("src/v8/v8_wrapper.cpp"),
+        .flags = &.{
+            "-std=c++20",
+            "-fno-exceptions",
+            "-fno-rtti",
+        },
+    });
+
+    // Add V8 include paths (Homebrew on macOS)
+    repl_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/v8/include" });
+
+    // Link V8 libraries
+    repl_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/v8/lib" });
+    repl_exe.linkSystemLibrary("v8");
+    repl_exe.linkSystemLibrary("v8_libplatform");
+    repl_exe.linkSystemLibrary("v8_libbase");
+
+    // Link C++ standard library
+    repl_exe.linkLibCpp();
+
     b.installArtifact(repl_exe);
 
     // Add run step for REPL

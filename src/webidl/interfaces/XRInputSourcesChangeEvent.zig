@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-23T01:18:34Z
+//! Generated at: 2025-11-23T01:22:14Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 

@@ -348,4 +348,156 @@ bool v8_object_set(
     return result.FromMaybe(false);
 }
 
+// Value type checking functions
+// Note: These operate on raw V8 Value pointers, not Global handles
+bool v8_Value_IsUndefined(Local<Value>* value) {
+    return reinterpret_cast<Value*>(value)->IsUndefined();
+}
+
+bool v8_Value_IsNull(Local<Value>* value) {
+    return reinterpret_cast<Value*>(value)->IsNull();
+}
+
+bool v8_Value_IsNullOrUndefined(Local<Value>* value) {
+    return reinterpret_cast<Value*>(value)->IsNullOrUndefined();
+}
+
+bool v8_Value_IsBoolean(Local<Value>* value) {
+    return reinterpret_cast<Value*>(value)->IsBoolean();
+}
+
+bool v8_Value_IsNumber(Local<Value>* value) {
+    return reinterpret_cast<Value*>(value)->IsNumber();
+}
+
+bool v8_Value_IsString(Local<Value>* value) {
+    return reinterpret_cast<Value*>(value)->IsString();
+}
+
+bool v8_Value_IsSymbol(Local<Value>* value) {
+    return reinterpret_cast<Value*>(value)->IsSymbol();
+}
+
+bool v8_Value_IsBigInt(Local<Value>* value) {
+    return reinterpret_cast<Value*>(value)->IsBigInt();
+}
+
+bool v8_Value_IsObject(Local<Value>* value) {
+    return reinterpret_cast<Value*>(value)->IsObject();
+}
+
+bool v8_Value_IsArray(Local<Value>* value) {
+    return reinterpret_cast<Value*>(value)->IsArray();
+}
+
+// Value conversion functions
+bool v8_Value_BooleanValue(Local<Value>* value, Isolate* isolate) {
+    return reinterpret_cast<Value*>(value)->BooleanValue(isolate);
+}
+
+double v8_Value_NumberValue(Local<Value>* value, Local<Context>* context) {
+    Maybe<double> result = reinterpret_cast<Value*>(value)->NumberValue(*reinterpret_cast<Local<Context>*>(context));
+    return result.FromMaybe(0.0);
+}
+
+int32_t v8_Value_Int32Value(Local<Value>* value, Local<Context>* context) {
+    Maybe<int32_t> result = reinterpret_cast<Value*>(value)->Int32Value(*reinterpret_cast<Local<Context>*>(context));
+    return result.FromMaybe(0);
+}
+
+uint32_t v8_Value_Uint32Value(Local<Value>* value, Local<Context>* context) {
+    Maybe<uint32_t> result = reinterpret_cast<Value*>(value)->Uint32Value(*reinterpret_cast<Local<Context>*>(context));
+    return result.FromMaybe(0);
+}
+
+int64_t v8_Value_IntegerValue(Local<Value>* value, Local<Context>* context) {
+    Maybe<int64_t> result = reinterpret_cast<Value*>(value)->IntegerValue(*reinterpret_cast<Local<Context>*>(context));
+    return result.FromMaybe(0);
+}
+
+Local<String>* v8_Value_ToString(Local<Value>* value, Local<Context>* context) {
+    MaybeLocal<String> maybe_string = reinterpret_cast<Value*>(value)->ToString(*reinterpret_cast<Local<Context>*>(context));
+    
+    if (maybe_string.IsEmpty()) {
+        return nullptr;
+    }
+    
+    // Return local handle (must be used within same scope)
+    Local<String> str = maybe_string.ToLocalChecked();
+    return reinterpret_cast<Local<String>*>(&str);
+}
+
+void v8_Value_Dispose(Local<Value>* value) {
+    // Local handles are stack-allocated and automatically cleaned up
+    // This is a no-op for Local handles
+}
+
+// ============================================================================
+// Function aliases for capitalized FFI naming convention
+// ============================================================================
+
+// Context functions
+inline Global<Context>* v8_Context_New(Isolate* isolate) { return v8_context_new(isolate); }
+inline void v8_Context_Dispose(Global<Context>* context) { v8_context_dispose(context); }
+inline void v8_Context_Enter(Global<Context>* context) { v8_context_enter(context); }
+inline void v8_Context_Exit(Global<Context>* context) { v8_context_exit(context); }
+inline Global<Object>* v8_Context_Global(Global<Context>* context) { return v8_context_global(context); }
+
+// Isolate functions  
+inline Isolate* v8_Isolate_New() { return v8_isolate_new(); }
+inline void v8_Isolate_Dispose(Isolate* isolate) { v8_isolate_dispose(isolate); }
+inline void v8_Isolate_Enter(Isolate* isolate) { v8_isolate_enter(isolate); }
+inline void v8_Isolate_Exit(Isolate* isolate) { v8_isolate_exit(isolate); }
+
+// Array functions
+inline Global<Value>* v8_Array_Get(Global<Context>* context, Global<Array>* arr, uint32_t index) { 
+    return v8_array_get(context, arr, index); 
+}
+inline uint32_t v8_Array_Length(Global<Array>* arr) { return v8_array_length(arr); }
+inline void v8_Array_Dispose(Global<Array>* arr) { v8_array_dispose(arr); }
+
+// String functions
+inline Global<String>* v8_String_NewFromUtf8(Isolate* isolate, const char* data) { 
+    return v8_string_new_from_utf8(isolate, data); 
+}
+inline void v8_String_Dispose(Global<String>* str) { v8_string_dispose(str); }
+
+// Object functions
+inline void v8_Object_Dispose(Global<Object>* obj) { v8_object_dispose(obj); }
+
+// Script functions
+inline Global<Script>* v8_Script_Compile(Global<Context>* context, Global<String>* source) { 
+    return v8_script_compile(context, source); 
+}
+inline Global<Value>* v8_Script_Run(Global<Context>* context, Global<Script>* script) { 
+    return v8_script_run(context, script); 
+}
+inline void v8_Script_Dispose(Global<Script>* script) { v8_script_dispose(script); }
+
+// ObjectTemplate functions
+inline Global<ObjectTemplate>* v8_ObjectTemplate_New(Isolate* isolate) { 
+    return v8_object_template_new(isolate); 
+}
+inline Global<Object>* v8_ObjectTemplate_NewInstance(Global<Context>* context, Global<ObjectTemplate>* templ) { 
+    return v8_object_template_new_instance(context, templ); 
+}
+inline void v8_ObjectTemplate_Set(
+    Global<ObjectTemplate>* templ,
+    const char* name,
+    void (*getter)(const char*, void*),
+    void (*setter)(const char*, void*, void*),
+    void* data
+) {
+    v8_object_template_set(templ, name, getter, setter, data);
+}
+inline void v8_ObjectTemplate_Dispose(Global<ObjectTemplate>* templ) { 
+    v8_object_template_dispose(templ); 
+}
+
 } // extern "C"
+
+// ============================================================================
+// Function aliases for capitalized FFI naming convention  
+// These map the lowercase function names to the capitalized names expected by FFI
+// ============================================================================
+
