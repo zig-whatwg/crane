@@ -11,6 +11,10 @@ const NamedNodeMap = dom.NamedNodeMap;
 test "NamedNodeMap.getNamedItemNS - finds attribute by namespace and local name" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -36,6 +40,10 @@ test "NamedNodeMap.getNamedItemNS - finds attribute by namespace and local name"
 test "NamedNodeMap.getNamedItemNS - returns null for non-existent attribute" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -56,6 +64,10 @@ test "NamedNodeMap.getNamedItemNS - returns null for non-existent attribute" {
 
 test "NamedNodeMap.getNamedItemNS - handles null namespace" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
@@ -79,6 +91,10 @@ test "NamedNodeMap.getNamedItemNS - handles null namespace" {
 
 test "NamedNodeMap.getNamedItemNS - distinguishes same local name in different namespaces" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
@@ -111,6 +127,10 @@ test "NamedNodeMap.getNamedItemNS - distinguishes same local name in different n
 test "NamedNodeMap - removeNamedItem with qualified name (prefix:localName)" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -136,6 +156,10 @@ test "NamedNodeMap - removeNamedItem with qualified name (prefix:localName)" {
 
 test "NamedNodeMap - removeNamedItem with local name only (no prefix)" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
@@ -163,6 +187,10 @@ test "NamedNodeMap - removeNamedItem with local name only (no prefix)" {
 test "NamedNodeMap - removeNamedItem returns null for non-existent qualified name" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -185,6 +213,10 @@ test "NamedNodeMap - removeNamedItem returns null for non-existent qualified nam
 
 test "NamedNodeMap - removeNamedItem only matches exact qualified name" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();

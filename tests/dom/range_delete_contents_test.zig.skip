@@ -12,6 +12,10 @@ const Text = dom.TextWithBase;
 test "Range.deleteContents - deletes text data within same Text node" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -39,6 +43,10 @@ test "Range.deleteContents - deletes text data within same Text node" {
 test "Range.deleteContents - deletes from start of Text node" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -64,6 +72,10 @@ test "Range.deleteContents - deletes from start of Text node" {
 
 test "Range.deleteContents - deletes to end of Text node" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
@@ -91,6 +103,10 @@ test "Range.deleteContents - deletes to end of Text node" {
 test "Range.deleteContents - deletes entire Text node content" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -116,6 +132,10 @@ test "Range.deleteContents - deletes entire Text node content" {
 
 test "Range.deleteContents - deletes contained element nodes" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
@@ -162,6 +182,10 @@ test "Range.deleteContents - deletes contained element nodes" {
 test "Range.deleteContents - collapsed range does nothing" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -187,6 +211,10 @@ test "Range.deleteContents - collapsed range does nothing" {
 
 test "Range.deleteContents - Comment node data deletion" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();

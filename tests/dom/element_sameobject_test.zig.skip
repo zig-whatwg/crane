@@ -16,6 +16,10 @@ const Document = dom.Document;
 test "Element.attributes returns same NamedNodeMap instance ([SameObject])" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -34,6 +38,10 @@ test "Element.attributes returns same NamedNodeMap instance ([SameObject])" {
 test "Element.classList returns same DOMTokenList instance ([SameObject])" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -51,6 +59,10 @@ test "Element.classList returns same DOMTokenList instance ([SameObject])" {
 
 test "Element.attributes NamedNodeMap reflects live changes" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
@@ -80,6 +92,10 @@ test "Element.attributes NamedNodeMap reflects live changes" {
 test "Element.classList DOMTokenList reflects live changes" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -104,6 +120,10 @@ test "Element.classList DOMTokenList reflects live changes" {
 test "Multiple elements have different [SameObject] instances" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -127,6 +147,10 @@ test "Multiple elements have different [SameObject] instances" {
 
 test "Element.attributes persists across attribute modifications" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var doc = try Document.init(allocator, ctx);
     defer doc.deinit();

@@ -10,6 +10,10 @@ const Node = dom.Node;
 test "Document.getElementById - finds element by id attribute" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -29,6 +33,10 @@ test "Document.getElementById - finds element by id attribute" {
 test "Document.getElementById - returns null for non-existent id" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -43,6 +51,10 @@ test "Document.getElementById - returns null for non-existent id" {
 
 test "Document.getElementById - finds nested element" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
@@ -68,6 +80,10 @@ test "Document.getElementById - finds nested element" {
 test "Document.getElementById - returns first element when multiple have same id" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -90,6 +106,10 @@ test "Document.getElementById - returns first element when multiple have same id
 test "Document.getElementById - case sensitive matching" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -109,6 +129,10 @@ test "Document.getElementById - case sensitive matching" {
 
 test "Document.getElementById - ignores elements without id attribute" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
@@ -133,6 +157,10 @@ test "Document.getElementById - ignores elements without id attribute" {
 test "Document.getElementById - empty id never matches" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -149,6 +177,10 @@ test "Document.getElementById - empty id never matches" {
 
 test "Document.getElementById - finds element after id attribute added" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
@@ -172,6 +204,10 @@ test "Document.getElementById - finds element after id attribute added" {
 test "Document.getElementById - does not find element after id attribute removed" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -194,6 +230,10 @@ test "Document.getElementById - does not find element after id attribute removed
 test "Document.getElementById - special characters in id" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -210,6 +250,10 @@ test "Document.getElementById - special characters in id" {
 
 test "Document.getElementById - unicode in id" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();

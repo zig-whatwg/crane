@@ -16,6 +16,10 @@ const Node = dom.Node;
 test "importNode: shallow copy of element" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create source document
     var source_doc = try Document.init(allocator, ctx);
     defer source_doc.deinit();
@@ -50,6 +54,10 @@ test "importNode: shallow copy of element" {
 
 test "importNode: deep copy of element with children" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     // Create source document
     var source_doc = try Document.init(allocator, ctx);
@@ -115,6 +123,10 @@ test "importNode: deep copy of element with children" {
 test "importNode: text node" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create source document
     var source_doc = try Document.init(allocator, ctx);
     defer source_doc.deinit();
@@ -147,6 +159,10 @@ test "importNode: text node" {
 test "importNode: comment node" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create source document
     var source_doc = try Document.init(allocator, ctx);
     defer source_doc.deinit();
@@ -178,6 +194,10 @@ test "importNode: comment node" {
 
 test "importNode: element with attributes" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     // Create source document
     var source_doc = try Document.init(allocator, ctx);
@@ -219,6 +239,10 @@ test "importNode: element with attributes" {
 
 test "importNode: document node throws NotSupportedError" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     // Create source document
     var source_doc = try Document.init(allocator, ctx);

@@ -12,6 +12,10 @@ const Text = dom.TextWithBase;
 test "Range.surroundContents - wraps range content in new parent" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -45,6 +49,10 @@ test "Range.surroundContents - wraps range content in new parent" {
 test "Range.surroundContents - clears existing newParent children" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -75,6 +83,10 @@ test "Range.surroundContents - clears existing newParent children" {
 test "Range.surroundContents - throws for Document parent" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -98,6 +110,10 @@ test "Range.surroundContents - throws for Document parent" {
 
 test "Range.surroundContents - throws for DocumentFragment parent" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();

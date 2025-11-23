@@ -12,6 +12,10 @@ const Document = dom.Document;
 test "dom.Document - internString basic deduplication" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     const doc = try allocator.create(dom.Document);
     defer allocator.destroy(doc);
     doc.* = try dom.Document.init(allocator, ctx);
@@ -28,6 +32,10 @@ test "dom.Document - internString basic deduplication" {
 test "dom.Document - internString different strings" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     const doc = try allocator.create(dom.Document);
     defer allocator.destroy(doc);
     doc.* = try dom.Document.init(allocator, ctx);
@@ -43,6 +51,10 @@ test "dom.Document - internString different strings" {
 }
 test "dom.Document - createElement uses interned tag names" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     const doc = try allocator.create(dom.Document);
     defer allocator.destroy(doc);
@@ -68,6 +80,10 @@ test "dom.Document - createElement uses interned tag names" {
 }
 test "dom.Document - string interning memory cleanup" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     // Create and destroy document with interned strings
     {

@@ -17,6 +17,10 @@ const expectEqualStrings = std.testing.expectEqualStrings;
 test "Document - internString basic functionality" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     const doc = try allocator.create(Document);
     defer allocator.destroy(doc);
     doc.* = try Document.init(allocator, ctx);
@@ -37,6 +41,10 @@ test "Document - internString basic functionality" {
 
 test "Document - internString different strings" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     const doc = try allocator.create(Document);
     defer allocator.destroy(doc);
@@ -61,6 +69,10 @@ test "Document - internString different strings" {
 test "Document - internString repeated calls" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     const doc = try allocator.create(Document);
     defer allocator.destroy(doc);
     doc.* = try Document.init(allocator, ctx);
@@ -81,6 +93,10 @@ test "Document - internString repeated calls" {
 test "Document - internString empty string" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     const doc = try allocator.create(Document);
     defer allocator.destroy(doc);
     doc.* = try Document.init(allocator, ctx);
@@ -96,6 +112,10 @@ test "Document - internString empty string" {
 
 test "Document - internString common tag names" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     const doc = try allocator.create(Document);
     defer allocator.destroy(doc);
@@ -126,6 +146,10 @@ test "Document - internString common tag names" {
 test "Document - createElement uses interned strings" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     const doc = try allocator.create(Document);
     defer allocator.destroy(doc);
     doc.* = try Document.init(allocator, ctx);
@@ -148,6 +172,10 @@ test "Document - createElement uses interned strings" {
 
 test "Document - multiple elements share interned tag names" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     const doc = try allocator.create(Document);
     defer allocator.destroy(doc);
@@ -184,6 +212,10 @@ test "Document - multiple elements share interned tag names" {
 test "Document - memory cleanup of interned strings" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create and destroy document
     {
         const doc = try allocator.create(Document);
@@ -207,6 +239,10 @@ test "Document - memory cleanup of interned strings" {
 test "Document - internString with special characters" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     const doc = try allocator.create(Document);
     defer allocator.destroy(doc);
     doc.* = try Document.init(allocator, ctx);
@@ -229,6 +265,10 @@ test "Document - internString with special characters" {
 
 test "Document - internString performance characteristic" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     const doc = try allocator.create(Document);
     defer allocator.destroy(doc);
@@ -254,6 +294,10 @@ test "Document - internString performance characteristic" {
 test "Document - string comparison via pointer equality" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     const doc = try allocator.create(Document);
     defer allocator.destroy(doc);
     doc.* = try Document.init(allocator, ctx);
@@ -273,6 +317,10 @@ test "Document - string comparison via pointer equality" {
 
 test "Document - internString with dynamically allocated strings" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     const doc = try allocator.create(Document);
     defer allocator.destroy(doc);

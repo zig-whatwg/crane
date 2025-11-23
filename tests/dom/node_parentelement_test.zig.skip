@@ -13,6 +13,10 @@ const Text = dom.TextWithBase;
 test "Node.parentElement - element parent returns element" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var parent = try Element.init(allocator, "div");
     defer parent.deinit();
 
@@ -35,6 +39,10 @@ test "Node.parentElement - element parent returns element" {
 test "Node.parentElement - document parent returns null" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -56,6 +64,10 @@ test "Node.parentElement - document parent returns null" {
 test "Node.parentElement - no parent returns null" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
@@ -69,6 +81,10 @@ test "Node.parentElement - no parent returns null" {
 
 test "Node.parentElement - text node with element parent" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var parent = try Element.init(allocator, "p");
     defer parent.deinit();
@@ -91,6 +107,10 @@ test "Node.parentElement - text node with element parent" {
 
 test "Node.parentElement - nested elements" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var grandparent = try Element.init(allocator, "div");
     defer grandparent.deinit();

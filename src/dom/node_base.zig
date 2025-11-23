@@ -17,7 +17,7 @@ const interfaces = @import("interfaces");
 
 // Forward declarations at file scope
 const DocumentType = interfaces.Document;
-pub const RegisteredObserverType = @import("registered_observer").RegisteredObserver;
+pub const RegisteredObserverType = @import("registered_observer.zig").RegisteredObserver;
 
 /// Base structure containing all fields from the Node interface
 /// This is used as the first field in all concrete node types (Element, CharacterData, etc.)

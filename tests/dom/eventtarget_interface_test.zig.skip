@@ -5,11 +5,16 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 // Type aliases
 const EventTarget = dom.EventTarget;
 
 test "dom.EventTarget - event_listener_list starts as null (lazy allocation)" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     const target = try allocator.create(dom.EventTarget);
     defer allocator.destroy(target);
@@ -21,6 +26,10 @@ test "dom.EventTarget - event_listener_list starts as null (lazy allocation)" {
 }
 test "dom.EventTarget - addEventListener allocates list on first use" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     const target = try allocator.create(dom.EventTarget);
     defer allocator.destroy(target);
@@ -40,6 +49,10 @@ test "dom.EventTarget - addEventListener allocates list on first use" {
 test "dom.EventTarget - removeEventListener on never-used target is safe" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     const target = try allocator.create(dom.EventTarget);
     defer allocator.destroy(target);
     target.* = try dom.EventTarget.init(allocator, ctx);
@@ -53,6 +66,10 @@ test "dom.EventTarget - removeEventListener on never-used target is safe" {
 }
 test "dom.EventTarget - memory savings from lazy allocation" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     // Create 100 targets, only 10 get listeners
     var targets: [100]*dom.EventTarget = undefined;
@@ -91,6 +108,10 @@ test "dom.EventTarget - memory savings from lazy allocation" {
 test "dom.EventTarget - getEventListenerList returns empty for unused target" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     const target = try allocator.create(dom.EventTarget);
     defer allocator.destroy(target);
     target.* = try dom.EventTarget.init(allocator, ctx);
@@ -102,6 +123,10 @@ test "dom.EventTarget - getEventListenerList returns empty for unused target" {
 }
 test "dom.EventTarget - deinit handles both null and allocated list" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     // Target with no listeners (null list)
     {

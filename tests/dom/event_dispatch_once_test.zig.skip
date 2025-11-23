@@ -5,6 +5,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 
 const event_dispatch = @import("event_dispatch");
 
@@ -22,6 +23,10 @@ fn resetCallbackCount() void {
 
 test "addEventListener with once=true removes listener after first dispatch" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
     resetCallbackCount();
 
     // Create event target
@@ -73,6 +78,10 @@ test "addEventListener with once=true removes listener after first dispatch" {
 
 test "addEventListener with once=false keeps listener after dispatch" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
     resetCallbackCount();
 
     // Create event target
@@ -123,6 +132,10 @@ test "addEventListener with once=false keeps listener after dispatch" {
 
 test "multiple once listeners are removed independently" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
     resetCallbackCount();
 
     // Create event target
@@ -175,6 +188,10 @@ test "multiple once listeners are removed independently" {
 
 test "once listener removed even if stopPropagation is called" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
     resetCallbackCount();
 
     // Create event target
@@ -210,6 +227,10 @@ test "once listener removed even if stopPropagation is called" {
 
 test "once listener in capture phase is removed" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
     resetCallbackCount();
 
     // Create parent and child targets

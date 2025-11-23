@@ -5,11 +5,16 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 
 const AbortSignal = dom.AbortSignal;
 
 test "AbortSignal: dependent signal aborts when source aborts" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     // Create source signal
     var source = try AbortSignal.init(allocator, ctx);
@@ -40,6 +45,10 @@ test "AbortSignal: dependent signal aborts when source aborts" {
 test "AbortSignal.any(): returns already-aborted signal if any input is aborted" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create source signals, one already aborted
     var signal1 = try AbortSignal.init(allocator, ctx);
     defer signal1.deinit();
@@ -67,6 +76,10 @@ test "AbortSignal.any(): returns already-aborted signal if any input is aborted"
 
 test "AbortSignal.any(): creates dependent signal that aborts when any source aborts" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     // Create source signals
     var signal1 = try AbortSignal.init(allocator, ctx);
@@ -105,6 +118,10 @@ test "AbortSignal.any(): creates dependent signal that aborts when any source ab
 test "AbortSignal.any(): multiple dependents abort when source aborts" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create source signal
     var source = try AbortSignal.init(allocator, ctx);
     defer source.deinit();
@@ -140,6 +157,10 @@ test "AbortSignal.any(): multiple dependents abort when source aborts" {
 test "AbortSignal.any(): empty signals array returns non-aborted signal" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create dependent signal with no sources
     const signals = [_]*AbortSignal{};
     const result = try AbortSignal.call_any(allocator, &signals);
@@ -155,6 +176,10 @@ test "AbortSignal.any(): empty signals array returns non-aborted signal" {
 
 test "AbortSignal: signalAbort is idempotent" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var signal = try AbortSignal.init(allocator, ctx);
     defer signal.deinit();

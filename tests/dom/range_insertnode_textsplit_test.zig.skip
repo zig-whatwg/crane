@@ -11,6 +11,10 @@ const Text = dom.TextWithBase;
 test "Range.insertNode - splits Text node at start offset" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -48,6 +52,10 @@ test "Range.insertNode - splits Text node at start offset" {
 test "Range.insertNode - splits at start of Text node" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -77,6 +85,10 @@ test "Range.insertNode - splits at start of Text node" {
 
 test "Range.insertNode - splits at end of Text node" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();

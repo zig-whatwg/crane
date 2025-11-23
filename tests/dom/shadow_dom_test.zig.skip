@@ -16,6 +16,10 @@ const Text = dom.TextWithBase;
 test "Shadow DOM: attachShadow creates open shadow root" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -53,6 +57,10 @@ test "Shadow DOM: attachShadow creates open shadow root" {
 test "Shadow DOM: attachShadow creates closed shadow root" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -87,6 +95,10 @@ test "Shadow DOM: attachShadow creates closed shadow root" {
 test "Shadow DOM: shadowRoot getter returns open shadow" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -120,6 +132,10 @@ test "Shadow DOM: shadowRoot getter returns open shadow" {
 test "Shadow DOM: shadowRoot getter returns null for closed shadow" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -152,6 +168,10 @@ test "Shadow DOM: shadowRoot getter returns null for closed shadow" {
 test "Shadow DOM: attachShadow throws for invalid element" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -177,6 +197,10 @@ test "Shadow DOM: attachShadow throws for invalid element" {
 
 test "Shadow DOM: double attachShadow throws for non-declarative" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
@@ -210,6 +234,10 @@ test "Shadow DOM: double attachShadow throws for non-declarative" {
 
 test "Shadow DOM: valid shadow host names" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var doc = try Document.init(allocator, ctx);
     defer doc.deinit();

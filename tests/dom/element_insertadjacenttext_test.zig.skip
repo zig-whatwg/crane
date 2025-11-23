@@ -12,6 +12,10 @@ const Text = dom.TextWithBase;
 test "Element.insertAdjacentText - beforebegin inserts before element" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -42,6 +46,10 @@ test "Element.insertAdjacentText - beforebegin inserts before element" {
 test "Element.insertAdjacentText - afterbegin inserts as first child" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -65,6 +73,10 @@ test "Element.insertAdjacentText - afterbegin inserts as first child" {
 
 test "Element.insertAdjacentText - beforeend inserts as last child" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
@@ -90,6 +102,10 @@ test "Element.insertAdjacentText - beforeend inserts as last child" {
 test "Element.insertAdjacentText - afterend inserts after element" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -114,6 +130,10 @@ test "Element.insertAdjacentText - afterend inserts after element" {
 test "Element.insertAdjacentText - empty string creates empty text node" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -134,6 +154,10 @@ test "Element.insertAdjacentText - empty string creates empty text node" {
 
 test "Element.insertAdjacentText - multiple insertions accumulate" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
@@ -162,6 +186,10 @@ test "Element.insertAdjacentText - multiple insertions accumulate" {
 test "Element.insertAdjacentText - special characters preserved" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
@@ -179,6 +207,10 @@ test "Element.insertAdjacentText - special characters preserved" {
 
 test "Element.insertAdjacentText - unicode characters preserved" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();

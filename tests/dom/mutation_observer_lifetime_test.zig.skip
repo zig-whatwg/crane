@@ -21,6 +21,10 @@ fn testCallback(_: []const dom.MutationRecord, _: *MutationObserver) void {
 test "MutationObserver: node list stores weak references (doesn't own nodes)" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create observer
     var observer = try MutationObserver.init(allocator, testCallback);
     defer observer.deinit();
@@ -64,6 +68,10 @@ test "MutationObserver: node list stores weak references (doesn't own nodes)" {
 
 test "MutationObserver: isObserving checks if node is observed" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     // Create observer
     var observer = try MutationObserver.init(allocator, testCallback);
@@ -119,6 +127,10 @@ test "MutationObserver: isObserving checks if node is observed" {
 test "MutationObserver: unobserveNode removes specific node" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create observer
     var observer = try MutationObserver.init(allocator, testCallback);
     defer observer.deinit();
@@ -170,6 +182,10 @@ test "MutationObserver: unobserveNode removes specific node" {
 test "MutationObserver: disconnect removes all observations" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create observer
     var observer = try MutationObserver.init(allocator, testCallback);
     defer observer.deinit();
@@ -217,6 +233,10 @@ test "MutationObserver: disconnect removes all observations" {
 
 test "MutationObserver: node list length via getNodeList" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     // Create observer
     var observer = try MutationObserver.init(allocator, testCallback);

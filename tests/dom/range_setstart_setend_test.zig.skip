@@ -13,6 +13,10 @@ const Range = dom.Range;
 test "Range.setStart - throws InvalidNodeTypeError for DocumentType" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create a document
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
@@ -33,6 +37,10 @@ test "Range.setStart - throws InvalidNodeTypeError for DocumentType" {
 test "Range.setEnd - throws InvalidNodeTypeError for DocumentType" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create a document
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
@@ -52,6 +60,10 @@ test "Range.setEnd - throws InvalidNodeTypeError for DocumentType" {
 
 test "Range.setStart - throws IndexSizeError when offset > node length" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     // Create a document
     var doc = try dom.Document.init(allocator, ctx);
@@ -76,6 +88,10 @@ test "Range.setStart - throws IndexSizeError when offset > node length" {
 test "Range.setEnd - throws IndexSizeError when offset > node length" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create a document
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
@@ -98,6 +114,10 @@ test "Range.setEnd - throws IndexSizeError when offset > node length" {
 
 test "Range.setStart - valid offset within node length" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     // Create a document
     var doc = try dom.Document.init(allocator, ctx);
@@ -123,6 +143,10 @@ test "Range.setStart - valid offset within node length" {
 test "Range.setEnd - valid offset within node length" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create a document
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
@@ -146,6 +170,10 @@ test "Range.setEnd - valid offset within node length" {
 
 test "Range.setStart - adjusts end when start is after end" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     // Create a document
     var doc = try dom.Document.init(allocator, ctx);
@@ -177,6 +205,10 @@ test "Range.setStart - adjusts end when start is after end" {
 test "Range.setEnd - adjusts start when end is before start" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create a document
     var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
@@ -206,6 +238,10 @@ test "Range.setEnd - adjusts start when end is before start" {
 
 test "Range.setStart - CharacterData node uses data length" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     // Create a document
     var doc = try dom.Document.init(allocator, ctx);

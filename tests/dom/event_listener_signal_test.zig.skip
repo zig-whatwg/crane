@@ -5,6 +5,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 
 const event_dispatch = @import("event_dispatch");
 
@@ -17,6 +18,10 @@ const AddEventListenerOptions = @import("event_target").AddEventListenerOptions;
 
 test "addEventListener with aborted signal does not add listener" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     // Create event target
     var target = try EventTarget.init(allocator, ctx);
@@ -50,6 +55,10 @@ test "addEventListener with aborted signal does not add listener" {
 
 test "addEventListener with signal removes listener when signal is aborted" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     // Create event target
     var target = try EventTarget.init(allocator, ctx);
@@ -88,6 +97,10 @@ test "addEventListener with signal removes listener when signal is aborted" {
 
 test "multiple listeners with same signal are all removed when aborted" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     // Create event target
     var target = try EventTarget.init(allocator, ctx);
@@ -131,6 +144,10 @@ test "multiple listeners with same signal are all removed when aborted" {
 
 test "listener without signal is not affected by other signal aborts" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     // Create event target
     var target = try EventTarget.init(allocator, ctx);
@@ -180,6 +197,10 @@ test "listener without signal is not affected by other signal aborts" {
 test "listener with signal in capture phase is removed when aborted" {
     const allocator = std.testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create event target
     var target = try EventTarget.init(allocator, ctx);
     defer target.deinit();
@@ -218,6 +239,10 @@ test "listener with signal in capture phase is removed when aborted" {
 
 test "AbortController integration with addEventListener" {
     const allocator = std.testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     // Create event target
     var target = try EventTarget.init(allocator, ctx);
