@@ -5,7 +5,7 @@
 
 const runtime = @import("runtime");
 
-pub fn call_gc(ctx: runtime.Context) *const anyopaque {
+pub fn call_gc(ctx: runtime.Context) anyerror!*const anyopaque {
     _ = ctx;
     return error.NotImplemented;
 }

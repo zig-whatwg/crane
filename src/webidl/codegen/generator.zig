@@ -1847,11 +1847,11 @@ pub fn generateNamespace(
                     try writeTypeSimple(w, arg.idlType, null);
                 }
 
-                try w.writeAll(") ");
+                try w.writeAll(") anyerror!");
                 try writeTypeSimple(w, op.idlType, null);
                 try w.writeAll(" {\n");
                 // Delegate to impl - use the prefixed full_name (impl has call_ prefix too)
-                try w.print("        return {s}_impl.{s}(ctx", .{ namespace.name, prefixed_full_name });
+                try w.print("        return try {s}_impl.{s}(ctx", .{ namespace.name, prefixed_full_name });
                 for (op.arguments) |arg| {
                     try w.writeAll(", ");
                     try w.print("{s}", .{arg.name});
@@ -1885,14 +1885,14 @@ pub fn generateNamespace(
                 try writeTypeSimple(w, arg.idlType, null);
             }
 
-            try w.writeAll(") ");
+            try w.writeAll(") anyerror!");
             try writeTypeSimple(w, op.idlType, null);
             try w.writeAll(" {\n");
             // Delegate to impl (use prefixed name since impl has call_ prefix too)
             if (isZigKeyword(prefixed_name)) {
-                try w.print("        return {s}_impl.@\"{s}\"(ctx", .{ namespace.name, prefixed_name });
+                try w.print("        return try {s}_impl.@\"{s}\"(ctx", .{ namespace.name, prefixed_name });
             } else {
-                try w.print("        return {s}_impl.{s}(ctx", .{ namespace.name, prefixed_name });
+                try w.print("        return try {s}_impl.{s}(ctx", .{ namespace.name, prefixed_name });
             }
             for (op.arguments) |arg| {
                 try w.writeAll(", ");
@@ -1995,10 +1995,13 @@ pub fn generateNamespaceImpl(
                 for (op.arguments) |arg| {
                     try w.writeAll(", ");
                     try w.print("{s}: ", .{arg.name});
+                    if (arg.variadic) {
+                        try w.writeAll("[]const ");
+                    }
                     try writeTypeSimple(w, arg.idlType, null);
                 }
 
-                try w.writeAll(") ");
+                try w.writeAll(") anyerror!");
                 try writeTypeSimple(w, op.idlType, null);
                 try w.writeAll(" {\n");
                 // Unused var suppression
@@ -2028,10 +2031,13 @@ pub fn generateNamespaceImpl(
             for (op.arguments) |arg| {
                 try w.writeAll(", ");
                 try w.print("{s}: ", .{arg.name});
+                if (arg.variadic) {
+                    try w.writeAll("[]const ");
+                }
                 try writeTypeSimple(w, arg.idlType, null);
             }
 
-            try w.writeAll(") ");
+            try w.writeAll(") anyerror!");
             try writeTypeSimple(w, op.idlType, null);
             try w.writeAll(" {\n");
             // Unused var suppression

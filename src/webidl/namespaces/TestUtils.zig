@@ -23,8 +23,8 @@ pub const TestUtils = struct {
 
     pub const State = struct {};
 
-    pub fn call_gc(ctx: runtime.Context) *const anyopaque {
-        return TestUtils_impl.call_gc(ctx);
+    pub fn call_gc(ctx: runtime.Context) anyerror!*const anyopaque {
+        return try TestUtils_impl.call_gc(ctx);
     }
 
 };

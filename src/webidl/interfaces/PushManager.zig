@@ -1,5 +1,5 @@
 //! Generated from: push-api.idl
-//! Generated at: 2025-11-23T19:57:38Z
+//! Generated at: 2025-11-23T20:06:15Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 

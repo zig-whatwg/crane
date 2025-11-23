@@ -1,5 +1,5 @@
 //! Generated from: credential-management.idl
-//! Generated at: 2025-11-23T19:57:37Z
+//! Generated at: 2025-11-23T20:06:14Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
