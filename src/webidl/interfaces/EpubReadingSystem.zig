@@ -1,5 +1,5 @@
 //! Generated from: epub-rs.idl
-//! Generated at: 2025-11-23T19:47:41Z
+//! Generated at: 2025-11-23T19:57:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 

@@ -266,14 +266,17 @@ pub fn get_search(instance: *runtime.Instance) !runtime.USVString {
 
 /// searchParams getter
 /// Spec: https://url.spec.whatwg.org/#dom-url-searchparams (line 1967)
-pub fn get_searchParams(instance: *runtime.Instance) !*runtime.Instance {
+pub fn get_searchParams(instance: *runtime.Instance) !URLSearchParams {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
-    // Return the URLSearchParams instance (cached)
+    // Return the URLSearchParams instance (cast from runtime.Instance)
     // The generated interface will handle caching via [SameObject] attribute
     if (internal.query_params_instance) |params_instance| {
-        return params_instance;
+        // Need to convert *runtime.Instance to URLSearchParams type
+        // For now, just return an error - need to figure out proper type conversion
+        _ = params_instance;
+        return error.NotImplemented;
     }
 
     return error.InvalidState;
@@ -635,7 +638,7 @@ pub fn call_parse(
     instance: *runtime.Instance,
     url: runtime.USVString,
     base: runtime.USVString,
-) !*runtime.Instance {
+) !URL {
     // Static method - instance is not used
     _ = instance;
     _ = url;

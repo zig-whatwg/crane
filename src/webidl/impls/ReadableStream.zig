@@ -127,14 +127,14 @@ pub fn get_locked(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Operation: from
-pub fn call_from(instance: *runtime.Instance, asyncIterable: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_from(instance: *runtime.Instance, asyncIterable: *const anyopaque) ImplError!interfaces.ReadableStream {
     _ = instance;
     _ = asyncIterable;
     return error.NotImplemented;
 }
 
 /// Operation: pipeThrough
-pub fn call_pipeThrough(instance: *runtime.Instance, transform: dictionaries.ReadableWritablePair, options: dictionaries.StreamPipeOptions) ImplError!*runtime.Instance {
+pub fn call_pipeThrough(instance: *runtime.Instance, transform: dictionaries.ReadableWritablePair, options: dictionaries.StreamPipeOptions) ImplError!interfaces.ReadableStream {
     _ = instance;
     _ = transform;
     _ = options;
@@ -156,7 +156,7 @@ pub fn call_getReader(instance: *runtime.Instance, options: dictionaries.Readabl
 }
 
 /// Operation: pipeTo
-pub fn call_pipeTo(instance: *runtime.Instance, destination: *runtime.Instance, options: dictionaries.StreamPipeOptions) ImplError!*const anyopaque {
+pub fn call_pipeTo(instance: *runtime.Instance, destination: interfaces.WritableStream, options: dictionaries.StreamPipeOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = destination;
     _ = options;

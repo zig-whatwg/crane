@@ -1,5 +1,5 @@
 //! Generated from: css-cascade-6.idl
-//! Generated at: 2025-11-23T19:47:43Z
+//! Generated at: 2025-11-23T19:57:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 

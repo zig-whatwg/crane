@@ -18,6 +18,12 @@ pub const ImplError = error{
     NotImplemented,
 };
 
+/// Internal state for implementation-specific data
+/// Implementations can replace this with a real struct containing:
+/// - Private data not exposed via WebIDL attributes
+/// - Cached computations, buffers, etc.
+pub const InternalState = struct {};
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,

@@ -1,5 +1,5 @@
 //! Generated from: WEBGL_clip_cull_distance.idl
-//! Generated at: 2025-11-23T19:47:41Z
+//! Generated at: 2025-11-23T19:57:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 

@@ -605,6 +605,13 @@ fn generateImplFile(
         try w.writeAll("    NotImplemented,\n");
         try w.writeAll("};\n\n");
 
+        // Internal state struct (empty by default, implementations can add fields)
+        try w.writeAll("/// Internal state for implementation-specific data\n");
+        try w.writeAll("/// Implementations can replace this with a real struct containing:\n");
+        try w.writeAll("/// - Private data not exposed via WebIDL attributes\n");
+        try w.writeAll("/// - Cached computations, buffers, etc.\n");
+        try w.writeAll("pub const InternalState = struct {};\n\n");
+
         // Init and deinit functions - delegate to runtime.Instance
         try w.writeAll("/// Initialize instance (creates the instance)\n");
         try w.writeAll("pub fn init(\n");

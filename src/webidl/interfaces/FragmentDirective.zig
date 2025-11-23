@@ -1,5 +1,5 @@
 //! Generated from: scroll-to-text-fragment.idl
-//! Generated at: 2025-11-23T19:47:42Z
+//! Generated at: 2025-11-23T19:57:36Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
