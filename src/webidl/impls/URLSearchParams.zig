@@ -115,22 +115,24 @@ fn updateSteps(instance: *runtime.Instance) !void {
     defer internal.allocator.free(serialized);
 
     // Step 3-4: Update URL's query
-    // Get the URL instance's internal state
-    const URL = interfaces.URL;
+    // Import URL impl to access its InternalState
+    const URLImpl = @import("impls").URL;
     const url_instance = internal.url_object.?;
-    const url_state = url_instance.getState(URL.State);
+    const url_state = url_instance.getState(interfaces.URL.State);
 
-    if (url_state.own._internal) |url_internal| {
-        // Access URLRecord through the internal state
-        // We need to import the URL impl's InternalState type
-        // For now, cast to anyopaque and set query_len to 0 or update query
-        _ = url_internal;
+    if (url_state.own._internal) |url_internal_ptr| {
+        // Cast to URL's InternalState
+        const url_internal: *URLImpl.InternalState = @ptrCast(@alignCast(url_internal_ptr));
 
-        // TODO: Need proper way to access URL's InternalState.url_record
-        // This requires either:
-        // 1. Making InternalState types public and importable
-        // 2. Adding a helper function to URL impl
-        // 3. Using a common protocol/interface
+        // Set new query (empty string becomes null)
+        if (serialized.len == 0) {
+            url_internal.url_record.query_len = 0;
+        } else {
+            // TODO: Implement proper URL query update
+            // For a complete implementation, we need URLRecord.setQuery() method
+            // or re-parse the entire URL with the new query
+            // For now, this is a placeholder that doesn't actually update
+        }
     }
 }
 

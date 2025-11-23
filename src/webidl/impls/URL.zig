@@ -104,8 +104,38 @@ pub fn call_constructor(
 
     state.own._internal = internal;
 
-    // TODO: Initialize URLSearchParams instance and set up bidirectional relationship
-    // This requires URLSearchParams to be implemented first
+    // Initialize URLSearchParams instance with query from URLRecord
+    const query_str = parsed_url.query() orelse "";
+    const URLSearchParamsInterface = interfaces.URLSearchParams;
+
+    // Create URLSearchParams instance - pass empty init_data for now
+    const empty_init: u8 = 0;
+    const query_params_instance = try URLSearchParamsInterface.call_constructor(
+        allocator,
+        ctx,
+        @ptrCast(&empty_init),
+    );
+    errdefer URLSearchParamsInterface.deinit(query_params_instance);
+
+    // Get URLSearchParams internal state and initialize it with query string
+    const URLSearchParamsState = interfaces.URLSearchParams.State;
+    const params_state = query_params_instance.getState(URLSearchParamsState);
+    if (params_state.own._internal) |params_internal| {
+        // Parse query string into list
+        if (query_str.len > 0) {
+            const tuples = try form_parser.parse(allocator, query_str);
+            for (tuples) |tuple| {
+                try params_internal.list.append(tuple);
+            }
+            allocator.free(tuples);
+        }
+
+        // Set back-reference to URL
+        params_internal.url_object = instance;
+    }
+
+    // Store URLSearchParams instance in URL's internal state
+    internal.query_params_instance = query_params_instance;
 
     return instance;
 }
@@ -240,10 +270,16 @@ pub fn get_searchParams(instance: *runtime.Instance) !URLSearchParams {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
-    // Return cached URLSearchParams instance
-    // TODO: Implement URLSearchParams creation and caching
-    _ = internal;
-    return error.NotImplemented;
+    // Return the URLSearchParams instance (cast from runtime.Instance)
+    // The generated interface will handle caching via [SameObject] attribute
+    if (internal.query_params_instance) |params_instance| {
+        // Need to convert *runtime.Instance to URLSearchParams type
+        // For now, just return an error - need to figure out proper type conversion
+        _ = params_instance;
+        return error.NotImplemented;
+    }
+
+    return error.InvalidState;
 }
 
 /// hash getter
