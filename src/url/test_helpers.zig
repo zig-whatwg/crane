@@ -1,16 +1,19 @@
 //! WebIDL Test Helpers
 //!
 //! Utilities for constructing WebIDL types in tests.
+//!
+//! TODO: This file has circular import issues - it's INSIDE the url module
+//! trying to import the public URL API. Needs refactoring.
 
 const std = @import("std");
 const webidl = @import("webidl");
 const infra = @import("infra");
 
-// Stub file - test_helpers has circular import issue
-// URL and URLSearchParams types are not available within url module itself
+// Stub types to avoid circular imports
 const URL = *anyopaque;
 const URLSearchParams = *anyopaque;
 
+/// All functions return NotImplemented error due to circular import
 /// Convert UTF-8 string literal to webidl.USVString (UTF-16)
 /// Caller owns the returned memory.
 pub fn usv(allocator: std.mem.Allocator, utf8_string: []const u8) !webidl.USVString {
@@ -39,274 +42,143 @@ pub fn expectEqualStrings(allocator: std.mem.Allocator, expected_utf8: []const u
     try std.testing.expectEqualStrings(expected_utf8, actual_utf8);
 }
 
-/// Test helper: Create URL from UTF-8 strings
-/// WebIDL now expects UTF-8 strings directly, so this is just a passthrough.
-pub fn initURL(allocator: std.mem.Allocator, url_utf8: []const u8, base_utf8: ?[]const u8) !URL {
-    return URL.init(allocator, url_utf8, base_utf8);
+// All remaining functions stubbed due to circular import
+pub fn initURL(_: std.mem.Allocator, _: []const u8, _: ?[]const u8) error{NotImplemented}!URL {
+    return error.NotImplemented;
 }
 
-/// Test helper: Create URLSearchParams from UTF-8 string
-pub fn initURLSearchParams(allocator: std.mem.Allocator, init_utf8: []const u8) !URLSearchParams {
-    return URLSearchParams.initWithString(allocator, init_utf8);
+pub fn initURLSearchParams(_: std.mem.Allocator, _: []const u8) error{NotImplemented}!URLSearchParams {
+    return error.NotImplemented;
 }
 
-/// Test helper: Create URLSearchParams from UTF-8 sequence
-pub fn initURLSearchParamsFromSequence(allocator: std.mem.Allocator, seq_utf8: []const [2][]const u8) !URLSearchParams {
-    return URLSearchParams.initWithSequence(allocator, seq_utf8);
+pub fn initURLSearchParamsFromSequence(_: std.mem.Allocator, _: []const [2][]const u8) error{NotImplemented}!URLSearchParams {
+    return error.NotImplemented;
 }
 
-// ============================================================================
-// URL Setter Wrappers (UTF-8 → UTF-16 conversion)
-// ============================================================================
-
-/// Set protocol from UTF-8 string
-pub fn setProtocol(url: *URL, allocator: std.mem.Allocator, protocol_utf8: []const u8) !void {
-    _ = allocator; // URL setters now accept UTF-8 directly
-    return url.set_protocol(protocol_utf8);
+pub fn setProtocol(_: *URL, _: std.mem.Allocator, _: []const u8) error{NotImplemented}!void {
+    return error.NotImplemented;
 }
 
-/// Alias for setProtocol (snake_case)
 pub const set_protocol = setProtocol;
 
-/// Set username from UTF-8 string
-pub fn setUsername(url: *URL, allocator: std.mem.Allocator, username_utf8: []const u8) !void {
-    _ = allocator; // URL setters now accept UTF-8 directly
-    return url.set_username(username_utf8);
+pub fn setUsername(_: *URL, _: std.mem.Allocator, _: []const u8) error{NotImplemented}!void {
+    return error.NotImplemented;
 }
 
-/// Alias for setUsername (snake_case)
 pub const set_username = setUsername;
 
-/// Set password from UTF-8 string
-pub fn setPassword(url: *URL, allocator: std.mem.Allocator, password_utf8: []const u8) !void {
-    _ = allocator; // URL setters now accept UTF-8 directly
-    // No conversion needed
-    return url.set_password(password_utf8);
+pub fn setPassword(_: *URL, _: std.mem.Allocator, _: []const u8) error{NotImplemented}!void {
+    return error.NotImplemented;
 }
 
-/// Alias for setPassword (snake_case)
 pub const set_password = setPassword;
 
-/// Set host from UTF-8 string
-pub fn setHost(url: *URL, allocator: std.mem.Allocator, host_utf8: []const u8) !void {
-    _ = allocator; // URL setters now accept UTF-8 directly
-    // No conversion needed
-    return url.set_host(host_utf8);
+pub fn setHost(_: *URL, _: std.mem.Allocator, _: []const u8) error{NotImplemented}!void {
+    return error.NotImplemented;
 }
 
-/// Alias for setHost (snake_case)
 pub const set_host = setHost;
 
-/// Set hostname from UTF-8 string
-pub fn setHostname(url: *URL, allocator: std.mem.Allocator, hostname_utf8: []const u8) !void {
-    _ = allocator; // URL setters now take UTF-8 directly
-    return url.set_hostname(hostname_utf8);
+pub fn setHostname(_: *URL, _: std.mem.Allocator, _: []const u8) error{NotImplemented}!void {
+    return error.NotImplemented;
 }
 
-/// Alias for setHostname (snake_case)
 pub const set_hostname = setHostname;
 
-/// Set port from UTF-8 string
-pub fn setPort(url: *URL, allocator: std.mem.Allocator, port_utf8: []const u8) !void {
-    _ = allocator; // URL setters now take UTF-8 directly
-    return url.set_port(port_utf8);
+pub fn setPort(_: *URL, _: std.mem.Allocator, _: []const u8) error{NotImplemented}!void {
+    return error.NotImplemented;
 }
 
-/// Alias for setPort (snake_case)
 pub const set_port = setPort;
 
-/// Set pathname from UTF-8 string
-pub fn setPathname(url: *URL, allocator: std.mem.Allocator, pathname_utf8: []const u8) !void {
-    _ = allocator; // URL setters now take UTF-8 directly
-    return url.set_pathname(pathname_utf8);
+pub fn setPathname(_: *URL, _: std.mem.Allocator, _: []const u8) error{NotImplemented}!void {
+    return error.NotImplemented;
 }
 
-/// Alias for setPathname (snake_case)
 pub const set_pathname = setPathname;
 
-/// Set search from UTF-8 string
-pub fn setSearch(url: *URL, allocator: std.mem.Allocator, search_utf8: []const u8) !void {
-    _ = allocator; // URL setters now take UTF-8 directly
-    return url.set_search(search_utf8);
+pub fn setSearch(_: *URL, _: std.mem.Allocator, _: []const u8) error{NotImplemented}!void {
+    return error.NotImplemented;
 }
 
-/// Alias for setSearch (snake_case)
 pub const set_search = setSearch;
 
-/// Set hash from UTF-8 string
-pub fn setHash(url: *URL, allocator: std.mem.Allocator, hash_utf8: []const u8) !void {
-    _ = allocator; // URL setters now take UTF-8 directly
-    return url.set_hash(hash_utf8);
+pub fn setHash(_: *URL, _: std.mem.Allocator, _: []const u8) error{NotImplemented}!void {
+    return error.NotImplemented;
 }
 
-/// Alias for setHash (snake_case)
 pub const set_hash = setHash;
 
-/// Set href from UTF-8 string
-pub fn setHref(url: *URL, allocator: std.mem.Allocator, href_utf8: []const u8) !void {
-    _ = allocator; // URL setters now take UTF-8 directly
-    return url.set_href(href_utf8);
+pub fn setHref(_: *URL, _: std.mem.Allocator, _: []const u8) error{NotImplemented}!void {
+    return error.NotImplemented;
 }
 
-/// Alias for setHref (snake_case)
 pub const set_href = setHref;
 
-// ============================================================================
-// URL Getter Wrappers (UTF-16 → UTF-8 conversion)
-// ============================================================================
-
-/// Get href as UTF-8 string
-pub fn getHref(url: *const URL, allocator: std.mem.Allocator) ![]const u8 {
-    _ = allocator; // URL getters now return UTF-8 directly
-    return url.get_href();
+pub fn getHref(_: *const URL, _: std.mem.Allocator) error{NotImplemented}![]const u8 {
+    return error.NotImplemented;
 }
 
-/// Get protocol as UTF-8 string
-pub fn getProtocol(url: *const URL, allocator: std.mem.Allocator) ![]const u8 {
-    _ = allocator; // URL getters now return UTF-8 directly
-    return url.get_protocol();
+pub fn getProtocol(_: *const URL, _: std.mem.Allocator) error{NotImplemented}![]const u8 {
+    return error.NotImplemented;
 }
 
-/// Get username as UTF-8 string
-pub fn getUsername(url: *const URL, allocator: std.mem.Allocator) ![]const u8 {
-    _ = allocator; // URL getters now return UTF-8 directly
-    return url.get_username();
+pub fn getUsername(_: *const URL, _: std.mem.Allocator) error{NotImplemented}![]const u8 {
+    return error.NotImplemented;
 }
 
-/// Get password as UTF-8 string
-pub fn getPassword(url: *const URL, allocator: std.mem.Allocator) ![]const u8 {
-    _ = allocator; // URL getters now return UTF-8 directly
-    return url.get_password();
+pub fn getPassword(_: *const URL, _: std.mem.Allocator) error{NotImplemented}![]const u8 {
+    return error.NotImplemented;
 }
 
-/// Get host as UTF-8 string
-pub fn getHost(url: *const URL, allocator: std.mem.Allocator) ![]const u8 {
-    _ = allocator; // URL getters now return UTF-8 directly
-    return url.get_host();
+pub fn getHost(_: *const URL, _: std.mem.Allocator) error{NotImplemented}![]const u8 {
+    return error.NotImplemented;
 }
 
-/// Get hostname as UTF-8 string
-pub fn getHostname(url: *const URL, allocator: std.mem.Allocator) ![]const u8 {
-    _ = allocator; // URL getters now return UTF-8 directly
-    return url.get_hostname();
+pub fn getHostname(_: *const URL, _: std.mem.Allocator) error{NotImplemented}![]const u8 {
+    return error.NotImplemented;
 }
 
-/// Get port as UTF-8 string
-pub fn getPort(url: *const URL, allocator: std.mem.Allocator) ![]const u8 {
-    _ = allocator; // URL getters now return UTF-8 directly
-    return url.get_port();
+pub fn getPort(_: *const URL, _: std.mem.Allocator) error{NotImplemented}![]const u8 {
+    return error.NotImplemented;
 }
 
-/// Get pathname as UTF-8 string
-pub fn getPathname(url: *const URL, allocator: std.mem.Allocator) ![]const u8 {
-    _ = allocator; // URL getters now return UTF-8 directly
-    return url.get_pathname();
+pub fn getPathname(_: *const URL, _: std.mem.Allocator) error{NotImplemented}![]const u8 {
+    return error.NotImplemented;
 }
 
-/// Get search as UTF-8 string
-pub fn getSearch(url: *const URL, allocator: std.mem.Allocator) ![]const u8 {
-    _ = allocator; // URL getters now return UTF-8 directly
-    return url.get_search();
+pub fn getSearch(_: *const URL, _: std.mem.Allocator) error{NotImplemented}![]const u8 {
+    return error.NotImplemented;
 }
 
-/// Get hash as UTF-8 string
-pub fn getHash(url: *const URL, allocator: std.mem.Allocator) ![]const u8 {
-    _ = allocator; // URL getters now return UTF-8 directly
-    return url.get_hash();
+pub fn getHash(_: *const URL, _: std.mem.Allocator) error{NotImplemented}![]const u8 {
+    return error.NotImplemented;
 }
 
-// ============================================================================
-// URLSearchParams Helper Wrappers (UTF-8 → UTF-16 conversion)
-// ============================================================================
-
-/// Append a key-value pair from UTF-8 strings
-pub fn searchParamsAppend(params: *URLSearchParams, allocator: std.mem.Allocator, name_utf8: []const u8, value_utf8: []const u8) !void {
-    const name_usv = try usv(allocator, name_utf8);
-    defer allocator.free(name_usv);
-    const value_usv = try usv(allocator, value_utf8);
-    defer allocator.free(value_usv);
-    return params.call_append(name_usv, value_usv);
+pub fn searchParamsAppend(_: *URLSearchParams, _: std.mem.Allocator, _: []const u8, _: []const u8) error{NotImplemented}!void {
+    return error.NotImplemented;
 }
 
-/// Delete entries by name from UTF-8 string
-pub fn searchParamsDelete(params: *URLSearchParams, allocator: std.mem.Allocator, name_utf8: []const u8, value_utf8: ?[]const u8) !void {
-    const name_usv = try usv(allocator, name_utf8);
-    defer allocator.free(name_usv);
-
-    var value_usv: ?webidl.USVString = null;
-    defer if (value_usv) |v| allocator.free(v);
-
-    if (value_utf8) |v| {
-        value_usv = try usv(allocator, v);
-    }
-
-    return params.call_delete(name_usv, value_usv);
+pub fn searchParamsDelete(_: *URLSearchParams, _: std.mem.Allocator, _: []const u8, _: ?[]const u8) error{NotImplemented}!void {
+    return error.NotImplemented;
 }
 
-/// Check if entry exists from UTF-8 string
-pub fn searchParamsHas(params: *const URLSearchParams, allocator: std.mem.Allocator, name_utf8: []const u8, value_utf8: ?[]const u8) !bool {
-    const name_usv = try usv(allocator, name_utf8);
-    defer allocator.free(name_usv);
-
-    var value_usv: ?webidl.USVString = null;
-    defer if (value_usv) |v| allocator.free(v);
-
-    if (value_utf8) |v| {
-        value_usv = try usv(allocator, v);
-    }
-
-    return params.call_has(name_usv, value_usv);
+pub fn searchParamsHas(_: *const URLSearchParams, _: std.mem.Allocator, _: []const u8, _: ?[]const u8) error{NotImplemented}!bool {
+    return error.NotImplemented;
 }
 
-/// Get value by name from UTF-8 string, returns UTF-8 string or null
-pub fn searchParamsGet(params: *const URLSearchParams, allocator: std.mem.Allocator, name_utf8: []const u8) !?[]const u8 {
-    const name_usv = try usv(allocator, name_utf8);
-    defer allocator.free(name_usv);
-
-    const result_usv = try params.call_get(name_usv);
-    if (result_usv) |r| {
-        defer allocator.free(r);
-        return try toUtf8(allocator, r);
-    }
-
-    return null;
+pub fn searchParamsGet(_: *const URLSearchParams, _: std.mem.Allocator, _: []const u8) error{NotImplemented}!?[]const u8 {
+    return error.NotImplemented;
 }
 
-/// Set value by name from UTF-8 string
-pub fn searchParamsSet(params: *URLSearchParams, allocator: std.mem.Allocator, name_utf8: []const u8, value_utf8: []const u8) !void {
-    const name_usv = try usv(allocator, name_utf8);
-    defer allocator.free(name_usv);
-    const value_usv = try usv(allocator, value_utf8);
-    defer allocator.free(value_usv);
-    return params.call_set(name_usv, value_usv);
+pub fn searchParamsSet(_: *URLSearchParams, _: std.mem.Allocator, _: []const u8, _: []const u8) error{NotImplemented}!void {
+    return error.NotImplemented;
 }
 
-/// Get all values by name from UTF-8 string, returns array of UTF-8 strings
-pub fn searchParamsGetAll(params: *const URLSearchParams, allocator: std.mem.Allocator, name_utf8: []const u8) ![][]const u8 {
-    const name_usv = try usv(allocator, name_utf8);
-    defer allocator.free(name_usv);
-
-    var result_sequence = try params.call_getAll(name_usv);
-    defer result_sequence.deinit();
-
-    const result_usv_items = result_sequence.items();
-
-    var result_utf8 = try allocator.alloc([]const u8, result_usv_items.len);
-    errdefer {
-        for (result_utf8[0..result_usv_items.len]) |s| allocator.free(s);
-        allocator.free(result_utf8);
-    }
-
-    for (result_usv_items, 0..) |usv_str, i| {
-        result_utf8[i] = try toUtf8(allocator, usv_str);
-    }
-
-    return result_utf8;
+pub fn searchParamsGetAll(_: *const URLSearchParams, _: std.mem.Allocator, _: []const u8) error{NotImplemented}![][]const u8 {
+    return error.NotImplemented;
 }
 
-/// Convert URLSearchParams to string (UTF-8)
-pub fn searchParamsToString(params: *const URLSearchParams, allocator: std.mem.Allocator) ![]const u8 {
-    const result_usv = try params.call_toString();
-    defer allocator.free(result_usv);
-    return toUtf8(allocator, result_usv);
+pub fn searchParamsToString(_: *const URLSearchParams, _: std.mem.Allocator) error{NotImplemented}![]const u8 {
+    return error.NotImplemented;
 }

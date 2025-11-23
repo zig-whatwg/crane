@@ -87,7 +87,7 @@ pub fn V8Interface(comptime Interface: type) type {
         const all_methods = methods;
 
         /// Interface name
-        const name = interface_name;
+        pub const name = interface_name;
 
         /// Register interface as a global constructor in V8
         ///
