@@ -1,0 +1,605 @@
+//! Implementation for Navigator interface
+//!
+//! This file is AUTO-GENERATED on first creation.
+//! Add your custom implementation here.
+
+const std = @import("std");
+const runtime = @import("runtime");
+const interfaces = @import("interfaces");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const callbacks = @import("callbacks");
+const Navigator = interfaces.Navigator;
+
+pub const State = Navigator.State;
+
+pub const ImplError = error{
+    NotImplemented,
+};
+
+/// Initialize instance (creates the instance)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+    ctx: runtime.Context,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    // TODO: Initialize your instance state here if needed
+    return instance;
+}
+
+/// Deinitialize instance
+pub fn deinit(instance: *runtime.Instance) void {
+    // TODO: Clean up your instance resources here
+    runtime.Instance.deinit(instance);
+}
+
+/// Getter for scheduling
+pub fn get_scheduling(instance: *runtime.Instance) ImplError!interfaces.Scheduling {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for presentation
+pub fn get_presentation(instance: *runtime.Instance) ImplError!interfaces.Presentation {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for keyboard
+pub fn get_keyboard(instance: *runtime.Instance) ImplError!interfaces.Keyboard {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for clipboard
+pub fn get_clipboard(instance: *runtime.Instance) ImplError!interfaces.Clipboard {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for audioSession
+pub fn get_audioSession(instance: *runtime.Instance) ImplError!interfaces.AudioSession {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for mediaCapabilities
+pub fn get_mediaCapabilities(instance: *runtime.Instance) ImplError!interfaces.MediaCapabilities {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for serial
+pub fn get_serial(instance: *runtime.Instance) ImplError!interfaces.Serial {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for permissions
+pub fn get_permissions(instance: *runtime.Instance) ImplError!interfaces.Permissions {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for contacts
+pub fn get_contacts(instance: *runtime.Instance) ImplError!interfaces.ContactsManager {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for devicePosture
+pub fn get_devicePosture(instance: *runtime.Instance) ImplError!interfaces.DevicePosture {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for maxTouchPoints
+pub fn get_maxTouchPoints(instance: *runtime.Instance) ImplError!i32 {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for attribution
+pub fn get_attribution(instance: *runtime.Instance) ImplError!interfaces.Attribution {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for smartCard
+pub fn get_smartCard(instance: *runtime.Instance) ImplError!interfaces.SmartCardResourceManager {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for usb
+pub fn get_usb(instance: *runtime.Instance) ImplError!interfaces.USB {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for windowControlsOverlay
+pub fn get_windowControlsOverlay(instance: *runtime.Instance) ImplError!interfaces.WindowControlsOverlay {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for xr
+pub fn get_xr(instance: *runtime.Instance) ImplError!interfaces.XRSystem {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for deprecatedRunAdAuctionEnforcesKAnonymity
+pub fn get_deprecatedRunAdAuctionEnforcesKAnonymity(instance: *runtime.Instance) ImplError!bool {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for protectedAudience
+pub fn get_protectedAudience(instance: *runtime.Instance) ImplError!interfaces.ProtectedAudience {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for hid
+pub fn get_hid(instance: *runtime.Instance) ImplError!interfaces.HID {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for credentials
+pub fn get_credentials(instance: *runtime.Instance) ImplError!interfaces.CredentialsContainer {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for wakeLock
+pub fn get_wakeLock(instance: *runtime.Instance) ImplError!interfaces.WakeLock {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for virtualKeyboard
+pub fn get_virtualKeyboard(instance: *runtime.Instance) ImplError!interfaces.VirtualKeyboard {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for preferences
+pub fn get_preferences(instance: *runtime.Instance) ImplError!interfaces.PreferenceManager {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for managed
+pub fn get_managed(instance: *runtime.Instance) ImplError!interfaces.NavigatorManagedData {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for serviceWorker
+pub fn get_serviceWorker(instance: *runtime.Instance) ImplError!interfaces.ServiceWorkerContainer {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for ink
+pub fn get_ink(instance: *runtime.Instance) ImplError!interfaces.Ink {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for epubReadingSystem
+pub fn get_epubReadingSystem(instance: *runtime.Instance) ImplError!interfaces.EpubReadingSystem {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for userActivation
+pub fn get_userActivation(instance: *runtime.Instance) ImplError!interfaces.UserActivation {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for bluetooth
+pub fn get_bluetooth(instance: *runtime.Instance) ImplError!interfaces.Bluetooth {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for geolocation
+pub fn get_geolocation(instance: *runtime.Instance) ImplError!interfaces.Geolocation {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for login
+pub fn get_login(instance: *runtime.Instance) ImplError!interfaces.NavigatorLogin {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for mediaSession
+pub fn get_mediaSession(instance: *runtime.Instance) ImplError!interfaces.MediaSession {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for mediaDevices
+pub fn get_mediaDevices(instance: *runtime.Instance) ImplError!interfaces.MediaDevices {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for locks
+pub fn get_locks(instance: *runtime.Instance) ImplError!interfaces.LockManager {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for gpu
+pub fn get_gpu(instance: *runtime.Instance) ImplError!interfaces.GPU {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for globalPrivacyControl
+pub fn get_globalPrivacyControl(instance: *runtime.Instance) ImplError!bool {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for webdriver
+pub fn get_webdriver(instance: *runtime.Instance) ImplError!bool {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for connection
+pub fn get_connection(instance: *runtime.Instance) ImplError!interfaces.NetworkInformation {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for ml
+pub fn get_ml(instance: *runtime.Instance) ImplError!interfaces.ML {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for deviceMemory
+pub fn get_deviceMemory(instance: *runtime.Instance) ImplError!f64 {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for storage
+pub fn get_storage(instance: *runtime.Instance) ImplError!interfaces.StorageManager {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for storageBuckets
+pub fn get_storageBuckets(instance: *runtime.Instance) ImplError!interfaces.StorageBucketManager {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for appCodeName
+pub fn get_appCodeName(instance: *runtime.Instance) ImplError!runtime.DOMString {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for appName
+pub fn get_appName(instance: *runtime.Instance) ImplError!runtime.DOMString {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for appVersion
+pub fn get_appVersion(instance: *runtime.Instance) ImplError!runtime.DOMString {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for platform
+pub fn get_platform(instance: *runtime.Instance) ImplError!runtime.DOMString {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for product
+pub fn get_product(instance: *runtime.Instance) ImplError!runtime.DOMString {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for productSub
+pub fn get_productSub(instance: *runtime.Instance) ImplError!runtime.DOMString {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for userAgent
+pub fn get_userAgent(instance: *runtime.Instance) ImplError!runtime.DOMString {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for vendor
+pub fn get_vendor(instance: *runtime.Instance) ImplError!runtime.DOMString {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for vendorSub
+pub fn get_vendorSub(instance: *runtime.Instance) ImplError!runtime.DOMString {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for oscpu
+pub fn get_oscpu(instance: *runtime.Instance) ImplError!runtime.DOMString {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for language
+pub fn get_language(instance: *runtime.Instance) ImplError!runtime.DOMString {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for languages
+pub fn get_languages(instance: *runtime.Instance) ImplError!*const anyopaque {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for onLine
+pub fn get_onLine(instance: *runtime.Instance) ImplError!bool {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for cookieEnabled
+pub fn get_cookieEnabled(instance: *runtime.Instance) ImplError!bool {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for plugins
+pub fn get_plugins(instance: *runtime.Instance) ImplError!interfaces.PluginArray {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for mimeTypes
+pub fn get_mimeTypes(instance: *runtime.Instance) ImplError!interfaces.MimeTypeArray {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for pdfViewerEnabled
+pub fn get_pdfViewerEnabled(instance: *runtime.Instance) ImplError!bool {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for hardwareConcurrency
+pub fn get_hardwareConcurrency(instance: *runtime.Instance) ImplError!u64 {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for userAgentData
+pub fn get_userAgentData(instance: *runtime.Instance) ImplError!interfaces.NavigatorUAData {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Operation: requestMIDIAccess
+pub fn call_requestMIDIAccess(instance: *runtime.Instance, options: dictionaries.MIDIOptions) ImplError!*const anyopaque {
+    _ = instance;
+    _ = options;
+    return error.NotImplemented;
+}
+
+/// Operation: adAuctionComponents
+pub fn call_adAuctionComponents(instance: *runtime.Instance, numAdComponents: u16) ImplError!*const anyopaque {
+    _ = instance;
+    _ = numAdComponents;
+    return error.NotImplemented;
+}
+
+/// Operation: joinAdInterestGroup
+pub fn call_joinAdInterestGroup(instance: *runtime.Instance, group: dictionaries.AuctionAdInterestGroup) ImplError!*const anyopaque {
+    _ = instance;
+    _ = group;
+    return error.NotImplemented;
+}
+
+/// Operation: vibrate
+pub fn call_vibrate(instance: *runtime.Instance, pattern: typedefs.VibratePattern) ImplError!bool {
+    _ = instance;
+    _ = pattern;
+    return error.NotImplemented;
+}
+
+/// Operation: createHandwritingRecognizer
+pub fn call_createHandwritingRecognizer(instance: *runtime.Instance, constraint: dictionaries.HandwritingModelConstraint) ImplError!*const anyopaque {
+    _ = instance;
+    _ = constraint;
+    return error.NotImplemented;
+}
+
+/// Operation: leaveAdInterestGroup
+pub fn call_leaveAdInterestGroup(instance: *runtime.Instance, group: dictionaries.AuctionAdInterestGroupKey) ImplError!*const anyopaque {
+    _ = instance;
+    _ = group;
+    return error.NotImplemented;
+}
+
+/// Operation: getGamepads
+pub fn call_getGamepads(instance: *runtime.Instance) ImplError!*const anyopaque {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Operation: updateAdInterestGroups
+pub fn call_updateAdInterestGroups(instance: *runtime.Instance) ImplError!void {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Operation: getBattery
+pub fn call_getBattery(instance: *runtime.Instance) ImplError!*const anyopaque {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Operation: taintEnabled
+pub fn call_taintEnabled(instance: *runtime.Instance) ImplError!bool {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Operation: setAppBadge
+pub fn call_setAppBadge(instance: *runtime.Instance, contents: u64) ImplError!*const anyopaque {
+    _ = instance;
+    _ = contents;
+    return error.NotImplemented;
+}
+
+/// Operation: canLoadAdAuctionFencedFrame
+pub fn call_canLoadAdAuctionFencedFrame(instance: *runtime.Instance) ImplError!bool {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Operation: createAuctionNonce
+pub fn call_createAuctionNonce(instance: *runtime.Instance) ImplError!*const anyopaque {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Operation: sendBeacon
+pub fn call_sendBeacon(instance: *runtime.Instance, url: runtime.USVString, data: typedefs.BodyInit) ImplError!bool {
+    _ = instance;
+    _ = url;
+    _ = data;
+    return error.NotImplemented;
+}
+
+/// Operation: unregisterProtocolHandler
+pub fn call_unregisterProtocolHandler(instance: *runtime.Instance, scheme: runtime.DOMString, url: runtime.USVString) ImplError!void {
+    _ = instance;
+    _ = scheme;
+    _ = url;
+    return error.NotImplemented;
+}
+
+/// Operation: queryHandwritingRecognizer
+pub fn call_queryHandwritingRecognizer(instance: *runtime.Instance, constraint: dictionaries.HandwritingModelConstraint) ImplError!*const anyopaque {
+    _ = instance;
+    _ = constraint;
+    return error.NotImplemented;
+}
+
+/// Operation: clearAppBadge
+pub fn call_clearAppBadge(instance: *runtime.Instance) ImplError!*const anyopaque {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Operation: share
+pub fn call_share(instance: *runtime.Instance, data: dictionaries.ShareData) ImplError!*const anyopaque {
+    _ = instance;
+    _ = data;
+    return error.NotImplemented;
+}
+
+/// Operation: runAdAuction
+pub fn call_runAdAuction(instance: *runtime.Instance, config: dictionaries.AuctionAdConfig) ImplError!*const anyopaque {
+    _ = instance;
+    _ = config;
+    return error.NotImplemented;
+}
+
+/// Operation: deprecatedReplaceInURN
+pub fn call_deprecatedReplaceInURN(instance: *runtime.Instance, urnOrConfig: typedefs.UrnOrConfig, replacements: *const anyopaque) ImplError!*const anyopaque {
+    _ = instance;
+    _ = urnOrConfig;
+    _ = replacements;
+    return error.NotImplemented;
+}
+
+/// Operation: getAutoplayPolicy
+pub fn call_getAutoplayPolicy(instance: *runtime.Instance, @"type": enums.AutoplayPolicyMediaType) ImplError!enums.AutoplayPolicy {
+    _ = instance;
+    _ = @"type";
+    return error.NotImplemented;
+}
+
+/// Operation: javaEnabled
+pub fn call_javaEnabled(instance: *runtime.Instance) ImplError!bool {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Operation: getInstalledRelatedApps
+pub fn call_getInstalledRelatedApps(instance: *runtime.Instance) ImplError!*const anyopaque {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Operation: canShare
+pub fn call_canShare(instance: *runtime.Instance, data: dictionaries.ShareData) ImplError!bool {
+    _ = instance;
+    _ = data;
+    return error.NotImplemented;
+}
+
+/// Operation: clearOriginJoinedAdInterestGroups
+pub fn call_clearOriginJoinedAdInterestGroups(instance: *runtime.Instance, owner: runtime.USVString, interestGroupsToKeep: *const anyopaque) ImplError!*const anyopaque {
+    _ = instance;
+    _ = owner;
+    _ = interestGroupsToKeep;
+    return error.NotImplemented;
+}
+
+/// Operation: getInterestGroupAdAuctionData
+pub fn call_getInterestGroupAdAuctionData(instance: *runtime.Instance, config: dictionaries.AdAuctionDataConfig) ImplError!*const anyopaque {
+    _ = instance;
+    _ = config;
+    return error.NotImplemented;
+}
+
+/// Operation: requestMediaKeySystemAccess
+pub fn call_requestMediaKeySystemAccess(instance: *runtime.Instance, keySystem: runtime.DOMString, supportedConfigurations: *const anyopaque) ImplError!*const anyopaque {
+    _ = instance;
+    _ = keySystem;
+    _ = supportedConfigurations;
+    return error.NotImplemented;
+}
+
+/// Operation: deprecatedURNtoURL
+pub fn call_deprecatedURNtoURL(instance: *runtime.Instance, urnOrConfig: typedefs.UrnOrConfig, send_reports: bool) ImplError!*const anyopaque {
+    _ = instance;
+    _ = urnOrConfig;
+    _ = send_reports;
+    return error.NotImplemented;
+}
+
+/// Operation: registerProtocolHandler
+pub fn call_registerProtocolHandler(instance: *runtime.Instance, scheme: runtime.DOMString, url: runtime.USVString) ImplError!void {
+    _ = instance;
+    _ = scheme;
+    _ = url;
+    return error.NotImplemented;
+}
+

@@ -1,0 +1,75 @@
+//! Implementation for DataTransferItem interface
+//!
+//! This file is AUTO-GENERATED on first creation.
+//! Add your custom implementation here.
+
+const std = @import("std");
+const runtime = @import("runtime");
+const interfaces = @import("interfaces");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const callbacks = @import("callbacks");
+const DataTransferItem = interfaces.DataTransferItem;
+
+pub const State = DataTransferItem.State;
+
+pub const ImplError = error{
+    NotImplemented,
+};
+
+/// Initialize instance (creates the instance)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+    ctx: runtime.Context,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    // TODO: Initialize your instance state here if needed
+    return instance;
+}
+
+/// Deinitialize instance
+pub fn deinit(instance: *runtime.Instance) void {
+    // TODO: Clean up your instance resources here
+    runtime.Instance.deinit(instance);
+}
+
+/// Getter for kind
+pub fn get_kind(instance: *runtime.Instance) ImplError!runtime.DOMString {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for type
+pub fn get_type(instance: *runtime.Instance) ImplError!runtime.DOMString {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Operation: getAsString
+pub fn call_getAsString(instance: *runtime.Instance, _callback: callbacks.FunctionStringCallback) ImplError!void {
+    _ = instance;
+    _ = _callback;
+    return error.NotImplemented;
+}
+
+/// Operation: getAsFileSystemHandle
+pub fn call_getAsFileSystemHandle(instance: *runtime.Instance) ImplError!*const anyopaque {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Operation: webkitGetAsEntry
+pub fn call_webkitGetAsEntry(instance: *runtime.Instance) ImplError!interfaces.FileSystemEntry {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Operation: getAsFile
+pub fn call_getAsFile(instance: *runtime.Instance) ImplError!interfaces.File {
+    _ = instance;
+    return error.NotImplemented;
+}
+

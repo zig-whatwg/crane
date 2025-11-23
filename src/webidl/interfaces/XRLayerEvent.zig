@@ -1,0 +1,109 @@
+//! Generated from: webxrlayers.idl
+//! Generated at: 2025-11-23T01:18:35Z
+//!
+//! This file is AUTO-GENERATED. Do not edit manually.
+
+const std = @import("std");
+const runtime = @import("runtime");
+const XRLayerEventImpl = @import("impls").XRLayerEvent;
+const Event = @import("interfaces").Event;
+const XRLayerEventInit = @import("dictionaries").XRLayerEventInit;
+const EventTarget = @import("interfaces").EventTarget;
+const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const EventInit = @import("dictionaries").EventInit;
+const XRLayer = @import("interfaces").XRLayer;
+const DOMString = @import("typedefs").DOMString;
+
+pub const XRLayerEvent = struct {
+    pub const Meta = struct {
+        pub const name = "XRLayerEvent";
+        pub const is_mixin = false;
+        pub const spec_url: ?[]const u8 = null;
+        pub const BaseType = *Event;
+        pub const MixinTypes = &.{};
+        pub const extended_attributes = .{
+            .{ .name = "SecureContext" },
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+        };
+        
+        /// Global contexts where this interface is exposed
+        pub const exposed_in = .{ .Window = true };
+        
+        /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
+        pub const properties = .{
+            .{ "layer", "get_layer", null },
+        };
+        
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        pub const methods = .{
+        };
+        
+        /// Methods defined/overridden by this interface
+        pub const own_methods = .{
+        };
+        
+        /// Methods inherited from parent/mixins (rely on V8 prototype chain)
+        pub const inherited_methods = .{
+            "composedPath",
+            "stopPropagation",
+            "stopImmediatePropagation",
+            "preventDefault",
+            "initEvent",
+        };
+        
+        /// Properties to define eagerly (frequently accessed) - ONLY own properties
+        pub const eager_properties = .{
+            .{ "layer", "get_layer", null },
+        };
+        
+        /// Properties to define lazily (rarely accessed) - ONLY own properties
+        pub const lazy_properties = .{
+        };
+        
+        pub const has_constructor = true;
+    };
+
+    pub const State = runtime.FlattenedState(
+        Meta.BaseType,
+        Meta.MixinTypes,
+        struct {
+            layer: XRLayer = undefined,
+            cached_layer: ?XRLayer = null,
+        },
+    );
+
+    const delegates = .{
+
+        .get_layer = &get_layer,
+    };
+    pub const vtable = runtime.buildVTable(&delegates);
+
+    /// Initialize a new instance
+    pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+        return XRLayerEventImpl.init(allocator, State, &vtable, ctx);
+    }
+
+    /// Clean up instance resources
+    pub fn deinit(instance: *runtime.Instance) void {
+        XRLayerEventImpl.deinit(instance);
+    }
+
+    /// WebIDL constructor
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: XRLayerEventInit) !*runtime.Instance {
+        // Directly return result from impl.call_constructor
+        return try XRLayerEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
+    }
+
+    /// Extended attributes: [SameObject]
+    pub fn get_layer(instance: *runtime.Instance) anyerror!XRLayer {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_layer) |cached| {
+            return cached;
+        }
+        const value = try XRLayerEventImpl.get_layer(instance);
+        state.own.cached_layer = value;
+        return value;
+    }
+
+};

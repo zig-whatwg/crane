@@ -1,0 +1,11 @@
+//! WebIDL dictionary: BaseKeyframe
+//!
+//! This file is AUTO-GENERATED. Do not edit manually.
+
+const runtime = @import("runtime");
+
+pub const BaseKeyframe = struct {
+    offset: ?f64 = null,
+    easing: ?runtime.DOMString = null,
+    composite: ?*const anyopaque = null,
+};

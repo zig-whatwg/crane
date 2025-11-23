@@ -1,0 +1,103 @@
+//! Implementation for RemotePlayback interface
+//!
+//! This file is AUTO-GENERATED on first creation.
+//! Add your custom implementation here.
+
+const std = @import("std");
+const runtime = @import("runtime");
+const interfaces = @import("interfaces");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const callbacks = @import("callbacks");
+const RemotePlayback = interfaces.RemotePlayback;
+
+pub const State = RemotePlayback.State;
+
+pub const ImplError = error{
+    NotImplemented,
+};
+
+/// Initialize instance (creates the instance)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+    ctx: runtime.Context,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    // TODO: Initialize your instance state here if needed
+    return instance;
+}
+
+/// Deinitialize instance
+pub fn deinit(instance: *runtime.Instance) void {
+    // TODO: Clean up your instance resources here
+    runtime.Instance.deinit(instance);
+}
+
+/// Getter for state
+pub fn get_state(instance: *runtime.Instance) ImplError!enums.RemotePlaybackState {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for onconnecting
+pub fn get_onconnecting(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for onconnect
+pub fn get_onconnect(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for ondisconnect
+pub fn get_ondisconnect(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Setter for onconnecting
+pub fn set_onconnecting(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for onconnect
+pub fn set_onconnect(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for ondisconnect
+pub fn set_ondisconnect(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Operation: watchAvailability
+pub fn call_watchAvailability(instance: *runtime.Instance, callback: callbacks.RemotePlaybackAvailabilityCallback) ImplError!*const anyopaque {
+    _ = instance;
+    _ = callback;
+    return error.NotImplemented;
+}
+
+/// Operation: cancelWatchAvailability
+pub fn call_cancelWatchAvailability(instance: *runtime.Instance, id: i32) ImplError!*const anyopaque {
+    _ = instance;
+    _ = id;
+    return error.NotImplemented;
+}
+
+/// Operation: prompt
+pub fn call_prompt(instance: *runtime.Instance) ImplError!*const anyopaque {
+    _ = instance;
+    return error.NotImplemented;
+}
+

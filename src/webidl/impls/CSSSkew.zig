@@ -1,0 +1,78 @@
+//! Implementation for CSSSkew interface
+//!
+//! This file is AUTO-GENERATED on first creation.
+//! Add your custom implementation here.
+
+const std = @import("std");
+const runtime = @import("runtime");
+const interfaces = @import("interfaces");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const callbacks = @import("callbacks");
+const CSSSkew = interfaces.CSSSkew;
+
+pub const State = CSSSkew.State;
+
+pub const ImplError = error{
+    NotImplemented,
+};
+
+/// Initialize instance (creates the instance)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+    ctx: runtime.Context,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    // TODO: Initialize your instance state here if needed
+    return instance;
+}
+
+/// Deinitialize instance
+pub fn deinit(instance: *runtime.Instance) void {
+    // TODO: Clean up your instance resources here
+    runtime.Instance.deinit(instance);
+}
+
+/// Constructor implementation
+/// This is called when the interface is constructed from JavaScript
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, ax: interfaces.CSSNumericValue, ay: interfaces.CSSNumericValue) !*runtime.Instance {
+    // Create instance through init()
+    const instance = try init(allocator, State, &CSSSkew.vtable, ctx);
+    errdefer deinit(instance);
+
+    _ = ax;
+    _ = ay;
+    // TODO: Implement constructor logic with parameters
+
+    return instance;
+}
+
+/// Getter for ax
+pub fn get_ax(instance: *runtime.Instance) ImplError!interfaces.CSSNumericValue {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for ay
+pub fn get_ay(instance: *runtime.Instance) ImplError!interfaces.CSSNumericValue {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Setter for ax
+pub fn set_ax(instance: *runtime.Instance, value: interfaces.CSSNumericValue) ImplError!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for ay
+pub fn set_ay(instance: *runtime.Instance, value: interfaces.CSSNumericValue) ImplError!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+

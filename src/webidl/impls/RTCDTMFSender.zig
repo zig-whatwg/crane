@@ -1,0 +1,72 @@
+//! Implementation for RTCDTMFSender interface
+//!
+//! This file is AUTO-GENERATED on first creation.
+//! Add your custom implementation here.
+
+const std = @import("std");
+const runtime = @import("runtime");
+const interfaces = @import("interfaces");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const callbacks = @import("callbacks");
+const RTCDTMFSender = interfaces.RTCDTMFSender;
+
+pub const State = RTCDTMFSender.State;
+
+pub const ImplError = error{
+    NotImplemented,
+};
+
+/// Initialize instance (creates the instance)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+    ctx: runtime.Context,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    // TODO: Initialize your instance state here if needed
+    return instance;
+}
+
+/// Deinitialize instance
+pub fn deinit(instance: *runtime.Instance) void {
+    // TODO: Clean up your instance resources here
+    runtime.Instance.deinit(instance);
+}
+
+/// Getter for ontonechange
+pub fn get_ontonechange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for canInsertDTMF
+pub fn get_canInsertDTMF(instance: *runtime.Instance) ImplError!bool {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for toneBuffer
+pub fn get_toneBuffer(instance: *runtime.Instance) ImplError!runtime.DOMString {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Setter for ontonechange
+pub fn set_ontonechange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Operation: insertDTMF
+pub fn call_insertDTMF(instance: *runtime.Instance, tones: runtime.DOMString, duration: u32, interToneGap: u32) ImplError!void {
+    _ = instance;
+    _ = tones;
+    _ = duration;
+    _ = interToneGap;
+    return error.NotImplemented;
+}
+

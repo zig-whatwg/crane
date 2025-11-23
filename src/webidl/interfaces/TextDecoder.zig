@@ -1,0 +1,120 @@
+//! Generated from: encoding.idl
+//! Generated at: 2025-11-23T01:18:34Z
+//!
+//! This file is AUTO-GENERATED. Do not edit manually.
+
+const std = @import("std");
+const runtime = @import("runtime");
+const TextDecoderImpl = @import("impls").TextDecoder;
+const TextDecoderCommon = @import("interfaces").TextDecoderCommon;
+const AllowSharedBufferSource = @import("typedefs").AllowSharedBufferSource;
+const TextDecoderOptions = @import("dictionaries").TextDecoderOptions;
+const TextDecodeOptions = @import("dictionaries").TextDecodeOptions;
+const USVString = @import("interfaces").USVString;
+const DOMString = @import("typedefs").DOMString;
+
+pub const TextDecoder = struct {
+    pub const Meta = struct {
+        pub const name = "TextDecoder";
+        pub const is_mixin = false;
+        pub const spec_url: ?[]const u8 = null;
+        pub const BaseType = ?*anyopaque;
+        pub const MixinTypes = &.{
+            TextDecoderCommon,
+        };
+        pub const extended_attributes = .{
+            .{ .name = "Exposed", .value = .{ .identifier = "*" } },
+        };
+        
+        /// Global contexts where this interface is exposed
+        pub const exposed_in_all_contexts = true;
+        
+        /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
+        pub const properties = .{
+            .{ "encoding", "get_encoding", null },
+            .{ "fatal", "get_fatal", null },
+            .{ "ignoreBOM", "get_ignoreBOM", null },
+        };
+        
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        pub const methods = .{
+            .{ "decode", "call_decode", 0 },
+        };
+        
+        /// Methods defined/overridden by this interface
+        pub const own_methods = .{
+            "decode",
+        };
+        
+        /// Methods inherited from parent/mixins (rely on V8 prototype chain)
+        pub const inherited_methods = .{
+        };
+        
+        /// Properties to define eagerly (frequently accessed) - ONLY own properties
+        pub const eager_properties = .{
+            .{ "encoding", "get_encoding", null },
+            .{ "fatal", "get_fatal", null },
+            .{ "ignoreBOM", "get_ignoreBOM", null },
+        };
+        
+        /// Properties to define lazily (rarely accessed) - ONLY own properties
+        pub const lazy_properties = .{
+        };
+        
+        pub const has_constructor = true;
+    };
+
+    pub const State = runtime.FlattenedState(
+        Meta.BaseType,
+        Meta.MixinTypes,
+        struct {
+            encoding: runtime.DOMString = undefined,
+            fatal: bool = undefined,
+            ignoreBOM: bool = undefined,
+        },
+    );
+
+    const delegates = .{
+
+        .get_encoding = &get_encoding,
+        .get_fatal = &get_fatal,
+        .get_ignoreBOM = &get_ignoreBOM,
+
+        .call_decode = &call_decode,
+    };
+    pub const vtable = runtime.buildVTable(&delegates);
+
+    /// Initialize a new instance
+    pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+        return TextDecoderImpl.init(allocator, State, &vtable, ctx);
+    }
+
+    /// Clean up instance resources
+    pub fn deinit(instance: *runtime.Instance) void {
+        TextDecoderImpl.deinit(instance);
+    }
+
+    /// WebIDL constructor
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, label: DOMString, options: TextDecoderOptions) !*runtime.Instance {
+        // Directly return result from impl.call_constructor
+        return try TextDecoderImpl.call_constructor(allocator, ctx, label, options);
+    }
+
+    pub fn get_encoding(instance: *runtime.Instance) anyerror!DOMString {
+        return try TextDecoderImpl.get_encoding(instance);
+    }
+
+    pub fn get_fatal(instance: *runtime.Instance) anyerror!bool {
+        return try TextDecoderImpl.get_fatal(instance);
+    }
+
+    pub fn get_ignoreBOM(instance: *runtime.Instance) anyerror!bool {
+        return try TextDecoderImpl.get_ignoreBOM(instance);
+    }
+
+    pub fn call_decode(instance: *runtime.Instance, input: AllowSharedBufferSource, options: TextDecodeOptions) anyerror!runtime.USVString {
+        
+        return try TextDecoderImpl.call_decode(instance, input, options);
+    }
+
+};

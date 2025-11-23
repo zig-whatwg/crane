@@ -1,0 +1,71 @@
+//! Implementation for FileSystemHandle interface
+//!
+//! This file is AUTO-GENERATED on first creation.
+//! Add your custom implementation here.
+
+const std = @import("std");
+const runtime = @import("runtime");
+const interfaces = @import("interfaces");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const callbacks = @import("callbacks");
+const FileSystemHandle = interfaces.FileSystemHandle;
+
+pub const State = FileSystemHandle.State;
+
+pub const ImplError = error{
+    NotImplemented,
+};
+
+/// Initialize instance (creates the instance)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+    ctx: runtime.Context,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    // TODO: Initialize your instance state here if needed
+    return instance;
+}
+
+/// Deinitialize instance
+pub fn deinit(instance: *runtime.Instance) void {
+    // TODO: Clean up your instance resources here
+    runtime.Instance.deinit(instance);
+}
+
+/// Getter for kind
+pub fn get_kind(instance: *runtime.Instance) ImplError!enums.FileSystemHandleKind {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for name
+pub fn get_name(instance: *runtime.Instance) ImplError!runtime.USVString {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Operation: isSameEntry
+pub fn call_isSameEntry(instance: *runtime.Instance, other: interfaces.FileSystemHandle) ImplError!*const anyopaque {
+    _ = instance;
+    _ = other;
+    return error.NotImplemented;
+}
+
+/// Operation: queryPermission
+pub fn call_queryPermission(instance: *runtime.Instance, descriptor: dictionaries.FileSystemHandlePermissionDescriptor) ImplError!*const anyopaque {
+    _ = instance;
+    _ = descriptor;
+    return error.NotImplemented;
+}
+
+/// Operation: requestPermission
+pub fn call_requestPermission(instance: *runtime.Instance, descriptor: dictionaries.FileSystemHandlePermissionDescriptor) ImplError!*const anyopaque {
+    _ = instance;
+    _ = descriptor;
+    return error.NotImplemented;
+}
+

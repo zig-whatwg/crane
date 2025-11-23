@@ -1,0 +1,69 @@
+//! Implementation for DOMImplementation interface
+//!
+//! This file is AUTO-GENERATED on first creation.
+//! Add your custom implementation here.
+
+const std = @import("std");
+const runtime = @import("runtime");
+const interfaces = @import("interfaces");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const callbacks = @import("callbacks");
+const DOMImplementation = interfaces.DOMImplementation;
+
+pub const State = DOMImplementation.State;
+
+pub const ImplError = error{
+    NotImplemented,
+};
+
+/// Initialize instance (creates the instance)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+    ctx: runtime.Context,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    // TODO: Initialize your instance state here if needed
+    return instance;
+}
+
+/// Deinitialize instance
+pub fn deinit(instance: *runtime.Instance) void {
+    // TODO: Clean up your instance resources here
+    runtime.Instance.deinit(instance);
+}
+
+/// Operation: createDocument
+pub fn call_createDocument(instance: *runtime.Instance, namespace: runtime.DOMString, qualifiedName: runtime.DOMString, doctype: interfaces.DocumentType) ImplError!interfaces.XMLDocument {
+    _ = instance;
+    _ = namespace;
+    _ = qualifiedName;
+    _ = doctype;
+    return error.NotImplemented;
+}
+
+/// Operation: createDocumentType
+pub fn call_createDocumentType(instance: *runtime.Instance, name: runtime.DOMString, publicId: runtime.DOMString, systemId: runtime.DOMString) ImplError!interfaces.DocumentType {
+    _ = instance;
+    _ = name;
+    _ = publicId;
+    _ = systemId;
+    return error.NotImplemented;
+}
+
+/// Operation: createHTMLDocument
+pub fn call_createHTMLDocument(instance: *runtime.Instance, title: runtime.DOMString) ImplError!interfaces.Document {
+    _ = instance;
+    _ = title;
+    return error.NotImplemented;
+}
+
+/// Operation: hasFeature
+pub fn call_hasFeature(instance: *runtime.Instance) ImplError!bool {
+    _ = instance;
+    return error.NotImplemented;
+}
+

@@ -1,0 +1,7 @@
+//! WebIDL typedef: PushMessageDataInit
+//!
+//! This file is AUTO-GENERATED. Do not edit manually.
+
+const runtime = @import("runtime");
+
+pub const PushMessageDataInit = *const anyopaque;

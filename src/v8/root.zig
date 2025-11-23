@@ -52,21 +52,21 @@
 //! ```
 
 /// V8 C API FFI bindings
-pub const ffi = @import("v8/ffi.zig");
+pub const ffi = @import("ffi.zig");
 
 /// Type conversions between Zig and V8
-pub const conversions = @import("v8/conversions.zig");
+pub const conversions = @import("conversions.zig");
 
 /// Comptime namespace binding generator
-pub const namespace_mod = @import("v8/namespace.zig");
+pub const namespace_mod = @import("namespace.zig");
 pub const V8Namespace = namespace_mod.V8Namespace;
 
 /// Comptime interface binding generator
-pub const interface_mod = @import("v8/interface.zig");
+pub const interface_mod = @import("interface.zig");
 pub const V8Interface = interface_mod.V8Interface;
 
 /// V8 Context Manager - Maps V8 contexts to runtime contexts
-pub const context_manager = @import("v8/context_manager.zig");
+pub const context_manager = @import("context_manager.zig");
 
 /// Main bindings entry point
 /// NOTE: Commented out because bindings.zig requires 'namespaces' module

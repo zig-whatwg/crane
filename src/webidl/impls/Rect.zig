@@ -1,0 +1,62 @@
+//! Implementation for Rect interface
+//!
+//! This file is AUTO-GENERATED on first creation.
+//! Add your custom implementation here.
+
+const std = @import("std");
+const runtime = @import("runtime");
+const interfaces = @import("interfaces");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const callbacks = @import("callbacks");
+const Rect = interfaces.Rect;
+
+pub const State = Rect.State;
+
+pub const ImplError = error{
+    NotImplemented,
+};
+
+/// Initialize instance (creates the instance)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+    ctx: runtime.Context,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    // TODO: Initialize your instance state here if needed
+    return instance;
+}
+
+/// Deinitialize instance
+pub fn deinit(instance: *runtime.Instance) void {
+    // TODO: Clean up your instance resources here
+    runtime.Instance.deinit(instance);
+}
+
+/// Getter for top
+pub fn get_top(instance: *runtime.Instance) ImplError!interfaces.CSSPrimitiveValue {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for right
+pub fn get_right(instance: *runtime.Instance) ImplError!interfaces.CSSPrimitiveValue {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for bottom
+pub fn get_bottom(instance: *runtime.Instance) ImplError!interfaces.CSSPrimitiveValue {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for left
+pub fn get_left(instance: *runtime.Instance) ImplError!interfaces.CSSPrimitiveValue {
+    _ = instance;
+    return error.NotImplemented;
+}
+

@@ -1,0 +1,110 @@
+//! Implementation for XRWebGLLayer interface
+//!
+//! This file is AUTO-GENERATED on first creation.
+//! Add your custom implementation here.
+
+const std = @import("std");
+const runtime = @import("runtime");
+const interfaces = @import("interfaces");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const callbacks = @import("callbacks");
+const XRWebGLLayer = interfaces.XRWebGLLayer;
+
+pub const State = XRWebGLLayer.State;
+
+pub const ImplError = error{
+    NotImplemented,
+};
+
+/// Initialize instance (creates the instance)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+    ctx: runtime.Context,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    // TODO: Initialize your instance state here if needed
+    return instance;
+}
+
+/// Deinitialize instance
+pub fn deinit(instance: *runtime.Instance) void {
+    // TODO: Clean up your instance resources here
+    runtime.Instance.deinit(instance);
+}
+
+/// Constructor implementation
+/// This is called when the interface is constructed from JavaScript
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, session: interfaces.XRSession, context: typedefs.XRWebGLRenderingContext, layerInit: dictionaries.XRWebGLLayerInit) !*runtime.Instance {
+    // Create instance through init()
+    const instance = try init(allocator, State, &XRWebGLLayer.vtable, ctx);
+    errdefer deinit(instance);
+
+    _ = session;
+    _ = context;
+    _ = layerInit;
+    // TODO: Implement constructor logic with parameters
+
+    return instance;
+}
+
+/// Getter for antialias
+pub fn get_antialias(instance: *runtime.Instance) ImplError!bool {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for ignoreDepthValues
+pub fn get_ignoreDepthValues(instance: *runtime.Instance) ImplError!bool {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for fixedFoveation
+pub fn get_fixedFoveation(instance: *runtime.Instance) ImplError!f32 {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for framebuffer
+pub fn get_framebuffer(instance: *runtime.Instance) ImplError!interfaces.WebGLFramebuffer {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for framebufferWidth
+pub fn get_framebufferWidth(instance: *runtime.Instance) ImplError!u32 {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for framebufferHeight
+pub fn get_framebufferHeight(instance: *runtime.Instance) ImplError!u32 {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Setter for fixedFoveation
+pub fn set_fixedFoveation(instance: *runtime.Instance, value: f32) ImplError!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Operation: getNativeFramebufferScaleFactor
+pub fn call_getNativeFramebufferScaleFactor(instance: *runtime.Instance, session: interfaces.XRSession) ImplError!f64 {
+    _ = instance;
+    _ = session;
+    return error.NotImplemented;
+}
+
+/// Operation: getViewport
+pub fn call_getViewport(instance: *runtime.Instance, view: interfaces.XRView) ImplError!interfaces.XRViewport {
+    _ = instance;
+    _ = view;
+    return error.NotImplemented;
+}
+

@@ -1,0 +1,232 @@
+//! Implementation for FontFace interface
+//!
+//! This file is AUTO-GENERATED on first creation.
+//! Add your custom implementation here.
+
+const std = @import("std");
+const runtime = @import("runtime");
+const interfaces = @import("interfaces");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const callbacks = @import("callbacks");
+const FontFace = interfaces.FontFace;
+
+pub const State = FontFace.State;
+
+pub const ImplError = error{
+    NotImplemented,
+};
+
+/// Initialize instance (creates the instance)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+    ctx: runtime.Context,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    // TODO: Initialize your instance state here if needed
+    return instance;
+}
+
+/// Deinitialize instance
+pub fn deinit(instance: *runtime.Instance) void {
+    // TODO: Clean up your instance resources here
+    runtime.Instance.deinit(instance);
+}
+
+/// Constructor implementation
+/// This is called when the interface is constructed from JavaScript
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, family: *const anyopaque, source: *const anyopaque, descriptors: dictionaries.FontFaceDescriptors) !*runtime.Instance {
+    // Create instance through init()
+    const instance = try init(allocator, State, &FontFace.vtable, ctx);
+    errdefer deinit(instance);
+
+    _ = family;
+    _ = source;
+    _ = descriptors;
+    // TODO: Implement constructor logic with parameters
+
+    return instance;
+}
+
+/// Getter for family
+pub fn get_family(instance: *runtime.Instance) ImplError!*const anyopaque {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for style
+pub fn get_style(instance: *runtime.Instance) ImplError!*const anyopaque {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for weight
+pub fn get_weight(instance: *runtime.Instance) ImplError!*const anyopaque {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for stretch
+pub fn get_stretch(instance: *runtime.Instance) ImplError!*const anyopaque {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for unicodeRange
+pub fn get_unicodeRange(instance: *runtime.Instance) ImplError!*const anyopaque {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for featureSettings
+pub fn get_featureSettings(instance: *runtime.Instance) ImplError!*const anyopaque {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for variationSettings
+pub fn get_variationSettings(instance: *runtime.Instance) ImplError!*const anyopaque {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for display
+pub fn get_display(instance: *runtime.Instance) ImplError!*const anyopaque {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for ascentOverride
+pub fn get_ascentOverride(instance: *runtime.Instance) ImplError!*const anyopaque {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for descentOverride
+pub fn get_descentOverride(instance: *runtime.Instance) ImplError!*const anyopaque {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for lineGapOverride
+pub fn get_lineGapOverride(instance: *runtime.Instance) ImplError!*const anyopaque {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for status
+pub fn get_status(instance: *runtime.Instance) ImplError!enums.FontFaceLoadStatus {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for loaded
+pub fn get_loaded(instance: *runtime.Instance) ImplError!*const anyopaque {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for features
+pub fn get_features(instance: *runtime.Instance) ImplError!interfaces.FontFaceFeatures {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for variations
+pub fn get_variations(instance: *runtime.Instance) ImplError!interfaces.FontFaceVariations {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for palettes
+pub fn get_palettes(instance: *runtime.Instance) ImplError!interfaces.FontFacePalettes {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Setter for family
+pub fn set_family(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for style
+pub fn set_style(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for weight
+pub fn set_weight(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for stretch
+pub fn set_stretch(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for unicodeRange
+pub fn set_unicodeRange(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for featureSettings
+pub fn set_featureSettings(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for variationSettings
+pub fn set_variationSettings(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for display
+pub fn set_display(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for ascentOverride
+pub fn set_ascentOverride(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for descentOverride
+pub fn set_descentOverride(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for lineGapOverride
+pub fn set_lineGapOverride(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Operation: load
+pub fn call_load(instance: *runtime.Instance) ImplError!*const anyopaque {
+    _ = instance;
+    return error.NotImplemented;
+}
+

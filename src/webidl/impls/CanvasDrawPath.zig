@@ -1,0 +1,81 @@
+//! Implementation for CanvasDrawPath interface
+//!
+//! This file is AUTO-GENERATED on first creation.
+//! Add your custom implementation here.
+
+const std = @import("std");
+const runtime = @import("runtime");
+const interfaces = @import("interfaces");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const callbacks = @import("callbacks");
+const CanvasDrawPath = interfaces.CanvasDrawPath;
+
+pub const State = CanvasDrawPath.State;
+
+pub const ImplError = error{
+    NotImplemented,
+};
+
+/// Initialize instance (creates the instance)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+    ctx: runtime.Context,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    // TODO: Initialize your instance state here if needed
+    return instance;
+}
+
+/// Deinitialize instance
+pub fn deinit(instance: *runtime.Instance) void {
+    // TODO: Clean up your instance resources here
+    runtime.Instance.deinit(instance);
+}
+
+/// Operation: clip
+pub fn call_clip(instance: *runtime.Instance, fillRule: enums.CanvasFillRule) ImplError!void {
+    _ = instance;
+    _ = fillRule;
+    return error.NotImplemented;
+}
+
+/// Operation: isPointInPath
+pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule: enums.CanvasFillRule) ImplError!bool {
+    _ = instance;
+    _ = x;
+    _ = y;
+    _ = fillRule;
+    return error.NotImplemented;
+}
+
+/// Operation: isPointInStroke
+pub fn call_isPointInStroke(instance: *runtime.Instance, x: f64, y: f64) ImplError!bool {
+    _ = instance;
+    _ = x;
+    _ = y;
+    return error.NotImplemented;
+}
+
+/// Operation: beginPath
+pub fn call_beginPath(instance: *runtime.Instance) ImplError!void {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Operation: fill
+pub fn call_fill(instance: *runtime.Instance, fillRule: enums.CanvasFillRule) ImplError!void {
+    _ = instance;
+    _ = fillRule;
+    return error.NotImplemented;
+}
+
+/// Operation: stroke
+pub fn call_stroke(instance: *runtime.Instance) ImplError!void {
+    _ = instance;
+    return error.NotImplemented;
+}
+

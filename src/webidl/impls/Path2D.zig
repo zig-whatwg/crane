@@ -1,0 +1,161 @@
+//! Implementation for Path2D interface
+//!
+//! This file is AUTO-GENERATED on first creation.
+//! Add your custom implementation here.
+
+const std = @import("std");
+const runtime = @import("runtime");
+const interfaces = @import("interfaces");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const callbacks = @import("callbacks");
+const Path2D = interfaces.Path2D;
+
+pub const State = Path2D.State;
+
+pub const ImplError = error{
+    NotImplemented,
+};
+
+/// Initialize instance (creates the instance)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+    ctx: runtime.Context,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    // TODO: Initialize your instance state here if needed
+    return instance;
+}
+
+/// Deinitialize instance
+pub fn deinit(instance: *runtime.Instance) void {
+    // TODO: Clean up your instance resources here
+    runtime.Instance.deinit(instance);
+}
+
+/// Constructor implementation
+/// This is called when the interface is constructed from JavaScript
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, path: *const anyopaque) !*runtime.Instance {
+    // Create instance through init()
+    const instance = try init(allocator, State, &Path2D.vtable, ctx);
+    errdefer deinit(instance);
+
+    _ = path;
+    // TODO: Implement constructor logic with parameters
+
+    return instance;
+}
+
+/// Operation: lineTo
+pub fn call_lineTo(instance: *runtime.Instance, x: f64, y: f64) ImplError!void {
+    _ = instance;
+    _ = x;
+    _ = y;
+    return error.NotImplemented;
+}
+
+/// Operation: arcTo
+pub fn call_arcTo(instance: *runtime.Instance, x1: f64, y1: f64, x2: f64, y2: f64, radius: f64) ImplError!void {
+    _ = instance;
+    _ = x1;
+    _ = y1;
+    _ = x2;
+    _ = y2;
+    _ = radius;
+    return error.NotImplemented;
+}
+
+/// Operation: arc
+pub fn call_arc(instance: *runtime.Instance, x: f64, y: f64, radius: f64, startAngle: f64, endAngle: f64, counterclockwise: bool) ImplError!void {
+    _ = instance;
+    _ = x;
+    _ = y;
+    _ = radius;
+    _ = startAngle;
+    _ = endAngle;
+    _ = counterclockwise;
+    return error.NotImplemented;
+}
+
+/// Operation: moveTo
+pub fn call_moveTo(instance: *runtime.Instance, x: f64, y: f64) ImplError!void {
+    _ = instance;
+    _ = x;
+    _ = y;
+    return error.NotImplemented;
+}
+
+/// Operation: quadraticCurveTo
+pub fn call_quadraticCurveTo(instance: *runtime.Instance, cpx: f64, cpy: f64, x: f64, y: f64) ImplError!void {
+    _ = instance;
+    _ = cpx;
+    _ = cpy;
+    _ = x;
+    _ = y;
+    return error.NotImplemented;
+}
+
+/// Operation: bezierCurveTo
+pub fn call_bezierCurveTo(instance: *runtime.Instance, cp1x: f64, cp1y: f64, cp2x: f64, cp2y: f64, x: f64, y: f64) ImplError!void {
+    _ = instance;
+    _ = cp1x;
+    _ = cp1y;
+    _ = cp2x;
+    _ = cp2y;
+    _ = x;
+    _ = y;
+    return error.NotImplemented;
+}
+
+/// Operation: ellipse
+pub fn call_ellipse(instance: *runtime.Instance, x: f64, y: f64, radiusX: f64, radiusY: f64, rotation: f64, startAngle: f64, endAngle: f64, counterclockwise: bool) ImplError!void {
+    _ = instance;
+    _ = x;
+    _ = y;
+    _ = radiusX;
+    _ = radiusY;
+    _ = rotation;
+    _ = startAngle;
+    _ = endAngle;
+    _ = counterclockwise;
+    return error.NotImplemented;
+}
+
+/// Operation: addPath
+pub fn call_addPath(instance: *runtime.Instance, path: interfaces.Path2D, transform: dictionaries.DOMMatrix2DInit) ImplError!void {
+    _ = instance;
+    _ = path;
+    _ = transform;
+    return error.NotImplemented;
+}
+
+/// Operation: closePath
+pub fn call_closePath(instance: *runtime.Instance) ImplError!void {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Operation: roundRect
+pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64, radii: *const anyopaque) ImplError!void {
+    _ = instance;
+    _ = x;
+    _ = y;
+    _ = w;
+    _ = h;
+    _ = radii;
+    return error.NotImplemented;
+}
+
+/// Operation: rect
+pub fn call_rect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) ImplError!void {
+    _ = instance;
+    _ = x;
+    _ = y;
+    _ = w;
+    _ = h;
+    return error.NotImplemented;
+}
+

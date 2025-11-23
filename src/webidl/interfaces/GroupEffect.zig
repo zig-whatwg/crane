@@ -1,0 +1,130 @@
+//! Generated from: web-animations-2.idl
+//! Generated at: 2025-11-23T01:18:35Z
+//!
+//! This file is AUTO-GENERATED. Do not edit manually.
+
+const std = @import("std");
+const runtime = @import("runtime");
+const GroupEffectImpl = @import("impls").GroupEffect;
+const AnimationNodeList = @import("interfaces").AnimationNodeList;
+const AnimationEffect = @import("interfaces").AnimationEffect;
+const EffectTiming = @import("dictionaries").EffectTiming;
+
+pub const GroupEffect = struct {
+    pub const Meta = struct {
+        pub const name = "GroupEffect";
+        pub const is_mixin = false;
+        pub const spec_url: ?[]const u8 = null;
+        pub const BaseType = ?*anyopaque;
+        pub const MixinTypes = &.{};
+        pub const extended_attributes = .{
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+        };
+        
+        /// Global contexts where this interface is exposed
+        pub const exposed_in = .{ .Window = true };
+        
+        /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
+        pub const properties = .{
+            .{ "children", "get_children", null },
+            .{ "firstChild", "get_firstChild", null },
+            .{ "lastChild", "get_lastChild", null },
+        };
+        
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        pub const methods = .{
+            .{ "clone", "call_clone", 0 },
+            .{ "prepend", "call_prepend", 1 },
+            .{ "append", "call_append", 1 },
+        };
+        
+        /// Methods defined/overridden by this interface
+        pub const own_methods = .{
+            "clone",
+            "prepend",
+            "append",
+        };
+        
+        /// Methods inherited from parent/mixins (rely on V8 prototype chain)
+        pub const inherited_methods = .{
+        };
+        
+        /// Properties to define eagerly (frequently accessed) - ONLY own properties
+        pub const eager_properties = .{
+            .{ "children", "get_children", null },
+            .{ "firstChild", "get_firstChild", null },
+            .{ "lastChild", "get_lastChild", null },
+        };
+        
+        /// Properties to define lazily (rarely accessed) - ONLY own properties
+        pub const lazy_properties = .{
+        };
+        
+        pub const has_constructor = true;
+    };
+
+    pub const State = runtime.FlattenedState(
+        Meta.BaseType,
+        Meta.MixinTypes,
+        struct {
+            children: AnimationNodeList = undefined,
+            firstChild: ?AnimationEffect = null,
+            lastChild: ?AnimationEffect = null,
+        },
+    );
+
+    const delegates = .{
+
+        .get_children = &get_children,
+        .get_firstChild = &get_firstChild,
+        .get_lastChild = &get_lastChild,
+
+        .call_append = &call_append,
+        .call_clone = &call_clone,
+        .call_prepend = &call_prepend,
+    };
+    pub const vtable = runtime.buildVTable(&delegates);
+
+    /// Initialize a new instance
+    pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+        return GroupEffectImpl.init(allocator, State, &vtable, ctx);
+    }
+
+    /// Clean up instance resources
+    pub fn deinit(instance: *runtime.Instance) void {
+        GroupEffectImpl.deinit(instance);
+    }
+
+    /// WebIDL constructor
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, children: *const anyopaque, timing: *const anyopaque) !*runtime.Instance {
+        // Directly return result from impl.call_constructor
+        return try GroupEffectImpl.call_constructor(allocator, ctx, children, timing);
+    }
+
+    pub fn get_children(instance: *runtime.Instance) anyerror!AnimationNodeList {
+        return try GroupEffectImpl.get_children(instance);
+    }
+
+    pub fn get_firstChild(instance: *runtime.Instance) anyerror!AnimationEffect {
+        return try GroupEffectImpl.get_firstChild(instance);
+    }
+
+    pub fn get_lastChild(instance: *runtime.Instance) anyerror!AnimationEffect {
+        return try GroupEffectImpl.get_lastChild(instance);
+    }
+
+    pub fn call_clone(instance: *runtime.Instance) anyerror!GroupEffect {
+        return try GroupEffectImpl.call_clone(instance);
+    }
+
+    pub fn call_append(instance: *runtime.Instance, effects: AnimationEffect) anyerror!void {
+        
+        return try GroupEffectImpl.call_append(instance, effects);
+    }
+
+    pub fn call_prepend(instance: *runtime.Instance, effects: AnimationEffect) anyerror!void {
+        
+        return try GroupEffectImpl.call_prepend(instance, effects);
+    }
+
+};

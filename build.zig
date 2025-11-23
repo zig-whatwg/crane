@@ -856,8 +856,13 @@ pub fn build(b: *std.Build) void {
         }),
     });
     b.installArtifact(codegen_exe);
-    const codegen_step = b.step("codegen", "Build WebIDL code generator");
-    codegen_step.dependOn(&b.addInstallArtifact(codegen_exe, .{}).step);
+
+    // Add run step for codegen (don't depend on full install to avoid build errors in other tools)
+    const run_codegen = b.addRunArtifact(codegen_exe);
+    if (b.args) |args| run_codegen.addArgs(args);
+
+    const codegen_step = b.step("codegen", "Run WebIDL code generator (use -- to pass args)");
+    codegen_step.dependOn(&run_codegen.step);
 
     // IDL scanner tool
     const idl_scanner_exe = b.addExecutable(.{
@@ -873,8 +878,14 @@ pub fn build(b: *std.Build) void {
         }),
     });
     b.installArtifact(idl_scanner_exe);
-    const idl_scanner_step = b.step("idl-scanner", "Build IDL scanner tool");
-    idl_scanner_step.dependOn(&b.addInstallArtifact(idl_scanner_exe, .{}).step);
+
+    // Add run step for idl-scanner
+    const run_idl_scanner = b.addRunArtifact(idl_scanner_exe);
+    run_idl_scanner.step.dependOn(b.getInstallStep());
+    if (b.args) |args| run_idl_scanner.addArgs(args);
+
+    const idl_scanner_step = b.step("idl-scanner", "Run IDL scanner tool (use -- to pass args)");
+    idl_scanner_step.dependOn(&run_idl_scanner.step);
 
     // Interfaces tool
     const interfaces_exe = b.addExecutable(.{
@@ -890,8 +901,14 @@ pub fn build(b: *std.Build) void {
         }),
     });
     b.installArtifact(interfaces_exe);
-    const interfaces_tool_step = b.step("interfaces-tool", "Build interfaces tool");
-    interfaces_tool_step.dependOn(&b.addInstallArtifact(interfaces_exe, .{}).step);
+
+    // Add run step for interfaces tool
+    const run_interfaces_tool = b.addRunArtifact(interfaces_exe);
+    run_interfaces_tool.step.dependOn(b.getInstallStep());
+    if (b.args) |args| run_interfaces_tool.addArgs(args);
+
+    const interfaces_tool_step = b.step("interfaces-tool", "Run interfaces tool (use -- to pass args)");
+    interfaces_tool_step.dependOn(&run_interfaces_tool.step);
 
     // REPL tool
     const repl_exe = b.addExecutable(.{
@@ -907,8 +924,14 @@ pub fn build(b: *std.Build) void {
         }),
     });
     b.installArtifact(repl_exe);
-    const repl_step = b.step("repl", "Build REPL tool");
-    repl_step.dependOn(&b.addInstallArtifact(repl_exe, .{}).step);
+
+    // Add run step for REPL
+    const run_repl = b.addRunArtifact(repl_exe);
+    run_repl.step.dependOn(b.getInstallStep());
+    if (b.args) |args| run_repl.addArgs(args);
+
+    const repl_step = b.step("repl", "Run REPL tool (use -- to pass args)");
+    repl_step.dependOn(&run_repl.step);
 
     // ========================================================================
     // COMPREHENSIVE BUILD TEST

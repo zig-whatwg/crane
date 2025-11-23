@@ -1,0 +1,47 @@
+//! WebIDL dictionary: AuctionAdConfig
+//!
+//! This file is AUTO-GENERATED. Do not edit manually.
+
+const runtime = @import("runtime");
+
+pub const AuctionAdConfig = struct {
+    seller: runtime.USVString,
+    decisionLogicURL: runtime.USVString,
+    trustedScoringSignalsURL: ?runtime.USVString = null,
+    maxTrustedScoringSignalsURLLength: ?i32 = null,
+    trustedScoringSignalsCoordinator: ?runtime.USVString = null,
+    sendCreativeScanningMetadata: ?bool = null,
+    interestGroupBuyers: ?*const anyopaque = null,
+    auctionSignals: ?*const anyopaque = null,
+    sellerSignals: ?*const anyopaque = null,
+    directFromSellerSignalsHeaderAdSlot: ?*const anyopaque = null,
+    deprecatedRenderURLReplacements: ?*const anyopaque = null,
+    sellerTimeout: ?u64 = null,
+    sellerExperimentGroupId: ?u16 = null,
+    perBuyerSignals: ?*const anyopaque = null,
+    perBuyerTimeouts: ?*const anyopaque = null,
+    perBuyerCumulativeTimeouts: ?*const anyopaque = null,
+    reportingTimeout: ?u64 = null,
+    sellerCurrency: ?runtime.USVString = null,
+    perBuyerCurrencies: ?*const anyopaque = null,
+    perBuyerMultiBidLimits: ?*const anyopaque = null,
+    perBuyerGroupLimits: ?*const anyopaque = null,
+    perBuyerExperimentGroupIds: ?*const anyopaque = null,
+    perBuyerPrioritySignals: ?*const anyopaque = null,
+    auctionReportBuyerKeys: ?*const anyopaque = null,
+    auctionReportBuyers: ?*const anyopaque = null,
+    auctionReportBuyerDebugModeConfig: ?*const anyopaque = null,
+    requiredSellerCapabilities: ?*const anyopaque = null,
+    privateAggregationConfig: ?*const anyopaque = null,
+    requestedSize: ?*const anyopaque = null,
+    allSlotsRequestedSizes: ?*const anyopaque = null,
+    additionalBids: ?*const anyopaque = null,
+    auctionNonce: ?runtime.DOMString = null,
+    sellerRealTimeReportingConfig: ?*const anyopaque = null,
+    perBuyerRealTimeReportingConfig: ?*const anyopaque = null,
+    componentAuctions: ?*const anyopaque = null,
+    signal: ?*const anyopaque = null,
+    resolveToConfig: ?*const anyopaque = null,
+    serverResponse: ?*const anyopaque = null,
+    requestId: ?runtime.USVString = null,
+};

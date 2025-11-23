@@ -1,0 +1,16 @@
+//! WebIDL dictionary: MLLayerNormalizationOptions
+//!
+//! This file is AUTO-GENERATED. Do not edit manually.
+
+const runtime = @import("runtime");
+const MLOperatorOptions = @import("MLOperatorOptions.zig").MLOperatorOptions;
+
+pub const MLLayerNormalizationOptions = struct {
+    // Inherited from MLOperatorOptions
+    base: MLOperatorOptions,
+
+    scale: ?*const anyopaque = null,
+    bias: ?*const anyopaque = null,
+    axes: ?*const anyopaque = null,
+    epsilon: ?f64 = null,
+};

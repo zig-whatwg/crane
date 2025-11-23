@@ -1,0 +1,57 @@
+//! Implementation for Crypto interface
+//!
+//! This file is AUTO-GENERATED on first creation.
+//! Add your custom implementation here.
+
+const std = @import("std");
+const runtime = @import("runtime");
+const interfaces = @import("interfaces");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const callbacks = @import("callbacks");
+const Crypto = interfaces.Crypto;
+
+pub const State = Crypto.State;
+
+pub const ImplError = error{
+    NotImplemented,
+};
+
+/// Initialize instance (creates the instance)
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+    ctx: runtime.Context,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    // TODO: Initialize your instance state here if needed
+    return instance;
+}
+
+/// Deinitialize instance
+pub fn deinit(instance: *runtime.Instance) void {
+    // TODO: Clean up your instance resources here
+    runtime.Instance.deinit(instance);
+}
+
+/// Getter for subtle
+pub fn get_subtle(instance: *runtime.Instance) ImplError!interfaces.SubtleCrypto {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Operation: getRandomValues
+pub fn call_getRandomValues(instance: *runtime.Instance, array: typedefs.ArrayBufferView) ImplError!typedefs.ArrayBufferView {
+    _ = instance;
+    _ = array;
+    return error.NotImplemented;
+}
+
+/// Operation: randomUUID
+pub fn call_randomUUID(instance: *runtime.Instance) ImplError!runtime.DOMString {
+    _ = instance;
+    return error.NotImplemented;
+}
+
