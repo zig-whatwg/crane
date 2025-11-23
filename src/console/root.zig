@@ -8,8 +8,8 @@
 
 const std = @import("std");
 
-// Re-export generated console namespace (from webidl/interfaces/console.zig)
-pub const console = @import("interfaces").console;
+// Re-export generated console namespace (from webidl/namespaces/console.zig)
+pub const console = @import("namespaces").console;
 
 test {
     std.testing.refAllDecls(@This());

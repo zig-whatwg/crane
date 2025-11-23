@@ -514,6 +514,7 @@ pub fn build(b: *std.Build) void {
     });
     console_mod.addImport("webidl", webidl_mod);
     console_mod.addImport("interfaces", interfaces_mod);
+    console_mod.addImport("namespaces", namespaces_mod);
 
     // Streams internal modules (used by both root.zig and generated interfaces)
     // All internal files need to import each other via modules to avoid circular file ownership
