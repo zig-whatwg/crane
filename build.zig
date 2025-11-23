@@ -990,6 +990,8 @@ pub fn build(b: *std.Build) void {
             "-std=c++20",
             "-fno-exceptions",
             "-fno-rtti",
+            "-DV8_COMPRESS_POINTERS",
+            "-DV8_ENABLE_SANDBOX",
         },
     });
 
