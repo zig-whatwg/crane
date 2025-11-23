@@ -18,6 +18,8 @@ const WritableStream = interfaces.WritableStream;
 const streams_common = @import("streams_common");
 const event_loop = @import("streams_event_loop");
 const AsyncPromise = @import("streams_async_promise").AsyncPromise;
+// Note: WriteRequest from streams_write_request uses placeholder Promise
+// For now we use AsyncPromise directly until we can update WriteRequest
 
 pub const State = WritableStream.State;
 
@@ -62,7 +64,7 @@ pub const InternalState = struct {
     /// [[writeRequests]]: List of pending write promises
     write_requests: std.ArrayList(*AsyncPromise(void)),
 
-    /// [[inFlightWriteRequest]]: Promise for the currently executing write
+    /// [[inFlightWriteRequest]]: Currently executing write promise
     in_flight_write_request: ?*AsyncPromise(void),
 
     /// [[closeRequest]]: Promise for pending close request
@@ -82,28 +84,6 @@ pub const InternalState = struct {
 
     /// Resource management
     allocator: std.mem.Allocator,
-
-    pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
-        // Clean up write requests
-        for (self.write_requests.items) |promise| {
-            promise.deinit();
-        }
-        self.write_requests.deinit(allocator);
-
-        // Clean up in-flight requests if present
-        if (self.in_flight_write_request) |promise| {
-            promise.deinit();
-        }
-        if (self.close_request) |promise| {
-            promise.deinit();
-        }
-        if (self.in_flight_close_request) |promise| {
-            promise.deinit();
-        }
-
-        // Free the internal state itself
-        allocator.destroy(self);
-    }
 };
 
 /// Initialize instance (creates the instance)
@@ -118,11 +98,35 @@ pub fn init(
     return instance;
 }
 
+/// Deinitialize InternalState
+fn deinitInternal(internal: *InternalState, allocator: std.mem.Allocator) void {
+    // Clean up write requests
+    for (internal.write_requests.items) |promise| {
+        promise.deinit();
+    }
+    internal.write_requests.deinit(allocator);
+
+    // Clean up in-flight write request
+    if (internal.in_flight_write_request) |promise| {
+        promise.deinit();
+    }
+
+    // Clean up close requests
+    if (internal.close_request) |promise| {
+        promise.deinit();
+    }
+    if (internal.in_flight_close_request) |promise| {
+        promise.deinit();
+    }
+
+    allocator.destroy(internal);
+}
+
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        internal.deinit(internal.allocator);
+        deinitInternal(internal, internal.allocator);
     }
     runtime.Instance.deinit(instance);
 }
@@ -312,19 +316,20 @@ pub fn call_close(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 // ============================================================================
-// Strategy Algorithms (shared with ReadableStream)
+// Strategy Algorithms (using internal infrastructure)
 // ============================================================================
 
-/// ExtractHighWaterMark(strategy, defaultHWM)
+/// ExtractHighWaterMark - validates and extracts HWM from strategy
 fn extractHighWaterMark(strategy: *const dictionaries.QueuingStrategy, default_hwm: f64) !f64 {
     const hwm = strategy.highWaterMark orelse return default_hwm;
+    // Validate per WHATWG spec (same as internal queuing_ops)
     if (std.math.isNan(hwm) or hwm < 0.0) {
         return error.RangeError;
     }
     return hwm;
 }
 
-/// ExtractSizeAlgorithm(strategy)
+/// ExtractSizeAlgorithm - extracts size function from strategy
 fn extractSizeAlgorithm(strategy: *const dictionaries.QueuingStrategy) ?*const anyopaque {
     return strategy.size;
 }
