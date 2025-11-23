@@ -1017,4 +1017,54 @@ Global<Symbol>* v8_Symbol_GetIterator(Isolate* isolate) {
     return new Global<Symbol>(isolate, symbol);
 }
 
+// ============================================================================
+// Microtask Functions (Event Loop Integration)
+// ============================================================================
+
+/// Enqueue a microtask callback
+///
+/// Microtasks are high-priority tasks that run before the next JavaScript task.
+/// This is used for promise reactions, mutation observers, etc.
+///
+/// The callback will be invoked with the provided data pointer.
+/// The caller is responsible for managing the lifetime of data.
+void v8_Isolate_EnqueueMicrotask(
+    Isolate* isolate,
+    void (*callback)(void*),
+    void* data
+) {
+    // V8 expects a C function pointer, not a C++ lambda
+    isolate->EnqueueMicrotask(callback, data);
+}
+
+/// Perform a microtask checkpoint
+///
+/// This runs all pending microtasks to completion. If microtasks enqueue
+/// additional microtasks, those are also executed before returning.
+///
+/// This implements "perform a microtask checkpoint" from HTML spec:
+/// https://html.spec.whatwg.org/#perform-a-microtask-checkpoint
+void v8_Isolate_PerformMicrotaskCheckpoint(Isolate* isolate) {
+    isolate->PerformMicrotaskCheckpoint();
+}
+
+/// Set the microtasks policy for the isolate
+///
+/// - kExplicit: Microtasks must be explicitly run via PerformMicrotaskCheckpoint
+/// - kScoped: Microtasks run automatically at the end of each MicrotasksScope
+/// - kAuto: Microtasks run automatically (deprecated, use kScoped)
+///
+/// Default is kAuto for backward compatibility.
+/// For embedder control, use kExplicit.
+void v8_Isolate_SetMicrotasksPolicy(Isolate* isolate, int policy) {
+    MicrotasksPolicy v8_policy;
+    switch (policy) {
+        case 0: v8_policy = MicrotasksPolicy::kExplicit; break;
+        case 1: v8_policy = MicrotasksPolicy::kScoped; break;
+        case 2: v8_policy = MicrotasksPolicy::kAuto; break;
+        default: return;  // Invalid policy
+    }
+    isolate->SetMicrotasksPolicy(v8_policy);
+}
+
 } // extern "C"

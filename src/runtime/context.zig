@@ -40,6 +40,9 @@ const infra = @import("infra");
 // Note: This is an optional dependency - event_loop is only needed for async features
 const event_loop_mod = @import("event_loop");
 
+// Import V8 event loop for auto-detection
+const v8 = @import("v8");
+
 /// Console state for console namespace operations
 ///
 /// This state is per-context (one instance per ContextData).
@@ -106,6 +109,10 @@ pub const ContextData = struct {
     /// Optional - only needed for async features like ReadableStream
     event_loop: ?event_loop_mod.EventLoop,
 
+    /// Internal: V8EventLoop storage (if created during init)
+    /// This is owned by the context and must be cleaned up
+    _v8_event_loop_storage: ?*v8.V8EventLoop,
+
     const Self = @This();
 
     /// Context initialization options
@@ -133,17 +140,41 @@ pub const ContextData = struct {
             .show_labels = options.show_labels,
         });
 
+        // Auto-detect event loop:
+        // 1. If engine_ctx provided (V8 isolate) → create V8EventLoop
+        // 2. If event_loop provided explicitly → use it
+        // 3. Otherwise → no event loop (async operations will fail)
+        var v8_loop_storage: ?*v8.V8EventLoop = null;
+        const ev_loop = if (options.engine_ctx) |engine_ctx| blk: {
+            // V8 mode - create V8EventLoop wrapper
+            const isolate: *v8.ffi.Isolate = @ptrCast(@alignCast(engine_ctx));
+            const v8_loop_ptr = try allocator.create(v8.V8EventLoop);
+            errdefer allocator.destroy(v8_loop_ptr);
+
+            v8_loop_ptr.* = v8.V8EventLoop.init(isolate, allocator);
+            v8_loop_storage = v8_loop_ptr;
+
+            break :blk v8_loop_ptr.eventLoop();
+        } else options.event_loop;
+
         return .{
             .allocator = allocator,
             .logger = logger,
             .engine_ctx = options.engine_ctx,
             .console_state = ConsoleState.init(allocator),
-            .event_loop = options.event_loop,
+            .event_loop = ev_loop,
+            ._v8_event_loop_storage = v8_loop_storage,
         };
     }
 
     /// Deinitialize context and cleanup resources
     pub fn deinit(self: *Self) void {
+        // Clean up V8EventLoop if we created one
+        if (self._v8_event_loop_storage) |v8_loop| {
+            v8_loop.deinit();
+            self.allocator.destroy(v8_loop);
+        }
+
         self.console_state.deinit(self.allocator);
         self.logger.deinit();
     }

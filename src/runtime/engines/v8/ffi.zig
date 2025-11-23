@@ -396,3 +396,37 @@ pub extern fn v8_FunctionTemplate_SetLength(tpl: *FunctionTemplate, length: c_in
 
 // Function
 pub extern fn v8_Function_Dispose(fn_ptr: *Function) void;
+
+// ============================================================================
+// Microtask Functions (Event Loop Integration)
+// ============================================================================
+
+/// Microtasks policy for isolate
+pub const MicrotasksPolicy = enum(c_int) {
+    /// Microtasks must be explicitly run via PerformMicrotaskCheckpoint
+    Explicit = 0,
+    /// Microtasks run automatically at the end of each MicrotasksScope
+    Scoped = 1,
+    /// Microtasks run automatically (deprecated, use Scoped)
+    Auto = 2,
+};
+
+/// Enqueue a microtask callback
+///
+/// The callback will be invoked with the provided data pointer.
+/// Caller is responsible for managing the lifetime of data.
+///
+/// Callback signature: void (*callback)(void* data)
+pub extern fn v8_Isolate_EnqueueMicrotask(
+    isolate: *Isolate,
+    callback: ?*const anyopaque, // Function pointer passed as opaque
+    data: ?*anyopaque,
+) void;
+
+/// Perform a microtask checkpoint
+///
+/// Runs all pending microtasks to completion.
+pub extern fn v8_Isolate_PerformMicrotaskCheckpoint(isolate: *Isolate) void;
+
+/// Set the microtasks policy for the isolate
+pub extern fn v8_Isolate_SetMicrotasksPolicy(isolate: *Isolate, policy: c_int) void;

@@ -146,6 +146,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     v8_mod.addImport("runtime", runtime_mod);
+    // v8_mod will need event_loop - added later after streams_event_loop_mod is defined
 
     // JS bindings module
     const js_bindings_mod = b.addModule("js_bindings", .{
@@ -700,8 +701,12 @@ pub fn build(b: *std.Build) void {
     streams_mod.addImport("runtime", runtime_mod);
     streams_mod.addImport("dom", dom_mod);
 
-    // Add event loop to runtime for async operations (streams, promises)
+    // Add event loop to runtime and v8 for async operations (streams, promises)
     runtime_mod.addImport("event_loop", streams_event_loop_mod);
+    v8_mod.addImport("event_loop", streams_event_loop_mod);
+
+    // Add v8 to runtime so context can create V8EventLoop
+    runtime_mod.addImport("v8", v8_mod);
 
     // Add internal modules so root.zig can access them
     streams_mod.addImport("common", streams_common_mod);

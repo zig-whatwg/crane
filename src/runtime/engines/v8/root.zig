@@ -75,6 +75,10 @@ pub const context_manager = @import("context_manager.zig");
 // pub const bindings = @import("v8/bindings.zig");
 pub const interface_bindings = @import("interface_bindings.zig");
 
+/// V8 Event Loop Integration
+pub const event_loop_mod = @import("event_loop.zig");
+pub const V8EventLoop = event_loop_mod.V8EventLoop;
+
 // Re-export commonly used types for convenience
 pub const Isolate = ffi.Isolate;
 pub const Context = ffi.Context;
