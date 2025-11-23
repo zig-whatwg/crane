@@ -1,5 +1,5 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -68,7 +68,7 @@ pub const ImageTrackList = struct {
             ready: runtime.Promise(void) = undefined,
             length: u32 = undefined,
             selectedIndex: i32 = undefined,
-            selectedTrack: ?ImageTrack = null,
+            selectedTrack: ?*runtime.Instance = null,
             _internal: ?*ImageTrackListImpl.InternalState = null,
         },
     );

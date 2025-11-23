@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -57,10 +57,10 @@ pub const RTCIceCandidatePair = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            local: RTCIceCandidate = undefined,
-            remote: RTCIceCandidate = undefined,
-            cached_local: ?RTCIceCandidate = null,
-            cached_remote: ?RTCIceCandidate = null,
+            local: *runtime.Instance = undefined,
+            remote: *runtime.Instance = undefined,
+            cached_local: ?*runtime.Instance = null,
+            cached_remote: ?*runtime.Instance = null,
             _internal: ?*RTCIceCandidatePairImpl.InternalState = null,
         },
     );

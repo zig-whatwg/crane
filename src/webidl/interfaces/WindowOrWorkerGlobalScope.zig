@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -110,15 +110,15 @@ pub const WindowOrWorkerGlobalScope = struct {
             origin: runtime.USVString = undefined,
             isSecureContext: bool = undefined,
             crossOriginIsolated: bool = undefined,
-            indexedDB: IDBFactory = undefined,
-            trustedTypes: TrustedTypePolicyFactory = undefined,
-            performance: Performance = undefined,
-            caches: CacheStorage = undefined,
-            scheduler: Scheduler = undefined,
-            crypto: Crypto = undefined,
-            cached_indexedDB: ?IDBFactory = null,
-            cached_caches: ?CacheStorage = null,
-            cached_crypto: ?Crypto = null,
+            indexedDB: *runtime.Instance = undefined,
+            trustedTypes: *runtime.Instance = undefined,
+            performance: *runtime.Instance = undefined,
+            caches: *runtime.Instance = undefined,
+            scheduler: *runtime.Instance = undefined,
+            crypto: *runtime.Instance = undefined,
+            cached_indexedDB: ?*runtime.Instance = null,
+            cached_caches: ?*runtime.Instance = null,
+            cached_crypto: ?*runtime.Instance = null,
             _internal: ?*WindowOrWorkerGlobalScopeImpl.InternalState = null,
         },
     );

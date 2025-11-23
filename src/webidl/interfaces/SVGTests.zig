@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -52,10 +52,10 @@ pub const SVGTests = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            requiredExtensions: SVGStringList = undefined,
-            systemLanguage: SVGStringList = undefined,
-            cached_requiredExtensions: ?SVGStringList = null,
-            cached_systemLanguage: ?SVGStringList = null,
+            requiredExtensions: *runtime.Instance = undefined,
+            systemLanguage: *runtime.Instance = undefined,
+            cached_requiredExtensions: ?*runtime.Instance = null,
+            cached_systemLanguage: ?*runtime.Instance = null,
             _internal: ?*SVGTestsImpl.InternalState = null,
         },
     );

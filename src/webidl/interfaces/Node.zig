@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -153,17 +153,17 @@ pub const Node = struct {
             nodeName: runtime.DOMString = undefined,
             baseURI: runtime.USVString = undefined,
             isConnected: bool = undefined,
-            ownerDocument: ?Document = null,
-            parentNode: ?Node = null,
-            parentElement: ?Element = null,
-            childNodes: NodeList = undefined,
-            firstChild: ?Node = null,
-            lastChild: ?Node = null,
-            previousSibling: ?Node = null,
-            nextSibling: ?Node = null,
+            ownerDocument: ?*runtime.Instance = null,
+            parentNode: ?*runtime.Instance = null,
+            parentElement: ?*runtime.Instance = null,
+            childNodes: *runtime.Instance = undefined,
+            firstChild: ?*runtime.Instance = null,
+            lastChild: ?*runtime.Instance = null,
+            previousSibling: ?*runtime.Instance = null,
+            nextSibling: ?*runtime.Instance = null,
             nodeValue: ?runtime.DOMString = null,
             textContent: ?runtime.DOMString = null,
-            cached_childNodes: ?NodeList = null,
+            cached_childNodes: ?*runtime.Instance = null,
             _internal: ?*NodeImpl.InternalState = null,
         },
     );

@@ -1,5 +1,5 @@
 //! Generated from: layout-instability.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -60,9 +60,9 @@ pub const LayoutShiftAttribution = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            node: ?Node = null,
-            previousRect: DOMRectReadOnly = undefined,
-            currentRect: DOMRectReadOnly = undefined,
+            node: ?*runtime.Instance = null,
+            previousRect: *runtime.Instance = undefined,
+            currentRect: *runtime.Instance = undefined,
             _internal: ?*LayoutShiftAttributionImpl.InternalState = null,
         },
     );

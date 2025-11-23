@@ -1,5 +1,5 @@
 //! Generated from: svg-animations.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 

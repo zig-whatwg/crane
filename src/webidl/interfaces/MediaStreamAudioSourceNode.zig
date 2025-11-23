@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -82,8 +82,8 @@ pub const MediaStreamAudioSourceNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            mediaStream: MediaStream = undefined,
-            cached_mediaStream: ?MediaStream = null,
+            mediaStream: *runtime.Instance = undefined,
+            cached_mediaStream: ?*runtime.Instance = null,
             _internal: ?*MediaStreamAudioSourceNodeImpl.InternalState = null,
         },
     );

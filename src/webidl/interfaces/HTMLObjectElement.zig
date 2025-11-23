@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -266,13 +266,13 @@ pub const HTMLObjectElement = struct {
             data: runtime.USVString = undefined,
             @"type": runtime.DOMString = undefined,
             name: runtime.DOMString = undefined,
-            form: ?HTMLFormElement = null,
+            form: ?*runtime.Instance = null,
             width: runtime.DOMString = undefined,
             height: runtime.DOMString = undefined,
-            contentDocument: ?Document = null,
+            contentDocument: ?*runtime.Instance = null,
             contentWindow: ?WindowProxy = null,
             willValidate: bool = undefined,
-            validity: ValidityState = undefined,
+            validity: *runtime.Instance = undefined,
             validationMessage: runtime.DOMString = undefined,
             @"align": runtime.DOMString = undefined,
             archive: runtime.DOMString = undefined,

@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -76,12 +76,12 @@ pub const XRVisibilityMaskChangeEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            session: XRSession = undefined,
+            session: *runtime.Instance = undefined,
             eye: XREye = undefined,
             index: u32 = undefined,
             vertices: runtime.Float32Array = undefined,
             indices: runtime.Uint32Array = undefined,
-            cached_session: ?XRSession = null,
+            cached_session: ?*runtime.Instance = null,
             cached_vertices: ?runtime.Float32Array = null,
             cached_indices: ?runtime.Uint32Array = null,
             _internal: ?*XRVisibilityMaskChangeEventImpl.InternalState = null,

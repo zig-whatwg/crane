@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -82,8 +82,8 @@ pub const MediaElementAudioSourceNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            mediaElement: HTMLMediaElement = undefined,
-            cached_mediaElement: ?HTMLMediaElement = null,
+            mediaElement: *runtime.Instance = undefined,
+            cached_mediaElement: ?*runtime.Instance = null,
             _internal: ?*MediaElementAudioSourceNodeImpl.InternalState = null,
         },
     );

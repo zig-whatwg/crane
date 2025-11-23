@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -85,8 +85,8 @@ pub const ShadowAnimation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sourceAnimation: Animation = undefined,
-            cached_sourceAnimation: ?Animation = null,
+            sourceAnimation: *runtime.Instance = undefined,
+            cached_sourceAnimation: ?*runtime.Instance = null,
             _internal: ?*ShadowAnimationImpl.InternalState = null,
         },
     );

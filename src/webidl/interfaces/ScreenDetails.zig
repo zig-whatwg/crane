@@ -1,5 +1,5 @@
 //! Generated from: window-management.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -76,7 +76,7 @@ pub const ScreenDetails = struct {
         Meta.MixinTypes,
         struct {
             screens: runtime.FrozenArray(ScreenDetailed) = undefined,
-            currentScreen: ScreenDetailed = undefined,
+            currentScreen: *runtime.Instance = undefined,
             onscreenschange: EventHandler = undefined,
             oncurrentscreenchange: EventHandler = undefined,
             _internal: ?*ScreenDetailsImpl.InternalState = null,

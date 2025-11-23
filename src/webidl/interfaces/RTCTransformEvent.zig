@@ -1,5 +1,5 @@
 //! Generated from: webrtc-encoded-transform.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -65,7 +65,7 @@ pub const RTCTransformEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            transformer: RTCRtpScriptTransformer = undefined,
+            transformer: *runtime.Instance = undefined,
             _internal: ?*RTCTransformEventImpl.InternalState = null,
         },
     );

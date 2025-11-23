@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -69,12 +69,12 @@ pub const GPUAdapter = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            features: GPUSupportedFeatures = undefined,
-            limits: GPUSupportedLimits = undefined,
-            info: GPUAdapterInfo = undefined,
-            cached_features: ?GPUSupportedFeatures = null,
-            cached_limits: ?GPUSupportedLimits = null,
-            cached_info: ?GPUAdapterInfo = null,
+            features: *runtime.Instance = undefined,
+            limits: *runtime.Instance = undefined,
+            info: *runtime.Instance = undefined,
+            cached_features: ?*runtime.Instance = null,
+            cached_limits: ?*runtime.Instance = null,
+            cached_info: ?*runtime.Instance = null,
             _internal: ?*GPUAdapterImpl.InternalState = null,
         },
     );

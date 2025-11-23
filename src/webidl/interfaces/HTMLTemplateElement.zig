@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -221,7 +221,7 @@ pub const HTMLTemplateElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            content: DocumentFragment = undefined,
+            content: *runtime.Instance = undefined,
             shadowRootMode: runtime.DOMString = undefined,
             shadowRootDelegatesFocus: bool = undefined,
             shadowRootClonable: bool = undefined,

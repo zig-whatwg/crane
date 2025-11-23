@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -66,7 +66,7 @@ pub const PageRevealEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            viewTransition: ?ViewTransition = null,
+            viewTransition: ?*runtime.Instance = null,
             _internal: ?*PageRevealEventImpl.InternalState = null,
         },
     );

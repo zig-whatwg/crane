@@ -1,5 +1,5 @@
 //! Generated from: shared-storage.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -99,7 +99,7 @@ pub const SharedStorage = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            worklet: SharedStorageWorklet = undefined,
+            worklet: *runtime.Instance = undefined,
             _internal: ?*SharedStorageImpl.InternalState = null,
         },
     );

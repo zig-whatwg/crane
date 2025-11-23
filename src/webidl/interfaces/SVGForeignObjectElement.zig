@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -219,14 +219,14 @@ pub const SVGForeignObjectElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            x: SVGAnimatedLength = undefined,
-            y: SVGAnimatedLength = undefined,
-            width: SVGAnimatedLength = undefined,
-            height: SVGAnimatedLength = undefined,
-            cached_x: ?SVGAnimatedLength = null,
-            cached_y: ?SVGAnimatedLength = null,
-            cached_width: ?SVGAnimatedLength = null,
-            cached_height: ?SVGAnimatedLength = null,
+            x: *runtime.Instance = undefined,
+            y: *runtime.Instance = undefined,
+            width: *runtime.Instance = undefined,
+            height: *runtime.Instance = undefined,
+            cached_x: ?*runtime.Instance = null,
+            cached_y: ?*runtime.Instance = null,
+            cached_width: ?*runtime.Instance = null,
+            cached_height: ?*runtime.Instance = null,
             _internal: ?*SVGForeignObjectElementImpl.InternalState = null,
         },
     );

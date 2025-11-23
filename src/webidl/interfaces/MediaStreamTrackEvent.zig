@@ -1,5 +1,5 @@
 //! Generated from: mediacapture-streams.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -66,8 +66,8 @@ pub const MediaStreamTrackEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            track: MediaStreamTrack = undefined,
-            cached_track: ?MediaStreamTrack = null,
+            track: *runtime.Instance = undefined,
+            cached_track: ?*runtime.Instance = null,
             _internal: ?*MediaStreamTrackEventImpl.InternalState = null,
         },
     );

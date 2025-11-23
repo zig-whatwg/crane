@@ -1,5 +1,5 @@
 //! Generated from: svg-animations.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -232,14 +232,14 @@ pub const SVGAnimationElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            targetElement: ?SVGElement = null,
+            targetElement: ?*runtime.Instance = null,
             onbegin: EventHandler = undefined,
             onend: EventHandler = undefined,
             onrepeat: EventHandler = undefined,
-            requiredExtensions: SVGStringList = undefined,
-            systemLanguage: SVGStringList = undefined,
-            cached_requiredExtensions: ?SVGStringList = null,
-            cached_systemLanguage: ?SVGStringList = null,
+            requiredExtensions: *runtime.Instance = undefined,
+            systemLanguage: *runtime.Instance = undefined,
+            cached_requiredExtensions: ?*runtime.Instance = null,
+            cached_systemLanguage: ?*runtime.Instance = null,
             _internal: ?*SVGAnimationElementImpl.InternalState = null,
         },
     );

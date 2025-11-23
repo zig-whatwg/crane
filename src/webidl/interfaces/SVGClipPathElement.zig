@@ -1,5 +1,5 @@
 //! Generated from: css-masking.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -208,8 +208,8 @@ pub const SVGClipPathElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            clipPathUnits: SVGAnimatedEnumeration = undefined,
-            transform: SVGAnimatedTransformList = undefined,
+            clipPathUnits: *runtime.Instance = undefined,
+            transform: *runtime.Instance = undefined,
             _internal: ?*SVGClipPathElementImpl.InternalState = null,
         },
     );

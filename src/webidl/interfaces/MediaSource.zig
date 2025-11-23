@@ -1,5 +1,5 @@
 //! Generated from: media-source.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -103,15 +103,15 @@ pub const MediaSource = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            handle: MediaSourceHandle = undefined,
-            sourceBuffers: SourceBufferList = undefined,
-            activeSourceBuffers: SourceBufferList = undefined,
+            handle: *runtime.Instance = undefined,
+            sourceBuffers: *runtime.Instance = undefined,
+            activeSourceBuffers: *runtime.Instance = undefined,
             readyState: ReadyState = undefined,
             duration: f64 = undefined,
             onsourceopen: EventHandler = undefined,
             onsourceended: EventHandler = undefined,
             onsourceclose: EventHandler = undefined,
-            cached_handle: ?MediaSourceHandle = null,
+            cached_handle: ?*runtime.Instance = null,
             _internal: ?*MediaSourceImpl.InternalState = null,
         },
     );

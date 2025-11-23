@@ -1,5 +1,5 @@
 //! Generated from: webtransport.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -73,7 +73,7 @@ pub const WebTransportSendStream = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sendGroup: ?WebTransportSendGroup = null,
+            sendGroup: ?*runtime.Instance = null,
             sendOrder: i64 = undefined,
             _internal: ?*WebTransportSendStreamImpl.InternalState = null,
         },

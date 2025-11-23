@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -222,12 +222,12 @@ pub const SVGCircleElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            cx: SVGAnimatedLength = undefined,
-            cy: SVGAnimatedLength = undefined,
-            r: SVGAnimatedLength = undefined,
-            cached_cx: ?SVGAnimatedLength = null,
-            cached_cy: ?SVGAnimatedLength = null,
-            cached_r: ?SVGAnimatedLength = null,
+            cx: *runtime.Instance = undefined,
+            cy: *runtime.Instance = undefined,
+            r: *runtime.Instance = undefined,
+            cached_cx: ?*runtime.Instance = null,
+            cached_cy: ?*runtime.Instance = null,
+            cached_r: ?*runtime.Instance = null,
             _internal: ?*SVGCircleElementImpl.InternalState = null,
         },
     );

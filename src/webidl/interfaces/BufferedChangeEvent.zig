@@ -1,5 +1,5 @@
 //! Generated from: media-source.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -71,10 +71,10 @@ pub const BufferedChangeEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            addedRanges: TimeRanges = undefined,
-            removedRanges: TimeRanges = undefined,
-            cached_addedRanges: ?TimeRanges = null,
-            cached_removedRanges: ?TimeRanges = null,
+            addedRanges: *runtime.Instance = undefined,
+            removedRanges: *runtime.Instance = undefined,
+            cached_addedRanges: ?*runtime.Instance = null,
+            cached_removedRanges: ?*runtime.Instance = null,
             _internal: ?*BufferedChangeEventImpl.InternalState = null,
         },
     );

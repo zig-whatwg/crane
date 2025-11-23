@@ -1,5 +1,5 @@
 //! Generated from: scroll-animations.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -68,9 +68,9 @@ pub const ViewTimeline = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            subject: Element = undefined,
-            startOffset: CSSNumericValue = undefined,
-            endOffset: CSSNumericValue = undefined,
+            subject: *runtime.Instance = undefined,
+            startOffset: *runtime.Instance = undefined,
+            endOffset: *runtime.Instance = undefined,
             _internal: ?*ViewTimelineImpl.InternalState = null,
         },
     );

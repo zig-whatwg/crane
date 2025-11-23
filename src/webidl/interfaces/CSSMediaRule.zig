@@ -1,5 +1,5 @@
 //! Generated from: css-conditional.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -71,10 +71,10 @@ pub const CSSMediaRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            media: MediaList = undefined,
+            media: *runtime.Instance = undefined,
             matches: bool = undefined,
-            cssRules: CSSRuleList = undefined,
-            cached_media: ?MediaList = null,
+            cssRules: *runtime.Instance = undefined,
+            cached_media: ?*runtime.Instance = null,
             _internal: ?*CSSMediaRuleImpl.InternalState = null,
         },
     );

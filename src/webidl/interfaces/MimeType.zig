@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -65,7 +65,7 @@ pub const MimeType = struct {
             @"type": runtime.DOMString = undefined,
             description: runtime.DOMString = undefined,
             suffixes: runtime.DOMString = undefined,
-            enabledPlugin: Plugin = undefined,
+            enabledPlugin: *runtime.Instance = undefined,
             _internal: ?*MimeTypeImpl.InternalState = null,
         },
     );

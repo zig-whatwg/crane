@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -213,8 +213,8 @@ pub const SVGScriptElement = struct {
         struct {
             @"type": runtime.DOMString = undefined,
             crossOrigin: ?runtime.DOMString = null,
-            href: SVGAnimatedString = undefined,
-            cached_href: ?SVGAnimatedString = null,
+            href: *runtime.Instance = undefined,
+            cached_href: ?*runtime.Instance = null,
             _internal: ?*SVGScriptElementImpl.InternalState = null,
         },
     );

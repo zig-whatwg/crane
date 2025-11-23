@@ -1,5 +1,5 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -77,14 +77,14 @@ pub const DOMQuad = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            p1: DOMPoint = undefined,
-            p2: DOMPoint = undefined,
-            p3: DOMPoint = undefined,
-            p4: DOMPoint = undefined,
-            cached_p1: ?DOMPoint = null,
-            cached_p2: ?DOMPoint = null,
-            cached_p3: ?DOMPoint = null,
-            cached_p4: ?DOMPoint = null,
+            p1: *runtime.Instance = undefined,
+            p2: *runtime.Instance = undefined,
+            p3: *runtime.Instance = undefined,
+            p4: *runtime.Instance = undefined,
+            cached_p1: ?*runtime.Instance = null,
+            cached_p2: ?*runtime.Instance = null,
+            cached_p3: ?*runtime.Instance = null,
+            cached_p4: ?*runtime.Instance = null,
             _internal: ?*DOMQuadImpl.InternalState = null,
         },
     );

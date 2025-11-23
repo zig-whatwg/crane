@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -90,7 +90,7 @@ pub const XPathResult = struct {
             numberValue: f64 = undefined,
             stringValue: runtime.DOMString = undefined,
             booleanValue: bool = undefined,
-            singleNodeValue: ?Node = null,
+            singleNodeValue: ?*runtime.Instance = null,
             invalidIteratorState: bool = undefined,
             snapshotLength: u32 = undefined,
             _internal: ?*XPathResultImpl.InternalState = null,

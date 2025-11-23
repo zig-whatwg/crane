@@ -1,5 +1,5 @@
 //! Generated from: storage-buckets.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -81,10 +81,10 @@ pub const StorageBucket = struct {
         Meta.MixinTypes,
         struct {
             name: runtime.DOMString = undefined,
-            indexedDB: IDBFactory = undefined,
-            caches: CacheStorage = undefined,
-            cached_indexedDB: ?IDBFactory = null,
-            cached_caches: ?CacheStorage = null,
+            indexedDB: *runtime.Instance = undefined,
+            caches: *runtime.Instance = undefined,
+            cached_indexedDB: ?*runtime.Instance = null,
+            cached_caches: ?*runtime.Instance = null,
             _internal: ?*StorageBucketImpl.InternalState = null,
         },
     );

@@ -1,5 +1,5 @@
 //! Generated from: payment-request.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -97,7 +97,7 @@ pub const PaymentResponse = struct {
             requestId: runtime.DOMString = undefined,
             methodName: runtime.DOMString = undefined,
             details: *const anyopaque = undefined,
-            shippingAddress: ?ContactAddress = null,
+            shippingAddress: ?*runtime.Instance = null,
             shippingOption: ?runtime.DOMString = null,
             payerName: ?runtime.DOMString = null,
             payerEmail: ?runtime.DOMString = null,

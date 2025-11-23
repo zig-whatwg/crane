@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -80,8 +80,8 @@ pub const RTCRtpReceiver = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            track: MediaStreamTrack = undefined,
-            transport: ?RTCDtlsTransport = null,
+            track: *runtime.Instance = undefined,
+            transport: ?*runtime.Instance = null,
             jitterBufferTarget: ?DOMHighResTimeStamp = null,
             transform: ?RTCRtpTransform = null,
             _internal: ?*RTCRtpReceiverImpl.InternalState = null,

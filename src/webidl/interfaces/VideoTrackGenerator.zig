@@ -1,5 +1,5 @@
 //! Generated from: mediacapture-transform.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -60,9 +60,9 @@ pub const VideoTrackGenerator = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            writable: WritableStream = undefined,
+            writable: *runtime.Instance = undefined,
             muted: bool = undefined,
-            track: MediaStreamTrack = undefined,
+            track: *runtime.Instance = undefined,
             _internal: ?*VideoTrackGeneratorImpl.InternalState = null,
         },
     );

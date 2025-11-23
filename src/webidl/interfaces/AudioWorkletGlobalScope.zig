@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -73,7 +73,7 @@ pub const AudioWorkletGlobalScope = struct {
             currentTime: f64 = undefined,
             sampleRate: f32 = undefined,
             renderQuantumSize: u32 = undefined,
-            port: MessagePort = undefined,
+            port: *runtime.Instance = undefined,
             _internal: ?*AudioWorkletGlobalScopeImpl.InternalState = null,
         },
     );

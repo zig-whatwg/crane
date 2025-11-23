@@ -1,5 +1,5 @@
 //! Generated from: svg-animations.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -207,8 +207,8 @@ pub const SVGMPathElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            href: SVGAnimatedString = undefined,
-            cached_href: ?SVGAnimatedString = null,
+            href: *runtime.Instance = undefined,
+            cached_href: ?*runtime.Instance = null,
             _internal: ?*SVGMPathElementImpl.InternalState = null,
         },
     );

@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -223,10 +223,10 @@ pub const SVGPolylineElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            points: SVGPointList = undefined,
-            animatedPoints: SVGPointList = undefined,
-            cached_points: ?SVGPointList = null,
-            cached_animatedPoints: ?SVGPointList = null,
+            points: *runtime.Instance = undefined,
+            animatedPoints: *runtime.Instance = undefined,
+            cached_points: ?*runtime.Instance = null,
+            cached_animatedPoints: ?*runtime.Instance = null,
             _internal: ?*SVGPolylineElementImpl.InternalState = null,
         },
     );

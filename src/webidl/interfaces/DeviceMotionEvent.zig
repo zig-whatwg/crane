@@ -1,5 +1,5 @@
 //! Generated from: orientation-event.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -77,9 +77,9 @@ pub const DeviceMotionEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            acceleration: ?DeviceMotionEventAcceleration = null,
-            accelerationIncludingGravity: ?DeviceMotionEventAcceleration = null,
-            rotationRate: ?DeviceMotionEventRotationRate = null,
+            acceleration: ?*runtime.Instance = null,
+            accelerationIncludingGravity: ?*runtime.Instance = null,
+            rotationRate: ?*runtime.Instance = null,
             interval: f64 = undefined,
             _internal: ?*DeviceMotionEventImpl.InternalState = null,
         },

@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -74,10 +74,10 @@ pub const CSSStyleRule = struct {
         Meta.MixinTypes,
         struct {
             selectorText: CSSOMString = undefined,
-            style: CSSStyleProperties = undefined,
-            styleMap: StylePropertyMap = undefined,
-            cached_style: ?CSSStyleProperties = null,
-            cached_styleMap: ?StylePropertyMap = null,
+            style: *runtime.Instance = undefined,
+            styleMap: *runtime.Instance = undefined,
+            cached_style: ?*runtime.Instance = null,
+            cached_styleMap: ?*runtime.Instance = null,
             _internal: ?*CSSStyleRuleImpl.InternalState = null,
         },
     );

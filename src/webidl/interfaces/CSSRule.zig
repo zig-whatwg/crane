@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -90,8 +90,8 @@ pub const CSSRule = struct {
         Meta.MixinTypes,
         struct {
             cssText: CSSOMString = undefined,
-            parentRule: ?CSSRule = null,
-            parentStyleSheet: ?CSSStyleSheet = null,
+            parentRule: ?*runtime.Instance = null,
+            parentStyleSheet: ?*runtime.Instance = null,
             @"type": u16 = undefined,
             _internal: ?*CSSRuleImpl.InternalState = null,
         },

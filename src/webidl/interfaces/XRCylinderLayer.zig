@@ -1,5 +1,5 @@
 //! Generated from: webxrlayers.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -82,8 +82,8 @@ pub const XRCylinderLayer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            space: XRSpace = undefined,
-            transform: XRRigidTransform = undefined,
+            space: *runtime.Instance = undefined,
+            transform: *runtime.Instance = undefined,
             radius: f32 = undefined,
             centralAngle: f32 = undefined,
             aspectRatio: f32 = undefined,

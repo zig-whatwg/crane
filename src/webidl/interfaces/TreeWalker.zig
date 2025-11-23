@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -76,11 +76,11 @@ pub const TreeWalker = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            root: Node = undefined,
+            root: *runtime.Instance = undefined,
             whatToShow: u32 = undefined,
-            filter: ?NodeFilter = null,
-            currentNode: Node = undefined,
-            cached_root: ?Node = null,
+            filter: ?*runtime.Instance = null,
+            currentNode: *runtime.Instance = undefined,
+            cached_root: ?*runtime.Instance = null,
             _internal: ?*TreeWalkerImpl.InternalState = null,
         },
     );

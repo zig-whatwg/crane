@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -77,17 +77,17 @@ pub const XRInputSource = struct {
         struct {
             handedness: XRHandedness = undefined,
             targetRayMode: XRTargetRayMode = undefined,
-            targetRaySpace: XRSpace = undefined,
-            gripSpace: ?XRSpace = null,
+            targetRaySpace: *runtime.Instance = undefined,
+            gripSpace: ?*runtime.Instance = null,
             profiles: runtime.FrozenArray(runtime.DOMString) = undefined,
             skipRendering: bool = undefined,
-            gamepad: ?Gamepad = null,
-            hand: ?XRHand = null,
-            cached_targetRaySpace: ?XRSpace = null,
-            cached_gripSpace: ?XRSpace = null,
+            gamepad: ?*runtime.Instance = null,
+            hand: ?*runtime.Instance = null,
+            cached_targetRaySpace: ?*runtime.Instance = null,
+            cached_gripSpace: ?*runtime.Instance = null,
             cached_profiles: ?runtime.FrozenArray(runtime.DOMString) = null,
-            cached_gamepad: ?Gamepad = null,
-            cached_hand: ?XRHand = null,
+            cached_gamepad: ?*runtime.Instance = null,
+            cached_hand: ?*runtime.Instance = null,
             _internal: ?*XRInputSourceImpl.InternalState = null,
         },
     );

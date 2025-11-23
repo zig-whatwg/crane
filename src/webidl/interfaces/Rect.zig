@@ -1,5 +1,5 @@
 //! Generated from: DOM-Style.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -56,10 +56,10 @@ pub const Rect = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            top: CSSPrimitiveValue = undefined,
-            right: CSSPrimitiveValue = undefined,
-            bottom: CSSPrimitiveValue = undefined,
-            left: CSSPrimitiveValue = undefined,
+            top: *runtime.Instance = undefined,
+            right: *runtime.Instance = undefined,
+            bottom: *runtime.Instance = undefined,
+            left: *runtime.Instance = undefined,
             _internal: ?*RectImpl.InternalState = null,
         },
     );

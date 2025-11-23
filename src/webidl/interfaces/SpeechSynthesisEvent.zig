@@ -1,5 +1,5 @@
 //! Generated from: speech-api.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -74,7 +74,7 @@ pub const SpeechSynthesisEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            utterance: SpeechSynthesisUtterance = undefined,
+            utterance: *runtime.Instance = undefined,
             charIndex: u32 = undefined,
             charLength: u32 = undefined,
             elapsedTime: f32 = undefined,

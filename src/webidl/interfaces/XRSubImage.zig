@@ -1,5 +1,5 @@
 //! Generated from: webxrlayers.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -55,8 +55,8 @@ pub const XRSubImage = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            viewport: XRViewport = undefined,
-            cached_viewport: ?XRViewport = null,
+            viewport: *runtime.Instance = undefined,
+            cached_viewport: ?*runtime.Instance = null,
             _internal: ?*XRSubImageImpl.InternalState = null,
         },
     );

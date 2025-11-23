@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -223,14 +223,14 @@ pub const SVGGradientElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            gradientUnits: SVGAnimatedEnumeration = undefined,
-            gradientTransform: SVGAnimatedTransformList = undefined,
-            spreadMethod: SVGAnimatedEnumeration = undefined,
-            href: SVGAnimatedString = undefined,
-            cached_gradientUnits: ?SVGAnimatedEnumeration = null,
-            cached_gradientTransform: ?SVGAnimatedTransformList = null,
-            cached_spreadMethod: ?SVGAnimatedEnumeration = null,
-            cached_href: ?SVGAnimatedString = null,
+            gradientUnits: *runtime.Instance = undefined,
+            gradientTransform: *runtime.Instance = undefined,
+            spreadMethod: *runtime.Instance = undefined,
+            href: *runtime.Instance = undefined,
+            cached_gradientUnits: ?*runtime.Instance = null,
+            cached_gradientTransform: ?*runtime.Instance = null,
+            cached_spreadMethod: ?*runtime.Instance = null,
+            cached_href: ?*runtime.Instance = null,
             _internal: ?*SVGGradientElementImpl.InternalState = null,
         },
     );

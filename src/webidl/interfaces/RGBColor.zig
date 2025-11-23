@@ -1,5 +1,5 @@
 //! Generated from: DOM-Style.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -54,9 +54,9 @@ pub const RGBColor = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            red: CSSPrimitiveValue = undefined,
-            green: CSSPrimitiveValue = undefined,
-            blue: CSSPrimitiveValue = undefined,
+            red: *runtime.Instance = undefined,
+            green: *runtime.Instance = undefined,
+            blue: *runtime.Instance = undefined,
             _internal: ?*RGBColorImpl.InternalState = null,
         },
     );

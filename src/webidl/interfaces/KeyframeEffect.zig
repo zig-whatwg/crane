@@ -1,5 +1,5 @@
 //! Generated from: web-animations.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -81,7 +81,7 @@ pub const KeyframeEffect = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            target: ?Element = null,
+            target: ?*runtime.Instance = null,
             pseudoElement: ?CSSOMString = null,
             composite: CompositeOperation = undefined,
             iterationComposite: IterationCompositeOperation = undefined,

@@ -1,5 +1,5 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -154,16 +154,16 @@ pub const ServiceWorkerGlobalScope = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            clients: Clients = undefined,
-            registration: ServiceWorkerRegistration = undefined,
-            serviceWorker: ServiceWorker = undefined,
+            clients: *runtime.Instance = undefined,
+            registration: *runtime.Instance = undefined,
+            serviceWorker: *runtime.Instance = undefined,
             oninstall: EventHandler = undefined,
             onactivate: EventHandler = undefined,
             onfetch: EventHandler = undefined,
             onmessage: EventHandler = undefined,
             onmessageerror: EventHandler = undefined,
             onperiodicsync: EventHandler = undefined,
-            cookieStore: CookieStore = undefined,
+            cookieStore: *runtime.Instance = undefined,
             oncookiechange: EventHandler = undefined,
             onsync: EventHandler = undefined,
             oncontentdelete: EventHandler = undefined,
@@ -177,10 +177,10 @@ pub const ServiceWorkerGlobalScope = struct {
             onpaymentrequest: EventHandler = undefined,
             onnotificationclick: EventHandler = undefined,
             onnotificationclose: EventHandler = undefined,
-            cached_clients: ?Clients = null,
-            cached_registration: ?ServiceWorkerRegistration = null,
-            cached_serviceWorker: ?ServiceWorker = null,
-            cached_cookieStore: ?CookieStore = null,
+            cached_clients: ?*runtime.Instance = null,
+            cached_registration: ?*runtime.Instance = null,
+            cached_serviceWorker: ?*runtime.Instance = null,
+            cached_cookieStore: ?*runtime.Instance = null,
             _internal: ?*ServiceWorkerGlobalScopeImpl.InternalState = null,
         },
     );

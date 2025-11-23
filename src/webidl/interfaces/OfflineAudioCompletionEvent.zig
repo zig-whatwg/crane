@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -66,7 +66,7 @@ pub const OfflineAudioCompletionEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            renderedBuffer: AudioBuffer = undefined,
+            renderedBuffer: *runtime.Instance = undefined,
             _internal: ?*OfflineAudioCompletionEventImpl.InternalState = null,
         },
     );

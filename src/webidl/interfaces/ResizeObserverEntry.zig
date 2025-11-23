@@ -1,5 +1,5 @@
 //! Generated from: resize-observer.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -65,8 +65,8 @@ pub const ResizeObserverEntry = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            target: Element = undefined,
-            contentRect: DOMRectReadOnly = undefined,
+            target: *runtime.Instance = undefined,
+            contentRect: *runtime.Instance = undefined,
             borderBoxSize: runtime.FrozenArray(ResizeObserverSize) = undefined,
             contentBoxSize: runtime.FrozenArray(ResizeObserverSize) = undefined,
             devicePixelContentBoxSize: runtime.FrozenArray(ResizeObserverSize) = undefined,

@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -93,8 +93,8 @@ pub const OscillatorNode = struct {
         Meta.MixinTypes,
         struct {
             @"type": OscillatorType = undefined,
-            frequency: AudioParam = undefined,
-            detune: AudioParam = undefined,
+            frequency: *runtime.Instance = undefined,
+            detune: *runtime.Instance = undefined,
             _internal: ?*OscillatorNodeImpl.InternalState = null,
         },
     );

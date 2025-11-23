@@ -1053,6 +1053,7 @@ pub fn writeGeneratedState(
     writer: anytype,
     attributes: []const types.Attribute,
     impl_name: []const u8,
+    type_registry: ?*const @import("ir.zig").TypeRegistry,
 ) !void {
     // Check if we have any non-static attributes
     var has_fields = false;
@@ -1118,8 +1119,19 @@ pub fn writeGeneratedState(
 
                 try writeUnionTypeFromStrings(writer, union_members);
             } else {
-                // Write the type using structured IDLType (handles sequence, record, etc.)
-                try writeIDLType(writer, attr.idlType);
+                // Check if it's an interface type - if so, use *runtime.Instance
+                const is_interface_type = if (type_registry) |reg|
+                    reg.lookup(attr.idlType.type) != null and reg.lookup(attr.idlType.type).? == .interface
+                else
+                    false;
+
+                if (is_interface_type) {
+                    // Interface types use *runtime.Instance
+                    try writer.writeAll("*runtime.Instance");
+                } else {
+                    // Write the type using structured IDLType (handles sequence, record, etc.)
+                    try writeIDLType(writer, attr.idlType);
+                }
             }
 
             // Add default value
@@ -1173,10 +1185,21 @@ pub fn writeGeneratedState(
                 defer allocator.free(union_members);
                 try writeUnionTypeFromStrings(writer, union_members);
             } else {
-                // Regular type - use writeIDLType
-                var cached_type = attr.idlType;
-                cached_type.nullable = false; // Strip nullability, we handle it with our own '?'
-                try writeIDLType(writer, cached_type);
+                // Regular type - check if it's an interface type
+                const is_interface_type = if (type_registry) |reg|
+                    reg.lookup(attr.idlType.type) != null and reg.lookup(attr.idlType.type).? == .interface
+                else
+                    false;
+
+                if (is_interface_type) {
+                    // Interface types use *runtime.Instance
+                    try writer.writeAll("*runtime.Instance");
+                } else {
+                    // Non-interface types - use writeIDLType
+                    var cached_type = attr.idlType;
+                    cached_type.nullable = false; // Strip nullability, we handle it with our own '?'
+                    try writeIDLType(writer, cached_type);
+                }
             }
 
             try writer.writeAll(" = null,\n");

@@ -1,5 +1,5 @@
 //! Generated from: entries-api.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -72,7 +72,7 @@ pub const FileSystemEntry = struct {
             isDirectory: bool = undefined,
             name: runtime.USVString = undefined,
             fullPath: runtime.USVString = undefined,
-            filesystem: FileSystem = undefined,
+            filesystem: *runtime.Instance = undefined,
             _internal: ?*FileSystemEntryImpl.InternalState = null,
         },
     );

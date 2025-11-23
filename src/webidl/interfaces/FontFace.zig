@@ -1,5 +1,5 @@
 //! Generated from: css-font-loading.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -109,9 +109,9 @@ pub const FontFace = struct {
             lineGapOverride: CSSOMString = undefined,
             status: FontFaceLoadStatus = undefined,
             loaded: runtime.Promise(FontFace) = undefined,
-            features: FontFaceFeatures = undefined,
-            variations: FontFaceVariations = undefined,
-            palettes: FontFacePalettes = undefined,
+            features: *runtime.Instance = undefined,
+            variations: *runtime.Instance = undefined,
+            palettes: *runtime.Instance = undefined,
             _internal: ?*FontFaceImpl.InternalState = null,
         },
     );

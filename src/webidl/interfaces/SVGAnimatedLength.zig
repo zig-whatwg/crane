@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -57,10 +57,10 @@ pub const SVGAnimatedLength = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            baseVal: SVGLength = undefined,
-            animVal: SVGLength = undefined,
-            cached_baseVal: ?SVGLength = null,
-            cached_animVal: ?SVGLength = null,
+            baseVal: *runtime.Instance = undefined,
+            animVal: *runtime.Instance = undefined,
+            cached_baseVal: ?*runtime.Instance = null,
+            cached_animVal: ?*runtime.Instance = null,
             _internal: ?*SVGAnimatedLengthImpl.InternalState = null,
         },
     );

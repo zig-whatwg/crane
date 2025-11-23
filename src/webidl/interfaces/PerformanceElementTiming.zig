@@ -1,5 +1,5 @@
 //! Generated from: element-timing.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -87,12 +87,12 @@ pub const PerformanceElementTiming = struct {
         struct {
             renderTime: DOMHighResTimeStamp = undefined,
             loadTime: DOMHighResTimeStamp = undefined,
-            intersectionRect: DOMRectReadOnly = undefined,
+            intersectionRect: *runtime.Instance = undefined,
             identifier: runtime.DOMString = undefined,
             naturalWidth: u32 = undefined,
             naturalHeight: u32 = undefined,
             id: runtime.DOMString = undefined,
-            element: ?Element = null,
+            element: ?*runtime.Instance = null,
             url: runtime.USVString = undefined,
             paintTime: DOMHighResTimeStamp = undefined,
             presentationTime: ?DOMHighResTimeStamp = null,

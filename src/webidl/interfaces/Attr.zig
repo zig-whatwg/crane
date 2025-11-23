@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -103,7 +103,7 @@ pub const Attr = struct {
             localName: runtime.DOMString = undefined,
             name: runtime.DOMString = undefined,
             value: runtime.DOMString = undefined,
-            ownerElement: ?Element = null,
+            ownerElement: ?*runtime.Instance = null,
             specified: bool = undefined,
             _internal: ?*AttrImpl.InternalState = null,
         },

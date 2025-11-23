@@ -1,5 +1,5 @@
 //! Generated from: fetch.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -130,7 +130,7 @@ pub const Request = struct {
         struct {
             method: runtime.ByteString = undefined,
             url: runtime.USVString = undefined,
-            headers: Headers = undefined,
+            headers: *runtime.Instance = undefined,
             destination: RequestDestination = undefined,
             referrer: runtime.USVString = undefined,
             referrerPolicy: ReferrerPolicy = undefined,
@@ -142,12 +142,12 @@ pub const Request = struct {
             keepalive: bool = undefined,
             isReloadNavigation: bool = undefined,
             isHistoryNavigation: bool = undefined,
-            signal: AbortSignal = undefined,
+            signal: *runtime.Instance = undefined,
             duplex: RequestDuplex = undefined,
             targetAddressSpace: IPAddressSpace = undefined,
-            body: ?ReadableStream = null,
+            body: ?*runtime.Instance = null,
             bodyUsed: bool = undefined,
-            cached_headers: ?Headers = null,
+            cached_headers: ?*runtime.Instance = null,
             _internal: ?*RequestImpl.InternalState = null,
         },
     );

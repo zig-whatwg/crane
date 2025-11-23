@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -53,7 +53,7 @@ pub const PopoverTargetAttributes = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            popoverTargetElement: ?Element = null,
+            popoverTargetElement: ?*runtime.Instance = null,
             popoverTargetAction: runtime.DOMString = undefined,
             _internal: ?*PopoverTargetAttributesImpl.InternalState = null,
         },

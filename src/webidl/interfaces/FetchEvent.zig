@@ -1,5 +1,5 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -81,13 +81,13 @@ pub const FetchEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            request: Request = undefined,
+            request: *runtime.Instance = undefined,
             preloadResponse: runtime.Promise(*const anyopaque) = undefined,
             clientId: runtime.DOMString = undefined,
             resultingClientId: runtime.DOMString = undefined,
             replacesClientId: runtime.DOMString = undefined,
             handled: runtime.Promise(void) = undefined,
-            cached_request: ?Request = null,
+            cached_request: ?*runtime.Instance = null,
             _internal: ?*FetchEventImpl.InternalState = null,
         },
     );

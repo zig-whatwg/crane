@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -78,12 +78,12 @@ pub const XRView = struct {
             eye: XREye = undefined,
             index: u32 = undefined,
             recommendedViewportScale: ?f64 = null,
-            camera: ?XRCamera = null,
+            camera: ?*runtime.Instance = null,
             isFirstPersonObserver: bool = undefined,
             projectionMatrix: runtime.Float32Array = undefined,
-            transform: XRRigidTransform = undefined,
-            cached_camera: ?XRCamera = null,
-            cached_transform: ?XRRigidTransform = null,
+            transform: *runtime.Instance = undefined,
+            cached_camera: ?*runtime.Instance = null,
+            cached_transform: ?*runtime.Instance = null,
             _internal: ?*XRViewImpl.InternalState = null,
         },
     );

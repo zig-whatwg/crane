@@ -1,5 +1,5 @@
 //! Generated from: picture-in-picture.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -66,8 +66,8 @@ pub const PictureInPictureEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            pictureInPictureWindow: PictureInPictureWindow = undefined,
-            cached_pictureInPictureWindow: ?PictureInPictureWindow = null,
+            pictureInPictureWindow: *runtime.Instance = undefined,
+            cached_pictureInPictureWindow: ?*runtime.Instance = null,
             _internal: ?*PictureInPictureEventImpl.InternalState = null,
         },
     );

@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -257,11 +257,11 @@ pub const HTMLTableElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            caption: ?HTMLTableCaptionElement = null,
-            tHead: ?HTMLTableSectionElement = null,
-            tFoot: ?HTMLTableSectionElement = null,
-            tBodies: HTMLCollection = undefined,
-            rows: HTMLCollection = undefined,
+            caption: ?*runtime.Instance = null,
+            tHead: ?*runtime.Instance = null,
+            tFoot: ?*runtime.Instance = null,
+            tBodies: *runtime.Instance = undefined,
+            rows: *runtime.Instance = undefined,
             @"align": runtime.DOMString = undefined,
             border: runtime.DOMString = undefined,
             frame: runtime.DOMString = undefined,
@@ -271,8 +271,8 @@ pub const HTMLTableElement = struct {
             bgColor: runtime.DOMString = undefined,
             cellPadding: runtime.DOMString = undefined,
             cellSpacing: runtime.DOMString = undefined,
-            cached_tBodies: ?HTMLCollection = null,
-            cached_rows: ?HTMLCollection = null,
+            cached_tBodies: ?*runtime.Instance = null,
+            cached_rows: ?*runtime.Instance = null,
             _internal: ?*HTMLTableElementImpl.InternalState = null,
         },
     );

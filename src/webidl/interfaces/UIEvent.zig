@@ -1,5 +1,5 @@
 //! Generated from: uievents.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -75,10 +75,10 @@ pub const UIEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            view: ?Window = null,
+            view: ?*runtime.Instance = null,
             detail: i32 = undefined,
             which: u32 = undefined,
-            sourceCapabilities: ?InputDeviceCapabilities = null,
+            sourceCapabilities: ?*runtime.Instance = null,
             _internal: ?*UIEventImpl.InternalState = null,
         },
     );

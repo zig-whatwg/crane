@@ -1,5 +1,5 @@
 //! Generated from: largest-contentful-paint.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -82,7 +82,7 @@ pub const LargestContentfulPaint = struct {
             size: u32 = undefined,
             id: runtime.DOMString = undefined,
             url: runtime.DOMString = undefined,
-            element: ?Element = null,
+            element: ?*runtime.Instance = null,
             paintTime: DOMHighResTimeStamp = undefined,
             presentationTime: ?DOMHighResTimeStamp = null,
             _internal: ?*LargestContentfulPaintImpl.InternalState = null,

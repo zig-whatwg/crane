@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -277,7 +277,7 @@ pub const HTMLTextAreaElement = struct {
             cols: u32 = undefined,
             dirName: runtime.DOMString = undefined,
             disabled: bool = undefined,
-            form: ?HTMLFormElement = null,
+            form: ?*runtime.Instance = null,
             maxLength: i32 = undefined,
             minLength: i32 = undefined,
             name: runtime.DOMString = undefined,
@@ -291,9 +291,9 @@ pub const HTMLTextAreaElement = struct {
             value: runtime.DOMString = undefined,
             textLength: u32 = undefined,
             willValidate: bool = undefined,
-            validity: ValidityState = undefined,
+            validity: *runtime.Instance = undefined,
             validationMessage: runtime.DOMString = undefined,
-            labels: NodeList = undefined,
+            labels: *runtime.Instance = undefined,
             selectionStart: u32 = undefined,
             selectionEnd: u32 = undefined,
             selectionDirection: runtime.DOMString = undefined,

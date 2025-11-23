@@ -1,5 +1,5 @@
 //! Generated from: navigation-timing.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -99,7 +99,7 @@ pub const PerformanceNavigationTiming = struct {
             @"type": NavigationTimingType = undefined,
             redirectCount: u16 = undefined,
             criticalCHRestart: DOMHighResTimeStamp = undefined,
-            notRestoredReasons: ?NotRestoredReasons = null,
+            notRestoredReasons: ?*runtime.Instance = null,
             activationStart: DOMHighResTimeStamp = undefined,
             _internal: ?*PerformanceNavigationTimingImpl.InternalState = null,
         },

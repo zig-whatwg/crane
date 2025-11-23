@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -80,7 +80,7 @@ pub const StereoPannerNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            pan: AudioParam = undefined,
+            pan: *runtime.Instance = undefined,
             _internal: ?*StereoPannerNodeImpl.InternalState = null,
         },
     );

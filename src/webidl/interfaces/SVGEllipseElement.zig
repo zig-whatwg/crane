@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -224,14 +224,14 @@ pub const SVGEllipseElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            cx: SVGAnimatedLength = undefined,
-            cy: SVGAnimatedLength = undefined,
-            rx: SVGAnimatedLength = undefined,
-            ry: SVGAnimatedLength = undefined,
-            cached_cx: ?SVGAnimatedLength = null,
-            cached_cy: ?SVGAnimatedLength = null,
-            cached_rx: ?SVGAnimatedLength = null,
-            cached_ry: ?SVGAnimatedLength = null,
+            cx: *runtime.Instance = undefined,
+            cy: *runtime.Instance = undefined,
+            rx: *runtime.Instance = undefined,
+            ry: *runtime.Instance = undefined,
+            cached_cx: ?*runtime.Instance = null,
+            cached_cy: ?*runtime.Instance = null,
+            cached_rx: ?*runtime.Instance = null,
+            cached_ry: ?*runtime.Instance = null,
             _internal: ?*SVGEllipseElementImpl.InternalState = null,
         },
     );

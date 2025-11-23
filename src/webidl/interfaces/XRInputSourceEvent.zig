@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -70,10 +70,10 @@ pub const XRInputSourceEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            frame: XRFrame = undefined,
-            inputSource: XRInputSource = undefined,
-            cached_frame: ?XRFrame = null,
-            cached_inputSource: ?XRInputSource = null,
+            frame: *runtime.Instance = undefined,
+            inputSource: *runtime.Instance = undefined,
+            cached_frame: ?*runtime.Instance = null,
+            cached_inputSource: ?*runtime.Instance = null,
             _internal: ?*XRInputSourceEventImpl.InternalState = null,
         },
     );

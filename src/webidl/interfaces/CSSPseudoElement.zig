@@ -1,5 +1,5 @@
 //! Generated from: css-pseudo.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -94,7 +94,7 @@ pub const CSSPseudoElement = struct {
         Meta.MixinTypes,
         struct {
             @"type": CSSOMString = undefined,
-            element: Element = undefined,
+            element: *runtime.Instance = undefined,
             parent: union(enum) {
                 Element: Element,
                 CSSPseudoElement: CSSPseudoElement,

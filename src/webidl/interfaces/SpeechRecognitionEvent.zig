@@ -1,5 +1,5 @@
 //! Generated from: speech-api.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -70,7 +70,7 @@ pub const SpeechRecognitionEvent = struct {
         Meta.MixinTypes,
         struct {
             resultIndex: u32 = undefined,
-            results: SpeechRecognitionResultList = undefined,
+            results: *runtime.Instance = undefined,
             _internal: ?*SpeechRecognitionEventImpl.InternalState = null,
         },
     );

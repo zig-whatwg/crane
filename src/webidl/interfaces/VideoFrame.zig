@@ -1,5 +1,5 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -103,15 +103,15 @@ pub const VideoFrame = struct {
             format: ?VideoPixelFormat = null,
             codedWidth: u32 = undefined,
             codedHeight: u32 = undefined,
-            codedRect: ?DOMRectReadOnly = null,
-            visibleRect: ?DOMRectReadOnly = null,
+            codedRect: ?*runtime.Instance = null,
+            visibleRect: ?*runtime.Instance = null,
             rotation: f64 = undefined,
             flip: bool = undefined,
             displayWidth: u32 = undefined,
             displayHeight: u32 = undefined,
             duration: ?u64 = null,
             timestamp: i64 = undefined,
-            colorSpace: VideoColorSpace = undefined,
+            colorSpace: *runtime.Instance = undefined,
             _internal: ?*VideoFrameImpl.InternalState = null,
         },
     );

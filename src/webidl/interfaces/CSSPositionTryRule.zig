@@ -1,5 +1,5 @@
 //! Generated from: css-anchor-position.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -62,8 +62,8 @@ pub const CSSPositionTryRule = struct {
         Meta.MixinTypes,
         struct {
             name: CSSOMString = undefined,
-            style: CSSPositionTryDescriptors = undefined,
-            cached_style: ?CSSPositionTryDescriptors = null,
+            style: *runtime.Instance = undefined,
+            cached_style: ?*runtime.Instance = null,
             _internal: ?*CSSPositionTryRuleImpl.InternalState = null,
         },
     );

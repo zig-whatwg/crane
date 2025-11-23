@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -229,19 +229,19 @@ pub const SVGImageElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            x: SVGAnimatedLength = undefined,
-            y: SVGAnimatedLength = undefined,
-            width: SVGAnimatedLength = undefined,
-            height: SVGAnimatedLength = undefined,
-            preserveAspectRatio: SVGAnimatedPreserveAspectRatio = undefined,
+            x: *runtime.Instance = undefined,
+            y: *runtime.Instance = undefined,
+            width: *runtime.Instance = undefined,
+            height: *runtime.Instance = undefined,
+            preserveAspectRatio: *runtime.Instance = undefined,
             crossOrigin: ?runtime.DOMString = null,
-            href: SVGAnimatedString = undefined,
-            cached_x: ?SVGAnimatedLength = null,
-            cached_y: ?SVGAnimatedLength = null,
-            cached_width: ?SVGAnimatedLength = null,
-            cached_height: ?SVGAnimatedLength = null,
-            cached_preserveAspectRatio: ?SVGAnimatedPreserveAspectRatio = null,
-            cached_href: ?SVGAnimatedString = null,
+            href: *runtime.Instance = undefined,
+            cached_x: ?*runtime.Instance = null,
+            cached_y: ?*runtime.Instance = null,
+            cached_width: ?*runtime.Instance = null,
+            cached_height: ?*runtime.Instance = null,
+            cached_preserveAspectRatio: ?*runtime.Instance = null,
+            cached_href: ?*runtime.Instance = null,
             _internal: ?*SVGImageElementImpl.InternalState = null,
         },
     );

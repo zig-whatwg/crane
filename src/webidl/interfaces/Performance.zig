@@ -1,5 +1,5 @@
 //! Generated from: hr-time.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -115,14 +115,14 @@ pub const Performance = struct {
         Meta.MixinTypes,
         struct {
             timeOrigin: DOMHighResTimeStamp = undefined,
-            eventCounts: EventCounts = undefined,
+            eventCounts: *runtime.Instance = undefined,
             interactionCount: u64 = undefined,
-            timing: PerformanceTiming = undefined,
-            navigation: PerformanceNavigation = undefined,
+            timing: *runtime.Instance = undefined,
+            navigation: *runtime.Instance = undefined,
             onresourcetimingbufferfull: EventHandler = undefined,
-            cached_eventCounts: ?EventCounts = null,
-            cached_timing: ?PerformanceTiming = null,
-            cached_navigation: ?PerformanceNavigation = null,
+            cached_eventCounts: ?*runtime.Instance = null,
+            cached_timing: ?*runtime.Instance = null,
+            cached_navigation: ?*runtime.Instance = null,
             _internal: ?*PerformanceImpl.InternalState = null,
         },
     );

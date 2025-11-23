@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -350,8 +350,8 @@ pub const HTMLInputElement = struct {
             colorSpace: runtime.DOMString = undefined,
             dirName: runtime.DOMString = undefined,
             disabled: bool = undefined,
-            form: ?HTMLFormElement = null,
-            files: ?FileList = null,
+            form: ?*runtime.Instance = null,
+            files: ?*runtime.Instance = null,
             formAction: runtime.USVString = undefined,
             formEnctype: runtime.DOMString = undefined,
             formMethod: runtime.DOMString = undefined,
@@ -359,7 +359,7 @@ pub const HTMLInputElement = struct {
             formTarget: runtime.DOMString = undefined,
             height: u32 = undefined,
             indeterminate: bool = undefined,
-            list: ?HTMLDataListElement = null,
+            list: ?*runtime.Instance = null,
             max: runtime.DOMString = undefined,
             maxLength: i32 = undefined,
             min: runtime.DOMString = undefined,
@@ -380,9 +380,9 @@ pub const HTMLInputElement = struct {
             valueAsNumber: f64 = undefined,
             width: u32 = undefined,
             willValidate: bool = undefined,
-            validity: ValidityState = undefined,
+            validity: *runtime.Instance = undefined,
             validationMessage: runtime.DOMString = undefined,
-            labels: ?NodeList = null,
+            labels: ?*runtime.Instance = null,
             selectionStart: ?u32 = null,
             selectionEnd: ?u32 = null,
             selectionDirection: ?runtime.DOMString = null,
@@ -391,7 +391,7 @@ pub const HTMLInputElement = struct {
             webkitEntries: runtime.FrozenArray(FileSystemEntry) = undefined,
             @"align": runtime.DOMString = undefined,
             useMap: runtime.DOMString = undefined,
-            popoverTargetElement: ?Element = null,
+            popoverTargetElement: ?*runtime.Instance = null,
             popoverTargetAction: runtime.DOMString = undefined,
             _internal: ?*HTMLInputElementImpl.InternalState = null,
         },

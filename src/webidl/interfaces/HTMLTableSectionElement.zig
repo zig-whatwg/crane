@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -223,12 +223,12 @@ pub const HTMLTableSectionElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            rows: HTMLCollection = undefined,
+            rows: *runtime.Instance = undefined,
             @"align": runtime.DOMString = undefined,
             ch: runtime.DOMString = undefined,
             chOff: runtime.DOMString = undefined,
             vAlign: runtime.DOMString = undefined,
-            cached_rows: ?HTMLCollection = null,
+            cached_rows: ?*runtime.Instance = null,
             _internal: ?*HTMLTableSectionElementImpl.InternalState = null,
         },
     );

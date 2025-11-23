@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -63,13 +63,13 @@ pub const XRRigidTransform = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            position: DOMPointReadOnly = undefined,
-            orientation: DOMPointReadOnly = undefined,
+            position: *runtime.Instance = undefined,
+            orientation: *runtime.Instance = undefined,
             matrix: runtime.Float32Array = undefined,
-            inverse: XRRigidTransform = undefined,
-            cached_position: ?DOMPointReadOnly = null,
-            cached_orientation: ?DOMPointReadOnly = null,
-            cached_inverse: ?XRRigidTransform = null,
+            inverse: *runtime.Instance = undefined,
+            cached_position: ?*runtime.Instance = null,
+            cached_orientation: ?*runtime.Instance = null,
+            cached_inverse: ?*runtime.Instance = null,
             _internal: ?*XRRigidTransformImpl.InternalState = null,
         },
     );

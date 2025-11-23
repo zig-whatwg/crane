@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -96,9 +96,9 @@ pub const AudioBufferSourceNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            buffer: ?AudioBuffer = null,
-            playbackRate: AudioParam = undefined,
-            detune: AudioParam = undefined,
+            buffer: ?*runtime.Instance = null,
+            playbackRate: *runtime.Instance = undefined,
+            detune: *runtime.Instance = undefined,
             loop: bool = undefined,
             loopStart: f64 = undefined,
             loopEnd: f64 = undefined,

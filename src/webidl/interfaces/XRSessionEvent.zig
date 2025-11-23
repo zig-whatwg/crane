@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -67,8 +67,8 @@ pub const XRSessionEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            session: XRSession = undefined,
-            cached_session: ?XRSession = null,
+            session: *runtime.Instance = undefined,
+            cached_session: ?*runtime.Instance = null,
             _internal: ?*XRSessionEventImpl.InternalState = null,
         },
     );

@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -321,14 +321,14 @@ pub const HTMLMediaElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"error": ?MediaError = null,
+            @"error": ?*runtime.Instance = null,
             src: runtime.USVString = undefined,
             srcObject: ?MediaProvider = null,
             currentSrc: runtime.USVString = undefined,
             crossOrigin: ?runtime.DOMString = null,
             networkState: u16 = undefined,
             preload: runtime.DOMString = undefined,
-            buffered: TimeRanges = undefined,
+            buffered: *runtime.Instance = undefined,
             readyState: u16 = undefined,
             seeking: bool = undefined,
             currentTime: f64 = undefined,
@@ -337,8 +337,8 @@ pub const HTMLMediaElement = struct {
             defaultPlaybackRate: f64 = undefined,
             playbackRate: f64 = undefined,
             preservesPitch: bool = undefined,
-            played: TimeRanges = undefined,
-            seekable: TimeRanges = undefined,
+            played: *runtime.Instance = undefined,
+            seekable: *runtime.Instance = undefined,
             ended: bool = undefined,
             autoplay: bool = undefined,
             loop: bool = undefined,
@@ -346,19 +346,19 @@ pub const HTMLMediaElement = struct {
             volume: f64 = undefined,
             muted: bool = undefined,
             defaultMuted: bool = undefined,
-            audioTracks: AudioTrackList = undefined,
-            videoTracks: VideoTrackList = undefined,
-            textTracks: TextTrackList = undefined,
+            audioTracks: *runtime.Instance = undefined,
+            videoTracks: *runtime.Instance = undefined,
+            textTracks: *runtime.Instance = undefined,
             sinkId: runtime.DOMString = undefined,
-            remote: RemotePlayback = undefined,
+            remote: *runtime.Instance = undefined,
             disableRemotePlayback: bool = undefined,
-            mediaKeys: ?MediaKeys = null,
+            mediaKeys: ?*runtime.Instance = null,
             onencrypted: EventHandler = undefined,
             onwaitingforkey: EventHandler = undefined,
-            cached_audioTracks: ?AudioTrackList = null,
-            cached_videoTracks: ?VideoTrackList = null,
-            cached_textTracks: ?TextTrackList = null,
-            cached_remote: ?RemotePlayback = null,
+            cached_audioTracks: ?*runtime.Instance = null,
+            cached_videoTracks: ?*runtime.Instance = null,
+            cached_textTracks: ?*runtime.Instance = null,
+            cached_remote: ?*runtime.Instance = null,
             _internal: ?*HTMLMediaElementImpl.InternalState = null,
         },
     );

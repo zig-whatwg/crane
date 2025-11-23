@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -71,7 +71,7 @@ pub const XRRenderState = struct {
             depthFar: f64 = undefined,
             passthroughFullyObscured: ?bool = null,
             inlineVerticalFieldOfView: ?f64 = null,
-            baseLayer: ?XRWebGLLayer = null,
+            baseLayer: ?*runtime.Instance = null,
             layers: runtime.FrozenArray(XRLayer) = undefined,
             _internal: ?*XRRenderStateImpl.InternalState = null,
         },

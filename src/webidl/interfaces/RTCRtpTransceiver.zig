@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -72,12 +72,12 @@ pub const RTCRtpTransceiver = struct {
         Meta.MixinTypes,
         struct {
             mid: ?runtime.DOMString = null,
-            sender: RTCRtpSender = undefined,
-            receiver: RTCRtpReceiver = undefined,
+            sender: *runtime.Instance = undefined,
+            receiver: *runtime.Instance = undefined,
             direction: RTCRtpTransceiverDirection = undefined,
             currentDirection: ?RTCRtpTransceiverDirection = null,
-            cached_sender: ?RTCRtpSender = null,
-            cached_receiver: ?RTCRtpReceiver = null,
+            cached_sender: ?*runtime.Instance = null,
+            cached_receiver: ?*runtime.Instance = null,
             _internal: ?*RTCRtpTransceiverImpl.InternalState = null,
         },
     );

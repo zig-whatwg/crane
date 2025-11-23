@@ -1,5 +1,5 @@
 //! Generated from: webxr-lighting-estimation.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -71,7 +71,7 @@ pub const XRLightProbe = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            probeSpace: XRSpace = undefined,
+            probeSpace: *runtime.Instance = undefined,
             onreflectionchange: EventHandler = undefined,
             _internal: ?*XRLightProbeImpl.InternalState = null,
         },

@@ -1,5 +1,5 @@
 //! Generated from: webmidi.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -80,8 +80,8 @@ pub const MIDIAccess = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            inputs: MIDIInputMap = undefined,
-            outputs: MIDIOutputMap = undefined,
+            inputs: *runtime.Instance = undefined,
+            outputs: *runtime.Instance = undefined,
             onstatechange: EventHandler = undefined,
             sysexEnabled: bool = undefined,
             _internal: ?*MIDIAccessImpl.InternalState = null,

@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -102,14 +102,14 @@ pub const Bluetooth = struct {
         Meta.MixinTypes,
         struct {
             onavailabilitychanged: EventHandler = undefined,
-            referringDevice: ?BluetoothDevice = null,
+            referringDevice: ?*runtime.Instance = null,
             onadvertisementreceived: EventHandler = undefined,
             ongattserverdisconnected: EventHandler = undefined,
             oncharacteristicvaluechanged: EventHandler = undefined,
             onserviceadded: EventHandler = undefined,
             onservicechanged: EventHandler = undefined,
             onserviceremoved: EventHandler = undefined,
-            cached_referringDevice: ?BluetoothDevice = null,
+            cached_referringDevice: ?*runtime.Instance = null,
             _internal: ?*BluetoothImpl.InternalState = null,
         },
     );

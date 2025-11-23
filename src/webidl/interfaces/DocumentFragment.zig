@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -112,11 +112,11 @@ pub const DocumentFragment = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            children: HTMLCollection = undefined,
-            firstElementChild: ?Element = null,
-            lastElementChild: ?Element = null,
+            children: *runtime.Instance = undefined,
+            firstElementChild: ?*runtime.Instance = null,
+            lastElementChild: ?*runtime.Instance = null,
             childElementCount: u32 = undefined,
-            cached_children: ?HTMLCollection = null,
+            cached_children: ?*runtime.Instance = null,
             _internal: ?*DocumentFragmentImpl.InternalState = null,
         },
     );

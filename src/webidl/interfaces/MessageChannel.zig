@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -60,8 +60,8 @@ pub const MessageChannel = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            port1: MessagePort = undefined,
-            port2: MessagePort = undefined,
+            port1: *runtime.Instance = undefined,
+            port2: *runtime.Instance = undefined,
             _internal: ?*MessageChannelImpl.InternalState = null,
         },
     );

@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -242,14 +242,14 @@ pub const SVGTextPathElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            startOffset: SVGAnimatedLength = undefined,
-            method: SVGAnimatedEnumeration = undefined,
-            spacing: SVGAnimatedEnumeration = undefined,
-            href: SVGAnimatedString = undefined,
-            cached_startOffset: ?SVGAnimatedLength = null,
-            cached_method: ?SVGAnimatedEnumeration = null,
-            cached_spacing: ?SVGAnimatedEnumeration = null,
-            cached_href: ?SVGAnimatedString = null,
+            startOffset: *runtime.Instance = undefined,
+            method: *runtime.Instance = undefined,
+            spacing: *runtime.Instance = undefined,
+            href: *runtime.Instance = undefined,
+            cached_startOffset: ?*runtime.Instance = null,
+            cached_method: ?*runtime.Instance = null,
+            cached_spacing: ?*runtime.Instance = null,
+            cached_href: ?*runtime.Instance = null,
             _internal: ?*SVGTextPathElementImpl.InternalState = null,
         },
     );

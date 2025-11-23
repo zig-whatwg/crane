@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -218,18 +218,18 @@ pub const SVGRadialGradientElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            cx: SVGAnimatedLength = undefined,
-            cy: SVGAnimatedLength = undefined,
-            r: SVGAnimatedLength = undefined,
-            fx: SVGAnimatedLength = undefined,
-            fy: SVGAnimatedLength = undefined,
-            fr: SVGAnimatedLength = undefined,
-            cached_cx: ?SVGAnimatedLength = null,
-            cached_cy: ?SVGAnimatedLength = null,
-            cached_r: ?SVGAnimatedLength = null,
-            cached_fx: ?SVGAnimatedLength = null,
-            cached_fy: ?SVGAnimatedLength = null,
-            cached_fr: ?SVGAnimatedLength = null,
+            cx: *runtime.Instance = undefined,
+            cy: *runtime.Instance = undefined,
+            r: *runtime.Instance = undefined,
+            fx: *runtime.Instance = undefined,
+            fy: *runtime.Instance = undefined,
+            fr: *runtime.Instance = undefined,
+            cached_cx: ?*runtime.Instance = null,
+            cached_cy: ?*runtime.Instance = null,
+            cached_r: ?*runtime.Instance = null,
+            cached_fx: ?*runtime.Instance = null,
+            cached_fy: ?*runtime.Instance = null,
+            cached_fr: ?*runtime.Instance = null,
             _internal: ?*SVGRadialGradientElementImpl.InternalState = null,
         },
     );

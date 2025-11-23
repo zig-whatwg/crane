@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -75,15 +75,15 @@ pub const AudioListener = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            positionX: AudioParam = undefined,
-            positionY: AudioParam = undefined,
-            positionZ: AudioParam = undefined,
-            forwardX: AudioParam = undefined,
-            forwardY: AudioParam = undefined,
-            forwardZ: AudioParam = undefined,
-            upX: AudioParam = undefined,
-            upY: AudioParam = undefined,
-            upZ: AudioParam = undefined,
+            positionX: *runtime.Instance = undefined,
+            positionY: *runtime.Instance = undefined,
+            positionZ: *runtime.Instance = undefined,
+            forwardX: *runtime.Instance = undefined,
+            forwardY: *runtime.Instance = undefined,
+            forwardZ: *runtime.Instance = undefined,
+            upX: *runtime.Instance = undefined,
+            upY: *runtime.Instance = undefined,
+            upZ: *runtime.Instance = undefined,
             _internal: ?*AudioListenerImpl.InternalState = null,
         },
     );

@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -266,23 +266,23 @@ pub const HTMLSelectElement = struct {
         struct {
             autocomplete: runtime.DOMString = undefined,
             disabled: bool = undefined,
-            form: ?HTMLFormElement = null,
+            form: ?*runtime.Instance = null,
             multiple: bool = undefined,
             name: runtime.DOMString = undefined,
             required: bool = undefined,
             size: u32 = undefined,
             @"type": runtime.DOMString = undefined,
-            options: HTMLOptionsCollection = undefined,
+            options: *runtime.Instance = undefined,
             length: u32 = undefined,
-            selectedOptions: HTMLCollection = undefined,
+            selectedOptions: *runtime.Instance = undefined,
             selectedIndex: i32 = undefined,
             value: runtime.DOMString = undefined,
             willValidate: bool = undefined,
-            validity: ValidityState = undefined,
+            validity: *runtime.Instance = undefined,
             validationMessage: runtime.DOMString = undefined,
-            labels: NodeList = undefined,
-            cached_options: ?HTMLOptionsCollection = null,
-            cached_selectedOptions: ?HTMLCollection = null,
+            labels: *runtime.Instance = undefined,
+            cached_options: ?*runtime.Instance = null,
+            cached_selectedOptions: ?*runtime.Instance = null,
             _internal: ?*HTMLSelectElementImpl.InternalState = null,
         },
     );

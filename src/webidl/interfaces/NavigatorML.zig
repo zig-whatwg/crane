@@ -1,5 +1,5 @@
 //! Generated from: webnn.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -50,8 +50,8 @@ pub const NavigatorML = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            ml: ML = undefined,
-            cached_ml: ?ML = null,
+            ml: *runtime.Instance = undefined,
+            cached_ml: ?*runtime.Instance = null,
             _internal: ?*NavigatorMLImpl.InternalState = null,
         },
     );

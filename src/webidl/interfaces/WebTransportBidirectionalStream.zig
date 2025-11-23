@@ -1,5 +1,5 @@
 //! Generated from: webtransport.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -62,8 +62,8 @@ pub const WebTransportBidirectionalStream = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            readable: WebTransportReceiveStream = undefined,
-            writable: WebTransportSendStream = undefined,
+            readable: *runtime.Instance = undefined,
+            writable: *runtime.Instance = undefined,
             _internal: ?*WebTransportBidirectionalStreamImpl.InternalState = null,
         },
     );

@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -74,17 +74,17 @@ pub const MutationRecord = struct {
         Meta.MixinTypes,
         struct {
             @"type": runtime.DOMString = undefined,
-            target: Node = undefined,
-            addedNodes: NodeList = undefined,
-            removedNodes: NodeList = undefined,
-            previousSibling: ?Node = null,
-            nextSibling: ?Node = null,
+            target: *runtime.Instance = undefined,
+            addedNodes: *runtime.Instance = undefined,
+            removedNodes: *runtime.Instance = undefined,
+            previousSibling: ?*runtime.Instance = null,
+            nextSibling: ?*runtime.Instance = null,
             attributeName: ?runtime.DOMString = null,
             attributeNamespace: ?runtime.DOMString = null,
             oldValue: ?runtime.DOMString = null,
-            cached_target: ?Node = null,
-            cached_addedNodes: ?NodeList = null,
-            cached_removedNodes: ?NodeList = null,
+            cached_target: ?*runtime.Instance = null,
+            cached_addedNodes: ?*runtime.Instance = null,
+            cached_removedNodes: ?*runtime.Instance = null,
             _internal: ?*MutationRecordImpl.InternalState = null,
         },
     );

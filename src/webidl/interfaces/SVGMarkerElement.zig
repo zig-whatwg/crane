@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -246,25 +246,25 @@ pub const SVGMarkerElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            refX: SVGAnimatedLength = undefined,
-            refY: SVGAnimatedLength = undefined,
-            markerUnits: SVGAnimatedEnumeration = undefined,
-            markerWidth: SVGAnimatedLength = undefined,
-            markerHeight: SVGAnimatedLength = undefined,
-            orientType: SVGAnimatedEnumeration = undefined,
-            orientAngle: SVGAnimatedAngle = undefined,
+            refX: *runtime.Instance = undefined,
+            refY: *runtime.Instance = undefined,
+            markerUnits: *runtime.Instance = undefined,
+            markerWidth: *runtime.Instance = undefined,
+            markerHeight: *runtime.Instance = undefined,
+            orientType: *runtime.Instance = undefined,
+            orientAngle: *runtime.Instance = undefined,
             orient: runtime.DOMString = undefined,
-            viewBox: SVGAnimatedRect = undefined,
-            preserveAspectRatio: SVGAnimatedPreserveAspectRatio = undefined,
-            cached_refX: ?SVGAnimatedLength = null,
-            cached_refY: ?SVGAnimatedLength = null,
-            cached_markerUnits: ?SVGAnimatedEnumeration = null,
-            cached_markerWidth: ?SVGAnimatedLength = null,
-            cached_markerHeight: ?SVGAnimatedLength = null,
-            cached_orientType: ?SVGAnimatedEnumeration = null,
-            cached_orientAngle: ?SVGAnimatedAngle = null,
-            cached_viewBox: ?SVGAnimatedRect = null,
-            cached_preserveAspectRatio: ?SVGAnimatedPreserveAspectRatio = null,
+            viewBox: *runtime.Instance = undefined,
+            preserveAspectRatio: *runtime.Instance = undefined,
+            cached_refX: ?*runtime.Instance = null,
+            cached_refY: ?*runtime.Instance = null,
+            cached_markerUnits: ?*runtime.Instance = null,
+            cached_markerWidth: ?*runtime.Instance = null,
+            cached_markerHeight: ?*runtime.Instance = null,
+            cached_orientType: ?*runtime.Instance = null,
+            cached_orientAngle: ?*runtime.Instance = null,
+            cached_viewBox: ?*runtime.Instance = null,
+            cached_preserveAspectRatio: ?*runtime.Instance = null,
             _internal: ?*SVGMarkerElementImpl.InternalState = null,
         },
     );

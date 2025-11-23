@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -227,10 +227,10 @@ pub const HTMLStyleElement = struct {
         struct {
             disabled: bool = undefined,
             media: runtime.DOMString = undefined,
-            blocking: DOMTokenList = undefined,
+            blocking: *runtime.Instance = undefined,
             @"type": runtime.DOMString = undefined,
-            sheet: ?CSSStyleSheet = null,
-            cached_blocking: ?DOMTokenList = null,
+            sheet: ?*runtime.Instance = null,
+            cached_blocking: ?*runtime.Instance = null,
             _internal: ?*HTMLStyleElementImpl.InternalState = null,
         },
     );

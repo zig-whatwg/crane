@@ -1,5 +1,5 @@
 //! Generated from: webrtc-encoded-transform.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -86,8 +86,8 @@ pub const SFrameDecrypterStream = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            readable: ReadableStream = undefined,
-            writable: WritableStream = undefined,
+            readable: *runtime.Instance = undefined,
+            writable: *runtime.Instance = undefined,
             onerror: EventHandler = undefined,
             _internal: ?*SFrameDecrypterStreamImpl.InternalState = null,
         },

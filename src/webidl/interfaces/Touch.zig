@@ -1,5 +1,5 @@
 //! Generated from: touch-events.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -86,7 +86,7 @@ pub const Touch = struct {
         Meta.MixinTypes,
         struct {
             identifier: i32 = undefined,
-            target: EventTarget = undefined,
+            target: *runtime.Instance = undefined,
             screenX: f64 = undefined,
             screenY: f64 = undefined,
             clientX: f64 = undefined,

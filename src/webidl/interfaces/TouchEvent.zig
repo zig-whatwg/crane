@@ -1,5 +1,5 @@
 //! Generated from: touch-events.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -84,9 +84,9 @@ pub const TouchEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            touches: TouchList = undefined,
-            targetTouches: TouchList = undefined,
-            changedTouches: TouchList = undefined,
+            touches: *runtime.Instance = undefined,
+            targetTouches: *runtime.Instance = undefined,
+            changedTouches: *runtime.Instance = undefined,
             altKey: bool = undefined,
             metaKey: bool = undefined,
             ctrlKey: bool = undefined,

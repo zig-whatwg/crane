@@ -1,5 +1,5 @@
 //! Generated from: css-scroll-snap-2.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -68,8 +68,8 @@ pub const SnapEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            snapTargetBlock: ?Node = null,
-            snapTargetInline: ?Node = null,
+            snapTargetBlock: ?*runtime.Instance = null,
+            snapTargetInline: ?*runtime.Instance = null,
             _internal: ?*SnapEventImpl.InternalState = null,
         },
     );

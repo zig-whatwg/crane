@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -89,8 +89,8 @@ pub const Location = struct {
             pathname: runtime.USVString = undefined,
             search: runtime.USVString = undefined,
             hash: runtime.USVString = undefined,
-            ancestorOrigins: DOMStringList = undefined,
-            cached_ancestorOrigins: ?DOMStringList = null,
+            ancestorOrigins: *runtime.Instance = undefined,
+            cached_ancestorOrigins: ?*runtime.Instance = null,
             _internal: ?*LocationImpl.InternalState = null,
         },
     );

@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -74,7 +74,7 @@ pub const CSSRotate = struct {
             x: CSSNumberish = undefined,
             y: CSSNumberish = undefined,
             z: CSSNumberish = undefined,
-            angle: CSSNumericValue = undefined,
+            angle: *runtime.Instance = undefined,
             _internal: ?*CSSRotateImpl.InternalState = null,
         },
     );

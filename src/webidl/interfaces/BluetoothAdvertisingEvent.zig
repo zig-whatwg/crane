@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -84,17 +84,17 @@ pub const BluetoothAdvertisingEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            device: BluetoothDevice = undefined,
+            device: *runtime.Instance = undefined,
             uuids: runtime.FrozenArray(UUID) = undefined,
             name: ?runtime.DOMString = null,
             appearance: ?u16 = null,
             txPower: ?i8 = null,
             rssi: ?i8 = null,
-            manufacturerData: BluetoothManufacturerDataMap = undefined,
-            serviceData: BluetoothServiceDataMap = undefined,
-            cached_device: ?BluetoothDevice = null,
-            cached_manufacturerData: ?BluetoothManufacturerDataMap = null,
-            cached_serviceData: ?BluetoothServiceDataMap = null,
+            manufacturerData: *runtime.Instance = undefined,
+            serviceData: *runtime.Instance = undefined,
+            cached_device: ?*runtime.Instance = null,
+            cached_manufacturerData: ?*runtime.Instance = null,
+            cached_serviceData: ?*runtime.Instance = null,
             _internal: ?*BluetoothAdvertisingEventImpl.InternalState = null,
         },
     );

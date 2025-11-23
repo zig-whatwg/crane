@@ -1,5 +1,5 @@
 //! Generated from: svg-paths.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -225,7 +225,7 @@ pub const SVGPathElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            pathLength: SVGAnimatedNumber = undefined,
+            pathLength: *runtime.Instance = undefined,
             _internal: ?*SVGPathElementImpl.InternalState = null,
         },
     );

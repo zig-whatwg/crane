@@ -1,5 +1,5 @@
 //! Generated from: mediacapture-fromelement.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -85,7 +85,7 @@ pub const CanvasCaptureMediaStreamTrack = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            canvas: HTMLCanvasElement = undefined,
+            canvas: *runtime.Instance = undefined,
             _internal: ?*CanvasCaptureMediaStreamTrackImpl.InternalState = null,
         },
     );

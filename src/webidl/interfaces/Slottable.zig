@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -50,7 +50,7 @@ pub const Slottable = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            assignedSlot: ?HTMLSlotElement = null,
+            assignedSlot: ?*runtime.Instance = null,
             _internal: ?*SlottableImpl.InternalState = null,
         },
     );

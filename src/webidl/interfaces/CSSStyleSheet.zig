@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -89,11 +89,11 @@ pub const CSSStyleSheet = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            ownerRule: ?CSSRule = null,
-            cssRules: CSSRuleList = undefined,
-            rules: CSSRuleList = undefined,
-            cached_cssRules: ?CSSRuleList = null,
-            cached_rules: ?CSSRuleList = null,
+            ownerRule: ?*runtime.Instance = null,
+            cssRules: *runtime.Instance = undefined,
+            rules: *runtime.Instance = undefined,
+            cached_cssRules: ?*runtime.Instance = null,
+            cached_rules: ?*runtime.Instance = null,
             _internal: ?*CSSStyleSheetImpl.InternalState = null,
         },
     );

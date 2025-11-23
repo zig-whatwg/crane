@@ -1,5 +1,5 @@
 //! Generated from: webxrlayers.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -67,8 +67,8 @@ pub const XRLayerEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            layer: XRLayer = undefined,
-            cached_layer: ?XRLayer = null,
+            layer: *runtime.Instance = undefined,
+            cached_layer: ?*runtime.Instance = null,
             _internal: ?*XRLayerEventImpl.InternalState = null,
         },
     );

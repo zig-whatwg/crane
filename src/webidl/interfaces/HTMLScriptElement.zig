@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -248,7 +248,7 @@ pub const HTMLScriptElement = struct {
             noModule: bool = undefined,
             @"async": bool = undefined,
             @"defer": bool = undefined,
-            blocking: DOMTokenList = undefined,
+            blocking: *runtime.Instance = undefined,
             crossOrigin: ?runtime.DOMString = null,
             referrerPolicy: runtime.DOMString = undefined,
             integrity: runtime.DOMString = undefined,
@@ -258,7 +258,7 @@ pub const HTMLScriptElement = struct {
             event: runtime.DOMString = undefined,
             htmlFor: runtime.DOMString = undefined,
             attributionSrc: runtime.USVString = undefined,
-            cached_blocking: ?DOMTokenList = null,
+            cached_blocking: ?*runtime.Instance = null,
             _internal: ?*HTMLScriptElementImpl.InternalState = null,
         },
     );

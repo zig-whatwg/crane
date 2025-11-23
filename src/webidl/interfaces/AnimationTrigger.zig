@@ -1,5 +1,5 @@
 //! Generated from: web-animations-2.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -67,7 +67,7 @@ pub const AnimationTrigger = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            timeline: AnimationTimeline = undefined,
+            timeline: *runtime.Instance = undefined,
             behavior: AnimationTriggerBehavior = undefined,
             rangeStart: *const anyopaque = undefined,
             rangeEnd: *const anyopaque = undefined,

@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -236,17 +236,17 @@ pub const HTMLOutputElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            htmlFor: DOMTokenList = undefined,
-            form: ?HTMLFormElement = null,
+            htmlFor: *runtime.Instance = undefined,
+            form: ?*runtime.Instance = null,
             name: runtime.DOMString = undefined,
             @"type": runtime.DOMString = undefined,
             defaultValue: runtime.DOMString = undefined,
             value: runtime.DOMString = undefined,
             willValidate: bool = undefined,
-            validity: ValidityState = undefined,
+            validity: *runtime.Instance = undefined,
             validationMessage: runtime.DOMString = undefined,
-            labels: NodeList = undefined,
-            cached_htmlFor: ?DOMTokenList = null,
+            labels: *runtime.Instance = undefined,
+            cached_htmlFor: ?*runtime.Instance = null,
             _internal: ?*HTMLOutputElementImpl.InternalState = null,
         },
     );

@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -69,8 +69,8 @@ pub const PageSwapEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            activation: ?NavigationActivation = null,
-            viewTransition: ?ViewTransition = null,
+            activation: ?*runtime.Instance = null,
+            viewTransition: ?*runtime.Instance = null,
             _internal: ?*PageSwapEventImpl.InternalState = null,
         },
     );

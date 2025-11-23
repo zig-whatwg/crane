@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -233,16 +233,16 @@ pub const SVGTextPositioningElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            x: SVGAnimatedLengthList = undefined,
-            y: SVGAnimatedLengthList = undefined,
-            dx: SVGAnimatedLengthList = undefined,
-            dy: SVGAnimatedLengthList = undefined,
-            rotate: SVGAnimatedNumberList = undefined,
-            cached_x: ?SVGAnimatedLengthList = null,
-            cached_y: ?SVGAnimatedLengthList = null,
-            cached_dx: ?SVGAnimatedLengthList = null,
-            cached_dy: ?SVGAnimatedLengthList = null,
-            cached_rotate: ?SVGAnimatedNumberList = null,
+            x: *runtime.Instance = undefined,
+            y: *runtime.Instance = undefined,
+            dx: *runtime.Instance = undefined,
+            dy: *runtime.Instance = undefined,
+            rotate: *runtime.Instance = undefined,
+            cached_x: ?*runtime.Instance = null,
+            cached_y: ?*runtime.Instance = null,
+            cached_dx: ?*runtime.Instance = null,
+            cached_dy: ?*runtime.Instance = null,
+            cached_rotate: ?*runtime.Instance = null,
             _internal: ?*SVGTextPositioningElementImpl.InternalState = null,
         },
     );

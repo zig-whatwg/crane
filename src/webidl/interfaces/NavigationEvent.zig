@@ -1,5 +1,5 @@
 //! Generated from: css-nav.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -73,7 +73,7 @@ pub const NavigationEvent = struct {
         Meta.MixinTypes,
         struct {
             dir: SpatialNavigationDirection = undefined,
-            relatedTarget: ?EventTarget = null,
+            relatedTarget: ?*runtime.Instance = null,
             _internal: ?*NavigationEventImpl.InternalState = null,
         },
     );

@@ -1,5 +1,5 @@
 //! Generated from: encrypted-media.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -94,7 +94,7 @@ pub const MediaKeySession = struct {
             sessionId: runtime.DOMString = undefined,
             expiration: f64 = undefined,
             closed: runtime.Promise(MediaKeySessionClosedReason) = undefined,
-            keyStatuses: MediaKeyStatusMap = undefined,
+            keyStatuses: *runtime.Instance = undefined,
             onkeystatuseschange: EventHandler = undefined,
             onmessage: EventHandler = undefined,
             _internal: ?*MediaKeySessionImpl.InternalState = null,

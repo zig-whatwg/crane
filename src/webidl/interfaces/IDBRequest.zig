@@ -1,5 +1,5 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -89,13 +89,13 @@ pub const IDBRequest = struct {
         Meta.MixinTypes,
         struct {
             result: *const anyopaque = undefined,
-            @"error": ?DOMException = null,
+            @"error": ?*runtime.Instance = null,
             source: ?union(enum) {
                 IDBObjectStore: IDBObjectStore,
                 IDBIndex: IDBIndex,
                 IDBCursor: IDBCursor,
             } = null,
-            transaction: ?IDBTransaction = null,
+            transaction: ?*runtime.Instance = null,
             readyState: IDBRequestReadyState = undefined,
             onsuccess: EventHandler = undefined,
             onerror: EventHandler = undefined,

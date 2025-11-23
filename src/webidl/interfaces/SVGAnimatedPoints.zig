@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -52,10 +52,10 @@ pub const SVGAnimatedPoints = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            points: SVGPointList = undefined,
-            animatedPoints: SVGPointList = undefined,
-            cached_points: ?SVGPointList = null,
-            cached_animatedPoints: ?SVGPointList = null,
+            points: *runtime.Instance = undefined,
+            animatedPoints: *runtime.Instance = undefined,
+            cached_points: ?*runtime.Instance = null,
+            cached_animatedPoints: ?*runtime.Instance = null,
             _internal: ?*SVGAnimatedPointsImpl.InternalState = null,
         },
     );

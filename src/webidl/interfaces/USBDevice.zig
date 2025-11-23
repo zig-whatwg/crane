@@ -1,5 +1,5 @@
 //! Generated from: webusb.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -143,7 +143,7 @@ pub const USBDevice = struct {
             manufacturerName: ?runtime.DOMString = null,
             productName: ?runtime.DOMString = null,
             serialNumber: ?runtime.DOMString = null,
-            configuration: ?USBConfiguration = null,
+            configuration: ?*runtime.Instance = null,
             configurations: runtime.FrozenArray(USBConfiguration) = undefined,
             opened: bool = undefined,
             _internal: ?*USBDeviceImpl.InternalState = null,

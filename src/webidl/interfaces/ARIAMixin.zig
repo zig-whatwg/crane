@@ -1,5 +1,5 @@
 //! Generated from: wai-aria.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -154,7 +154,7 @@ pub const ARIAMixin = struct {
         Meta.MixinTypes,
         struct {
             role: ?runtime.DOMString = null,
-            ariaActiveDescendantElement: ?Element = null,
+            ariaActiveDescendantElement: ?*runtime.Instance = null,
             ariaAtomic: ?runtime.DOMString = null,
             ariaAutoComplete: ?runtime.DOMString = null,
             ariaBrailleLabel: ?runtime.DOMString = null,

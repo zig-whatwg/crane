@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -66,8 +66,8 @@ pub const RTCErrorEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"error": RTCError = undefined,
-            cached_error: ?RTCError = null,
+            @"error": *runtime.Instance = undefined,
+            cached_error: ?*runtime.Instance = null,
             _internal: ?*RTCErrorEventImpl.InternalState = null,
         },
     );

@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -256,9 +256,9 @@ pub const HTMLButtonElement = struct {
         Meta.MixinTypes,
         struct {
             command: runtime.DOMString = undefined,
-            commandForElement: ?Element = null,
+            commandForElement: ?*runtime.Instance = null,
             disabled: bool = undefined,
-            form: ?HTMLFormElement = null,
+            form: ?*runtime.Instance = null,
             formAction: runtime.USVString = undefined,
             formEnctype: runtime.DOMString = undefined,
             formMethod: runtime.DOMString = undefined,
@@ -268,10 +268,10 @@ pub const HTMLButtonElement = struct {
             @"type": runtime.DOMString = undefined,
             value: runtime.DOMString = undefined,
             willValidate: bool = undefined,
-            validity: ValidityState = undefined,
+            validity: *runtime.Instance = undefined,
             validationMessage: runtime.DOMString = undefined,
-            labels: NodeList = undefined,
-            popoverTargetElement: ?Element = null,
+            labels: *runtime.Instance = undefined,
+            popoverTargetElement: ?*runtime.Instance = null,
             popoverTargetAction: runtime.DOMString = undefined,
             _internal: ?*HTMLButtonElementImpl.InternalState = null,
         },

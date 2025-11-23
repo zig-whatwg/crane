@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -71,8 +71,8 @@ pub const AudioProcessingEvent = struct {
         Meta.MixinTypes,
         struct {
             playbackTime: f64 = undefined,
-            inputBuffer: AudioBuffer = undefined,
-            outputBuffer: AudioBuffer = undefined,
+            inputBuffer: *runtime.Instance = undefined,
+            outputBuffer: *runtime.Instance = undefined,
             _internal: ?*AudioProcessingEventImpl.InternalState = null,
         },
     );

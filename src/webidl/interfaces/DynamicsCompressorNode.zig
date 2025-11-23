@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -90,12 +90,12 @@ pub const DynamicsCompressorNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            threshold: AudioParam = undefined,
-            knee: AudioParam = undefined,
-            ratio: AudioParam = undefined,
+            threshold: *runtime.Instance = undefined,
+            knee: *runtime.Instance = undefined,
+            ratio: *runtime.Instance = undefined,
             reduction: f32 = undefined,
-            attack: AudioParam = undefined,
-            release: AudioParam = undefined,
+            attack: *runtime.Instance = undefined,
+            release: *runtime.Instance = undefined,
             _internal: ?*DynamicsCompressorNodeImpl.InternalState = null,
         },
     );

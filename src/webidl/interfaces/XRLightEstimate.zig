@@ -1,5 +1,5 @@
 //! Generated from: webxr-lighting-estimation.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -61,8 +61,8 @@ pub const XRLightEstimate = struct {
         Meta.MixinTypes,
         struct {
             sphericalHarmonicsCoefficients: runtime.Float32Array = undefined,
-            primaryLightDirection: DOMPointReadOnly = undefined,
-            primaryLightIntensity: DOMPointReadOnly = undefined,
+            primaryLightDirection: *runtime.Instance = undefined,
+            primaryLightIntensity: *runtime.Instance = undefined,
             _internal: ?*XRLightEstimateImpl.InternalState = null,
         },
     );

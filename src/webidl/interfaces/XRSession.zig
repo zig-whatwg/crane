@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -172,9 +172,9 @@ pub const XRSession = struct {
             visibilityState: XRVisibilityState = undefined,
             frameRate: ?f32 = null,
             supportedFrameRates: ?runtime.Float32Array = null,
-            renderState: XRRenderState = undefined,
-            inputSources: XRInputSourceArray = undefined,
-            trackedSources: XRInputSourceArray = undefined,
+            renderState: *runtime.Instance = undefined,
+            inputSources: *runtime.Instance = undefined,
+            trackedSources: *runtime.Instance = undefined,
             enabledFeatures: runtime.FrozenArray(runtime.DOMString) = undefined,
             isSystemKeyboardSupported: bool = undefined,
             onend: EventHandler = undefined,
@@ -196,9 +196,9 @@ pub const XRSession = struct {
             preferredReflectionFormat: XRReflectionFormat = undefined,
             environmentBlendMode: XREnvironmentBlendMode = undefined,
             interactionMode: XRInteractionMode = undefined,
-            cached_renderState: ?XRRenderState = null,
-            cached_inputSources: ?XRInputSourceArray = null,
-            cached_trackedSources: ?XRInputSourceArray = null,
+            cached_renderState: ?*runtime.Instance = null,
+            cached_inputSources: ?*runtime.Instance = null,
+            cached_trackedSources: ?*runtime.Instance = null,
             _internal: ?*XRSessionImpl.InternalState = null,
         },
     );

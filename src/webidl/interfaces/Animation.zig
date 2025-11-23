@@ -1,5 +1,5 @@
 //! Generated from: web-animations.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -131,8 +131,8 @@ pub const Animation = struct {
         Meta.MixinTypes,
         struct {
             id: runtime.DOMString = undefined,
-            effect: ?AnimationEffect = null,
-            timeline: ?AnimationTimeline = null,
+            effect: ?*runtime.Instance = null,
+            timeline: ?*runtime.Instance = null,
             startTime: ?f64 = null,
             currentTime: ?f64 = null,
             playbackRate: f64 = undefined,
@@ -144,7 +144,7 @@ pub const Animation = struct {
             onfinish: EventHandler = undefined,
             oncancel: EventHandler = undefined,
             onremove: EventHandler = undefined,
-            trigger: ?AnimationTrigger = null,
+            trigger: ?*runtime.Instance = null,
             rangeStart: union(enum) {
                 TimelineRangeOffset: TimelineRangeOffset,
                 CSSNumericValue: CSSNumericValue,

@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -50,8 +50,8 @@ pub const SVGURIReference = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            href: SVGAnimatedString = undefined,
-            cached_href: ?SVGAnimatedString = null,
+            href: *runtime.Instance = undefined,
+            cached_href: ?*runtime.Instance = null,
             _internal: ?*SVGURIReferenceImpl.InternalState = null,
         },
     );

@@ -1,5 +1,5 @@
 //! Generated from: css-fonts.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -74,13 +74,13 @@ pub const CSSFontFeatureValuesRule = struct {
         Meta.MixinTypes,
         struct {
             fontFamily: CSSOMString = undefined,
-            annotation: CSSFontFeatureValuesMap = undefined,
-            ornaments: CSSFontFeatureValuesMap = undefined,
-            stylistic: CSSFontFeatureValuesMap = undefined,
-            swash: CSSFontFeatureValuesMap = undefined,
-            characterVariant: CSSFontFeatureValuesMap = undefined,
-            styleset: CSSFontFeatureValuesMap = undefined,
-            historicalForms: CSSFontFeatureValuesMap = undefined,
+            annotation: *runtime.Instance = undefined,
+            ornaments: *runtime.Instance = undefined,
+            stylistic: *runtime.Instance = undefined,
+            swash: *runtime.Instance = undefined,
+            characterVariant: *runtime.Instance = undefined,
+            styleset: *runtime.Instance = undefined,
+            historicalForms: *runtime.Instance = undefined,
             _internal: ?*CSSFontFeatureValuesRuleImpl.InternalState = null,
         },
     );

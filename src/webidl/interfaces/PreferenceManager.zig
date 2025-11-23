@@ -1,5 +1,5 @@
 //! Generated from: mediaqueries-5.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -64,11 +64,11 @@ pub const PreferenceManager = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            colorScheme: PreferenceObject = undefined,
-            contrast: PreferenceObject = undefined,
-            reducedMotion: PreferenceObject = undefined,
-            reducedTransparency: PreferenceObject = undefined,
-            reducedData: PreferenceObject = undefined,
+            colorScheme: *runtime.Instance = undefined,
+            contrast: *runtime.Instance = undefined,
+            reducedMotion: *runtime.Instance = undefined,
+            reducedTransparency: *runtime.Instance = undefined,
+            reducedData: *runtime.Instance = undefined,
             _internal: ?*PreferenceManagerImpl.InternalState = null,
         },
     );

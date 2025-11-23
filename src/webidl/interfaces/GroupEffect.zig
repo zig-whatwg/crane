@@ -1,5 +1,5 @@
 //! Generated from: web-animations-2.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -67,9 +67,9 @@ pub const GroupEffect = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            children: AnimationNodeList = undefined,
-            firstChild: ?AnimationEffect = null,
-            lastChild: ?AnimationEffect = null,
+            children: *runtime.Instance = undefined,
+            firstChild: ?*runtime.Instance = null,
+            lastChild: ?*runtime.Instance = null,
             _internal: ?*GroupEffectImpl.InternalState = null,
         },
     );

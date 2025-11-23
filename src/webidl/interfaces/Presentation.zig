@@ -1,5 +1,5 @@
 //! Generated from: presentation-api.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -59,8 +59,8 @@ pub const Presentation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            defaultRequest: ?PresentationRequest = null,
-            receiver: ?PresentationReceiver = null,
+            defaultRequest: ?*runtime.Instance = null,
+            receiver: ?*runtime.Instance = null,
             _internal: ?*PresentationImpl.InternalState = null,
         },
     );

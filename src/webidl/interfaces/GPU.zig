@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -66,8 +66,8 @@ pub const GPU = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            wgslLanguageFeatures: WGSLLanguageFeatures = undefined,
-            cached_wgslLanguageFeatures: ?WGSLLanguageFeatures = null,
+            wgslLanguageFeatures: *runtime.Instance = undefined,
+            cached_wgslLanguageFeatures: ?*runtime.Instance = null,
             _internal: ?*GPUImpl.InternalState = null,
         },
     );

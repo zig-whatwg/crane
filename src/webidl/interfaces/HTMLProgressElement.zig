@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -219,7 +219,7 @@ pub const HTMLProgressElement = struct {
             value: f64 = undefined,
             max: f64 = undefined,
             position: f64 = undefined,
-            labels: NodeList = undefined,
+            labels: *runtime.Instance = undefined,
             _internal: ?*HTMLProgressElementImpl.InternalState = null,
         },
     );

@@ -1,5 +1,5 @@
 //! Generated from: fetch.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -111,10 +111,10 @@ pub const Response = struct {
             status: u16 = undefined,
             ok: bool = undefined,
             statusText: runtime.ByteString = undefined,
-            headers: Headers = undefined,
-            body: ?ReadableStream = null,
+            headers: *runtime.Instance = undefined,
+            body: ?*runtime.Instance = null,
             bodyUsed: bool = undefined,
-            cached_headers: ?Headers = null,
+            cached_headers: ?*runtime.Instance = null,
             _internal: ?*ResponseImpl.InternalState = null,
         },
     );

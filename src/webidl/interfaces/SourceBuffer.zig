@@ -1,5 +1,5 @@
 //! Generated from: media-source.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -112,11 +112,11 @@ pub const SourceBuffer = struct {
         struct {
             mode: AppendMode = undefined,
             updating: bool = undefined,
-            buffered: TimeRanges = undefined,
+            buffered: *runtime.Instance = undefined,
             timestampOffset: f64 = undefined,
-            audioTracks: AudioTrackList = undefined,
-            videoTracks: VideoTrackList = undefined,
-            textTracks: TextTrackList = undefined,
+            audioTracks: *runtime.Instance = undefined,
+            videoTracks: *runtime.Instance = undefined,
+            textTracks: *runtime.Instance = undefined,
             appendWindowStart: f64 = undefined,
             appendWindowEnd: f64 = undefined,
             onupdatestart: EventHandler = undefined,

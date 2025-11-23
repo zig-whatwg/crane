@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -231,13 +231,13 @@ pub const HTMLTableRowElement = struct {
         struct {
             rowIndex: i32 = undefined,
             sectionRowIndex: i32 = undefined,
-            cells: HTMLCollection = undefined,
+            cells: *runtime.Instance = undefined,
             @"align": runtime.DOMString = undefined,
             ch: runtime.DOMString = undefined,
             chOff: runtime.DOMString = undefined,
             vAlign: runtime.DOMString = undefined,
             bgColor: runtime.DOMString = undefined,
-            cached_cells: ?HTMLCollection = null,
+            cached_cells: ?*runtime.Instance = null,
             _internal: ?*HTMLTableRowElementImpl.InternalState = null,
         },
     );

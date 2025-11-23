@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -233,15 +233,15 @@ pub const HTMLFieldSetElement = struct {
         Meta.MixinTypes,
         struct {
             disabled: bool = undefined,
-            form: ?HTMLFormElement = null,
+            form: ?*runtime.Instance = null,
             name: runtime.DOMString = undefined,
             @"type": runtime.DOMString = undefined,
-            elements: HTMLCollection = undefined,
+            elements: *runtime.Instance = undefined,
             willValidate: bool = undefined,
-            validity: ValidityState = undefined,
+            validity: *runtime.Instance = undefined,
             validationMessage: runtime.DOMString = undefined,
-            cached_elements: ?HTMLCollection = null,
-            cached_validity: ?ValidityState = null,
+            cached_elements: ?*runtime.Instance = null,
+            cached_validity: ?*runtime.Instance = null,
             _internal: ?*HTMLFieldSetElementImpl.InternalState = null,
         },
     );

@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -88,8 +88,8 @@ pub const AudioWorkletNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            parameters: AudioParamMap = undefined,
-            port: MessagePort = undefined,
+            parameters: *runtime.Instance = undefined,
+            port: *runtime.Instance = undefined,
             onprocessorerror: EventHandler = undefined,
             _internal: ?*AudioWorkletNodeImpl.InternalState = null,
         },

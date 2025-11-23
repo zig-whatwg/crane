@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -63,7 +63,7 @@ pub const NavigationTransition = struct {
         Meta.MixinTypes,
         struct {
             navigationType: NavigationType = undefined,
-            from: NavigationHistoryEntry = undefined,
+            from: *runtime.Instance = undefined,
             committed: runtime.Promise(void) = undefined,
             finished: runtime.Promise(void) = undefined,
             _internal: ?*NavigationTransitionImpl.InternalState = null,

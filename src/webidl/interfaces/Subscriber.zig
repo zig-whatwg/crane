@@ -1,5 +1,5 @@
 //! Generated from: observable.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -67,7 +67,7 @@ pub const Subscriber = struct {
         Meta.MixinTypes,
         struct {
             active: bool = undefined,
-            signal: AbortSignal = undefined,
+            signal: *runtime.Instance = undefined,
             _internal: ?*SubscriberImpl.InternalState = null,
         },
     );

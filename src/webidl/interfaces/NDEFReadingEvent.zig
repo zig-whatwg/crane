@@ -1,5 +1,5 @@
 //! Generated from: web-nfc.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -70,8 +70,8 @@ pub const NDEFReadingEvent = struct {
         Meta.MixinTypes,
         struct {
             serialNumber: runtime.DOMString = undefined,
-            message: NDEFMessage = undefined,
-            cached_message: ?NDEFMessage = null,
+            message: *runtime.Instance = undefined,
+            cached_message: ?*runtime.Instance = null,
             _internal: ?*NDEFReadingEventImpl.InternalState = null,
         },
     );

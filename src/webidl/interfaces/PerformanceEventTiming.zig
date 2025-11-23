@@ -1,5 +1,5 @@
 //! Generated from: event-timing.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -73,7 +73,7 @@ pub const PerformanceEventTiming = struct {
             processingStart: DOMHighResTimeStamp = undefined,
             processingEnd: DOMHighResTimeStamp = undefined,
             cancelable: bool = undefined,
-            target: ?Node = null,
+            target: ?*runtime.Instance = null,
             targetSelector: runtime.DOMString = undefined,
             interactionId: u64 = undefined,
             _internal: ?*PerformanceEventTimingImpl.InternalState = null,

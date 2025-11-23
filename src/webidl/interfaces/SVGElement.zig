@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -446,11 +446,11 @@ pub const SVGElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            className: SVGAnimatedString = undefined,
-            ownerSVGElement: ?SVGSVGElement = null,
-            viewportElement: ?SVGElement = null,
-            style: CSSStyleProperties = undefined,
-            attributeStyleMap: StylePropertyMap = undefined,
+            className: *runtime.Instance = undefined,
+            ownerSVGElement: ?*runtime.Instance = null,
+            viewportElement: ?*runtime.Instance = null,
+            style: *runtime.Instance = undefined,
+            attributeStyleMap: *runtime.Instance = undefined,
             onabort: EventHandler = undefined,
             onauxclick: EventHandler = undefined,
             onbeforeinput: EventHandler = undefined,
@@ -556,18 +556,18 @@ pub const SVGElement = struct {
             onfencedtreeclick: EventHandler = undefined,
             onsnapchanged: EventHandler = undefined,
             onsnapchanging: EventHandler = undefined,
-            correspondingElement: ?SVGElement = null,
-            correspondingUseElement: ?SVGUseElement = null,
-            dataset: DOMStringMap = undefined,
+            correspondingElement: ?*runtime.Instance = null,
+            correspondingUseElement: ?*runtime.Instance = null,
+            dataset: *runtime.Instance = undefined,
             nonce: runtime.DOMString = undefined,
             autofocus: bool = undefined,
             tabIndex: i32 = undefined,
-            cached_className: ?SVGAnimatedString = null,
-            cached_style: ?CSSStyleProperties = null,
-            cached_attributeStyleMap: ?StylePropertyMap = null,
-            cached_correspondingElement: ?SVGElement = null,
-            cached_correspondingUseElement: ?SVGUseElement = null,
-            cached_dataset: ?DOMStringMap = null,
+            cached_className: ?*runtime.Instance = null,
+            cached_style: ?*runtime.Instance = null,
+            cached_attributeStyleMap: ?*runtime.Instance = null,
+            cached_correspondingElement: ?*runtime.Instance = null,
+            cached_correspondingUseElement: ?*runtime.Instance = null,
+            cached_dataset: ?*runtime.Instance = null,
             _internal: ?*SVGElementImpl.InternalState = null,
         },
     );

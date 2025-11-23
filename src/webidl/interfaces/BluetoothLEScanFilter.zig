@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth-scanning.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -71,8 +71,8 @@ pub const BluetoothLEScanFilter = struct {
             name: ?runtime.DOMString = null,
             namePrefix: ?runtime.DOMString = null,
             services: runtime.FrozenArray(UUID) = undefined,
-            manufacturerData: BluetoothManufacturerDataFilter = undefined,
-            serviceData: BluetoothServiceDataFilter = undefined,
+            manufacturerData: *runtime.Instance = undefined,
+            serviceData: *runtime.Instance = undefined,
             _internal: ?*BluetoothLEScanFilterImpl.InternalState = null,
         },
     );

@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -90,10 +90,10 @@ pub const XRWebGLLayer = struct {
             antialias: bool = undefined,
             ignoreDepthValues: bool = undefined,
             fixedFoveation: ?f32 = null,
-            framebuffer: ?WebGLFramebuffer = null,
+            framebuffer: ?*runtime.Instance = null,
             framebufferWidth: u32 = undefined,
             framebufferHeight: u32 = undefined,
-            cached_framebuffer: ?WebGLFramebuffer = null,
+            cached_framebuffer: ?*runtime.Instance = null,
             _internal: ?*XRWebGLLayerImpl.InternalState = null,
         },
     );

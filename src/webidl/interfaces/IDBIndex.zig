@@ -1,5 +1,5 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -87,11 +87,11 @@ pub const IDBIndex = struct {
         Meta.MixinTypes,
         struct {
             name: runtime.DOMString = undefined,
-            objectStore: IDBObjectStore = undefined,
+            objectStore: *runtime.Instance = undefined,
             keyPath: *const anyopaque = undefined,
             multiEntry: bool = undefined,
             unique: bool = undefined,
-            cached_objectStore: ?IDBObjectStore = null,
+            cached_objectStore: ?*runtime.Instance = null,
             _internal: ?*IDBIndexImpl.InternalState = null,
         },
     );

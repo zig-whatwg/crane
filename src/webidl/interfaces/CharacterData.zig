@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -117,8 +117,8 @@ pub const CharacterData = struct {
         struct {
             data: runtime.DOMString = undefined,
             length: u32 = undefined,
-            previousElementSibling: ?Element = null,
-            nextElementSibling: ?Element = null,
+            previousElementSibling: ?*runtime.Instance = null,
+            nextElementSibling: ?*runtime.Instance = null,
             _internal: ?*CharacterDataImpl.InternalState = null,
         },
     );

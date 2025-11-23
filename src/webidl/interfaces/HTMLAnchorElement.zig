@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -273,7 +273,7 @@ pub const HTMLAnchorElement = struct {
             download: runtime.DOMString = undefined,
             ping: runtime.USVString = undefined,
             rel: runtime.DOMString = undefined,
-            relList: DOMTokenList = undefined,
+            relList: *runtime.Instance = undefined,
             hreflang: runtime.DOMString = undefined,
             @"type": runtime.DOMString = undefined,
             text: runtime.DOMString = undefined,
@@ -297,7 +297,7 @@ pub const HTMLAnchorElement = struct {
             pathname: runtime.USVString = undefined,
             search: runtime.USVString = undefined,
             hash: runtime.USVString = undefined,
-            cached_relList: ?DOMTokenList = null,
+            cached_relList: ?*runtime.Instance = null,
             _internal: ?*HTMLAnchorElementImpl.InternalState = null,
         },
     );

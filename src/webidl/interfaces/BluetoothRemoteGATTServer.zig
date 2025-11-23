@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -68,9 +68,9 @@ pub const BluetoothRemoteGATTServer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            device: BluetoothDevice = undefined,
+            device: *runtime.Instance = undefined,
             connected: bool = undefined,
-            cached_device: ?BluetoothDevice = null,
+            cached_device: ?*runtime.Instance = null,
             _internal: ?*BluetoothRemoteGATTServerImpl.InternalState = null,
         },
     );

@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -103,10 +103,10 @@ pub const TextTrack = struct {
             id: runtime.DOMString = undefined,
             inBandMetadataTrackDispatchType: runtime.DOMString = undefined,
             mode: TextTrackMode = undefined,
-            cues: ?TextTrackCueList = null,
-            activeCues: ?TextTrackCueList = null,
+            cues: ?*runtime.Instance = null,
+            activeCues: ?*runtime.Instance = null,
             oncuechange: EventHandler = undefined,
-            sourceBuffer: ?SourceBuffer = null,
+            sourceBuffer: ?*runtime.Instance = null,
             _internal: ?*TextTrackImpl.InternalState = null,
         },
     );

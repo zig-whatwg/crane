@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -75,12 +75,12 @@ pub const CSSImportRule = struct {
         Meta.MixinTypes,
         struct {
             href: runtime.USVString = undefined,
-            media: MediaList = undefined,
-            styleSheet: ?CSSStyleSheet = null,
+            media: *runtime.Instance = undefined,
+            styleSheet: ?*runtime.Instance = null,
             layerName: ?CSSOMString = null,
             supportsText: ?CSSOMString = null,
-            cached_media: ?MediaList = null,
-            cached_styleSheet: ?CSSStyleSheet = null,
+            cached_media: ?*runtime.Instance = null,
+            cached_styleSheet: ?*runtime.Instance = null,
             _internal: ?*CSSImportRuleImpl.InternalState = null,
         },
     );

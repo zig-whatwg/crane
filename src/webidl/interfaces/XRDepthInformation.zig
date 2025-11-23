@@ -1,5 +1,5 @@
 //! Generated from: webxr-depth-sensing.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -71,12 +71,12 @@ pub const XRDepthInformation = struct {
         struct {
             width: u32 = undefined,
             height: u32 = undefined,
-            normDepthBufferFromNormView: XRRigidTransform = undefined,
+            normDepthBufferFromNormView: *runtime.Instance = undefined,
             rawValueToMeters: f32 = undefined,
             projectionMatrix: runtime.Float32Array = undefined,
-            transform: XRRigidTransform = undefined,
-            cached_normDepthBufferFromNormView: ?XRRigidTransform = null,
-            cached_transform: ?XRRigidTransform = null,
+            transform: *runtime.Instance = undefined,
+            cached_normDepthBufferFromNormView: ?*runtime.Instance = null,
+            cached_transform: ?*runtime.Instance = null,
             _internal: ?*XRDepthInformationImpl.InternalState = null,
         },
     );

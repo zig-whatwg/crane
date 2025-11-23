@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -193,15 +193,15 @@ pub const ElementInternals = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            shadowRoot: ?ShadowRoot = null,
-            form: ?HTMLFormElement = null,
+            shadowRoot: ?*runtime.Instance = null,
+            form: ?*runtime.Instance = null,
             willValidate: bool = undefined,
-            validity: ValidityState = undefined,
+            validity: *runtime.Instance = undefined,
             validationMessage: runtime.DOMString = undefined,
-            labels: NodeList = undefined,
-            states: CustomStateSet = undefined,
+            labels: *runtime.Instance = undefined,
+            states: *runtime.Instance = undefined,
             role: ?runtime.DOMString = null,
-            ariaActiveDescendantElement: ?Element = null,
+            ariaActiveDescendantElement: ?*runtime.Instance = null,
             ariaAtomic: ?runtime.DOMString = null,
             ariaAutoComplete: ?runtime.DOMString = null,
             ariaBrailleLabel: ?runtime.DOMString = null,
@@ -252,7 +252,7 @@ pub const ElementInternals = struct {
             ariaValueMin: ?runtime.DOMString = null,
             ariaValueNow: ?runtime.DOMString = null,
             ariaValueText: ?runtime.DOMString = null,
-            cached_states: ?CustomStateSet = null,
+            cached_states: ?*runtime.Instance = null,
             _internal: ?*ElementInternalsImpl.InternalState = null,
         },
     );

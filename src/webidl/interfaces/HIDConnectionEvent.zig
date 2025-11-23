@@ -1,5 +1,5 @@
 //! Generated from: webhid.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -71,8 +71,8 @@ pub const HIDConnectionEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            device: HIDDevice = undefined,
-            cached_device: ?HIDDevice = null,
+            device: *runtime.Instance = undefined,
+            cached_device: ?*runtime.Instance = null,
             _internal: ?*HIDConnectionEventImpl.InternalState = null,
         },
     );

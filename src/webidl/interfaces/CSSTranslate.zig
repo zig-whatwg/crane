@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -68,9 +68,9 @@ pub const CSSTranslate = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            x: CSSNumericValue = undefined,
-            y: CSSNumericValue = undefined,
-            z: CSSNumericValue = undefined,
+            x: *runtime.Instance = undefined,
+            y: *runtime.Instance = undefined,
+            z: *runtime.Instance = undefined,
             _internal: ?*CSSTranslateImpl.InternalState = null,
         },
     );

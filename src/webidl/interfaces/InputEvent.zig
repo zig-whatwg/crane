@@ -1,5 +1,5 @@
 //! Generated from: uievents.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -83,7 +83,7 @@ pub const InputEvent = struct {
             data: ?runtime.USVString = null,
             isComposing: bool = undefined,
             inputType: runtime.DOMString = undefined,
-            dataTransfer: ?DataTransfer = null,
+            dataTransfer: ?*runtime.Instance = null,
             _internal: ?*InputEventImpl.InternalState = null,
         },
     );

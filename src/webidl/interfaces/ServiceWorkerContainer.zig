@@ -1,5 +1,5 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -92,7 +92,7 @@ pub const ServiceWorkerContainer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            controller: ?ServiceWorker = null,
+            controller: ?*runtime.Instance = null,
             ready: runtime.Promise(ServiceWorkerRegistration) = undefined,
             oncontrollerchange: EventHandler = undefined,
             onmessage: EventHandler = undefined,

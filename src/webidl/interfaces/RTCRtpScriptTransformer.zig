@@ -1,5 +1,5 @@
 //! Generated from: webrtc-encoded-transform.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -79,8 +79,8 @@ pub const RTCRtpScriptTransformer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            readable: ReadableStream = undefined,
-            writable: WritableStream = undefined,
+            readable: *runtime.Instance = undefined,
+            writable: *runtime.Instance = undefined,
             onkeyframerequest: EventHandler = undefined,
             options: *const anyopaque = undefined,
             _internal: ?*RTCRtpScriptTransformerImpl.InternalState = null,

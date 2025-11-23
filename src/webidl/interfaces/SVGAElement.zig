@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -255,15 +255,15 @@ pub const SVGAElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            target: SVGAnimatedString = undefined,
+            target: *runtime.Instance = undefined,
             download: runtime.DOMString = undefined,
             ping: runtime.USVString = undefined,
             rel: runtime.DOMString = undefined,
-            relList: DOMTokenList = undefined,
+            relList: *runtime.Instance = undefined,
             hreflang: runtime.DOMString = undefined,
             @"type": runtime.DOMString = undefined,
             referrerPolicy: runtime.DOMString = undefined,
-            href: SVGAnimatedString = undefined,
+            href: *runtime.Instance = undefined,
             origin: runtime.USVString = undefined,
             protocol: runtime.USVString = undefined,
             username: runtime.USVString = undefined,
@@ -274,9 +274,9 @@ pub const SVGAElement = struct {
             pathname: runtime.USVString = undefined,
             search: runtime.USVString = undefined,
             hash: runtime.USVString = undefined,
-            cached_target: ?SVGAnimatedString = null,
-            cached_relList: ?DOMTokenList = null,
-            cached_href: ?SVGAnimatedString = null,
+            cached_target: ?*runtime.Instance = null,
+            cached_relList: ?*runtime.Instance = null,
+            cached_href: ?*runtime.Instance = null,
             _internal: ?*SVGAElementImpl.InternalState = null,
         },
     );

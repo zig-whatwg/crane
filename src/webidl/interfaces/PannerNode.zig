@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -113,12 +113,12 @@ pub const PannerNode = struct {
         Meta.MixinTypes,
         struct {
             panningModel: PanningModelType = undefined,
-            positionX: AudioParam = undefined,
-            positionY: AudioParam = undefined,
-            positionZ: AudioParam = undefined,
-            orientationX: AudioParam = undefined,
-            orientationY: AudioParam = undefined,
-            orientationZ: AudioParam = undefined,
+            positionX: *runtime.Instance = undefined,
+            positionY: *runtime.Instance = undefined,
+            positionZ: *runtime.Instance = undefined,
+            orientationX: *runtime.Instance = undefined,
+            orientationY: *runtime.Instance = undefined,
+            orientationZ: *runtime.Instance = undefined,
             distanceModel: DistanceModelType = undefined,
             refDistance: f64 = undefined,
             maxDistance: f64 = undefined,

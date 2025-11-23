@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -211,10 +211,10 @@ pub const SVGViewElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            viewBox: SVGAnimatedRect = undefined,
-            preserveAspectRatio: SVGAnimatedPreserveAspectRatio = undefined,
-            cached_viewBox: ?SVGAnimatedRect = null,
-            cached_preserveAspectRatio: ?SVGAnimatedPreserveAspectRatio = null,
+            viewBox: *runtime.Instance = undefined,
+            preserveAspectRatio: *runtime.Instance = undefined,
+            cached_viewBox: ?*runtime.Instance = null,
+            cached_preserveAspectRatio: ?*runtime.Instance = null,
             _internal: ?*SVGViewElementImpl.InternalState = null,
         },
     );

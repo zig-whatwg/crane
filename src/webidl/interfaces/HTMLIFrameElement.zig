@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -271,14 +271,14 @@ pub const HTMLIFrameElement = struct {
                 DOMString: runtime.DOMString,
             } = undefined,
             name: runtime.DOMString = undefined,
-            sandbox: DOMTokenList = undefined,
+            sandbox: *runtime.Instance = undefined,
             allow: runtime.DOMString = undefined,
             allowFullscreen: bool = undefined,
             width: runtime.DOMString = undefined,
             height: runtime.DOMString = undefined,
             referrerPolicy: runtime.DOMString = undefined,
             loading: runtime.DOMString = undefined,
-            contentDocument: ?Document = null,
+            contentDocument: ?*runtime.Instance = null,
             contentWindow: ?WindowProxy = null,
             browsingTopics: bool = undefined,
             csp: runtime.DOMString = undefined,
@@ -291,10 +291,10 @@ pub const HTMLIFrameElement = struct {
             marginHeight: runtime.DOMString = undefined,
             marginWidth: runtime.DOMString = undefined,
             privateToken: runtime.DOMString = undefined,
-            permissionsPolicy: PermissionsPolicy = undefined,
+            permissionsPolicy: *runtime.Instance = undefined,
             sharedStorageWritable: bool = undefined,
-            cached_sandbox: ?DOMTokenList = null,
-            cached_permissionsPolicy: ?PermissionsPolicy = null,
+            cached_sandbox: ?*runtime.Instance = null,
+            cached_permissionsPolicy: ?*runtime.Instance = null,
             _internal: ?*HTMLIFrameElementImpl.InternalState = null,
         },
     );

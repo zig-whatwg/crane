@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -232,26 +232,26 @@ pub const SVGPatternElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            patternUnits: SVGAnimatedEnumeration = undefined,
-            patternContentUnits: SVGAnimatedEnumeration = undefined,
-            patternTransform: SVGAnimatedTransformList = undefined,
-            x: SVGAnimatedLength = undefined,
-            y: SVGAnimatedLength = undefined,
-            width: SVGAnimatedLength = undefined,
-            height: SVGAnimatedLength = undefined,
-            viewBox: SVGAnimatedRect = undefined,
-            preserveAspectRatio: SVGAnimatedPreserveAspectRatio = undefined,
-            href: SVGAnimatedString = undefined,
-            cached_patternUnits: ?SVGAnimatedEnumeration = null,
-            cached_patternContentUnits: ?SVGAnimatedEnumeration = null,
-            cached_patternTransform: ?SVGAnimatedTransformList = null,
-            cached_x: ?SVGAnimatedLength = null,
-            cached_y: ?SVGAnimatedLength = null,
-            cached_width: ?SVGAnimatedLength = null,
-            cached_height: ?SVGAnimatedLength = null,
-            cached_viewBox: ?SVGAnimatedRect = null,
-            cached_preserveAspectRatio: ?SVGAnimatedPreserveAspectRatio = null,
-            cached_href: ?SVGAnimatedString = null,
+            patternUnits: *runtime.Instance = undefined,
+            patternContentUnits: *runtime.Instance = undefined,
+            patternTransform: *runtime.Instance = undefined,
+            x: *runtime.Instance = undefined,
+            y: *runtime.Instance = undefined,
+            width: *runtime.Instance = undefined,
+            height: *runtime.Instance = undefined,
+            viewBox: *runtime.Instance = undefined,
+            preserveAspectRatio: *runtime.Instance = undefined,
+            href: *runtime.Instance = undefined,
+            cached_patternUnits: ?*runtime.Instance = null,
+            cached_patternContentUnits: ?*runtime.Instance = null,
+            cached_patternTransform: ?*runtime.Instance = null,
+            cached_x: ?*runtime.Instance = null,
+            cached_y: ?*runtime.Instance = null,
+            cached_width: ?*runtime.Instance = null,
+            cached_height: ?*runtime.Instance = null,
+            cached_viewBox: ?*runtime.Instance = null,
+            cached_preserveAspectRatio: ?*runtime.Instance = null,
+            cached_href: ?*runtime.Instance = null,
             _internal: ?*SVGPatternElementImpl.InternalState = null,
         },
     );

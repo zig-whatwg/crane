@@ -1,5 +1,5 @@
 //! Generated from: webxrlayers.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -75,9 +75,9 @@ pub const XRWebGLSubImage = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            colorTexture: WebGLTexture = undefined,
-            depthStencilTexture: ?WebGLTexture = null,
-            motionVectorTexture: ?WebGLTexture = null,
+            colorTexture: *runtime.Instance = undefined,
+            depthStencilTexture: ?*runtime.Instance = null,
+            motionVectorTexture: ?*runtime.Instance = null,
             imageIndex: ?u32 = null,
             colorTextureWidth: u32 = undefined,
             colorTextureHeight: u32 = undefined,
@@ -85,9 +85,9 @@ pub const XRWebGLSubImage = struct {
             depthStencilTextureHeight: ?u32 = null,
             motionVectorTextureWidth: ?u32 = null,
             motionVectorTextureHeight: ?u32 = null,
-            cached_colorTexture: ?WebGLTexture = null,
-            cached_depthStencilTexture: ?WebGLTexture = null,
-            cached_motionVectorTexture: ?WebGLTexture = null,
+            cached_colorTexture: ?*runtime.Instance = null,
+            cached_depthStencilTexture: ?*runtime.Instance = null,
+            cached_motionVectorTexture: ?*runtime.Instance = null,
             _internal: ?*XRWebGLSubImageImpl.InternalState = null,
         },
     );

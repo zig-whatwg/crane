@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -106,9 +106,9 @@ pub const Navigation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            currentEntry: ?NavigationHistoryEntry = null,
-            transition: ?NavigationTransition = null,
-            activation: ?NavigationActivation = null,
+            currentEntry: ?*runtime.Instance = null,
+            transition: ?*runtime.Instance = null,
+            activation: ?*runtime.Instance = null,
             canGoBack: bool = undefined,
             canGoForward: bool = undefined,
             onnavigate: EventHandler = undefined,

@@ -1,5 +1,5 @@
 //! Generated from: font-metrics-api.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -93,7 +93,7 @@ pub const FontMetrics = struct {
             boundingBoxDescent: f64 = undefined,
             fontBoundingBoxAscent: f64 = undefined,
             fontBoundingBoxDescent: f64 = undefined,
-            dominantBaseline: Baseline = undefined,
+            dominantBaseline: *runtime.Instance = undefined,
             baselines: runtime.FrozenArray(Baseline) = undefined,
             fonts: runtime.FrozenArray(Font) = undefined,
             _internal: ?*FontMetricsImpl.InternalState = null,

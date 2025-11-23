@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -56,10 +56,10 @@ pub const ElementCSSInlineStyle = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            style: CSSStyleProperties = undefined,
-            attributeStyleMap: StylePropertyMap = undefined,
-            cached_style: ?CSSStyleProperties = null,
-            cached_attributeStyleMap: ?StylePropertyMap = null,
+            style: *runtime.Instance = undefined,
+            attributeStyleMap: *runtime.Instance = undefined,
+            cached_style: ?*runtime.Instance = null,
+            cached_attributeStyleMap: ?*runtime.Instance = null,
             _internal: ?*ElementCSSInlineStyleImpl.InternalState = null,
         },
     );

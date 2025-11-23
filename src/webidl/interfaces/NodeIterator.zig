@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -70,12 +70,12 @@ pub const NodeIterator = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            root: Node = undefined,
-            referenceNode: Node = undefined,
+            root: *runtime.Instance = undefined,
+            referenceNode: *runtime.Instance = undefined,
             pointerBeforeReferenceNode: bool = undefined,
             whatToShow: u32 = undefined,
-            filter: ?NodeFilter = null,
-            cached_root: ?Node = null,
+            filter: ?*runtime.Instance = null,
+            cached_root: ?*runtime.Instance = null,
             _internal: ?*NodeIteratorImpl.InternalState = null,
         },
     );

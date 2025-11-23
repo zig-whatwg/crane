@@ -1,5 +1,5 @@
 //! Generated from: web-animations.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -76,9 +76,9 @@ pub const AnimationEffect = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            parent: ?GroupEffect = null,
-            previousSibling: ?AnimationEffect = null,
-            nextSibling: ?AnimationEffect = null,
+            parent: ?*runtime.Instance = null,
+            previousSibling: ?*runtime.Instance = null,
+            nextSibling: ?*runtime.Instance = null,
             _internal: ?*AnimationEffectImpl.InternalState = null,
         },
     );

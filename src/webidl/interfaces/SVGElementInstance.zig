@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -53,10 +53,10 @@ pub const SVGElementInstance = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            correspondingElement: ?SVGElement = null,
-            correspondingUseElement: ?SVGUseElement = null,
-            cached_correspondingElement: ?SVGElement = null,
-            cached_correspondingUseElement: ?SVGUseElement = null,
+            correspondingElement: ?*runtime.Instance = null,
+            correspondingUseElement: ?*runtime.Instance = null,
+            cached_correspondingElement: ?*runtime.Instance = null,
+            cached_correspondingUseElement: ?*runtime.Instance = null,
             _internal: ?*SVGElementInstanceImpl.InternalState = null,
         },
     );

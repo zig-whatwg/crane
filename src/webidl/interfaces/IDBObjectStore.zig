@@ -1,5 +1,5 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -106,10 +106,10 @@ pub const IDBObjectStore = struct {
         struct {
             name: runtime.DOMString = undefined,
             keyPath: *const anyopaque = undefined,
-            indexNames: DOMStringList = undefined,
-            transaction: IDBTransaction = undefined,
+            indexNames: *runtime.Instance = undefined,
+            transaction: *runtime.Instance = undefined,
             autoIncrement: bool = undefined,
-            cached_transaction: ?IDBTransaction = null,
+            cached_transaction: ?*runtime.Instance = null,
             _internal: ?*IDBObjectStoreImpl.InternalState = null,
         },
     );

@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -98,14 +98,14 @@ pub const BluetoothRemoteGATTService = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            device: BluetoothDevice = undefined,
+            device: *runtime.Instance = undefined,
             uuid: UUID = undefined,
             isPrimary: bool = undefined,
             oncharacteristicvaluechanged: EventHandler = undefined,
             onserviceadded: EventHandler = undefined,
             onservicechanged: EventHandler = undefined,
             onserviceremoved: EventHandler = undefined,
-            cached_device: ?BluetoothDevice = null,
+            cached_device: ?*runtime.Instance = null,
             _internal: ?*BluetoothRemoteGATTServiceImpl.InternalState = null,
         },
     );

@@ -1,5 +1,5 @@
 //! Generated from: webusb.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -67,7 +67,7 @@ pub const USBInterface = struct {
         Meta.MixinTypes,
         struct {
             interfaceNumber: u8 = undefined,
-            alternate: USBAlternateInterface = undefined,
+            alternate: *runtime.Instance = undefined,
             alternates: runtime.FrozenArray(USBAlternateInterface) = undefined,
             claimed: bool = undefined,
             _internal: ?*USBInterfaceImpl.InternalState = null,

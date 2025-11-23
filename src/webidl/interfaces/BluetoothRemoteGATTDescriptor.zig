@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -66,10 +66,10 @@ pub const BluetoothRemoteGATTDescriptor = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            characteristic: BluetoothRemoteGATTCharacteristic = undefined,
+            characteristic: *runtime.Instance = undefined,
             uuid: UUID = undefined,
             value: ?runtime.DataView = null,
-            cached_characteristic: ?BluetoothRemoteGATTCharacteristic = null,
+            cached_characteristic: ?*runtime.Instance = null,
             _internal: ?*BluetoothRemoteGATTDescriptorImpl.InternalState = null,
         },
     );

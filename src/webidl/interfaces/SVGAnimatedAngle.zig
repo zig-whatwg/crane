@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -57,10 +57,10 @@ pub const SVGAnimatedAngle = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            baseVal: SVGAngle = undefined,
-            animVal: SVGAngle = undefined,
-            cached_baseVal: ?SVGAngle = null,
-            cached_animVal: ?SVGAngle = null,
+            baseVal: *runtime.Instance = undefined,
+            animVal: *runtime.Instance = undefined,
+            cached_baseVal: ?*runtime.Instance = null,
+            cached_animVal: ?*runtime.Instance = null,
             _internal: ?*SVGAnimatedAngleImpl.InternalState = null,
         },
     );

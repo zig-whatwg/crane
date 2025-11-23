@@ -1,5 +1,5 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -121,24 +121,24 @@ pub const ServiceWorkerRegistration = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            installing: ?ServiceWorker = null,
-            waiting: ?ServiceWorker = null,
-            active: ?ServiceWorker = null,
-            navigationPreload: NavigationPreloadManager = undefined,
+            installing: ?*runtime.Instance = null,
+            waiting: ?*runtime.Instance = null,
+            active: ?*runtime.Instance = null,
+            navigationPreload: *runtime.Instance = undefined,
             scope: runtime.USVString = undefined,
             updateViaCache: ServiceWorkerUpdateViaCache = undefined,
             onupdatefound: EventHandler = undefined,
-            periodicSync: PeriodicSyncManager = undefined,
-            cookies: CookieStoreManager = undefined,
-            sync: SyncManager = undefined,
-            index: ContentIndex = undefined,
-            backgroundFetch: BackgroundFetchManager = undefined,
-            paymentManager: PaymentManager = undefined,
-            pushManager: PushManager = undefined,
-            cached_navigationPreload: ?NavigationPreloadManager = null,
-            cached_cookies: ?CookieStoreManager = null,
-            cached_index: ?ContentIndex = null,
-            cached_paymentManager: ?PaymentManager = null,
+            periodicSync: *runtime.Instance = undefined,
+            cookies: *runtime.Instance = undefined,
+            sync: *runtime.Instance = undefined,
+            index: *runtime.Instance = undefined,
+            backgroundFetch: *runtime.Instance = undefined,
+            paymentManager: *runtime.Instance = undefined,
+            pushManager: *runtime.Instance = undefined,
+            cached_navigationPreload: ?*runtime.Instance = null,
+            cached_cookies: ?*runtime.Instance = null,
+            cached_index: ?*runtime.Instance = null,
+            cached_paymentManager: ?*runtime.Instance = null,
             _internal: ?*ServiceWorkerRegistrationImpl.InternalState = null,
         },
     );

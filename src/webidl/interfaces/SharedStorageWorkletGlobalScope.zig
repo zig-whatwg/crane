@@ -1,5 +1,5 @@
 //! Generated from: shared-storage.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -69,9 +69,9 @@ pub const SharedStorageWorkletGlobalScope = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sharedStorage: SharedStorage = undefined,
-            privateAggregation: PrivateAggregation = undefined,
-            navigator: SharedStorageWorkletNavigator = undefined,
+            sharedStorage: *runtime.Instance = undefined,
+            privateAggregation: *runtime.Instance = undefined,
+            navigator: *runtime.Instance = undefined,
             _internal: ?*SharedStorageWorkletGlobalScopeImpl.InternalState = null,
         },
     );

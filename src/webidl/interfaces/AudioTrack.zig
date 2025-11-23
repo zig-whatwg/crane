@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -74,7 +74,7 @@ pub const AudioTrack = struct {
             label: runtime.DOMString = undefined,
             language: runtime.DOMString = undefined,
             enabled: bool = undefined,
-            sourceBuffer: ?SourceBuffer = null,
+            sourceBuffer: ?*runtime.Instance = null,
             _internal: ?*AudioTrackImpl.InternalState = null,
         },
     );

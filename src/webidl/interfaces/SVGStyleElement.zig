@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -223,7 +223,7 @@ pub const SVGStyleElement = struct {
             media: runtime.DOMString = undefined,
             title: runtime.DOMString = undefined,
             disabled: bool = undefined,
-            sheet: ?CSSStyleSheet = null,
+            sheet: ?*runtime.Instance = null,
             _internal: ?*SVGStyleElementImpl.InternalState = null,
         },
     );

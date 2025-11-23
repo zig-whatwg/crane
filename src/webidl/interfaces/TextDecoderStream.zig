@@ -1,5 +1,5 @@
 //! Generated from: encoding.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -74,8 +74,8 @@ pub const TextDecoderStream = struct {
             encoding: runtime.DOMString = undefined,
             fatal: bool = undefined,
             ignoreBOM: bool = undefined,
-            readable: ReadableStream = undefined,
-            writable: WritableStream = undefined,
+            readable: *runtime.Instance = undefined,
+            writable: *runtime.Instance = undefined,
             _internal: ?*TextDecoderStreamImpl.InternalState = null,
         },
     );

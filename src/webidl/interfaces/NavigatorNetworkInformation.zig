@@ -1,5 +1,5 @@
 //! Generated from: netinfo.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -50,8 +50,8 @@ pub const NavigatorNetworkInformation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            connection: NetworkInformation = undefined,
-            cached_connection: ?NetworkInformation = null,
+            connection: *runtime.Instance = undefined,
+            cached_connection: ?*runtime.Instance = null,
             _internal: ?*NavigatorNetworkInformationImpl.InternalState = null,
         },
     );

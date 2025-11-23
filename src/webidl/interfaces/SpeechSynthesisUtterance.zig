@@ -1,5 +1,5 @@
 //! Generated from: speech-api.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -94,7 +94,7 @@ pub const SpeechSynthesisUtterance = struct {
         struct {
             text: runtime.DOMString = undefined,
             lang: runtime.DOMString = undefined,
-            voice: ?SpeechSynthesisVoice = null,
+            voice: ?*runtime.Instance = null,
             volume: f32 = undefined,
             rate: f32 = undefined,
             pitch: f32 = undefined,

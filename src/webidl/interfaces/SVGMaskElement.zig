@@ -1,5 +1,5 @@
 //! Generated from: css-masking.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -216,12 +216,12 @@ pub const SVGMaskElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            maskUnits: SVGAnimatedEnumeration = undefined,
-            maskContentUnits: SVGAnimatedEnumeration = undefined,
-            x: SVGAnimatedLength = undefined,
-            y: SVGAnimatedLength = undefined,
-            width: SVGAnimatedLength = undefined,
-            height: SVGAnimatedLength = undefined,
+            maskUnits: *runtime.Instance = undefined,
+            maskContentUnits: *runtime.Instance = undefined,
+            x: *runtime.Instance = undefined,
+            y: *runtime.Instance = undefined,
+            width: *runtime.Instance = undefined,
+            height: *runtime.Instance = undefined,
             _internal: ?*SVGMaskElementImpl.InternalState = null,
         },
     );

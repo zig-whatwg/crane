@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -224,14 +224,14 @@ pub const SVGLineElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            x1: SVGAnimatedLength = undefined,
-            y1: SVGAnimatedLength = undefined,
-            x2: SVGAnimatedLength = undefined,
-            y2: SVGAnimatedLength = undefined,
-            cached_x1: ?SVGAnimatedLength = null,
-            cached_y1: ?SVGAnimatedLength = null,
-            cached_x2: ?SVGAnimatedLength = null,
-            cached_y2: ?SVGAnimatedLength = null,
+            x1: *runtime.Instance = undefined,
+            y1: *runtime.Instance = undefined,
+            x2: *runtime.Instance = undefined,
+            y2: *runtime.Instance = undefined,
+            cached_x1: ?*runtime.Instance = null,
+            cached_y1: ?*runtime.Instance = null,
+            cached_x2: ?*runtime.Instance = null,
+            cached_y2: ?*runtime.Instance = null,
             _internal: ?*SVGLineElementImpl.InternalState = null,
         },
     );

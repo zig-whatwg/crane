@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -86,9 +86,9 @@ pub const CSSMathClamp = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            lower: CSSNumericValue = undefined,
-            value: CSSNumericValue = undefined,
-            upper: CSSNumericValue = undefined,
+            lower: *runtime.Instance = undefined,
+            value: *runtime.Instance = undefined,
+            upper: *runtime.Instance = undefined,
             _internal: ?*CSSMathClampImpl.InternalState = null,
         },
     );

@@ -1,5 +1,5 @@
 //! Generated from: webxr-hit-test.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -63,11 +63,11 @@ pub const XRRay = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            origin: DOMPointReadOnly = undefined,
-            direction: DOMPointReadOnly = undefined,
+            origin: *runtime.Instance = undefined,
+            direction: *runtime.Instance = undefined,
             matrix: runtime.Float32Array = undefined,
-            cached_origin: ?DOMPointReadOnly = null,
-            cached_direction: ?DOMPointReadOnly = null,
+            cached_origin: ?*runtime.Instance = null,
+            cached_direction: ?*runtime.Instance = null,
             cached_matrix: ?runtime.Float32Array = null,
             _internal: ?*XRRayImpl.InternalState = null,
         },

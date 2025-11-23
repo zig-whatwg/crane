@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -156,28 +156,28 @@ pub const WorkerGlobalScope = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            self: WorkerGlobalScope = undefined,
-            location: WorkerLocation = undefined,
-            navigator: WorkerNavigator = undefined,
+            self: *runtime.Instance = undefined,
+            location: *runtime.Instance = undefined,
+            navigator: *runtime.Instance = undefined,
             onerror: OnErrorEventHandler = undefined,
             onlanguagechange: EventHandler = undefined,
             onoffline: EventHandler = undefined,
             ononline: EventHandler = undefined,
             onrejectionhandled: EventHandler = undefined,
             onunhandledrejection: EventHandler = undefined,
-            fonts: FontFaceSet = undefined,
+            fonts: *runtime.Instance = undefined,
             origin: runtime.USVString = undefined,
             isSecureContext: bool = undefined,
             crossOriginIsolated: bool = undefined,
-            indexedDB: IDBFactory = undefined,
-            trustedTypes: TrustedTypePolicyFactory = undefined,
-            performance: Performance = undefined,
-            caches: CacheStorage = undefined,
-            scheduler: Scheduler = undefined,
-            crypto: Crypto = undefined,
-            cached_indexedDB: ?IDBFactory = null,
-            cached_caches: ?CacheStorage = null,
-            cached_crypto: ?Crypto = null,
+            indexedDB: *runtime.Instance = undefined,
+            trustedTypes: *runtime.Instance = undefined,
+            performance: *runtime.Instance = undefined,
+            caches: *runtime.Instance = undefined,
+            scheduler: *runtime.Instance = undefined,
+            crypto: *runtime.Instance = undefined,
+            cached_indexedDB: ?*runtime.Instance = null,
+            cached_caches: ?*runtime.Instance = null,
+            cached_crypto: ?*runtime.Instance = null,
             _internal: ?*WorkerGlobalScopeImpl.InternalState = null,
         },
     );

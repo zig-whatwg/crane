@@ -1,5 +1,5 @@
 //! Generated from: webxrlayers.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -84,8 +84,8 @@ pub const XREquirectLayer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            space: XRSpace = undefined,
-            transform: XRRigidTransform = undefined,
+            space: *runtime.Instance = undefined,
+            transform: *runtime.Instance = undefined,
             radius: f32 = undefined,
             centralHorizontalAngle: f32 = undefined,
             upperVerticalAngle: f32 = undefined,

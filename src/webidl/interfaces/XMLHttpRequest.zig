@@ -1,5 +1,5 @@
 //! Generated from: xhr.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -134,15 +134,15 @@ pub const XMLHttpRequest = struct {
             readyState: u16 = undefined,
             timeout: u32 = undefined,
             withCredentials: bool = undefined,
-            upload: XMLHttpRequestUpload = undefined,
+            upload: *runtime.Instance = undefined,
             responseURL: runtime.USVString = undefined,
             status: u16 = undefined,
             statusText: runtime.ByteString = undefined,
             responseType: XMLHttpRequestResponseType = undefined,
             response: *const anyopaque = undefined,
             responseText: runtime.USVString = undefined,
-            responseXML: ?Document = null,
-            cached_upload: ?XMLHttpRequestUpload = null,
+            responseXML: ?*runtime.Instance = null,
+            cached_upload: ?*runtime.Instance = null,
             _internal: ?*XMLHttpRequestImpl.InternalState = null,
         },
     );

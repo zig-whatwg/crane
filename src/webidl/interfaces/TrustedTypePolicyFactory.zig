@@ -1,5 +1,5 @@
 //! Generated from: trusted-types.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -78,9 +78,9 @@ pub const TrustedTypePolicyFactory = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            emptyHTML: TrustedHTML = undefined,
-            emptyScript: TrustedScript = undefined,
-            defaultPolicy: ?TrustedTypePolicy = null,
+            emptyHTML: *runtime.Instance = undefined,
+            emptyScript: *runtime.Instance = undefined,
+            defaultPolicy: ?*runtime.Instance = null,
             _internal: ?*TrustedTypePolicyFactoryImpl.InternalState = null,
         },
     );

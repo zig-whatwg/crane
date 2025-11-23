@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -101,7 +101,7 @@ pub const BluetoothDevice = struct {
         struct {
             id: runtime.DOMString = undefined,
             name: ?runtime.DOMString = null,
-            gatt: ?BluetoothRemoteGATTServer = null,
+            gatt: ?*runtime.Instance = null,
             watchingAdvertisements: bool = undefined,
             onadvertisementreceived: EventHandler = undefined,
             ongattserverdisconnected: EventHandler = undefined,

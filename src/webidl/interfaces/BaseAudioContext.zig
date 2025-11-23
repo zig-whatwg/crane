@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -144,15 +144,15 @@ pub const BaseAudioContext = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            destination: AudioDestinationNode = undefined,
+            destination: *runtime.Instance = undefined,
             sampleRate: f32 = undefined,
             currentTime: f64 = undefined,
-            listener: AudioListener = undefined,
+            listener: *runtime.Instance = undefined,
             state: AudioContextState = undefined,
             renderQuantumSize: u32 = undefined,
-            audioWorklet: AudioWorklet = undefined,
+            audioWorklet: *runtime.Instance = undefined,
             onstatechange: EventHandler = undefined,
-            cached_audioWorklet: ?AudioWorklet = null,
+            cached_audioWorklet: ?*runtime.Instance = null,
             _internal: ?*BaseAudioContextImpl.InternalState = null,
         },
     );

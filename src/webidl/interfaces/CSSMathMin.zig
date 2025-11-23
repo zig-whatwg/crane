@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -83,7 +83,7 @@ pub const CSSMathMin = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            values: CSSNumericArray = undefined,
+            values: *runtime.Instance = undefined,
             _internal: ?*CSSMathMinImpl.InternalState = null,
         },
     );

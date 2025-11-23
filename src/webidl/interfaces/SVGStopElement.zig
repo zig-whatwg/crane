@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -205,8 +205,8 @@ pub const SVGStopElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            offset: SVGAnimatedNumber = undefined,
-            cached_offset: ?SVGAnimatedNumber = null,
+            offset: *runtime.Instance = undefined,
+            cached_offset: ?*runtime.Instance = null,
             _internal: ?*SVGStopElementImpl.InternalState = null,
         },
     );

@@ -1,5 +1,5 @@
 //! Generated from: webhid.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -75,10 +75,10 @@ pub const HIDInputReportEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            device: HIDDevice = undefined,
+            device: *runtime.Instance = undefined,
             reportId: u8 = undefined,
             data: runtime.DataView = undefined,
-            cached_device: ?HIDDevice = null,
+            cached_device: ?*runtime.Instance = null,
             _internal: ?*HIDInputReportEventImpl.InternalState = null,
         },
     );

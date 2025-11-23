@@ -1,5 +1,5 @@
 //! Generated from: css-animations.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -71,7 +71,7 @@ pub const CSSKeyframesRule = struct {
         Meta.MixinTypes,
         struct {
             name: CSSOMString = undefined,
-            cssRules: CSSRuleList = undefined,
+            cssRules: *runtime.Instance = undefined,
             length: u32 = undefined,
             _internal: ?*CSSKeyframesRuleImpl.InternalState = null,
         },

@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -63,13 +63,13 @@ pub const XRPose = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            transform: XRRigidTransform = undefined,
-            linearVelocity: ?DOMPointReadOnly = null,
-            angularVelocity: ?DOMPointReadOnly = null,
+            transform: *runtime.Instance = undefined,
+            linearVelocity: ?*runtime.Instance = null,
+            angularVelocity: ?*runtime.Instance = null,
             emulatedPosition: bool = undefined,
-            cached_transform: ?XRRigidTransform = null,
-            cached_linearVelocity: ?DOMPointReadOnly = null,
-            cached_angularVelocity: ?DOMPointReadOnly = null,
+            cached_transform: ?*runtime.Instance = null,
+            cached_linearVelocity: ?*runtime.Instance = null,
+            cached_angularVelocity: ?*runtime.Instance = null,
             _internal: ?*XRPoseImpl.InternalState = null,
         },
     );

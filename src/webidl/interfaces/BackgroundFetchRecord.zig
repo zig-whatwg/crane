@@ -1,5 +1,5 @@
 //! Generated from: background-fetch.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -61,7 +61,7 @@ pub const BackgroundFetchRecord = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            request: Request = undefined,
+            request: *runtime.Instance = undefined,
             responseReady: runtime.Promise(Response) = undefined,
             _internal: ?*BackgroundFetchRecordImpl.InternalState = null,
         },

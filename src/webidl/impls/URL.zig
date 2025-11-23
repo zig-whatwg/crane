@@ -635,7 +635,7 @@ pub fn call_parse(
     instance: *runtime.Instance,
     url: runtime.USVString,
     base: runtime.USVString,
-) !URL {
+) !*runtime.Instance {
     // Static method - instance is not used
     _ = instance;
     _ = url;

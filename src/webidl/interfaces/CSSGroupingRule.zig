@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -63,8 +63,8 @@ pub const CSSGroupingRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            cssRules: CSSRuleList = undefined,
-            cached_cssRules: ?CSSRuleList = null,
+            cssRules: *runtime.Instance = undefined,
+            cached_cssRules: ?*runtime.Instance = null,
             _internal: ?*CSSGroupingRuleImpl.InternalState = null,
         },
     );

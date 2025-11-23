@@ -1,5 +1,5 @@
 //! Generated from: saa-non-cookie-storage.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -87,11 +87,11 @@ pub const StorageAccessHandle = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sessionStorage: Storage = undefined,
-            localStorage: Storage = undefined,
-            indexedDB: IDBFactory = undefined,
-            locks: LockManager = undefined,
-            caches: CacheStorage = undefined,
+            sessionStorage: *runtime.Instance = undefined,
+            localStorage: *runtime.Instance = undefined,
+            indexedDB: *runtime.Instance = undefined,
+            locks: *runtime.Instance = undefined,
+            caches: *runtime.Instance = undefined,
             _internal: ?*StorageAccessHandleImpl.InternalState = null,
         },
     );

@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -258,11 +258,11 @@ pub const HTMLFormElement = struct {
             noValidate: bool = undefined,
             target: runtime.DOMString = undefined,
             rel: runtime.DOMString = undefined,
-            relList: DOMTokenList = undefined,
-            elements: HTMLFormControlsCollection = undefined,
+            relList: *runtime.Instance = undefined,
+            elements: *runtime.Instance = undefined,
             length: u32 = undefined,
-            cached_relList: ?DOMTokenList = null,
-            cached_elements: ?HTMLFormControlsCollection = null,
+            cached_relList: ?*runtime.Instance = null,
+            cached_elements: ?*runtime.Instance = null,
             _internal: ?*HTMLFormElementImpl.InternalState = null,
         },
     );

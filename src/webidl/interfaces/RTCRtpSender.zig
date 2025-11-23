@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -82,9 +82,9 @@ pub const RTCRtpSender = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            track: ?MediaStreamTrack = null,
-            transport: ?RTCDtlsTransport = null,
-            dtmf: ?RTCDTMFSender = null,
+            track: ?*runtime.Instance = null,
+            transport: ?*runtime.Instance = null,
+            dtmf: ?*runtime.Instance = null,
             transform: ?RTCRtpTransform = null,
             _internal: ?*RTCRtpSenderImpl.InternalState = null,
         },

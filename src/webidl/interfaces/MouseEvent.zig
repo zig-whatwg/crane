@@ -1,5 +1,5 @@
 //! Generated from: uievents.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -133,7 +133,7 @@ pub const MouseEvent = struct {
             metaKey: bool = undefined,
             button: i16 = undefined,
             buttons: u16 = undefined,
-            relatedTarget: ?EventTarget = null,
+            relatedTarget: ?*runtime.Instance = null,
             movementX: f64 = undefined,
             movementY: f64 = undefined,
             pageX: f64 = undefined,

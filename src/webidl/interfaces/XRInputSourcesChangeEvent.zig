@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -72,10 +72,10 @@ pub const XRInputSourcesChangeEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            session: XRSession = undefined,
+            session: *runtime.Instance = undefined,
             added: runtime.FrozenArray(XRInputSource) = undefined,
             removed: runtime.FrozenArray(XRInputSource) = undefined,
-            cached_session: ?XRSession = null,
+            cached_session: ?*runtime.Instance = null,
             cached_added: ?runtime.FrozenArray(XRInputSource) = null,
             cached_removed: ?runtime.FrozenArray(XRInputSource) = null,
             _internal: ?*XRInputSourcesChangeEventImpl.InternalState = null,

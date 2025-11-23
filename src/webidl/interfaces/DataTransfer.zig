@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -76,11 +76,11 @@ pub const DataTransfer = struct {
         struct {
             dropEffect: runtime.DOMString = undefined,
             effectAllowed: runtime.DOMString = undefined,
-            items: DataTransferItemList = undefined,
+            items: *runtime.Instance = undefined,
             types: runtime.FrozenArray(runtime.DOMString) = undefined,
-            files: FileList = undefined,
-            cached_items: ?DataTransferItemList = null,
-            cached_files: ?FileList = null,
+            files: *runtime.Instance = undefined,
+            cached_items: ?*runtime.Instance = null,
+            cached_files: ?*runtime.Instance = null,
             _internal: ?*DataTransferImpl.InternalState = null,
         },
     );

@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -70,10 +70,10 @@ pub const XRReferenceSpaceEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            referenceSpace: XRReferenceSpace = undefined,
-            transform: ?XRRigidTransform = null,
-            cached_referenceSpace: ?XRReferenceSpace = null,
-            cached_transform: ?XRRigidTransform = null,
+            referenceSpace: *runtime.Instance = undefined,
+            transform: ?*runtime.Instance = null,
+            cached_referenceSpace: ?*runtime.Instance = null,
+            cached_transform: ?*runtime.Instance = null,
             _internal: ?*XRReferenceSpaceEventImpl.InternalState = null,
         },
     );

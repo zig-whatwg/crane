@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -57,10 +57,10 @@ pub const SVGAnimatedPreserveAspectRatio = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            baseVal: SVGPreserveAspectRatio = undefined,
-            animVal: SVGPreserveAspectRatio = undefined,
-            cached_baseVal: ?SVGPreserveAspectRatio = null,
-            cached_animVal: ?SVGPreserveAspectRatio = null,
+            baseVal: *runtime.Instance = undefined,
+            animVal: *runtime.Instance = undefined,
+            cached_baseVal: ?*runtime.Instance = null,
+            cached_animVal: ?*runtime.Instance = null,
             _internal: ?*SVGAnimatedPreserveAspectRatioImpl.InternalState = null,
         },
     );

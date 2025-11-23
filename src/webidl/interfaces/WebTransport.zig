@@ -1,5 +1,5 @@
 //! Generated from: webtransport.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -114,9 +114,9 @@ pub const WebTransport = struct {
             protocol: runtime.DOMString = undefined,
             closed: runtime.Promise(WebTransportCloseInfo) = undefined,
             draining: runtime.Promise(void) = undefined,
-            datagrams: WebTransportDatagramDuplexStream = undefined,
-            incomingBidirectionalStreams: ReadableStream = undefined,
-            incomingUnidirectionalStreams: ReadableStream = undefined,
+            datagrams: *runtime.Instance = undefined,
+            incomingBidirectionalStreams: *runtime.Instance = undefined,
+            incomingUnidirectionalStreams: *runtime.Instance = undefined,
             _internal: ?*WebTransportImpl.InternalState = null,
         },
     );

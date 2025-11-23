@@ -1,5 +1,5 @@
 //! Generated from: document-picture-in-picture.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -67,8 +67,8 @@ pub const DocumentPictureInPictureEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            window: Window = undefined,
-            cached_window: ?Window = null,
+            window: *runtime.Instance = undefined,
+            cached_window: ?*runtime.Instance = null,
             _internal: ?*DocumentPictureInPictureEventImpl.InternalState = null,
         },
     );

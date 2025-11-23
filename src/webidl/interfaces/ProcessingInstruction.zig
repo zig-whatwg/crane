@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -106,7 +106,7 @@ pub const ProcessingInstruction = struct {
         Meta.MixinTypes,
         struct {
             target: runtime.DOMString = undefined,
-            sheet: ?CSSStyleSheet = null,
+            sheet: ?*runtime.Instance = null,
             _internal: ?*ProcessingInstructionImpl.InternalState = null,
         },
     );

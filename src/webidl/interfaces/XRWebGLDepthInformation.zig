@@ -1,5 +1,5 @@
 //! Generated from: webxr-depth-sensing.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -62,10 +62,10 @@ pub const XRWebGLDepthInformation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            texture: WebGLTexture = undefined,
+            texture: *runtime.Instance = undefined,
             textureType: XRTextureType = undefined,
             imageIndex: ?u32 = null,
-            cached_texture: ?WebGLTexture = null,
+            cached_texture: ?*runtime.Instance = null,
             _internal: ?*XRWebGLDepthInformationImpl.InternalState = null,
         },
     );

@@ -1,5 +1,5 @@
 //! Generated from: webxr-plane-detection.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -62,12 +62,12 @@ pub const XRPlane = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            planeSpace: XRSpace = undefined,
+            planeSpace: *runtime.Instance = undefined,
             polygon: runtime.FrozenArray(DOMPointReadOnly) = undefined,
             orientation: ?XRPlaneOrientation = null,
             lastChangedTime: DOMHighResTimeStamp = undefined,
             semanticLabel: ?runtime.DOMString = null,
-            cached_planeSpace: ?XRSpace = null,
+            cached_planeSpace: ?*runtime.Instance = null,
             _internal: ?*XRPlaneImpl.InternalState = null,
         },
     );

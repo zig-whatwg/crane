@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -58,10 +58,10 @@ pub const SVGAnimatedRect = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            baseVal: DOMRect = undefined,
-            animVal: DOMRectReadOnly = undefined,
-            cached_baseVal: ?DOMRect = null,
-            cached_animVal: ?DOMRectReadOnly = null,
+            baseVal: *runtime.Instance = undefined,
+            animVal: *runtime.Instance = undefined,
+            cached_baseVal: ?*runtime.Instance = null,
+            cached_animVal: ?*runtime.Instance = null,
             _internal: ?*SVGAnimatedRectImpl.InternalState = null,
         },
     );

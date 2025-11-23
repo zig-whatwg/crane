@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -146,20 +146,20 @@ pub const ShadowRoot = struct {
             slotAssignment: SlotAssignmentMode = undefined,
             clonable: bool = undefined,
             serializable: bool = undefined,
-            host: Element = undefined,
+            host: *runtime.Instance = undefined,
             onslotchange: EventHandler = undefined,
             innerHTML: union(enum) {
                 TrustedHTML: TrustedHTML,
                 DOMString: runtime.DOMString,
             } = undefined,
-            customElementRegistry: ?CustomElementRegistry = null,
-            fullscreenElement: ?Element = null,
-            pictureInPictureElement: ?Element = null,
-            pointerLockElement: ?Element = null,
-            styleSheets: StyleSheetList = undefined,
+            customElementRegistry: ?*runtime.Instance = null,
+            fullscreenElement: ?*runtime.Instance = null,
+            pictureInPictureElement: ?*runtime.Instance = null,
+            pointerLockElement: ?*runtime.Instance = null,
+            styleSheets: *runtime.Instance = undefined,
             adoptedStyleSheets: runtime.ObservableArray(CSSStyleSheet) = undefined,
-            activeElement: ?Element = null,
-            cached_styleSheets: ?StyleSheetList = null,
+            activeElement: ?*runtime.Instance = null,
+            cached_styleSheets: ?*runtime.Instance = null,
             _internal: ?*ShadowRootImpl.InternalState = null,
         },
     );

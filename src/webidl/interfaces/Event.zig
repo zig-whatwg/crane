@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -101,9 +101,9 @@ pub const Event = struct {
         Meta.MixinTypes,
         struct {
             @"type": runtime.DOMString = undefined,
-            target: ?EventTarget = null,
-            srcElement: ?EventTarget = null,
-            currentTarget: ?EventTarget = null,
+            target: ?*runtime.Instance = null,
+            srcElement: ?*runtime.Instance = null,
+            currentTarget: ?*runtime.Instance = null,
             eventPhase: u16 = undefined,
             cancelBubble: bool = undefined,
             bubbles: bool = undefined,

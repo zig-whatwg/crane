@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -84,9 +84,9 @@ pub const SVGTransform = struct {
         Meta.MixinTypes,
         struct {
             @"type": u16 = undefined,
-            matrix: DOMMatrix = undefined,
+            matrix: *runtime.Instance = undefined,
             angle: f32 = undefined,
-            cached_matrix: ?DOMMatrix = null,
+            cached_matrix: ?*runtime.Instance = null,
             _internal: ?*SVGTransformImpl.InternalState = null,
         },
     );

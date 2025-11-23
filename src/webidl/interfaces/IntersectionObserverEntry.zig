@@ -1,5 +1,5 @@
 //! Generated from: intersection-observer.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -73,13 +73,13 @@ pub const IntersectionObserverEntry = struct {
         Meta.MixinTypes,
         struct {
             time: DOMHighResTimeStamp = undefined,
-            rootBounds: ?DOMRectReadOnly = null,
-            boundingClientRect: DOMRectReadOnly = undefined,
-            intersectionRect: DOMRectReadOnly = undefined,
+            rootBounds: ?*runtime.Instance = null,
+            boundingClientRect: *runtime.Instance = undefined,
+            intersectionRect: *runtime.Instance = undefined,
             isIntersecting: bool = undefined,
             isVisible: bool = undefined,
             intersectionRatio: f64 = undefined,
-            target: Element = undefined,
+            target: *runtime.Instance = undefined,
             _internal: ?*IntersectionObserverEntryImpl.InternalState = null,
         },
     );

@@ -1,5 +1,5 @@
 //! Generated from: css-mixins.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -59,8 +59,8 @@ pub const CSSFunctionDeclarations = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            style: CSSFunctionDescriptors = undefined,
-            cached_style: ?CSSFunctionDescriptors = null,
+            style: *runtime.Instance = undefined,
+            cached_style: ?*runtime.Instance = null,
             _internal: ?*CSSFunctionDeclarationsImpl.InternalState = null,
         },
     );

@@ -1,5 +1,5 @@
 //! Generated from: push-api.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -75,8 +75,8 @@ pub const PushSubscription = struct {
         struct {
             endpoint: runtime.USVString = undefined,
             expirationTime: ?EpochTimeStamp = null,
-            options: PushSubscriptionOptions = undefined,
-            cached_options: ?PushSubscriptionOptions = null,
+            options: *runtime.Instance = undefined,
+            cached_options: ?*runtime.Instance = null,
             _internal: ?*PushSubscriptionImpl.InternalState = null,
         },
     );

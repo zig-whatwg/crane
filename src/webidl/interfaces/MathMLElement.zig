@@ -1,5 +1,5 @@
 //! Generated from: mathml-core.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -415,8 +415,8 @@ pub const MathMLElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            style: CSSStyleProperties = undefined,
-            attributeStyleMap: StylePropertyMap = undefined,
+            style: *runtime.Instance = undefined,
+            attributeStyleMap: *runtime.Instance = undefined,
             onabort: EventHandler = undefined,
             onauxclick: EventHandler = undefined,
             onbeforeinput: EventHandler = undefined,
@@ -522,8 +522,8 @@ pub const MathMLElement = struct {
             onfencedtreeclick: EventHandler = undefined,
             onsnapchanged: EventHandler = undefined,
             onsnapchanging: EventHandler = undefined,
-            cached_style: ?CSSStyleProperties = null,
-            cached_attributeStyleMap: ?StylePropertyMap = null,
+            cached_style: ?*runtime.Instance = null,
+            cached_attributeStyleMap: ?*runtime.Instance = null,
             _internal: ?*MathMLElementImpl.InternalState = null,
         },
     );

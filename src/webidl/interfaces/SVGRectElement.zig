@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -228,18 +228,18 @@ pub const SVGRectElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            x: SVGAnimatedLength = undefined,
-            y: SVGAnimatedLength = undefined,
-            width: SVGAnimatedLength = undefined,
-            height: SVGAnimatedLength = undefined,
-            rx: SVGAnimatedLength = undefined,
-            ry: SVGAnimatedLength = undefined,
-            cached_x: ?SVGAnimatedLength = null,
-            cached_y: ?SVGAnimatedLength = null,
-            cached_width: ?SVGAnimatedLength = null,
-            cached_height: ?SVGAnimatedLength = null,
-            cached_rx: ?SVGAnimatedLength = null,
-            cached_ry: ?SVGAnimatedLength = null,
+            x: *runtime.Instance = undefined,
+            y: *runtime.Instance = undefined,
+            width: *runtime.Instance = undefined,
+            height: *runtime.Instance = undefined,
+            rx: *runtime.Instance = undefined,
+            ry: *runtime.Instance = undefined,
+            cached_x: ?*runtime.Instance = null,
+            cached_y: ?*runtime.Instance = null,
+            cached_width: ?*runtime.Instance = null,
+            cached_height: ?*runtime.Instance = null,
+            cached_rx: ?*runtime.Instance = null,
+            cached_ry: ?*runtime.Instance = null,
             _internal: ?*SVGRectElementImpl.InternalState = null,
         },
     );

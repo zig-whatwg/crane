@@ -1,5 +1,5 @@
 //! Generated from: ua-client-hints.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -50,7 +50,7 @@ pub const NavigatorUA = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            userAgentData: NavigatorUAData = undefined,
+            userAgentData: *runtime.Instance = undefined,
             _internal: ?*NavigatorUAImpl.InternalState = null,
         },
     );

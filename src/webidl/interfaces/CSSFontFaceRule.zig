@@ -1,5 +1,5 @@
 //! Generated from: css-fonts-5.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -62,8 +62,8 @@ pub const CSSFontFaceRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            style: CSSFontFaceDescriptors = undefined,
-            cached_style: ?CSSFontFaceDescriptors = null,
+            style: *runtime.Instance = undefined,
+            cached_style: ?*runtime.Instance = null,
             _internal: ?*CSSFontFaceRuleImpl.InternalState = null,
         },
     );

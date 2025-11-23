@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -59,8 +59,8 @@ pub const XRViewGeometry = struct {
         Meta.MixinTypes,
         struct {
             projectionMatrix: runtime.Float32Array = undefined,
-            transform: XRRigidTransform = undefined,
-            cached_transform: ?XRRigidTransform = null,
+            transform: *runtime.Instance = undefined,
+            cached_transform: ?*runtime.Instance = null,
             _internal: ?*XRViewGeometryImpl.InternalState = null,
         },
     );

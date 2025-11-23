@@ -1,5 +1,5 @@
 //! Generated from: webxrlayers.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -76,8 +76,8 @@ pub const XRCubeLayer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            space: XRSpace = undefined,
-            orientation: DOMPointReadOnly = undefined,
+            space: *runtime.Instance = undefined,
+            orientation: *runtime.Instance = undefined,
             onredraw: EventHandler = undefined,
             _internal: ?*XRCubeLayerImpl.InternalState = null,
         },

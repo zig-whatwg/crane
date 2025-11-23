@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -529,15 +529,15 @@ pub const HTMLElement = struct {
             popover: ?runtime.DOMString = null,
             headingOffset: u32 = undefined,
             headingReset: bool = undefined,
-            editContext: ?EditContext = null,
-            scrollParent: ?Element = null,
-            offsetParent: ?Element = null,
+            editContext: ?*runtime.Instance = null,
+            scrollParent: ?*runtime.Instance = null,
+            offsetParent: ?*runtime.Instance = null,
             offsetTop: i32 = undefined,
             offsetLeft: i32 = undefined,
             offsetWidth: i32 = undefined,
             offsetHeight: i32 = undefined,
-            style: CSSStyleProperties = undefined,
-            attributeStyleMap: StylePropertyMap = undefined,
+            style: *runtime.Instance = undefined,
+            attributeStyleMap: *runtime.Instance = undefined,
             onabort: EventHandler = undefined,
             onauxclick: EventHandler = undefined,
             onbeforeinput: EventHandler = undefined,
@@ -648,13 +648,13 @@ pub const HTMLElement = struct {
             isContentEditable: bool = undefined,
             inputMode: runtime.DOMString = undefined,
             virtualKeyboardPolicy: runtime.DOMString = undefined,
-            dataset: DOMStringMap = undefined,
+            dataset: *runtime.Instance = undefined,
             nonce: runtime.DOMString = undefined,
             autofocus: bool = undefined,
             tabIndex: i32 = undefined,
-            cached_style: ?CSSStyleProperties = null,
-            cached_attributeStyleMap: ?StylePropertyMap = null,
-            cached_dataset: ?DOMStringMap = null,
+            cached_style: ?*runtime.Instance = null,
+            cached_attributeStyleMap: ?*runtime.Instance = null,
+            cached_dataset: ?*runtime.Instance = null,
             _internal: ?*HTMLElementImpl.InternalState = null,
         },
     );

@@ -1,5 +1,5 @@
 //! Generated from: selection-api.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -105,9 +105,9 @@ pub const Selection = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            anchorNode: ?Node = null,
+            anchorNode: ?*runtime.Instance = null,
             anchorOffset: u32 = undefined,
-            focusNode: ?Node = null,
+            focusNode: ?*runtime.Instance = null,
             focusOffset: u32 = undefined,
             isCollapsed: bool = undefined,
             rangeCount: u32 = undefined,

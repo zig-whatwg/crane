@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -156,17 +156,17 @@ pub const GPUDevice = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            features: GPUSupportedFeatures = undefined,
-            limits: GPUSupportedLimits = undefined,
-            adapterInfo: GPUAdapterInfo = undefined,
-            queue: GPUQueue = undefined,
+            features: *runtime.Instance = undefined,
+            limits: *runtime.Instance = undefined,
+            adapterInfo: *runtime.Instance = undefined,
+            queue: *runtime.Instance = undefined,
             lost: runtime.Promise(GPUDeviceLostInfo) = undefined,
             onuncapturederror: EventHandler = undefined,
             label: runtime.USVString = undefined,
-            cached_features: ?GPUSupportedFeatures = null,
-            cached_limits: ?GPUSupportedLimits = null,
-            cached_adapterInfo: ?GPUAdapterInfo = null,
-            cached_queue: ?GPUQueue = null,
+            cached_features: ?*runtime.Instance = null,
+            cached_limits: ?*runtime.Instance = null,
+            cached_adapterInfo: ?*runtime.Instance = null,
+            cached_queue: ?*runtime.Instance = null,
             _internal: ?*GPUDeviceImpl.InternalState = null,
         },
     );

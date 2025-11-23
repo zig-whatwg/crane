@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -328,14 +328,14 @@ pub const SVGSVGElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            x: SVGAnimatedLength = undefined,
-            y: SVGAnimatedLength = undefined,
-            width: SVGAnimatedLength = undefined,
-            height: SVGAnimatedLength = undefined,
+            x: *runtime.Instance = undefined,
+            y: *runtime.Instance = undefined,
+            width: *runtime.Instance = undefined,
+            height: *runtime.Instance = undefined,
             currentScale: f32 = undefined,
-            currentTranslate: DOMPointReadOnly = undefined,
-            viewBox: SVGAnimatedRect = undefined,
-            preserveAspectRatio: SVGAnimatedPreserveAspectRatio = undefined,
+            currentTranslate: *runtime.Instance = undefined,
+            viewBox: *runtime.Instance = undefined,
+            preserveAspectRatio: *runtime.Instance = undefined,
             onafterprint: EventHandler = undefined,
             onbeforeprint: EventHandler = undefined,
             onbeforeunload: OnBeforeUnloadEventHandler = undefined,
@@ -357,13 +357,13 @@ pub const SVGSVGElement = struct {
             ongamepadconnected: EventHandler = undefined,
             ongamepaddisconnected: EventHandler = undefined,
             onportalactivate: EventHandler = undefined,
-            cached_x: ?SVGAnimatedLength = null,
-            cached_y: ?SVGAnimatedLength = null,
-            cached_width: ?SVGAnimatedLength = null,
-            cached_height: ?SVGAnimatedLength = null,
-            cached_currentTranslate: ?DOMPointReadOnly = null,
-            cached_viewBox: ?SVGAnimatedRect = null,
-            cached_preserveAspectRatio: ?SVGAnimatedPreserveAspectRatio = null,
+            cached_x: ?*runtime.Instance = null,
+            cached_y: ?*runtime.Instance = null,
+            cached_width: ?*runtime.Instance = null,
+            cached_height: ?*runtime.Instance = null,
+            cached_currentTranslate: ?*runtime.Instance = null,
+            cached_viewBox: ?*runtime.Instance = null,
+            cached_preserveAspectRatio: ?*runtime.Instance = null,
             _internal: ?*SVGSVGElementImpl.InternalState = null,
         },
     );

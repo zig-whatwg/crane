@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -77,11 +77,11 @@ pub const RTCDtlsTransport = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            iceTransport: RTCIceTransport = undefined,
+            iceTransport: *runtime.Instance = undefined,
             state: RTCDtlsTransportState = undefined,
             onstatechange: EventHandler = undefined,
             onerror: EventHandler = undefined,
-            cached_iceTransport: ?RTCIceTransport = null,
+            cached_iceTransport: ?*runtime.Instance = null,
             _internal: ?*RTCDtlsTransportImpl.InternalState = null,
         },
     );

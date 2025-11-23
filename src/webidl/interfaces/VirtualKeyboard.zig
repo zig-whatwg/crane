@@ -1,5 +1,5 @@
 //! Generated from: virtual-keyboard.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -77,7 +77,7 @@ pub const VirtualKeyboard = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            boundingRect: DOMRect = undefined,
+            boundingRect: *runtime.Instance = undefined,
             overlaysContent: bool = undefined,
             ongeometrychange: EventHandler = undefined,
             _internal: ?*VirtualKeyboardImpl.InternalState = null,

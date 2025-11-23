@@ -1,5 +1,5 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -99,7 +99,7 @@ pub const IDBDatabase = struct {
         struct {
             name: runtime.DOMString = undefined,
             version: u64 = undefined,
-            objectStoreNames: DOMStringList = undefined,
+            objectStoreNames: *runtime.Instance = undefined,
             onabort: EventHandler = undefined,
             onclose: EventHandler = undefined,
             onerror: EventHandler = undefined,

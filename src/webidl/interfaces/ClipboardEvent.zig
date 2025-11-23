@@ -1,5 +1,5 @@
 //! Generated from: clipboard-apis.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -66,7 +66,7 @@ pub const ClipboardEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            clipboardData: ?DataTransfer = null,
+            clipboardData: ?*runtime.Instance = null,
             _internal: ?*ClipboardEventImpl.InternalState = null,
         },
     );

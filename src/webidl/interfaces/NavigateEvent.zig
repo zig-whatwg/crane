@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -96,16 +96,16 @@ pub const NavigateEvent = struct {
         Meta.MixinTypes,
         struct {
             navigationType: NavigationType = undefined,
-            destination: NavigationDestination = undefined,
+            destination: *runtime.Instance = undefined,
             canIntercept: bool = undefined,
             userInitiated: bool = undefined,
             hashChange: bool = undefined,
-            signal: AbortSignal = undefined,
-            formData: ?FormData = null,
+            signal: *runtime.Instance = undefined,
+            formData: ?*runtime.Instance = null,
             downloadRequest: ?runtime.DOMString = null,
             info: *const anyopaque = undefined,
             hasUAVisualTransition: bool = undefined,
-            sourceElement: ?Element = null,
+            sourceElement: ?*runtime.Instance = null,
             _internal: ?*NavigateEventImpl.InternalState = null,
         },
     );

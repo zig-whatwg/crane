@@ -1,5 +1,5 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -86,8 +86,8 @@ pub const IDBCursor = struct {
             direction: IDBCursorDirection = undefined,
             key: *const anyopaque = undefined,
             primaryKey: *const anyopaque = undefined,
-            request: IDBRequest = undefined,
-            cached_request: ?IDBRequest = null,
+            request: *runtime.Instance = undefined,
+            cached_request: ?*runtime.Instance = null,
             _internal: ?*IDBCursorImpl.InternalState = null,
         },
     );

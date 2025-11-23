@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -210,8 +210,8 @@ pub const HTMLDataListElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            options: HTMLCollection = undefined,
-            cached_options: ?HTMLCollection = null,
+            options: *runtime.Instance = undefined,
+            cached_options: ?*runtime.Instance = null,
             _internal: ?*HTMLDataListElementImpl.InternalState = null,
         },
     );

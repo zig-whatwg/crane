@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -237,7 +237,7 @@ pub const HTMLTrackElement = struct {
             label: runtime.DOMString = undefined,
             default: bool = undefined,
             readyState: u16 = undefined,
-            track: TextTrack = undefined,
+            track: *runtime.Instance = undefined,
             _internal: ?*HTMLTrackElementImpl.InternalState = null,
         },
     );

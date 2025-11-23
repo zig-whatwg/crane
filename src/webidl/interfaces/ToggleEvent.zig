@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:36Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -72,7 +72,7 @@ pub const ToggleEvent = struct {
         struct {
             oldState: runtime.DOMString = undefined,
             newState: runtime.DOMString = undefined,
-            source: ?Element = null,
+            source: ?*runtime.Instance = null,
             _internal: ?*ToggleEventImpl.InternalState = null,
         },
     );

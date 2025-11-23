@@ -1,5 +1,5 @@
 //! Generated from: gamepad.idl
-//! Generated at: 2025-11-23T19:17:35Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -92,11 +92,11 @@ pub const Gamepad = struct {
             axes: runtime.FrozenArray(f64) = undefined,
             buttons: runtime.FrozenArray(GamepadButton) = undefined,
             touches: runtime.FrozenArray(GamepadTouch) = undefined,
-            vibrationActuator: GamepadHapticActuator = undefined,
+            vibrationActuator: *runtime.Instance = undefined,
             hand: GamepadHand = undefined,
             hapticActuators: runtime.FrozenArray(GamepadHapticActuator) = undefined,
-            pose: ?GamepadPose = null,
-            cached_vibrationActuator: ?GamepadHapticActuator = null,
+            pose: ?*runtime.Instance = null,
+            cached_vibrationActuator: ?*runtime.Instance = null,
             _internal: ?*GamepadImpl.InternalState = null,
         },
     );

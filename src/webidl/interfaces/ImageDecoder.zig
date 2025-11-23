@@ -1,5 +1,5 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-23T19:17:37Z
+//! Generated at: 2025-11-23T19:47:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -80,7 +80,7 @@ pub const ImageDecoder = struct {
             @"type": runtime.DOMString = undefined,
             complete: bool = undefined,
             completed: runtime.Promise(void) = undefined,
-            tracks: ImageTrackList = undefined,
+            tracks: *runtime.Instance = undefined,
             _internal: ?*ImageDecoderImpl.InternalState = null,
         },
     );

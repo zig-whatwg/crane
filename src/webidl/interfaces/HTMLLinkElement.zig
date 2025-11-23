@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -259,25 +259,25 @@ pub const HTMLLinkElement = struct {
             crossOrigin: ?runtime.DOMString = null,
             rel: runtime.DOMString = undefined,
             as: runtime.DOMString = undefined,
-            relList: DOMTokenList = undefined,
+            relList: *runtime.Instance = undefined,
             media: runtime.DOMString = undefined,
             integrity: runtime.DOMString = undefined,
             hreflang: runtime.DOMString = undefined,
             @"type": runtime.DOMString = undefined,
-            sizes: DOMTokenList = undefined,
+            sizes: *runtime.Instance = undefined,
             imageSrcset: runtime.USVString = undefined,
             imageSizes: runtime.DOMString = undefined,
             referrerPolicy: runtime.DOMString = undefined,
-            blocking: DOMTokenList = undefined,
+            blocking: *runtime.Instance = undefined,
             disabled: bool = undefined,
             fetchPriority: runtime.DOMString = undefined,
             charset: runtime.DOMString = undefined,
             rev: runtime.DOMString = undefined,
             target: runtime.DOMString = undefined,
-            sheet: ?CSSStyleSheet = null,
-            cached_relList: ?DOMTokenList = null,
-            cached_sizes: ?DOMTokenList = null,
-            cached_blocking: ?DOMTokenList = null,
+            sheet: ?*runtime.Instance = null,
+            cached_relList: ?*runtime.Instance = null,
+            cached_sizes: ?*runtime.Instance = null,
+            cached_blocking: ?*runtime.Instance = null,
             _internal: ?*HTMLLinkElementImpl.InternalState = null,
         },
     );

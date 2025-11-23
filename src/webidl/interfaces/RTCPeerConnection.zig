@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-23T19:17:31Z
+//! Generated at: 2025-11-23T19:47:41Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -192,12 +192,12 @@ pub const RTCPeerConnection = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            localDescription: ?RTCSessionDescription = null,
-            currentLocalDescription: ?RTCSessionDescription = null,
-            pendingLocalDescription: ?RTCSessionDescription = null,
-            remoteDescription: ?RTCSessionDescription = null,
-            currentRemoteDescription: ?RTCSessionDescription = null,
-            pendingRemoteDescription: ?RTCSessionDescription = null,
+            localDescription: ?*runtime.Instance = null,
+            currentLocalDescription: ?*runtime.Instance = null,
+            pendingLocalDescription: ?*runtime.Instance = null,
+            remoteDescription: ?*runtime.Instance = null,
+            currentRemoteDescription: ?*runtime.Instance = null,
+            pendingRemoteDescription: ?*runtime.Instance = null,
             signalingState: RTCSignalingState = undefined,
             iceGatheringState: RTCIceGatheringState = undefined,
             iceConnectionState: RTCIceConnectionState = undefined,
@@ -211,7 +211,7 @@ pub const RTCPeerConnection = struct {
             onicegatheringstatechange: EventHandler = undefined,
             onconnectionstatechange: EventHandler = undefined,
             ontrack: EventHandler = undefined,
-            sctp: ?RTCSctpTransport = null,
+            sctp: ?*runtime.Instance = null,
             ondatachannel: EventHandler = undefined,
             peerIdentity: runtime.Promise(RTCIdentityAssertion) = undefined,
             idpLoginUrl: ?runtime.DOMString = null,

@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T19:17:34Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -62,11 +62,11 @@ pub const HTMLOrSVGElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            dataset: DOMStringMap = undefined,
+            dataset: *runtime.Instance = undefined,
             nonce: runtime.DOMString = undefined,
             autofocus: bool = undefined,
             tabIndex: i32 = undefined,
-            cached_dataset: ?DOMStringMap = null,
+            cached_dataset: ?*runtime.Instance = null,
             _internal: ?*HTMLOrSVGElementImpl.InternalState = null,
         },
     );

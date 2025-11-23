@@ -1,5 +1,5 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -96,15 +96,15 @@ pub const IDBTransaction = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            objectStoreNames: DOMStringList = undefined,
+            objectStoreNames: *runtime.Instance = undefined,
             mode: IDBTransactionMode = undefined,
             durability: IDBTransactionDurability = undefined,
-            db: IDBDatabase = undefined,
-            @"error": ?DOMException = null,
+            db: *runtime.Instance = undefined,
+            @"error": ?*runtime.Instance = null,
             onabort: EventHandler = undefined,
             oncomplete: EventHandler = undefined,
             onerror: EventHandler = undefined,
-            cached_db: ?IDBDatabase = null,
+            cached_db: ?*runtime.Instance = null,
             _internal: ?*IDBTransactionImpl.InternalState = null,
         },
     );

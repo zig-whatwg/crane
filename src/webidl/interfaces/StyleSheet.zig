@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-23T19:17:32Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -94,11 +94,11 @@ pub const StyleSheet = struct {
                 Element: Element,
                 ProcessingInstruction: ProcessingInstruction,
             } = null,
-            parentStyleSheet: ?CSSStyleSheet = null,
+            parentStyleSheet: ?*runtime.Instance = null,
             title: ?runtime.DOMString = null,
-            media: MediaList = undefined,
+            media: *runtime.Instance = undefined,
             disabled: bool = undefined,
-            cached_media: ?MediaList = null,
+            cached_media: ?*runtime.Instance = null,
             _internal: ?*StyleSheetImpl.InternalState = null,
         },
     );

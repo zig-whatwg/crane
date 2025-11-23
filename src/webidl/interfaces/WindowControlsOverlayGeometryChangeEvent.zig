@@ -1,5 +1,5 @@
 //! Generated from: window-controls-overlay.idl
-//! Generated at: 2025-11-23T19:17:33Z
+//! Generated at: 2025-11-23T19:47:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -68,9 +68,9 @@ pub const WindowControlsOverlayGeometryChangeEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            titlebarAreaRect: DOMRect = undefined,
+            titlebarAreaRect: *runtime.Instance = undefined,
             visible: bool = undefined,
-            cached_titlebarAreaRect: ?DOMRect = null,
+            cached_titlebarAreaRect: ?*runtime.Instance = null,
             _internal: ?*WindowControlsOverlayGeometryChangeEventImpl.InternalState = null,
         },
     );
