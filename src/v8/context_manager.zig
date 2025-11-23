@@ -1,0 +1,362 @@
+//! V8 Context Manager
+//!
+//! Manages the mapping between V8 JavaScript contexts and WebIDL runtime contexts.
+//! This bridge allows V8 callbacks to access WebIDL runtime services (logging, etc.)
+//! without requiring global state.
+//!
+//! ## Architecture
+//!
+//! ```
+//! V8 JavaScript Context
+//!     ↓ (mapped via hash map)
+//! Runtime Context (*ContextData)
+//!     ↓ (contains)
+//! - Logger (console.log, etc.)
+//! - Allocator (memory management)
+//! - Engine Context (back-reference to V8)
+//! ```
+//!
+//! ## Thread Safety
+//!
+//! Each V8 isolate is single-threaded, so we use thread-local storage for the context map.
+//! This ensures that each thread has its own independent context mapping.
+//!
+//! ## Usage
+//!
+//! ```zig
+//! const v8 = @import("v8.zig");
+//! const mgr = @import("v8/context_manager.zig");
+//!
+//! // In isolate setup:
+//! mgr.init(allocator);
+//! defer mgr.deinit();
+//!
+//! // In V8 callback:
+//! fn constructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+//!     const isolate = info.getIsolate();
+//!     const v8_ctx = v8.ffi.v8_Isolate_GetCurrentContext(isolate).?;
+//!     const ctx = mgr.getOrCreate(v8_ctx, allocator) catch return;
+//!
+//!     // Now can use ctx for logging, allocation, etc.
+//!     const instance = Interface.call_constructor(allocator, ctx) catch return;
+//! }
+//! ```
+
+const std = @import("std");
+const v8 = @import("ffi.zig");
+const runtime = @import("runtime");
+
+/// Context mapping entry
+const ContextEntry = struct {
+    /// V8 context pointer (key)
+    v8_ctx: *v8.Context,
+
+    /// Runtime context data (owned)
+    runtime_ctx: runtime.ContextData,
+
+    /// Whether this entry owns the runtime context
+    /// (and should deinit it when removed)
+    owns_context: bool,
+};
+
+/// Thread-local context manager state
+threadlocal var manager_state: ?ManagerState = null;
+
+/// Manager state (thread-local)
+const ManagerState = struct {
+    /// Allocator for internal structures
+    allocator: std.mem.Allocator,
+
+    /// Map from V8 context pointer to runtime context
+    /// Key: usize (casted from *v8.Context)
+    /// Value: ContextEntry
+    contexts: std.AutoHashMap(usize, ContextEntry),
+
+    /// Default allocator to use for new contexts
+    default_allocator: std.mem.Allocator,
+};
+
+/// Initialize the context manager for this thread
+///
+/// Must be called before using any context manager functions.
+/// Each thread must call init() independently.
+///
+/// Thread safety: Thread-local, no synchronization needed
+pub fn init(allocator: std.mem.Allocator) !void {
+    if (manager_state != null) {
+        return error.AlreadyInitialized;
+    }
+
+    manager_state = ManagerState{
+        .allocator = allocator,
+        .contexts = std.AutoHashMap(usize, ContextEntry).init(allocator),
+        .default_allocator = allocator,
+    };
+}
+
+/// Deinitialize the context manager and free all contexts
+///
+/// Cleans up all runtime contexts that were created by the manager.
+/// After calling deinit(), init() must be called again before use.
+///
+/// Thread safety: Thread-local, no synchronization needed
+pub fn deinit() void {
+    if (manager_state) |*state| {
+        // Deinit all owned runtime contexts
+        var it = state.contexts.valueIterator();
+        while (it.next()) |entry| {
+            if (entry.owns_context) {
+                var ctx_data = entry.runtime_ctx;
+                ctx_data.deinit();
+            }
+        }
+
+        // Free the hash map
+        state.contexts.deinit();
+        manager_state = null;
+    }
+}
+
+/// Get or create a runtime context for the given V8 context
+///
+/// If a runtime context already exists for this V8 context, returns it.
+/// Otherwise, creates a new runtime context with default options.
+///
+/// The returned context is valid until:
+/// - removeContext() is called for this V8 context
+/// - deinit() is called
+///
+/// Thread safety: Thread-local, no synchronization needed
+///
+/// Arguments:
+/// - v8_ctx: V8 context pointer
+/// - allocator: Allocator to use for the runtime context (if created)
+///
+/// Returns: Runtime context pointer (borrowed, do not free)
+pub fn getOrCreate(v8_ctx: *v8.Context, allocator: std.mem.Allocator) !runtime.Context {
+    const state = &(manager_state orelse return error.NotInitialized);
+
+    const key = @intFromPtr(v8_ctx);
+
+    // Check if context already exists
+    if (state.contexts.getPtr(key)) |entry| {
+        return &entry.runtime_ctx;
+    }
+
+    // Create new runtime context
+    var ctx_data = try runtime.ContextData.init(allocator, .{
+        .colored = false, // V8 callbacks shouldn't use colored output
+        .show_timestamp = false,
+        .show_labels = false,
+        .engine_ctx = @ptrCast(v8_ctx), // Store V8 context as engine context
+    });
+    errdefer ctx_data.deinit();
+
+    // Store in map
+    try state.contexts.put(key, ContextEntry{
+        .v8_ctx = v8_ctx,
+        .runtime_ctx = ctx_data,
+        .owns_context = true,
+    });
+
+    // Return pointer to context data in the hash map
+    // This is safe because AutoHashMap doesn't move values on rehash
+    const entry = state.contexts.getPtr(key).?;
+    return &entry.runtime_ctx;
+}
+
+/// Get an existing runtime context for the given V8 context
+///
+/// Returns null if no runtime context exists for this V8 context.
+///
+/// Thread safety: Thread-local, no synchronization needed
+pub fn get(v8_ctx: *v8.Context) ?runtime.Context {
+    const state = &(manager_state orelse return null);
+
+    const key = @intFromPtr(v8_ctx);
+
+    if (state.contexts.getPtr(key)) |entry| {
+        return &entry.runtime_ctx;
+    }
+
+    return null;
+}
+
+/// Register an existing runtime context for a V8 context
+///
+/// Use this when you have an existing runtime context that you want to associate
+/// with a V8 context. The context manager will NOT own this context and will
+/// NOT call deinit() on it.
+///
+/// Thread safety: Thread-local, no synchronization needed
+///
+/// Arguments:
+/// - v8_ctx: V8 context pointer
+/// - ctx: Existing runtime context (borrowed, not owned)
+pub fn register(v8_ctx: *v8.Context, ctx: runtime.Context) !void {
+    const state = &(manager_state orelse return error.NotInitialized);
+
+    const key = @intFromPtr(v8_ctx);
+
+    // Store in map (context not owned)
+    try state.contexts.put(key, ContextEntry{
+        .v8_ctx = v8_ctx,
+        .runtime_ctx = ctx.*, // Copy the context data
+        .owns_context = false, // Don't deinit this one
+    });
+}
+
+/// Remove a runtime context for a V8 context
+///
+/// If the context manager owns the runtime context, it will be deinitialized.
+/// If the context was registered via register(), it will NOT be deinitialized.
+///
+/// Thread safety: Thread-local, no synchronization needed
+pub fn removeContext(v8_ctx: *v8.Context) void {
+    const state = &(manager_state orelse return);
+
+    const key = @intFromPtr(v8_ctx);
+
+    if (state.contexts.fetchRemove(key)) |kv| {
+        if (kv.value.owns_context) {
+            var ctx_data = kv.value.runtime_ctx;
+            ctx_data.deinit();
+        }
+    }
+}
+
+/// Set the default allocator to use for new contexts
+///
+/// This allocator will be used when creating new runtime contexts via getOrCreate()
+/// if no specific allocator is provided.
+pub fn setDefaultAllocator(allocator: std.mem.Allocator) !void {
+    const state = &(manager_state orelse return error.NotInitialized);
+    state.default_allocator = allocator;
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+const testing = std.testing;
+
+test "ContextManager - init and deinit" {
+    try init(testing.allocator);
+    defer deinit();
+
+    // Should be initialized
+    try testing.expect(manager_state != null);
+}
+
+test "ContextManager - double init fails" {
+    try init(testing.allocator);
+    defer deinit();
+
+    // Second init should fail
+    try testing.expectError(error.AlreadyInitialized, init(testing.allocator));
+}
+
+test "ContextManager - getOrCreate creates new context" {
+    try init(testing.allocator);
+    defer deinit();
+
+    // Create fake V8 context pointer (just for testing)
+    var dummy_v8_ctx: u64 = 0x1000;
+    const v8_ctx: *v8.Context = @ptrCast(&dummy_v8_ctx);
+
+    // Get or create should create new context
+    const ctx = try getOrCreate(v8_ctx, testing.allocator);
+    try testing.expect(ctx.getAllocator().ptr == testing.allocator.ptr);
+    try testing.expect(!ctx.hasEngine() or ctx.getEngineContext() != null);
+}
+
+test "ContextManager - getOrCreate returns same context" {
+    try init(testing.allocator);
+    defer deinit();
+
+    var dummy_v8_ctx: u64 = 0x1000;
+    const v8_ctx: *v8.Context = @ptrCast(&dummy_v8_ctx);
+
+    const ctx1 = try getOrCreate(v8_ctx, testing.allocator);
+    const ctx2 = try getOrCreate(v8_ctx, testing.allocator);
+
+    // Should return same context
+    try testing.expect(ctx1 == ctx2);
+}
+
+test "ContextManager - get returns null for non-existent context" {
+    try init(testing.allocator);
+    defer deinit();
+
+    var dummy_v8_ctx: u64 = 0x1000;
+    const v8_ctx: *v8.Context = @ptrCast(&dummy_v8_ctx);
+
+    // Should return null
+    try testing.expect(get(v8_ctx) == null);
+}
+
+test "ContextManager - get returns existing context" {
+    try init(testing.allocator);
+    defer deinit();
+
+    var dummy_v8_ctx: u64 = 0x1000;
+    const v8_ctx: *v8.Context = @ptrCast(&dummy_v8_ctx);
+
+    _ = try getOrCreate(v8_ctx, testing.allocator);
+
+    const ctx = get(v8_ctx);
+    try testing.expect(ctx != null);
+}
+
+test "ContextManager - register does not own context" {
+    try init(testing.allocator);
+    defer deinit();
+
+    var dummy_v8_ctx: u64 = 0x1000;
+    const v8_ctx: *v8.Context = @ptrCast(&dummy_v8_ctx);
+
+    // Create external context
+    var external_ctx = try runtime.ContextData.init(testing.allocator, .{});
+    defer external_ctx.deinit(); // We own this
+
+    // Register it
+    try register(v8_ctx, &external_ctx);
+
+    // Should be retrievable
+    const ctx = get(v8_ctx);
+    try testing.expect(ctx != null);
+
+    // deinit() should not crash (shouldn't try to deinit external context)
+}
+
+test "ContextManager - removeContext cleans up owned context" {
+    try init(testing.allocator);
+    defer deinit();
+
+    var dummy_v8_ctx: u64 = 0x1000;
+    const v8_ctx: *v8.Context = @ptrCast(&dummy_v8_ctx);
+
+    _ = try getOrCreate(v8_ctx, testing.allocator);
+
+    // Remove should clean up
+    removeContext(v8_ctx);
+
+    // Should no longer exist
+    try testing.expect(get(v8_ctx) == null);
+}
+
+test "ContextManager - multiple contexts" {
+    try init(testing.allocator);
+    defer deinit();
+
+    var dummy1: u64 = 0x1000;
+    var dummy2: u64 = 0x2000;
+    const ctx1_v8: *v8.Context = @ptrCast(&dummy1);
+    const ctx2_v8: *v8.Context = @ptrCast(&dummy2);
+
+    const ctx1 = try getOrCreate(ctx1_v8, testing.allocator);
+    const ctx2 = try getOrCreate(ctx2_v8, testing.allocator);
+
+    // Should be different contexts
+    try testing.expect(ctx1 != ctx2);
+}

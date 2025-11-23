@@ -1,485 +1,523 @@
-//! Intermediate Representation (IR) for WebIDL Code Generation
+//! Intermediate Representation (IR) for WebIDL
 //!
-//! This module defines the IR data structures used by the AST-based codegen.
-//!
-//! ## Architecture
-//!
-//! Source File → Parser → IR → Optimizer → Generator → Output File
-//!
-//! The IR captures the semantic structure of Zig source files in a way that's
-//! easy to analyze and transform, without requiring complex string manipulation.
-//!
-//! ## Key Design Principles
-//!
-//! 1. **Type-aware**: Distinguishes between type imports and module imports
-//! 2. **Scope-aware**: Tracks module-level vs local declarations
-//! 3. **Context-preserving**: Maintains enough information to generate correct code
-//! 4. **Analyzable**: Easy to detect conflicts, missing imports, etc.
+//! This module provides an IR that represents the complete WebIDL specification
+//! after parsing all files and merging partial interfaces.
 
 const std = @import("std");
-const Allocator = std.mem.Allocator;
-const root = @import("root.zig");
-pub const ExtendedAttribute = root.ExtendedAttribute;
+const types = @import("types.zig");
+const spec_priority_mod = @import("spec_priority.zig");
 
-/// Visibility modifier for declarations
-pub const Visibility = enum {
-    public, // pub const
-    private, // const
+/// Complete IR for all parsed WebIDL specifications
+pub const IR = struct {
+    /// All interfaces (merged from partials)
+    interfaces: std.StringHashMap(Interface),
 
-    pub fn toString(self: Visibility) []const u8 {
-        return switch (self) {
-            .public => "pub ",
-            .private => "",
+    /// All dictionaries
+    dictionaries: std.StringHashMap(types.Dictionary),
+
+    /// All typedefs
+    typedefs: std.StringHashMap(types.Typedef),
+
+    /// All enums
+    enums: std.StringHashMap(types.Enum),
+
+    /// All callbacks
+    callbacks: std.StringHashMap(types.Callback),
+
+    /// All namespaces
+    namespaces: std.StringHashMap(types.Namespace),
+
+    /// Type registry for resolving type references
+    type_registry: TypeRegistry,
+
+    /// Source file mapping (which spec defines/extends each interface)
+    source_map: std.StringHashMap(std.ArrayList([]const u8)),
+
+    /// Spec priority resolver for handling duplicates
+    spec_priority: spec_priority_mod.SpecPriority,
+
+    allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator) !IR {
+        var type_registry = TypeRegistry.init(allocator);
+        // Register all WebIDL primitive types
+        try type_registry.registerPrimitives();
+
+        return .{
+            .interfaces = std.StringHashMap(Interface).init(allocator),
+            .dictionaries = std.StringHashMap(types.Dictionary).init(allocator),
+            .typedefs = std.StringHashMap(types.Typedef).init(allocator),
+            .enums = std.StringHashMap(types.Enum).init(allocator),
+            .callbacks = std.StringHashMap(types.Callback).init(allocator),
+            .namespaces = std.StringHashMap(types.Namespace).init(allocator),
+            .type_registry = type_registry,
+            .source_map = std.StringHashMap(std.ArrayList([]const u8)).init(allocator),
+            .spec_priority = try spec_priority_mod.SpecPriority.initDefault(allocator),
+            .allocator = allocator,
         };
     }
-};
 
-/// A single import statement
-pub const Import = struct {
-    /// Import name (e.g., "ShadowRoot", "std", "infra")
-    name: []const u8,
-
-    /// Module path (e.g., "shadow_root", "std.mem")
-    module: []const u8,
-
-    /// Whether this imports a type vs a module
-    /// Type: const ShadowRoot = @import("shadow_root").ShadowRoot;
-    /// Module: const std = @import("std");
-    is_type: bool,
-
-    /// Public or private
-    visibility: Visibility,
-
-    /// Source location for debugging
-    source_line: usize,
-
-    pub fn format(
-        self: Import,
-        comptime _: []const u8,
-        _: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        try writer.print("{s}const {s} = @import(\"{s}\")", .{
-            self.visibility.toString(),
-            self.name,
-            self.module,
-        });
-        if (self.is_type) {
-            try writer.print(".{s}", .{self.name});
+    pub fn deinit(self: *IR) void {
+        // Free interfaces (keys are owned by source_map, so don't free them)
+        var iface_iter = self.interfaces.iterator();
+        while (iface_iter.next()) |entry| {
+            var iface = entry.value_ptr;
+            iface.deinit(self.allocator);
         }
-        try writer.writeAll(";\n");
+        self.interfaces.deinit();
+
+        // Free dictionaries (keys are owned by source_map, so don't free them)
+        self.dictionaries.deinit();
+
+        // Free typedefs (keys are owned by source_map, so don't free them)
+        self.typedefs.deinit();
+
+        // Free enums (keys are owned by source_map, so don't free them)
+        self.enums.deinit();
+
+        // Free callbacks (keys are owned by source_map, so don't free them)
+        self.callbacks.deinit();
+
+        // Free namespaces (keys are owned by source_map, so don't free them)
+        self.namespaces.deinit();
+
+        // Free type registry
+        self.type_registry.deinit();
+
+        // Free source map
+        var source_iter = self.source_map.iterator();
+        while (source_iter.next()) |entry| {
+            self.allocator.free(entry.key_ptr.*);
+            for (entry.value_ptr.items) |source| {
+                self.allocator.free(source);
+            }
+            entry.value_ptr.deinit(self.allocator);
+        }
+        self.source_map.deinit();
+
+        // Free spec priority
+        self.spec_priority.deinit();
     }
 
-    pub fn deinit(self: *Import, allocator: Allocator) void {
-        allocator.free(self.name);
-        allocator.free(self.module);
-    }
+    /// Add an interface from a parsed IDL file
+    pub fn addInterface(self: *IR, iface: types.Interface, source_file: []const u8) !void {
+        // Get or create source_map entry first (this owns the name key)
+        const source_gop = try self.source_map.getOrPut(iface.name);
+        if (!source_gop.found_existing) {
+            // First time seeing this name - allocate the key
+            const name_copy = try self.allocator.dupe(u8, iface.name);
+            source_gop.key_ptr.* = name_copy;
+            source_gop.value_ptr.* = std.ArrayList([]const u8).empty;
+        }
 
-    /// Create a deep copy of this import
-    pub fn duplicate(self: Import, allocator: Allocator) !Import {
-        return Import{
-            .name = try allocator.dupe(u8, self.name),
-            .module = try allocator.dupe(u8, self.module),
-            .is_type = self.is_type,
-            .visibility = self.visibility,
-            .source_line = self.source_line,
+        // Track source file - once appended, ArrayList owns it (no errdefer after append)
+        const source_copy = try self.allocator.dupe(u8, source_file);
+        const source_index = source_gop.value_ptr.items.len; // Index before appending
+        source_gop.value_ptr.append(self.allocator, source_copy) catch |err| {
+            // If append fails, we still own source_copy, so free it
+            self.allocator.free(source_copy);
+            return err;
         };
-    }
-};
 
-/// A type reference found in code (fields, parameters, return types)
-pub const TypeReference = struct {
-    /// Type name (e.g., "ShadowRoot", "*Node", "[]const u8")
-    type_name: []const u8,
+        // Add or merge interface (use the key from source_map)
+        const shared_key = source_gop.key_ptr.*;
+        const iface_gop = try self.interfaces.getOrPut(shared_key);
+        if (!iface_gop.found_existing) {
+            // First time seeing this interface - add it (partial or not)
+            iface_gop.value_ptr.* = try Interface.fromTypes(self.allocator, iface, shared_key, source_index);
+            // Register interface type
+            try self.type_registry.register(shared_key, .interface);
+        } else if (iface.partial) {
+            // Partial interface - merge with existing (which might also be partial-only so far)
+            try iface_gop.value_ptr.mergePartial(self.allocator, iface);
+        } else {
+            // Non-partial interface
+            if (iface_gop.value_ptr.has_base) {
+                // Already have a non-partial base - check priority
+                const existing_source = source_gop.value_ptr.items[iface_gop.value_ptr.base_source_index];
 
-    /// Source location
-    source_line: usize,
+                // Only print warnings if files are different (skip same-file duplicates from module blocks)
+                const same_file = std.mem.eql(u8, source_file, existing_source);
 
-    /// Context where this type is used
-    context: Context,
-
-    pub const Context = enum {
-        field_type,
-        parameter_type,
-        return_type,
-        local_variable,
-    };
-
-    pub fn deinit(self: *TypeReference, allocator: Allocator) void {
-        allocator.free(self.type_name);
-    }
-};
-
-/// A field declaration
-pub const Field = struct {
-    name: []const u8,
-    type_name: []const u8,
-    doc_comment: ?[]const u8,
-    source_line: usize,
-
-    /// Initialization expression for this field
-    /// Used by init method synthesis to generate correct initialization code
-    init_expr: ?InitExpression,
-
-    pub fn deinit(self: *Field, allocator: Allocator) void {
-        allocator.free(self.name);
-        allocator.free(self.type_name);
-        if (self.doc_comment) |doc| {
-            allocator.free(doc);
-        }
-        if (self.init_expr) |*expr| {
-            expr.deinit(allocator);
-        }
-    }
-
-    /// Initialization expression for a field
-    /// Describes how to initialize this field in an init method
-    pub const InitExpression = union(enum) {
-        /// Literal value: null, 0, 1, true, false, ""
-        /// Example: .literal = "null"
-        literal: []const u8,
-
-        /// Function call with arguments
-        /// Example: .function_call = .{ .function = "infra.List(*Node).init", .args = &[_][]const u8{"allocator"} }
-        function_call: struct {
-            function: []const u8,
-            args: [][]const u8,
-        },
-
-        /// Reference to a constant
-        /// Example: .constant_ref = "Node.DOCUMENT_NODE"
-        constant_ref: []const u8,
-
-        /// Copy value from init parameter
-        /// Example: .parameter = "tag_name"
-        parameter: []const u8,
-
-        /// Complex expression (fallback for unparseable expressions)
-        /// Example: .complex = "try allocator.dupe(u8, \"\")"
-        complex: []const u8,
-
-        pub fn deinit(self: *InitExpression, allocator: Allocator) void {
-            switch (self.*) {
-                .literal => |lit| allocator.free(lit),
-                .function_call => |fc| {
-                    allocator.free(fc.function);
-                    for (fc.args) |arg| {
-                        allocator.free(arg);
+                if (self.spec_priority.shouldPrefer(iface.name, source_file, existing_source)) {
+                    // New spec has higher priority - replace existing
+                    if (!same_file) {
+                        std.debug.print("  ⚠️  Duplicate '{s}': preferring {s} over {s}\n", .{ iface.name, source_file, existing_source });
                     }
-                    allocator.free(fc.args);
-                },
-                .constant_ref => |cr| allocator.free(cr),
-                .parameter => |p| allocator.free(p),
-                .complex => |c| allocator.free(c),
+
+                    // Replace the base definition
+                    try iface_gop.value_ptr.mergeBase(self.allocator, iface);
+                    iface_gop.value_ptr.base_source_index = source_index;
+                } else {
+                    // Existing spec has higher priority - skip new one
+                    if (!same_file) {
+                        std.debug.print("  ⚠️  Duplicate '{s}': keeping {s}, skipping {s}\n", .{ iface.name, existing_source, source_file });
+                    }
+                    // Skip this duplicate (don't return error)
+                }
+            } else {
+                // Existing interface only has partials - this is the base, merge existing partials into it
+                try iface_gop.value_ptr.mergeBase(self.allocator, iface);
+                // Update base_source_index to point to the file with the non-partial definition
+                iface_gop.value_ptr.base_source_index = source_index;
+            }
+        }
+    }
+
+    /// Process includes statements to merge mixin members into target interfaces
+    pub fn processIncludes(self: *IR, includes_list: []const types.Includes) !void {
+        for (includes_list) |inc| {
+            // Find the target interface
+            const target_iface = self.interfaces.getPtr(inc.target);
+            if (target_iface == null) {
+                std.debug.print("  ⚠️  Warning: Interface '{s}' not found for includes statement\n", .{inc.target});
+                continue;
+            }
+
+            // Find the mixin interface
+            const mixin_iface = self.interfaces.get(inc.mixin);
+            if (mixin_iface == null) {
+                std.debug.print("  ⚠️  Warning: Mixin '{s}' not found for includes statement\n", .{inc.mixin});
+                continue;
+            }
+
+            // Merge mixin members into target interface
+            try target_iface.?.members.appendSlice(self.allocator, mixin_iface.?.members.items);
+
+            // Track which mixin was included
+            const mixin_name = try self.allocator.dupe(u8, inc.mixin);
+            try target_iface.?.mixins.append(self.allocator, mixin_name);
+        }
+    }
+
+    /// Resolve all members for an interface including inherited members
+    /// Returns a newly allocated slice that caller must free
+    pub fn resolveAllMembers(self: *IR, interface_name: []const u8) ![]types.Member {
+        var all_members = std.ArrayList(types.Member).empty;
+        errdefer all_members.deinit(self.allocator);
+
+        try self.collectMembersRecursive(interface_name, &all_members);
+
+        return try all_members.toOwnedSlice(self.allocator);
+    }
+
+    /// Recursively collect members from inheritance chain (parent first, then child)
+    fn collectMembersRecursive(self: *IR, interface_name: []const u8, members_list: *std.ArrayList(types.Member)) error{OutOfMemory}!void {
+        const iface = self.interfaces.get(interface_name) orelse return;
+
+        // First, collect parent members (if any)
+        if (iface.inheritance) |parent_name| {
+            try self.collectMembersRecursive(parent_name, members_list);
+        }
+
+        // Then add this interface's own members
+        try members_list.appendSlice(self.allocator, iface.members.items);
+    }
+
+    /// Add a dictionary from a parsed IDL file
+    pub fn addDictionary(self: *IR, dict: types.Dictionary, source_file: []const u8) !void {
+        // Get or create source_map entry first (this owns the name key)
+        const source_gop = try self.source_map.getOrPut(dict.name);
+        if (!source_gop.found_existing) {
+            // First time seeing this name - allocate the key
+            const name_copy = try self.allocator.dupe(u8, dict.name);
+            source_gop.key_ptr.* = name_copy;
+            source_gop.value_ptr.* = std.ArrayList([]const u8).empty;
+        }
+
+        // Track source file - once appended, ArrayList owns it (no errdefer after append)
+        const source_copy = try self.allocator.dupe(u8, source_file);
+        source_gop.value_ptr.append(self.allocator, source_copy) catch |err| {
+            // If append fails, we still own source_copy, so free it
+            self.allocator.free(source_copy);
+            return err;
+        };
+
+        // Dictionaries don't have partials, so just add (use the key from source_map)
+        const shared_key = source_gop.key_ptr.*;
+        try self.dictionaries.put(shared_key, dict);
+        // Register dictionary type
+        try self.type_registry.register(shared_key, .dictionary);
+    }
+
+    /// Add a typedef from a parsed IDL file
+    pub fn addTypedef(self: *IR, typedef: types.Typedef, source_file: []const u8) !void {
+        // Get or create source_map entry first (this owns the name key)
+        const source_gop = try self.source_map.getOrPut(typedef.name);
+        if (!source_gop.found_existing) {
+            // First time seeing this name - allocate the key
+            const name_copy = try self.allocator.dupe(u8, typedef.name);
+            source_gop.key_ptr.* = name_copy;
+            source_gop.value_ptr.* = std.ArrayList([]const u8).empty;
+        }
+
+        // Track source file - once appended, ArrayList owns it (no errdefer after append)
+        const source_copy = try self.allocator.dupe(u8, source_file);
+        source_gop.value_ptr.append(self.allocator, source_copy) catch |err| {
+            // If append fails, we still own source_copy, so free it
+            self.allocator.free(source_copy);
+            return err;
+        };
+
+        // Typedefs don't have partials, so just add (use the key from source_map)
+        const shared_key = source_gop.key_ptr.*;
+        try self.typedefs.put(shared_key, typedef);
+        // Register typedef type
+        try self.type_registry.register(shared_key, .typedef);
+    }
+
+    pub fn addEnum(self: *IR, enum_type: types.Enum, source_file: []const u8) !void {
+        // Get or create source_map entry first (this owns the name key)
+        const source_gop = try self.source_map.getOrPut(enum_type.name);
+        if (!source_gop.found_existing) {
+            // First time seeing this name - allocate the key
+            const name_copy = try self.allocator.dupe(u8, enum_type.name);
+            source_gop.key_ptr.* = name_copy;
+            source_gop.value_ptr.* = std.ArrayList([]const u8).empty;
+        }
+
+        // Track source file
+        const source_copy = try self.allocator.dupe(u8, source_file);
+        source_gop.value_ptr.append(self.allocator, source_copy) catch |err| {
+            self.allocator.free(source_copy);
+            return err;
+        };
+
+        // Enums don't have partials, so just add
+        const shared_key = source_gop.key_ptr.*;
+        try self.enums.put(shared_key, enum_type);
+        // Register enum type
+        try self.type_registry.register(shared_key, .enum_type);
+    }
+
+    pub fn addCallback(self: *IR, callback: types.Callback, source_file: []const u8) !void {
+        // Get or create source_map entry first (this owns the name key)
+        const source_gop = try self.source_map.getOrPut(callback.name);
+        if (!source_gop.found_existing) {
+            // First time seeing this name - allocate the key
+            const name_copy = try self.allocator.dupe(u8, callback.name);
+            source_gop.key_ptr.* = name_copy;
+            source_gop.value_ptr.* = std.ArrayList([]const u8).empty;
+        }
+
+        // Track source file
+        const source_copy = try self.allocator.dupe(u8, source_file);
+        source_gop.value_ptr.append(self.allocator, source_copy) catch |err| {
+            self.allocator.free(source_copy);
+            return err;
+        };
+
+        // Callbacks don't have partials, so just add
+        const shared_key = source_gop.key_ptr.*;
+        try self.callbacks.put(shared_key, callback);
+        // Register callback type
+        try self.type_registry.register(shared_key, .callback);
+    }
+
+    pub fn addNamespace(self: *IR, namespace: types.Namespace, source_file: []const u8) !void {
+        // Get or create source_map entry first (this owns the name key)
+        const source_gop = try self.source_map.getOrPut(namespace.name);
+        if (!source_gop.found_existing) {
+            // First time seeing this name - allocate the key
+            const name_copy = try self.allocator.dupe(u8, namespace.name);
+            source_gop.key_ptr.* = name_copy;
+            source_gop.value_ptr.* = std.ArrayList([]const u8).empty;
+        }
+
+        // Track source file
+        const source_copy = try self.allocator.dupe(u8, source_file);
+        source_gop.value_ptr.append(self.allocator, source_copy) catch |err| {
+            self.allocator.free(source_copy);
+            return err;
+        };
+
+        // Namespaces don't have partials, so just add
+        const shared_key = source_gop.key_ptr.*;
+        try self.namespaces.put(shared_key, namespace);
+        // Register namespace type
+        try self.type_registry.register(shared_key, .namespace);
+    }
+};
+
+/// IR representation of an interface (after merging partials)
+pub const Interface = struct {
+    name: []const u8,
+    inheritance: ?[]const u8,
+    members: std.ArrayList(types.Member),
+    extAttrs: std.ArrayList(types.ExtendedAttribute),
+    mixins: std.ArrayList([]const u8), // List of mixin names included
+    mixin: bool,
+    has_base: bool, // true if we've seen a non-partial definition
+    base_source_index: usize, // index in source_map list of the file containing the base definition
+
+    /// Create IR interface from types.Interface
+    /// Note: name is NOT duplicated - it references the key from source_map
+    /// source_index: index in source_map list of the file being added
+    pub fn fromTypes(allocator: std.mem.Allocator, iface: types.Interface, name_ref: []const u8, source_index: usize) !Interface {
+        var members = std.ArrayList(types.Member).empty;
+        try members.appendSlice(allocator, iface.members);
+
+        var extAttrs = std.ArrayList(types.ExtendedAttribute).empty;
+        try extAttrs.appendSlice(allocator, iface.extAttrs);
+
+        const mixins = std.ArrayList([]const u8).empty;
+
+        return Interface{
+            .name = name_ref, // Use the key from source_map (not duplicated)
+            .inheritance = if (iface.inheritance) |inh| try allocator.dupe(u8, inh) else null,
+            .members = members,
+            .extAttrs = extAttrs,
+            .mixins = mixins,
+            .mixin = iface.mixin,
+            .has_base = !iface.partial, // has_base if this is not a partial
+            .base_source_index = source_index, // Track which source has the base
+        };
+    }
+
+    /// Merge a partial interface into this interface
+    pub fn mergePartial(self: *Interface, allocator: std.mem.Allocator, partial: types.Interface) !void {
+        // Append all members from partial
+        try self.members.appendSlice(allocator, partial.members);
+
+        // Merge extended attributes (avoiding duplicates)
+        for (partial.extAttrs) |ext_attr| {
+            var found = false;
+            for (self.extAttrs.items) |existing| {
+                if (std.mem.eql(u8, existing.name, ext_attr.name)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                try self.extAttrs.append(allocator, ext_attr);
+            }
+        }
+    }
+
+    /// Merge a base (non-partial) interface when we already have partials
+    pub fn mergeBase(self: *Interface, allocator: std.mem.Allocator, base: types.Interface) !void {
+        // Set inheritance from base (partials don't have inheritance)
+        if (base.inheritance) |inh| {
+            if (self.inheritance) |old_inh| allocator.free(old_inh);
+            self.inheritance = try allocator.dupe(u8, inh);
+        }
+
+        // Prepend base members before partial members (base comes first)
+        const old_members = try self.members.toOwnedSlice(allocator);
+        defer allocator.free(old_members);
+
+        try self.members.appendSlice(allocator, base.members);
+        try self.members.appendSlice(allocator, old_members);
+
+        // Merge extended attributes from base
+        for (base.extAttrs) |ext_attr| {
+            var found = false;
+            for (self.extAttrs.items) |existing| {
+                if (std.mem.eql(u8, existing.name, ext_attr.name)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                try self.extAttrs.append(allocator, ext_attr);
             }
         }
 
-        pub fn clone(self: InitExpression, allocator: Allocator) !InitExpression {
-            return switch (self) {
-                .literal => |lit| .{ .literal = try allocator.dupe(u8, lit) },
-                .function_call => |fc| blk: {
-                    const function = try allocator.dupe(u8, fc.function);
-                    errdefer allocator.free(function);
-
-                    const args = try allocator.alloc([]const u8, fc.args.len);
-                    errdefer allocator.free(args);
-
-                    for (fc.args, 0..) |arg, i| {
-                        args[i] = try allocator.dupe(u8, arg);
-                    }
-
-                    break :blk .{ .function_call = .{ .function = function, .args = args } };
-                },
-                .constant_ref => |cr| .{ .constant_ref = try allocator.dupe(u8, cr) },
-                .parameter => |p| .{ .parameter = try allocator.dupe(u8, p) },
-                .complex => |c| .{ .complex = try allocator.dupe(u8, c) },
-            };
-        }
-    };
-};
-
-/// A method declaration
-pub const Method = struct {
-    name: []const u8,
-
-    /// Full signature: (self: *Type, param: Type) !ReturnType
-    signature: []const u8,
-
-    /// Method body (as source text for now - will parse deeper later)
-    body: []const u8,
-
-    /// Type names referenced in signature and body
-    referenced_types: [][]const u8,
-
-    /// Doc comment
-    doc_comment: ?[]const u8,
-
-    /// Source location
-    source_line: usize,
-
-    /// Whether this is pub, inline, etc.
-    modifiers: Modifiers,
-
-    pub const Modifiers = struct {
-        is_public: bool = true,
-        is_inline: bool = false,
-    };
-
-    pub fn deinit(self: *Method, allocator: Allocator) void {
-        allocator.free(self.name);
-        allocator.free(self.signature);
-        allocator.free(self.body);
-        for (self.referenced_types) |type_name| {
-            allocator.free(type_name);
-        }
-        allocator.free(self.referenced_types);
-        if (self.doc_comment) |doc| {
-            allocator.free(doc);
-        }
+        // Mark that we now have a base
+        self.has_base = true;
     }
-};
 
-/// A constant declaration
-pub const Constant = struct {
-    name: []const u8,
-    type_name: ?[]const u8, // null if inferred
-    value: []const u8,
-    visibility: Visibility,
-    source_line: usize,
-
-    pub fn deinit(self: *Constant, allocator: Allocator) void {
-        allocator.free(self.name);
-        if (self.type_name) |t| {
-            allocator.free(t);
-        }
-        allocator.free(self.value);
+    /// Convert back to types.Interface for code generation
+    pub fn toTypes(self: Interface, allocator: std.mem.Allocator) !types.Interface {
+        return types.Interface{
+            .name = try allocator.dupe(u8, self.name),
+            .inheritance = if (self.inheritance) |inh| try allocator.dupe(u8, inh) else null,
+            .members = try allocator.dupe(types.Member, self.members.items),
+            .extAttrs = try allocator.dupe(types.ExtendedAttribute, self.extAttrs.items),
+            .includes = try allocator.dupe([]const u8, self.mixins.items),
+            .partial = false, // After merging, it's no longer partial
+            .mixin = self.mixin,
+        };
     }
-};
 
-/// A property (WebIDL attribute)
-pub const Property = struct {
-    name: []const u8,
-    type_name: []const u8,
-    access: Access,
-    doc_comment: ?[]const u8,
-    source_line: usize,
-
-    pub const Access = enum {
-        read_only,
-        read_write,
-    };
-
-    pub fn deinit(self: *Property, allocator: Allocator) void {
-        allocator.free(self.name);
-        allocator.free(self.type_name);
-        if (self.doc_comment) |doc| {
-            allocator.free(doc);
-        }
-    }
-};
-
-/// A complete class definition
-pub const ClassDef = struct {
-    name: []const u8,
-
-    /// Parent class name (if any)
-    parent: ?[]const u8,
-
-    /// Mixin names
-    mixins: [][]const u8,
-
-    /// WebIDL extended attributes
-    /// Examples: [Exposed=*], [Transferable], [Global=Window]
-    extended_attrs: []ExtendedAttribute,
-
-    /// Fields directly defined in this class
-    own_fields: []Field,
-
-    /// Methods directly defined in this class
-    own_methods: []Method,
-
-    /// Properties directly defined in this class
-    own_properties: []Property,
-
-    /// Constants defined in this class
-    own_constants: []Constant,
-
-    /// Imports this class's methods reference
-    /// (Does NOT include inherited imports)
-    required_imports: []Import,
-
-    /// Doc comment for the class
-    doc_comment: ?[]const u8,
-
-    /// Source file path
-    source_file: []const u8,
-
-    /// Class kind
-    kind: Kind,
-
-    pub const Kind = enum {
-        interface,
-        namespace,
-        mixin,
-    };
-
-    pub fn deinit(self: *ClassDef, allocator: Allocator) void {
-        allocator.free(self.name);
-        if (self.parent) |p| {
-            allocator.free(p);
-        }
-        for (self.mixins) |mixin| {
+    pub fn deinit(self: *Interface, allocator: std.mem.Allocator) void {
+        // Note: self.name is owned by source_map, so don't free it here
+        if (self.inheritance) |inh| allocator.free(inh);
+        self.members.deinit(allocator);
+        self.extAttrs.deinit(allocator);
+        for (self.mixins.items) |mixin| {
             allocator.free(mixin);
         }
-        allocator.free(self.mixins);
-
-        // Free extended attributes
-        for (self.extended_attrs) |*attr| {
-            allocator.free(attr.name);
-            switch (attr.value) {
-                .none, .wildcard, .integer, .decimal => {},
-                .identifier => |s| allocator.free(s),
-                .identifier_list => |list| {
-                    for (list) |s| allocator.free(s);
-                    allocator.free(list);
-                },
-                .string => |s| allocator.free(s),
-                .named_arg_list => |args| {
-                    for (args) |arg| {
-                        allocator.free(arg.name);
-                        allocator.free(arg.value);
-                    }
-                    allocator.free(args);
-                },
-            }
-        }
-        allocator.free(self.extended_attrs);
-
-        for (self.own_fields) |*field| {
-            field.deinit(allocator);
-        }
-        allocator.free(self.own_fields);
-
-        for (self.own_methods) |*method| {
-            method.deinit(allocator);
-        }
-        allocator.free(self.own_methods);
-
-        for (self.own_properties) |*prop| {
-            prop.deinit(allocator);
-        }
-        allocator.free(self.own_properties);
-
-        for (self.own_constants) |*constant| {
-            constant.deinit(allocator);
-        }
-        allocator.free(self.own_constants);
-
-        for (self.required_imports) |*import| {
-            import.deinit(allocator);
-        }
-        allocator.free(self.required_imports);
-
-        if (self.doc_comment) |doc| {
-            allocator.free(doc);
-        }
-        allocator.free(self.source_file);
+        self.mixins.deinit(allocator);
     }
 };
 
-/// Complete IR for a source file
-pub const FileIR = struct {
-    /// File path
-    path: []const u8,
-
-    /// Module-level imports (before any class definitions)
-    module_imports: []Import,
-
-    /// Classes defined in this file
-    classes: []ClassDef,
-
-    /// Module-level constants and declarations
-    module_constants: []Constant,
-
-    /// Module-level definitions (const, type, fn) that aren't classes
-    /// This is raw source text that will be copied to the generated file
-    module_definitions: []const u8,
-
-    /// Post-class definitions (types defined after the class)
-    /// This includes helper types like TeeState, AbortRequest, etc.
-    post_class_definitions: []const u8,
-
-    pub fn deinit(self: *FileIR, allocator: Allocator) void {
-        allocator.free(self.path);
-
-        for (self.module_imports) |*import| {
-            import.deinit(allocator);
-        }
-        allocator.free(self.module_imports);
-
-        for (self.classes) |*class| {
-            class.deinit(allocator);
-        }
-        allocator.free(self.classes);
-
-        for (self.module_constants) |*constant| {
-            constant.deinit(allocator);
-        }
-        allocator.free(self.module_constants);
-
-        allocator.free(self.module_definitions);
-        allocator.free(self.post_class_definitions);
-    }
+/// Type kind for the type registry
+pub const TypeKind = enum {
+    interface,
+    typedef,
+    dictionary,
+    enum_type,
+    callback,
+    namespace,
+    primitive,
 };
 
-/// Enhanced class IR after inheritance resolution
-pub const EnhancedClassIR = struct {
-    /// Original class definition
-    class: ClassDef,
+/// Registry of all defined types across all WebIDL files
+/// Used to resolve type references during code generation
+pub const TypeRegistry = struct {
+    types: std.StringHashMap(TypeKind),
+    allocator: std.mem.Allocator,
 
-    /// All fields (own + inherited, flattened)
-    all_fields: []Field,
+    pub fn init(allocator: std.mem.Allocator) TypeRegistry {
+        return .{
+            .types = std.StringHashMap(TypeKind).init(allocator),
+            .allocator = allocator,
+        };
+    }
 
-    /// Struct fields (mixin + own, but not parent inherited)
-    /// Use this for writing the struct definition
-    struct_fields: []Field,
+    pub fn deinit(self: *TypeRegistry) void {
+        self.types.deinit();
+    }
 
-    /// All methods (own + inherited, with overrides resolved)
-    all_methods: []Method,
+    /// Register a type in the registry
+    pub fn register(self: *TypeRegistry, name: []const u8, kind: TypeKind) !void {
+        try self.types.put(name, kind);
+    }
 
-    /// All properties (own + inherited)
-    all_properties: []Property,
+    /// Look up a type in the registry
+    pub fn lookup(self: *const TypeRegistry, name: []const u8) ?TypeKind {
+        return self.types.get(name);
+    }
 
-    /// All imports needed (own + inherited, deduplicated)
-    all_imports: []Import,
+    /// Check if a type is registered
+    pub fn contains(self: *const TypeRegistry, name: []const u8) bool {
+        return self.types.contains(name);
+    }
 
-    pub fn deinit(self: *EnhancedClassIR, allocator: Allocator) void {
-        // NOTE: Don't deinit self.class - it's just a copy of the original ClassDef
-        // which is owned by FileIR. Only deinit the enhanced slices we created.
-
-        for (self.all_fields) |*field| {
-            field.deinit(allocator);
-        }
-        allocator.free(self.all_fields);
-
-        for (self.struct_fields) |*field| {
-            field.deinit(allocator);
-        }
-        allocator.free(self.struct_fields);
-
-        for (self.all_methods) |*method| {
-            method.deinit(allocator);
-        }
-        allocator.free(self.all_methods);
-
-        for (self.all_properties) |*prop| {
-            prop.deinit(allocator);
-        }
-        allocator.free(self.all_properties);
-
-        for (self.all_imports) |*import| {
-            import.deinit(allocator);
-        }
-        allocator.free(self.all_imports);
+    /// Register all WebIDL primitive types
+    pub fn registerPrimitives(self: *TypeRegistry) !void {
+        // WebIDL primitive types
+        try self.register("void", .primitive);
+        try self.register("undefined", .primitive);
+        try self.register("boolean", .primitive);
+        try self.register("byte", .primitive);
+        try self.register("octet", .primitive);
+        try self.register("short", .primitive);
+        try self.register("unsigned short", .primitive);
+        try self.register("long", .primitive);
+        try self.register("unsigned long", .primitive);
+        try self.register("long long", .primitive);
+        try self.register("unsigned long long", .primitive);
+        try self.register("float", .primitive);
+        try self.register("unrestricted float", .primitive);
+        try self.register("double", .primitive);
+        try self.register("unrestricted double", .primitive);
+        try self.register("DOMString", .primitive);
+        try self.register("ByteString", .primitive);
+        try self.register("USVString", .primitive);
+        try self.register("object", .primitive);
+        try self.register("symbol", .primitive);
+        try self.register("any", .primitive);
     }
 };

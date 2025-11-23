@@ -1,24 +1,27 @@
 //! Core runtime types for WebIDL interface instances
 //!
 //! This module defines the fundamental types for the WebIDL-to-Zig runtime:
-//! - Instance: Type-erased handle (16 bytes) pointing to VTable and state
+//! - Instance: Type-erased handle (24 bytes) pointing to VTable, state, and context
 //! - VTable: Function pointer table for polymorphic dispatch
 //! - Method: Enumeration of all possible WebIDL operations
 //! - MethodMap: Type-safe mapping from Method to function pointers
 
 const std = @import("std");
+const Context = @import("context.zig").Context;
 
-/// Type-erased instance handle (16 bytes)
+/// Type-erased instance handle (24 bytes)
 ///
 /// Every WebIDL interface instance is represented by this uniform handle:
 /// - vtable: Points to the interface's method dispatch table
 /// - state: Points to the interface's type-specific state (FullState)
+/// - ctx: Runtime context (pointer to JS execution environment)
 ///
 /// This enables polymorphism - a NodeList can hold mixed Node/Element/Text
 /// instances and dispatch methods correctly through their vtables.
 pub const Instance = struct {
     vtable: *const VTable,
     state: *anyopaque,
+    ctx: Context,
 
     /// Get the state as a typed pointer (unsafe - caller must ensure correct type)
     pub inline fn getState(self: *const Instance, comptime T: type) *T {
@@ -45,13 +48,14 @@ pub const Instance = struct {
     ///
     /// ## Example
     /// ```zig
-    /// const instance = try Instance.init(allocator, ElementState, &element_vtable);
+    /// const instance = try Instance.init(allocator, ElementState, &element_vtable, ctx, undefined);
     /// defer Instance.deinit(instance);
     /// ```
     pub fn init(
         allocator: std.mem.Allocator,
         comptime StateType: type,
         vtable: *const VTable,
+        ctx: Context,
     ) !*Instance {
         _ = allocator; // Unused - SlabAllocator and ArenaAllocator are global singletons
 
@@ -59,15 +63,16 @@ pub const Instance = struct {
         const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
         const ArenaAllocator = @import("arena_allocator.zig").ArenaAllocator;
 
-        // Step 1: Allocate Instance handle from slab allocator (16 bytes)
+        // Step 1: Allocate Instance handle from slab allocator (24 bytes)
         const instance = try SlabAllocator.get().alloc(vtable);
         errdefer SlabAllocator.get().free(instance);
 
         // Step 2: Allocate state from arena allocator (variable size based on StateType)
         const state = try ArenaAllocator.get().create(StateType);
 
-        // Step 3: Link state to instance
+        // Step 3: Link state and context to instance
         instance.state = state;
+        instance.ctx = ctx;
 
         return instance;
     }
@@ -84,7 +89,7 @@ pub const Instance = struct {
     ///
     /// ## Example
     /// ```zig
-    /// const instance = try Instance.init(allocator, ElementState, &element_vtable);
+    /// const instance = try Instance.init(allocator, ElementState, &element_vtable, undefined);
     /// defer Instance.deinit(instance);
     /// ```
     pub fn deinit(instance: *Instance) void {
@@ -92,8 +97,8 @@ pub const Instance = struct {
         const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
 
         // Step 1: Call VTable's deinit function if present (for custom cleanup)
-        if (instance.vtable.deinit_fn) |deinit_fn| {
-            deinit_fn(instance.state);
+        if (instance.vtable.deinit) |deinit_fn| {
+            deinit_fn(instance);
         }
 
         // Step 2: Return Instance handle to slab allocator
@@ -102,26 +107,83 @@ pub const Instance = struct {
         // Note: State memory is NOT freed here - it's batch-freed during GC sweep
         // via ArenaAllocator.reset() in gc_integration.zig::onGCSweep()
     }
+
+    /// Initialize state fields using comptime reflection
+    ///
+    /// Automatically initializes fields based on their types:
+    /// - Optional types (?T): Set to null
+    /// - Booleans: Set to false
+    /// - Integers: Set to 0
+    /// - Floats: Set to 0.0
+    /// - Other types: Left undefined (caller must initialize)
+    pub fn initState(state: anytype) void {
+        const StateType = @TypeOf(state.*);
+        const type_info = @typeInfo(StateType);
+
+        switch (type_info) {
+            .@"struct" => |struct_info| {
+                inline for (struct_info.fields) |field| {
+                    const field_type_info = @typeInfo(field.type);
+
+                    switch (field_type_info) {
+                        .optional => {
+                            @field(state, field.name) = null;
+                        },
+                        .bool => {
+                            @field(state, field.name) = false;
+                        },
+                        .int => {
+                            @field(state, field.name) = 0;
+                        },
+                        .float => {
+                            @field(state, field.name) = 0.0;
+                        },
+                        else => {
+                            // Leave undefined - caller must initialize
+                        },
+                    }
+                }
+            },
+            else => {
+                @compileError("initState expects a pointer to a struct");
+            },
+        }
+    }
 };
 
 /// VTable with function pointers for method dispatch
 ///
 /// Each WebIDL interface has its own VTable populated at comptime.
 /// The VTable contains:
-/// - deinit_fn: Type-erased cleanup function called by GC
+/// - deinit: Cleanup function called by GC (points to interface's deinit function)
 /// - fns: Map from Method enum to function pointers
 pub const VTable = struct {
-    /// Type-erased deinit function (called by GC finalizer)
-    /// Signature: fn(state: *anyopaque) void
-    deinit_fn: ?*const fn (*anyopaque) void,
+    /// Cleanup function (called by GC finalizer)
+    /// Points directly to the interface's deinit function
+    /// Signature: fn(instance: *Instance) void
+    deinit: ?*const fn (*Instance) void,
 
-    /// Method function pointer map
-    /// Maps Method enum values to type-erased function pointers
-    fns: MethodMap,
+    /// Type-erased pointer to the delegates struct
+    /// The actual type is known at compile time by each interface
+    /// Access methods using getMethod() with the delegates type
+    methods_ptr: *const anyopaque,
 
-    /// Get a method function pointer (returns null if not implemented)
-    pub inline fn get(self: *const VTable, method: Method) ?*const anyopaque {
-        return self.fns.get(method);
+    /// Get a method function pointer by name using compile-time reflection
+    /// Usage: vtable.getMethod(DelegatesType, "methodName")
+    pub inline fn getMethod(
+        self: *const VTable,
+        comptime DelegatesType: type,
+        comptime method_name: []const u8,
+    ) ?*const anyopaque {
+        const delegates_ptr: *const DelegatesType = @ptrCast(@alignCast(self.methods_ptr));
+
+        // Check if the method exists at compile time
+        if (!@hasField(DelegatesType, method_name)) {
+            return null;
+        }
+
+        const method_fn = @field(delegates_ptr.*, method_name);
+        return @ptrCast(method_fn);
     }
 };
 
@@ -141,6 +203,33 @@ pub const Method = enum {
     call_addEventListener,
     call_removeEventListener,
     call_dispatchEvent,
+    call_when,
+
+    // === Event getters (readonly attributes) ===
+    get_type,
+    get_target,
+    get_srcElement,
+    get_currentTarget,
+    get_eventPhase,
+    get_bubbles,
+    get_cancelable,
+    get_defaultPrevented,
+    get_composed,
+    get_isTrusted,
+    get_timeStamp,
+
+    // === Event getters/setters (read-write attributes) ===
+    get_cancelBubble,
+    set_cancelBubble,
+    get_returnValue,
+    set_returnValue,
+
+    // === Event operations ===
+    call_stopImmediatePropagation,
+    call_initEvent,
+    call_composedPath,
+    call_stopPropagation,
+    call_preventDefault,
 
     // === Node getters (readonly attributes) ===
     get_nodeType,
@@ -267,11 +356,11 @@ pub const MethodMap = std.EnumArray(Method, ?*const anyopaque);
 
 // Compile-time verification
 comptime {
-    // Verify Instance is exactly 16 bytes (2 pointers on 64-bit)
+    // Verify Instance is exactly 24 bytes (2 pointers on 64-bit)
     const instance_size = @sizeOf(Instance);
-    if (instance_size != 16) {
+    if (instance_size != 24) {
         @compileError(std.fmt.comptimePrint(
-            "Instance must be exactly 16 bytes, got {d} bytes",
+            "Instance must be exactly 24 bytes, got {d} bytes",
             .{instance_size},
         ));
     }
@@ -287,8 +376,8 @@ comptime {
 /// Unit tests for instance types
 const testing = std.testing;
 
-test "Instance size is 16 bytes" {
-    try testing.expectEqual(@as(usize, 16), @sizeOf(Instance));
+test "Instance size is 24 bytes" {
+    try testing.expectEqual(@as(usize, 24), @sizeOf(Instance));
 }
 
 test "Instance has correct field sizes" {
@@ -297,26 +386,29 @@ test "Instance has correct field sizes" {
 }
 
 test "VTable can store and retrieve methods" {
-    // Dummy function for testing
+    // Dummy functions for testing
     const dummyFn = struct {
-        fn call() void {}
-    }.call;
-
-    // Create VTable with one method set
-    var methods = MethodMap.initFill(null);
-    methods.set(.call_appendChild, @ptrCast(&dummyFn));
-
-    const vtable = VTable{
-        .deinit_fn = null,
-        .fns = methods,
+        fn appendChild() void {}
+        fn getAttribute() void {}
     };
 
-    // Retrieve method
-    const fn_ptr = vtable.get(.call_appendChild);
+    // Create delegates struct with methods
+    const delegates = .{
+        .call_appendChild = &dummyFn.appendChild,
+        .call_getAttribute = &dummyFn.getAttribute,
+    };
+
+    const vtable = VTable{
+        .deinit = null,
+        .methods_ptr = &delegates,
+    };
+
+    // Retrieve method using getMethod
+    const fn_ptr = vtable.getMethod(@TypeOf(delegates), "call_appendChild");
     try testing.expect(fn_ptr != null);
 
-    // Verify unset method returns null
-    const missing = vtable.get(.call_removeChild);
+    // Verify missing method returns null
+    const missing = vtable.getMethod(@TypeOf(delegates), "call_removeChild");
     try testing.expectEqual(@as(?*const anyopaque, null), missing);
 }
 
@@ -327,16 +419,17 @@ test "Instance.getState casts correctly" {
     };
 
     var state = State{ .value = 42 };
-    const methods = MethodMap.initFill(null);
+    const delegates = .{}; // Empty delegates struct
     const vtable = VTable{
-        .deinit_fn = null,
-        .fns = methods,
+        .deinit = null,
+        .methods_ptr = &delegates,
     };
 
     // Create instance
     const instance = Instance{
         .vtable = &vtable,
         .state = @ptrCast(&state),
+        .ctx = undefined,
     };
 
     // Get typed state
@@ -365,10 +458,10 @@ test "Instance.init allocates instance and state successfully" {
     defer ArenaAllocator.deinit();
 
     // Create VTable
-    const methods = MethodMap.initFill(null);
+    const delegates = .{}; // Empty delegates struct
     const vtable = VTable{
-        .deinit_fn = null,
-        .fns = methods,
+        .deinit = null,
+        .methods_ptr = &delegates,
     };
 
     // Define state type
@@ -378,7 +471,7 @@ test "Instance.init allocates instance and state successfully" {
     };
 
     // Test Instance.init
-    const instance = try Instance.init(testing.allocator, State, &vtable);
+    const instance = try Instance.init(testing.allocator, State, &vtable, undefined);
     defer Instance.deinit(instance);
 
     // Verify instance is properly initialized
@@ -405,10 +498,10 @@ test "Instance.init handles allocation failure gracefully" {
     ArenaAllocator.init(failing.allocator());
     defer ArenaAllocator.deinit();
 
-    const methods = MethodMap.initFill(null);
+    const delegates = .{}; // Empty delegates struct
     const vtable = VTable{
-        .deinit_fn = null,
-        .fns = methods,
+        .deinit = null,
+        .methods_ptr = &delegates,
     };
 
     const State = struct {
@@ -416,7 +509,7 @@ test "Instance.init handles allocation failure gracefully" {
     };
 
     // Should fail with OutOfMemory
-    const result = Instance.init(testing.allocator, State, &vtable);
+    const result = Instance.init(testing.allocator, State, &vtable, undefined);
     try testing.expectError(error.OutOfMemory, result);
 }
 
@@ -438,19 +531,19 @@ test "Instance.deinit calls VTable deinit_fn if present" {
     };
 
     const deinitFn = struct {
-        fn call(state: *anyopaque) void {
-            const s: *State = @ptrCast(@alignCast(state));
+        fn call(instance: *Instance) void {
+            const s: *State = @ptrCast(@alignCast(instance.state));
             s.deinit_flag.* = true;
         }
     }.call;
 
-    const methods = MethodMap.initFill(null);
+    const delegates = .{}; // Empty delegates struct
     const vtable = VTable{
-        .deinit_fn = deinitFn,
-        .fns = methods,
+        .deinit = deinitFn,
+        .methods_ptr = &delegates,
     };
 
-    const instance = try Instance.init(testing.allocator, State, &vtable);
+    const instance = try Instance.init(testing.allocator, State, &vtable, undefined);
     const state = instance.getState(State);
     state.deinit_flag = &deinit_called;
 
@@ -474,13 +567,13 @@ test "Instance.deinit does not crash without deinit_fn" {
         value: u32,
     };
 
-    const methods = MethodMap.initFill(null);
+    const delegates = .{}; // Empty delegates struct
     const vtable = VTable{
-        .deinit_fn = null, // No deinit function
-        .fns = methods,
+        .deinit = null, // No deinit function
+        .methods_ptr = &delegates,
     };
 
-    const instance = try Instance.init(testing.allocator, State, &vtable);
+    const instance = try Instance.init(testing.allocator, State, &vtable, undefined);
 
     // Should not crash even without deinit_fn
     Instance.deinit(instance);
@@ -502,16 +595,16 @@ test "Instance.init and deinit no memory leaks" {
         data: [100]u8,
     };
 
-    const methods = MethodMap.initFill(null);
+    const delegates = .{}; // Empty delegates struct
     const vtable = VTable{
-        .deinit_fn = null,
-        .fns = methods,
+        .deinit = null,
+        .methods_ptr = &delegates,
     };
 
     // Allocate and free multiple instances
     var instances: [10]*Instance = undefined;
     for (&instances) |*inst| {
-        inst.* = try Instance.init(testing.allocator, State, &vtable);
+        inst.* = try Instance.init(testing.allocator, State, &vtable, undefined);
     }
 
     for (instances) |inst| {
@@ -532,10 +625,10 @@ test "Instance.init supports different state types" {
     ArenaAllocator.init(testing.allocator);
     defer ArenaAllocator.deinit();
 
-    const methods = MethodMap.initFill(null);
+    const delegates = .{}; // Empty delegates struct
     const vtable = VTable{
-        .deinit_fn = null,
-        .fns = methods,
+        .deinit = null,
+        .methods_ptr = &delegates,
     };
 
     // Small state
@@ -543,7 +636,7 @@ test "Instance.init supports different state types" {
         value: u8,
     };
 
-    const inst1 = try Instance.init(testing.allocator, SmallState, &vtable);
+    const inst1 = try Instance.init(testing.allocator, SmallState, &vtable, undefined);
     defer Instance.deinit(inst1);
 
     const state1 = inst1.getState(SmallState);
@@ -555,7 +648,7 @@ test "Instance.init supports different state types" {
         values: [1024]u64,
     };
 
-    const inst2 = try Instance.init(testing.allocator, LargeState, &vtable);
+    const inst2 = try Instance.init(testing.allocator, LargeState, &vtable, undefined);
     defer Instance.deinit(inst2);
 
     const state2 = inst2.getState(LargeState);

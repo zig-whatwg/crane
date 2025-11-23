@@ -1,96 +1,81 @@
 //! WebIDL Runtime Library
 //!
-//! This module provides the core runtime infrastructure for generated WebIDL interfaces.
-//! It exports all runtime components needed by generated code:
+//! This module provides runtime support for generated WebIDL bindings.
 //!
-//! - **Instance Management**: Instance handles and VTable dispatch
-//! - **Memory Allocation**: Slab allocator (Instance handles) and Arena allocator (FullState)
-//! - **Type System**: WebIDL string types (DOMString, USVString, ByteString) from webidl module
-//! - **Compile-Time Utilities**: Field merger, VTable builder
-//! - **GC Integration**: JavaScript engine lifecycle callbacks
-//!
-//! ## Usage Example
-//!
-//! ```zig
-//! const runtime = @import("runtime");
-//!
-//! // Initialize allocators
-//! runtime.SlabAllocator.init(allocator);
-//! defer runtime.SlabAllocator.deinit();
-//!
-//! runtime.ArenaAllocator.init(allocator);
-//! defer runtime.ArenaAllocator.deinit();
-//!
-//! // Create an instance
-//! const vtable = runtime.buildVTable(MyInterface, .{});
-//! const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-//! defer runtime.SlabAllocator.get().free(instance);
-//!
-//! // Use WebIDL types
-//! var str: runtime.DOMString = .empty;
-//! defer str.deinit(allocator);
-//! ```
-//!
-//! ## Architecture
-//!
-//! The runtime uses a two-tier memory model:
-//!
-//! 1. **SlabAllocator** - Fast fixed-size allocation for Instance handles (16 bytes)
-//! 2. **ArenaAllocator** - Variable-sized allocation for FullState structs
-//!
-//! Instance handles are small (16 bytes) and frequently allocated/freed.
-//! FullState structs contain the full object state and can be batch-freed during GC.
-//!
-//! ## Thread Safety
-//!
-//! - Allocators must be initialized before use
-//! - Allocators use global state (single-threaded runtime)
-//! - GC callbacks are called from GC thread
-//!
-//! ## Memory Management
-//!
-//! - Instance handles: Allocated via SlabAllocator, freed via GC or manual free
-//! - FullState: Allocated via ArenaAllocator, batch-freed during GC sweep
-//! - WebIDL strings: Use DOMString type with proper deinit
+//! Core Components:
+//! - Instance: WebIDL interface instances with state and vtable
+//! - VTable: Virtual function table for interface methods
+//! - Type system: WebIDL types (DOMString, sequences, etc.)
 
-// Instance management and VTable dispatch
+const std = @import("std");
+
 pub const Instance = @import("instance.zig").Instance;
+
+/// CEReactions - Custom Element Reactions
+///
+/// Stubs for DOM mutation tracking per Custom Elements spec.
+/// Used by [CEReactions] extended attribute in WebIDL.
+pub const CEReactions = struct {
+    pub fn begin() void {
+        // TODO: Implement Custom Element reaction queue
+    }
+
+    pub fn end() void {
+        // TODO: Invoke queued Custom Element callbacks
+    }
+};
 pub const VTable = @import("instance.zig").VTable;
 pub const MethodMap = @import("instance.zig").MethodMap;
 pub const Method = @import("instance.zig").Method;
 
-// WebIDL string types
-pub const DOMString = @import("typedefs/DOMString.zig").DOMString;
-pub const USVString = @import("typedefs/USVString.zig").USVString;
-pub const ByteString = @import("typedefs/ByteString.zig").ByteString;
+// Runtime context and logging
+pub const Context = @import("context.zig").Context;
+pub const ContextData = @import("context.zig").ContextData;
+pub const createNullContext = @import("context.zig").createNullContext;
+pub const Logger = @import("logger.zig").Logger;
+pub const LogLevel = @import("logger.zig").LogLevel;
+pub const ConsoleValue = @import("console_value.zig").ConsoleValue;
 
-// Re-export typedefs module for generated code
-pub const typedefs = @import("typedefs/root.zig");
+// WebIDL type system
+pub const types = @import("types.zig");
+pub const DOMString = types.DOMString;
+pub const USVString = types.USVString;
+pub const ByteString = types.ByteString;
 
 // WebIDL primitive types
-const primitives = @import("typedefs/primitives.zig");
-pub const Boolean = primitives.Boolean;
-pub const Byte = primitives.Byte;
-pub const Octet = primitives.Octet;
-pub const Short = primitives.Short;
-pub const UnsignedShort = primitives.UnsignedShort;
-pub const Long = primitives.Long;
-pub const UnsignedLong = primitives.UnsignedLong;
-pub const LongLong = primitives.LongLong;
-pub const UnsignedLongLong = primitives.UnsignedLongLong;
-pub const Float = primitives.Float;
-pub const Double = primitives.Double;
-pub const UnrestrictedFloat = primitives.UnrestrictedFloat;
-pub const UnrestrictedDouble = primitives.UnrestrictedDouble;
-pub const Any = primitives.Any;
-pub const Object = primitives.Object;
+pub const Boolean = types.Boolean;
+pub const Long = types.Long;
+pub const UnsignedLong = types.UnsignedLong;
+pub const LongLong = types.LongLong;
+pub const UnsignedLongLong = types.UnsignedLongLong;
+pub const Float = types.Float;
+pub const Double = types.Double;
+pub const Any = types.Any;
+pub const Object = types.Object;
 
 // WebIDL parameterized types
-pub const FrozenArray = @import("typedefs/FrozenArray.zig").FrozenArray;
-pub const sequence = @import("typedefs/sequence.zig").sequence;
-pub const Promise = @import("typedefs/Promise.zig").Promise;
-pub const ObservableArray = @import("typedefs/ObservableArray.zig").ObservableArray;
-pub const record = @import("typedefs/record.zig").record;
+pub const FrozenArray = types.FrozenArray;
+pub const sequence = types.sequence;
+pub const Promise = types.Promise;
+pub const ObservableArray = types.ObservableArray;
+pub const record = types.record;
+
+// JavaScript built-in types (V8 provides these, we define Zig-side wrappers)
+// These wrap V8's ArrayBuffer/TypedArray objects
+pub const ArrayBuffer = types.ArrayBuffer;
+pub const SharedArrayBuffer = types.SharedArrayBuffer;
+pub const DataView = types.DataView;
+pub const Int8Array = types.Int8Array;
+pub const Int16Array = types.Int16Array;
+pub const Int32Array = types.Int32Array;
+pub const Uint8Array = types.Uint8Array;
+pub const Uint8ClampedArray = types.Uint8ClampedArray;
+pub const Uint16Array = types.Uint16Array;
+pub const Uint32Array = types.Uint32Array;
+pub const Float32Array = types.Float32Array;
+pub const Float64Array = types.Float64Array;
+pub const BigInt64Array = types.BigInt64Array;
+pub const BigUint64Array = types.BigUint64Array;
 
 // Memory allocators
 pub const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
@@ -106,9 +91,91 @@ pub const onObjectFreed = gc.onObjectFreed;
 pub const onGCSweep = gc.onGCSweep;
 pub const GCStats = gc.GCStats;
 
+// JS Engine abstraction
+pub const jsengine = @import("jsengine.zig");
+
+// V8 Engine (default)
+const V8 = jsengine.select(.v8);
+
+// V8 bindings infrastructure (backward compatibility)
+pub const V8Context = V8.Context;
+pub const v8_callbacks = V8.callbacks;
+pub const v8_template = struct {
+    pub const TemplateBuilder = V8.TemplateBuilder;
+    pub const TemplateRegistry = V8.TemplateRegistry;
+    pub const FunctionTemplate = V8.FunctionTemplate;
+    pub const AttributeDescriptor = V8.AttributeDescriptor;
+    pub const MethodDescriptor = V8.MethodDescriptor;
+};
+pub const v8_types = V8.types;
+pub const v8_errors = V8.errors;
+pub const v8_persistent = V8.persistent;
+pub const v8_eventlistener = V8.eventlistener;
+
 // Convenience re-exports
 pub const initRuntime = initializeRuntime;
 pub const deinitRuntime = deinitializeRuntime;
+
+// WebIDL helper functions
+// These are used by generated code for validation and clamping
+
+/// Clamp a numeric value to a valid range
+/// Used by WebIDL operations that require clamping semantics
+pub fn clamp(comptime T: type, value: anytype) T {
+    const type_info = @typeInfo(T);
+
+    // For integers, clamp to type min/max
+    if (type_info == .int) {
+        const min_val = std.math.minInt(T);
+        const max_val = std.math.maxInt(T);
+
+        // Convert input to i64/u64 for comparison
+        const val_i64 = switch (@typeInfo(@TypeOf(value))) {
+            .int => |int_info| if (int_info.signedness == .signed)
+                @as(i64, @intCast(value))
+            else
+                @as(i64, @intCast(value)),
+            .float => @as(i64, @intFromFloat(value)),
+            else => @compileError("clamp requires numeric type"),
+        };
+
+        if (val_i64 < min_val) return min_val;
+        if (val_i64 > max_val) return max_val;
+        return @intCast(val_i64);
+    }
+
+    // For floats, just convert
+    if (type_info == .float) {
+        return @floatCast(value);
+    }
+
+    @compileError("clamp only supports integer and float types");
+}
+
+/// Check if a value is in valid range for target type
+/// Used by WebIDL operations that require range checking
+pub fn isInRange(comptime T: type, value: anytype) bool {
+    const type_info = @typeInfo(T);
+
+    if (type_info == .int) {
+        const min_val = std.math.minInt(T);
+        const max_val = std.math.maxInt(T);
+
+        // Convert input for comparison
+        const val_i64 = switch (@typeInfo(@TypeOf(value))) {
+            .int => |int_info| if (int_info.signedness == .signed)
+                @as(i64, @intCast(value))
+            else
+                @as(i64, @intCast(value)),
+            .float => @as(i64, @intFromFloat(value)),
+            else => return false,
+        };
+
+        return val_i64 >= min_val and val_i64 <= max_val;
+    }
+
+    return true; // Non-integers always in range
+}
 
 /// Initialize the WebIDL runtime
 ///
@@ -150,7 +217,6 @@ pub fn deinitializeRuntime() void {
 }
 
 // Standard library dependency
-const std = @import("std");
 
 // Unit tests
 const testing = std.testing;
@@ -162,31 +228,10 @@ test "runtime exports" {
     _ = MethodMap;
     _ = Method;
 
+    _ = types;
     _ = DOMString;
     _ = USVString;
     _ = ByteString;
-
-    _ = Boolean;
-    _ = Byte;
-    _ = Octet;
-    _ = Short;
-    _ = UnsignedShort;
-    _ = Long;
-    _ = UnsignedLong;
-    _ = LongLong;
-    _ = UnsignedLongLong;
-    _ = Float;
-    _ = Double;
-    _ = UnrestrictedFloat;
-    _ = UnrestrictedDouble;
-    _ = Any;
-    _ = Object;
-
-    _ = FrozenArray;
-    _ = sequence;
-    _ = Promise;
-    _ = ObservableArray;
-    _ = record;
 
     _ = SlabAllocator;
     _ = ArenaAllocator;
@@ -212,10 +257,10 @@ test "initRuntime and deinitRuntime work" {
     const arena = ArenaAllocator.get();
 
     // Can allocate after init
-    const methods = MethodMap.initFill(null);
+    const delegates = .{}; // Empty delegates struct
     const vtable = VTable{
-        .deinit_fn = null,
-        .fns = methods,
+        .deinit = null,
+        .methods_ptr = &delegates,
     };
 
     const instance = try slab.alloc(&vtable);
@@ -232,10 +277,10 @@ test "initRuntime initializes both allocators" {
     defer deinitializeRuntime();
 
     // SlabAllocator should be usable
-    const methods = MethodMap.initFill(null);
+    const delegates = .{}; // Empty delegates struct
     const vtable = VTable{
-        .deinit_fn = null,
-        .fns = methods,
+        .deinit = null,
+        .methods_ptr = &delegates,
     };
     const inst = try SlabAllocator.get().alloc(&vtable);
     SlabAllocator.get().free(inst);

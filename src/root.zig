@@ -26,6 +26,11 @@ pub const mimesniff = @import("mimesniff");
 pub const interfaces = @import("interfaces");
 pub const impls = @import("impls");
 
+// Export WebIDL infrastructure modules
+pub const v8 = @import("v8");
+pub const js_bindings = @import("js_bindings");
+pub const codegen = @import("codegen");
+
 test {
     // Import all submodule tests
     _ = infra;
@@ -39,4 +44,7 @@ test {
     _ = mimesniff;
     _ = interfaces;
     _ = impls;
+    _ = v8;
+    _ = js_bindings;
+    _ = codegen;
 }

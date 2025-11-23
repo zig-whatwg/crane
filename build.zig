@@ -65,6 +65,9 @@ pub fn build(b: *std.Build) void {
             "console",
             "streams",
             "mimesniff",
+            "runtime",
+            "codegen",
+            "v8",
         };
         var is_valid = false;
         for (valid_specs) |valid_spec| {
@@ -75,7 +78,7 @@ pub fn build(b: *std.Build) void {
         }
         if (!is_valid) {
             std.debug.print("Error: Invalid spec '{s}'\n", .{spec});
-            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, console, streams, mimesniff\n", .{});
+            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, console, streams, mimesniff, runtime, codegen, v8\n", .{});
             std.process.exit(1);
         }
     }
@@ -110,6 +113,28 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     runtime_mod.addImport("webidl", webidl_mod);
+
+    // V8 bindings module
+    const v8_mod = b.addModule("v8", .{
+        .root_source_file = b.path("src/v8/root.zig"),
+        .target = target,
+    });
+    v8_mod.addImport("runtime", runtime_mod);
+
+    // JS bindings module
+    const js_bindings_mod = b.addModule("js_bindings", .{
+        .root_source_file = b.path("src/js_bindings/root.zig"),
+        .target = target,
+    });
+    js_bindings_mod.addImport("runtime", runtime_mod);
+
+    // WebIDL codegen module
+    const codegen_mod = b.addModule("codegen", .{
+        .root_source_file = b.path("src/webidl/codegen/root.zig"),
+        .target = target,
+    });
+    codegen_mod.addImport("webidl", webidl_mod);
+    codegen_mod.addImport("infra", infra_mod);
 
     // ========================================================================
     // INTERFACES MODULE (WebIDL interface definitions)
@@ -726,6 +751,40 @@ pub fn build(b: *std.Build) void {
         };
     }
 
+    // Runtime tests
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "runtime")) {
+        const runtime_imports = [_]std.Build.Module.Import{
+            .{ .name = "runtime", .module = runtime_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/runtime", target, &runtime_imports) catch |err| {
+            std.debug.print("Warning: Failed to add runtime test files: {}\n", .{err});
+        };
+    }
+
+    // Codegen tests
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "codegen")) {
+        const codegen_imports = [_]std.Build.Module.Import{
+            .{ .name = "codegen", .module = codegen_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "infra", .module = infra_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/codegen", target, &codegen_imports) catch |err| {
+            std.debug.print("Warning: Failed to add codegen test files: {}\n", .{err});
+        };
+    }
+
+    // V8 tests
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "v8")) {
+        const v8_imports = [_]std.Build.Module.Import{
+            .{ .name = "v8", .module = v8_mod },
+            .{ .name = "runtime", .module = runtime_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/v8", target, &v8_imports) catch |err| {
+            std.debug.print("Warning: Failed to add v8 test files: {}\n", .{err});
+        };
+    }
+
     // ========================================================================
     // EXECUTABLE (optional CLI tool)
     // ========================================================================
@@ -778,22 +837,91 @@ pub fn build(b: *std.Build) void {
     const parse_idls_step = b.step("parse-idls", "Parse WebIDL files from webref");
     parse_idls_step.dependOn(&parse_idls_cmd.step);
 
-    // Comprehensive binary that includes all major WHATWG specs
+    // ========================================================================
+    // WEBIDL TOOLS
+    // ========================================================================
+
+    // Codegen tool
+    const codegen_exe = b.addExecutable(.{
+        .name = "codegen",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/codegen_main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "codegen", .module = codegen_mod },
+                .{ .name = "webidl", .module = webidl_mod },
+                .{ .name = "infra", .module = infra_mod },
+            },
+        }),
+    });
+    b.installArtifact(codegen_exe);
+    const codegen_step = b.step("codegen", "Build WebIDL code generator");
+    codegen_step.dependOn(&b.addInstallArtifact(codegen_exe, .{}).step);
+
+    // IDL scanner tool
+    const idl_scanner_exe = b.addExecutable(.{
+        .name = "idl-scanner",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/idl_scanner_main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "codegen", .module = codegen_mod },
+                .{ .name = "webidl", .module = webidl_mod },
+            },
+        }),
+    });
+    b.installArtifact(idl_scanner_exe);
+    const idl_scanner_step = b.step("idl-scanner", "Build IDL scanner tool");
+    idl_scanner_step.dependOn(&b.addInstallArtifact(idl_scanner_exe, .{}).step);
+
+    // Interfaces tool
+    const interfaces_exe = b.addExecutable(.{
+        .name = "interfaces",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/interfaces_main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "interfaces", .module = interfaces_mod },
+                .{ .name = "runtime", .module = runtime_mod },
+            },
+        }),
+    });
+    b.installArtifact(interfaces_exe);
+    const interfaces_tool_step = b.step("interfaces-tool", "Build interfaces tool");
+    interfaces_tool_step.dependOn(&b.addInstallArtifact(interfaces_exe, .{}).step);
+
+    // REPL tool
+    const repl_exe = b.addExecutable(.{
+        .name = "repl",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/repl.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "runtime", .module = runtime_mod },
+                .{ .name = "v8", .module = v8_mod },
+            },
+        }),
+    });
+    b.installArtifact(repl_exe);
+    const repl_step = b.step("repl", "Build REPL tool");
+    repl_step.dependOn(&b.addInstallArtifact(repl_exe, .{}).step);
+
+    // ========================================================================
+    // COMPREHENSIVE BUILD TEST
+    // ========================================================================
+
     const comprehensive_exe = b.addExecutable(.{
-        .name = "whatwg-comprehensive",
+        .name = "comprehensive",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/comprehensive_test.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "infra", .module = infra_mod },
-                .{ .name = "webidl", .module = webidl_mod },
-                .{ .name = "encoding", .module = encoding_mod },
-                .{ .name = "url", .module = url_mod },
-                .{ .name = "console", .module = console_mod },
-                .{ .name = "streams", .module = streams_mod },
-                .{ .name = "dom", .module = dom_mod },
-                .{ .name = "mimesniff", .module = mimesniff_mod },
+                .{ .name = "whatwg", .module = whatwg_mod },
             },
         }),
     });

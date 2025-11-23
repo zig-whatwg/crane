@@ -1,1594 +1,2040 @@
-//! Code Generator from IR
+//! WebIDL Code Generator
 //!
-//! Generates clean, correct Zig code from EnhancedClassIR.
-//!
-//! Key improvements over string-based generation:
-//! 1. All imports emitted once, deduplicated
-//! 2. No shadowing conflicts (scope-aware)
-//! 3. Proper handling of inherited methods
-//! 4. Clean, maintainable output
+//! This module provides the main code generation function that ties together
+//! all the other codegen modules.
 
 const std = @import("std");
-const Allocator = std.mem.Allocator;
-const infra = @import("infra");
-const ir = @import("ir.zig");
-const optimizer = @import("optimizer.zig");
+const types = @import("types.zig");
+const parser = @import("parser.zig");
+const writer = @import("writer.zig");
+const files = @import("files.zig");
+const refs = @import("refs.zig");
+const ir_mod = @import("ir.zig");
+const config_mod = @import("config.zig");
+const overload = @import("overload.zig");
+const CodegenConfig = config_mod.CodegenConfig;
 
-/// Generate Zig code from enhanced class IR
-/// If module_definitions is provided, they will be included after imports
-/// If post_class_definitions is provided, they will be included after the class
-pub fn generateCode(
-    allocator: Allocator,
-    enhanced: ir.EnhancedClassIR,
-    module_definitions: ?[]const u8,
-    post_class_definitions: ?[]const u8,
-    registry: *const optimizer.ClassRegistry,
-) ![]const u8 {
-    var output = infra.List(u8).init(allocator);
-    errdefer output.deinit();
-
-    const writer = output.writer();
-
-    // Header
-    try writeHeader(writer);
-
-    // Filter module definitions first (to remove import aliases)
-    const filtered_module_defs = if (module_definitions) |defs| blk: {
-        if (defs.len > 0) {
-            break :blk try filterModuleDefinitions(allocator, defs, enhanced.all_imports);
-        } else {
-            break :blk try allocator.dupe(u8, "");
-        }
-    } else try allocator.dupe(u8, "");
-    defer allocator.free(filtered_module_defs);
-
-    // Extract names from FILTERED definitions (not unfiltered)
-    const module_def_names = if (filtered_module_defs.len > 0)
-        try extractModuleDefinitionNames(allocator, filtered_module_defs)
-    else
-        &[_][]const u8{};
-    defer {
-        for (module_def_names) |name| allocator.free(name);
-        if (module_def_names.len > 0) allocator.free(module_def_names);
-    }
-
-    try writeImports(writer, enhanced.all_imports, enhanced.class.own_constants, module_def_names);
-
-    // Module-level definitions (if this is the first class in the file)
-    // Note: filtered_module_defs was already computed and filtered earlier
-    if (filtered_module_defs.len > 0) {
-        try writer.writeAll("\n");
-        try writer.writeAll(filtered_module_defs);
-        try writer.writeAll("\n");
-    }
-
-    // Add helper functions needed by inherited methods
-    if (needsCallbackEquals(enhanced)) {
-        try writer.writeAll("\n");
-        try writer.writeAll(
-            \\/// Compare two callbacks for equality (from EventTarget)
-            \\pub fn callbackEquals(a: ?webidl.JSValue, b: ?webidl.JSValue) bool {
-            \\    if (a == null and b == null) return true;
-            \\    if (a == null or b == null) return false;
-            \\    const a_val = a.?;
-            \\    const b_val = b.?;
-            \\    if (@as(std.meta.Tag(webidl.JSValue), a_val) != @as(std.meta.Tag(webidl.JSValue), b_val)) {
-            \\        return false;
-            \\    }
-            \\    return switch (a_val) {
-            \\        .undefined, .null => true,
-            \\        .boolean => |a_bool| a_bool == b_val.boolean,
-            \\        .number => |a_num| a_num == b_val.number,
-            \\        .string => |a_str| std.mem.eql(u8, a_str, b_val.string),
-            \\        .object => |a_obj| @intFromPtr(&a_obj) == @intFromPtr(&b_val.object),
-            \\        else => false,
-            \\    };
-            \\}
-            \\
-        );
-    }
-
-    try writer.writeAll("\n");
-
-    // Class definition
-    try writeClass(allocator, writer, enhanced, registry);
-
-    // Post-class definitions (helper types defined after the class)
-    if (post_class_definitions) |post_defs| {
-        if (post_defs.len > 0) {
-            try writer.writeAll("\n\n");
-            try writer.writeAll(post_defs);
-            try writer.writeAll("\n");
-        }
-    }
-
-    return output.toOwnedSlice();
-}
-
-/// Check if class needs callbackEquals helper function
-fn needsCallbackEquals(enhanced: ir.EnhancedClassIR) bool {
-    const class = enhanced.class;
-
-    // EventTarget itself has it in module definitions
-    if (std.mem.eql(u8, class.name, "EventTarget")) return false;
-
-    // Check if any method uses callbackEquals
-    for (enhanced.all_methods) |method| {
-        if (std.mem.indexOf(u8, method.body, "callbackEquals") != null) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-/// Check if class needs Node constant aliases
-fn needsNodeConstantAliases(enhanced: ir.EnhancedClassIR) bool {
-    const class = enhanced.class;
-
-    // Node itself doesn't need aliases
-    if (std.mem.eql(u8, class.name, "Node")) return false;
-
-    // Check if any method uses Node constants
-    for (enhanced.all_methods) |method| {
-        if (std.mem.indexOf(u8, method.body, "ELEMENT_NODE") != null or
-            std.mem.indexOf(u8, method.body, "ATTRIBUTE_NODE") != null or
-            std.mem.indexOf(u8, method.body, "DOCUMENT_NODE") != null or
-            std.mem.indexOf(u8, method.body, "DOCUMENT_TYPE_NODE") != null)
-        {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-/// Write file header
-fn writeHeader(writer: anytype) !void {
-    try writer.writeAll(
-        \\// Auto-generated by webidl-codegen (AST/IR-based)
-        \\// DO NOT EDIT - changes will be overwritten
-        \\//
-        \\// This file was generated from the source file with the same name.
-        \\// Class definitions have been enhanced with:
-        \\//   - Inherited methods from parent classes
-        \\//   - Property getters and setters
-        \\//   - Optimized field layouts
-        \\//   - Automatic import resolution
-        \\
-        \\
-    );
-}
-
-/// Extract names of constants/types defined in module definitions
-fn extractModuleDefinitionNames(allocator: Allocator, defs: []const u8) ![][]const u8 {
-    var names = infra.List([]const u8).init(allocator);
-    errdefer names.deinit();
-
-    var lines = std.mem.splitScalar(u8, defs, '\n');
-    while (lines.next()) |line| {
-        const trimmed = std.mem.trim(u8, line, " \t\r");
-
-        // Pattern: (pub) const Name = ...
-        const const_start = if (std.mem.startsWith(u8, trimmed, "pub const "))
-            @as(usize, "pub const ".len)
-        else if (std.mem.startsWith(u8, trimmed, "const "))
-            @as(usize, "const ".len)
-        else
-            continue;
-
-        const after_const = trimmed[const_start..];
-        if (std.mem.indexOfAny(u8, after_const, " =:")) |end_pos| {
-            const name = after_const[0..end_pos];
-            if (name.len > 0) {
-                try names.append(try allocator.dupe(u8, name));
-            }
-        }
-    }
-
-    return try names.toOwnedSlice();
-}
-
-/// Write all imports (filtered to exclude class constants and module-level definitions)
-fn writeImports(writer: anytype, imports: []ir.Import, constants: []ir.Constant, module_def_names: []const []const u8) !void {
-    // Debug: Check if this is MutationObserver
-    const is_mutation_observer = blk: {
-        for (imports) |import| {
-            if (std.mem.indexOf(u8, import.name, "MutationObserver")) |_| break :blk true;
-        }
-        break :blk false;
+/// Check if a name is a Zig reserved keyword
+fn isZigKeyword(name: []const u8) bool {
+    const keywords = [_][]const u8{
+        "error",    "type",        "defer",   "return",   "var",      "const",     "fn",       "struct",
+        "enum",     "union",       "opaque",  "try",      "catch",    "async",     "await",    "suspend",
+        "resume",   "export",      "extern",  "pub",      "inline",   "comptime",  "callconv", "test",
+        "and",      "or",          "switch",  "if",       "else",     "while",     "for",      "break",
+        "continue", "unreachable", "anytype", "anyframe", "anyerror", "anyopaque", "align",
     };
 
-    if (is_mutation_observer) {
-        std.debug.print("\n=== MutationObserver Imports List ===\n", .{});
-        for (imports, 0..) |import, i| {
-            std.debug.print("[{d}] name=[{s}] module=[{s}]\n", .{ i, import.name, import.module });
-        }
-        std.debug.print("module_def_names.len={d}\n", .{module_def_names.len});
-        for (module_def_names, 0..) |name, i| {
-            std.debug.print("  [{d}] {s}\n", .{ i, name });
-        }
-        std.debug.print("=== END ===\n", .{});
-    }
-
-    // Build set of names to exclude from imports
-    var excluded_names = std.StringHashMap(void).init(std.heap.page_allocator);
-    defer excluded_names.deinit();
-
-    // Exclude class constant names
-    for (constants) |constant| {
-        try excluded_names.put(constant.name, {});
-    }
-
-    // Exclude module definition names
-    for (module_def_names) |name| {
-        try excluded_names.put(name, {});
-    }
-
-    // Sort imports by name for consistent output
-    var sorted_imports = infra.List(ir.Import).init(std.heap.page_allocator);
-    defer sorted_imports.deinit();
-
-    for (imports) |import| {
-        // Skip imports that match excluded names
-        if (excluded_names.contains(import.name)) {
-            continue;
-        }
-        try sorted_imports.append(import);
-    }
-
-    // Simple bubble sort (small lists)
-    var i: usize = 0;
-    while (i < sorted_imports.len) : (i += 1) {
-        var j: usize = i + 1;
-        while (j < sorted_imports.len) : (j += 1) {
-            const name_i = sorted_imports.get(i).?.name;
-            const name_j = sorted_imports.get(j).?.name;
-            if (std.mem.order(u8, name_i, name_j) == .gt) {
-                const temp = sorted_imports.get(i).?;
-                sorted_imports.toSliceMut()[i] = sorted_imports.get(j).?;
-                sorted_imports.toSliceMut()[j] = temp;
-            }
+    for (keywords) |keyword| {
+        if (std.mem.eql(u8, name, keyword)) {
+            return true;
         }
     }
 
-    // Write sorted imports
-    for (0..sorted_imports.len) |idx| {
-        const import = sorted_imports.get(idx).?;
-        const vis = if (import.visibility == .public) "pub " else "";
-
-        // Special case: std.mem aliases (Allocator, ArrayList, etc.)
-        // These should be written as: const Allocator = std.mem.Allocator;
-        if (std.mem.eql(u8, import.module, "std.mem")) {
-            try writer.print("{s}const {s} = std.mem.{s};\n", .{
-                vis,
-                import.name,
-                import.name,
-            });
-            continue;
-        }
-
-        // Heuristic: Determine if this is a module import vs type import
-        // Module imports: const std = @import("std"), const common = @import("common")
-        // Type imports: const Foo = @import("foo").Foo
-        // Special case: const FooModule = @import("foo") (module with "Module" suffix)
-        const name_is_lowercase = import.name.len > 0 and import.name[0] >= 'a' and import.name[0] <= 'z';
-        const ends_with_module = std.mem.endsWith(u8, import.name, "Module");
-        const is_module_import = !import.is_type or name_is_lowercase or ends_with_module;
-
-        if (!is_module_import and import.is_type) {
-            // Type import: const Foo = @import("foo").Foo;
-            try writer.print("{s}const {s} = @import(\"{s}\").{s};\n", .{
-                vis,
-                import.name,
-                import.module,
-                import.name,
-            });
-        } else {
-            // Module import: const std = @import("std");
-            try writer.print("{s}const {s} = @import(\"{s}\");\n", .{
-                vis,
-                import.name,
-                import.module,
-            });
-        }
-    }
-
-    try writer.writeAll("\n");
+    return false;
 }
 
-/// Write class definition
-/// Generate discriminator value constant for child types (e.g., node_type_VALUE)
-/// This constant is used by the parent's as() method for type checking
-fn writeDiscriminatorValueConstant(
-    allocator: Allocator,
-    writer: anytype,
-    class: ir.ClassDef,
-    enhanced: ir.EnhancedClassIR,
-    registry: *const optimizer.ClassRegistry,
+/// Check if a name conflicts with impl-specific reserved function names
+/// These are functions we generate in every impl file (init, deinit, constructor)
+fn isImplReservedName(name: []const u8) bool {
+    const reserved = [_][]const u8{
+        "init", // Instance initialization function
+        "deinit", // Instance cleanup function
+        "constructor", // Constructor implementation function
+    };
+
+    for (reserved) |r| {
+        if (std.mem.eql(u8, name, r)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/// Write escaped parameter name for impl file generation
+/// For impl-reserved names (init, deinit, constructor), append suffix instead of using @"identifier"
+/// because Zig doesn't allow parameter names that shadow declarations even with escaping
+fn writeEscapedImplParamName(w: anytype, name: []const u8) !void {
+    if (isImplReservedName(name)) {
+        // Rename reserved names: init → init_data, deinit → deinit_data, constructor → ctor_data
+        try w.print("{s}_data", .{name});
+    } else if (isZigKeyword(name)) {
+        // Use @"identifier" for Zig keywords
+        try w.print("@\"{s}\"", .{name});
+    } else {
+        // Normal names
+        try w.print("{s}", .{name});
+    }
+}
+
+/// Sanitize a name for use in function names (cannot use @"..." for functions)
+/// Converts hyphens to underscores
+fn sanitizeFunctionName(allocator: std.mem.Allocator, name: []const u8) ![]const u8 {
+    // Check if name contains hyphens
+    if (std.mem.indexOfScalar(u8, name, '-')) |_| {
+        // Replace hyphens with underscores
+        var result = try allocator.alloc(u8, name.len);
+        for (name, 0..) |c, i| {
+            result[i] = if (c == '-') '_' else c;
+        }
+        return result;
+    }
+    // No hyphens, return as-is (no allocation needed)
+    return name;
+}
+
+/// Deduplicate attributes by name (keep first occurrence)
+fn deduplicateAttributes(allocator: std.mem.Allocator, attrs: *std.ArrayList(types.Attribute)) !void {
+    if (attrs.items.len <= 1) return;
+
+    var unique = std.ArrayList(types.Attribute).empty;
+    defer unique.deinit(allocator);
+
+    var seen = std.StringHashMap(void).init(allocator);
+    defer seen.deinit();
+
+    for (attrs.items) |attr| {
+        const entry = try seen.getOrPut(attr.name);
+        if (!entry.found_existing) {
+            // First occurrence - keep it
+            try unique.append(allocator, attr);
+        }
+        // Duplicate - skip it
+    }
+
+    // Replace original list with deduplicated one
+    attrs.clearRetainingCapacity();
+    try attrs.appendSlice(allocator, unique.items);
+}
+
+/// Deduplicate constants by name (keep first occurrence)
+fn deduplicateConstants(allocator: std.mem.Allocator, constants: *std.ArrayList(types.Constant)) !void {
+    if (constants.items.len <= 1) return;
+
+    var unique = std.ArrayList(types.Constant).empty;
+    defer unique.deinit(allocator);
+
+    var seen = std.StringHashMap(void).init(allocator);
+    defer seen.deinit();
+
+    for (constants.items) |constant| {
+        const entry = try seen.getOrPut(constant.name);
+        if (!entry.found_existing) {
+            // First occurrence - keep it
+            try unique.append(allocator, constant);
+        }
+        // Duplicate - skip it
+    }
+
+    // Replace original list with deduplicated one
+    constants.clearRetainingCapacity();
+    try constants.appendSlice(allocator, unique.items);
+}
+
+/// Deduplicate constructors by argument count (simple deduplication)
+/// For more complex overloading, argument types should also be compared
+fn deduplicateConstructors(allocator: std.mem.Allocator, constructors: *std.ArrayList(types.Constructor)) !void {
+    if (constructors.items.len <= 1) return;
+
+    var unique = std.ArrayList(types.Constructor).empty;
+    defer unique.deinit(allocator);
+
+    var seen = std.AutoHashMap(usize, void).init(allocator);
+    defer seen.deinit();
+
+    for (constructors.items) |ctor| {
+        const arg_count = ctor.arguments.len;
+        const entry = try seen.getOrPut(arg_count);
+        if (!entry.found_existing) {
+            // First occurrence with this argument count - keep it
+            try unique.append(allocator, ctor);
+        }
+        // Duplicate signature - skip it
+    }
+
+    // Replace original list with deduplicated one
+    constructors.clearRetainingCapacity();
+    try constructors.appendSlice(allocator, unique.items);
+}
+
+/// Deduplicate operations by name (keep first occurrence)
+fn deduplicateOperations(allocator: std.mem.Allocator, ops: *std.ArrayList(types.Operation)) !void {
+    if (ops.items.len <= 1) return;
+
+    var unique = std.ArrayList(types.Operation).empty;
+    defer unique.deinit(allocator);
+
+    var seen = std.StringHashMap(void).init(allocator);
+    defer seen.deinit();
+
+    for (ops.items) |op| {
+        const op_name = op.name orelse continue;
+        const entry = try seen.getOrPut(op_name);
+        if (!entry.found_existing) {
+            // First occurrence - keep it
+            try unique.append(allocator, op);
+        }
+        // Duplicate - skip it
+    }
+
+    // Replace original list with deduplicated one
+    ops.clearRetainingCapacity();
+    try ops.appendSlice(allocator, unique.items);
+}
+
+/// Generate root.zig file that exports all interfaces
+pub fn generateInterfacesRoot(
+    allocator: std.mem.Allocator,
+    interfaces_path: []const u8,
+    interface_names: []const []const u8,
 ) !void {
-    _ = enhanced;
+    const root_path = try std.fs.path.join(allocator, &.{ interfaces_path, "root.zig" });
+    defer allocator.free(root_path);
 
-    // Only generate for child classes (not the parent with discriminator)
-    const parent_name = class.parent orelse return;
+    const root_file = try std.fs.cwd().createFile(root_path, .{});
+    defer root_file.close();
 
-    // Cast away const - registry.get() requires mutable but we only read
-    const mutable_registry = @constCast(registry);
-    var current_parent_class = mutable_registry.get(parent_name) orelse return;
-    var constants_class_name = parent_name;
+    var buffer: [4096]u8 = undefined;
+    var file_writer = root_file.writer(&buffer);
+    const w = &file_writer.interface;
 
-    // Walk up parent chain to find a class with constants (the discriminator owner)
-    // e.g., Text -> CharacterData -> Node (Node has constants)
-    var depth: usize = 0;
-    while (depth < 10) : (depth += 1) {
-        if (current_parent_class.own_constants.len > 0) {
-            // Found a class with constants
-            break;
+    // Write header
+    try w.writeAll("//! Auto-generated root file for all WebIDL interfaces\n");
+    try w.writeAll("//!\n");
+    try w.writeAll("//! This file is AUTO-GENERATED. Do not edit manually.\n");
+    try w.writeAll("\n");
+
+    // Sort interface names for deterministic output
+    const sorted_names = try allocator.dupe([]const u8, interface_names);
+    defer allocator.free(sorted_names);
+    std.mem.sort([]const u8, sorted_names, {}, struct {
+        fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+            return std.mem.lessThan(u8, a, b);
         }
+    }.lessThan);
 
-        // No constants, try grandparent
-        const grandparent_name = current_parent_class.parent orelse return; // No constants in hierarchy
-        constants_class_name = grandparent_name;
-        current_parent_class = mutable_registry.get(grandparent_name) orelse return;
+    // Export all interfaces
+    for (sorted_names) |name| {
+        try w.print("pub const {s} = @import(\"{s}.zig\").{s};\n", .{ name, name, name });
     }
 
-    // Find which discriminator constant matches this child
-    const discriminator_constant = try findDiscriminatorConstantForChild(
-        allocator,
-        class.name,
-        current_parent_class,
-    ) orelse return;
-    defer allocator.free(discriminator_constant);
-
-    // Determine the root class with the discriminator (walk up the hierarchy)
-    // For DOM, this is always Node, but be generic
-    var root_class_name = constants_class_name;
-    var current = current_parent_class;
-    depth = 0; // Reset depth counter
-    const max_depth = 10; // Prevent infinite loops
-
-    while (depth < max_depth) : (depth += 1) {
-        const grandparent_name = current.parent orelse break;
-        const grandparent = mutable_registry.get(grandparent_name) orelse break;
-
-        // Check if grandparent has the same constant (means it's higher in hierarchy)
-        var found = false;
-        for (grandparent.own_constants) |constant| {
-            if (std.mem.eql(u8, constant.name, discriminator_constant)) {
-                root_class_name = grandparent_name;
-                current = grandparent;
-                found = true;
-                break;
-            }
-        }
-
-        if (!found) break;
-    }
-
-    // Generate the constant
-    // For Node children: pub const node_type_VALUE = Node.ELEMENT_NODE;
-    // For CharacterData children: pub const node_type_VALUE = Node.TEXT_NODE;
-    try writer.writeAll("\n    // Discriminator value for parent's as() method\n");
-    try writer.print("    pub const node_type_VALUE = {s}.{s};\n", .{ root_class_name, discriminator_constant });
+    try w.flush();
 }
 
-/// Find the discriminator constant that matches a child class
-/// Walks up the parent chain to find constants if parent doesn't have them
-fn findDiscriminatorConstantForChild(
-    allocator: Allocator,
-    child_name: []const u8,
-    parent_class: *ir.ClassDef,
-) !?[]const u8 {
-    // Check parent's own constants first
-    for (parent_class.own_constants) |constant| {
-        if (matchConstantToChildName(constant.name, child_name)) {
-            return try allocator.dupe(u8, constant.name);
-        }
-    }
-
-    // Parent doesn't have constants - this can happen with intermediate classes
-    // like CharacterData (extends Node but has no node_type constants)
-    // Return null and let caller handle it
-    return null;
-}
-
-/// Write an ExtendedAttributeValue to the output
-fn writeExtendedAttributeValue(writer: anytype, value: anytype) !void {
-    switch (value) {
-        .none => try writer.writeAll(".none"),
-        .identifier => |id| {
-            try writer.writeAll(".{ .identifier = \"");
-            try writer.writeAll(id);
-            try writer.writeAll("\" }");
-        },
-        .identifier_list => |list| {
-            try writer.writeAll(".{ .identifier_list = &.{");
-            for (list, 0..) |id, i| {
-                if (i > 0) try writer.writeAll(", ");
-                try writer.writeAll("\"");
-                try writer.writeAll(id);
-                try writer.writeAll("\"");
-            }
-            try writer.writeAll("} }");
-        },
-        .wildcard => try writer.writeAll(".wildcard"),
-        .string => |s| {
-            try writer.writeAll(".{ .string = \"");
-            try writer.writeAll(s);
-            try writer.writeAll("\" }");
-        },
-        .integer => |i| {
-            try writer.print(".{{ .integer = {} }}", .{i});
-        },
-        .decimal => |d| {
-            try writer.print(".{{ .decimal = {} }}", .{d});
-        },
-        .named_arg_list => |args| {
-            try writer.writeAll(".{ .named_arg_list = &.{");
-            for (args, 0..) |arg, i| {
-                if (i > 0) try writer.writeAll(", ");
-                try writer.writeAll(".{ .name = \"");
-                try writer.writeAll(arg.name);
-                try writer.writeAll("\", .value = \"");
-                try writer.writeAll(arg.value);
-                try writer.writeAll("\" }");
-            }
-            try writer.writeAll("} }");
-        },
-    }
-}
-
-fn writeClass(allocator: Allocator, writer: anytype, enhanced: ir.EnhancedClassIR, registry: *const optimizer.ClassRegistry) !void {
-    const class = enhanced.class;
-
-    // Class doc comment
-    if (class.doc_comment) |doc| {
-        var lines = std.mem.splitScalar(u8, doc, '\n');
-        while (lines.next()) |line| {
-            try writer.print("/// {s}\n", .{line});
-        }
-    }
-
-    // Class declaration
-    // CRITICAL: We need guaranteed field order for @ptrCast to work with inheritance.
-    //
-    // Unfortunately, neither `extern struct` nor `packed struct` works for us:
-    // - extern struct: Can't contain Allocator (not extern-compatible)
-    // - packed struct: Would waste memory with padding
-    //
-    // SOLUTION: Generate explicit field ordering comment + rely on Zig's current behavior
-    // which tends to preserve source order (though not guaranteed). The real fix requires
-    // using @fieldParentPtr or redesigning inheritance.
-    //
-    // TODO: Replace @ptrCast with proper @fieldParentPtr-based casting
-    try writer.print("pub const {s} = struct {{\n", .{class.name});
-
-    // Fields
-    // Write struct fields (mixin + own, but not parent inherited)
-    // Mixin fields must be written because mixins are composition (includes)
-    // Parent fields are not written because Zig doesn't support field inheritance
-    if (enhanced.struct_fields.len > 0) {
-        try writer.writeAll("    // ========================================================================\n");
-        try writer.writeAll("    // Fields\n");
-        try writer.writeAll("    // ========================================================================\n\n");
-        for (enhanced.struct_fields) |field| {
-            if (field.doc_comment) |doc| {
-                var lines = std.mem.splitScalar(u8, doc, '\n');
-                while (lines.next()) |line| {
-                    try writer.print("    /// {s}\n", .{line});
-                }
-            }
-            try writer.print("    {s}: {s},\n", .{ field.name, field.type_name });
-        }
-    }
-
-    // Constants
-    const has_constants = class.own_constants.len > 0;
-    const needs_node_constants = needsNodeConstantAliases(enhanced);
-
-    if (has_constants or needs_node_constants) {
-        try writer.writeAll("\n    // ========================================================================\n");
-        try writer.writeAll("    // Constants\n");
-        try writer.writeAll("    // ========================================================================\n\n");
-
-        // Own constants
-        for (class.own_constants) |constant| {
-            try writer.print("    {s}const {s}", .{ constant.visibility.toString(), constant.name });
-            if (constant.type_name) |type_name| {
-                try writer.print(": {s}", .{type_name});
-            }
-            try writer.print(" = {s};\n", .{constant.value});
-        }
-
-        // Node constant aliases (for classes inheriting from Node)
-        if (needs_node_constants and !std.mem.eql(u8, class.name, "Node")) {
-            if (has_constants) try writer.writeAll("\n");
-            try writer.writeAll("    // Node type constants (inherited)\n");
-            try writer.writeAll("    pub const ELEMENT_NODE: u16 = Node.ELEMENT_NODE;\n");
-            try writer.writeAll("    pub const ATTRIBUTE_NODE: u16 = Node.ATTRIBUTE_NODE;\n");
-            try writer.writeAll("    pub const TEXT_NODE: u16 = Node.TEXT_NODE;\n");
-            try writer.writeAll("    pub const CDATA_SECTION_NODE: u16 = Node.CDATA_SECTION_NODE;\n");
-            try writer.writeAll("    pub const PROCESSING_INSTRUCTION_NODE: u16 = Node.PROCESSING_INSTRUCTION_NODE;\n");
-            try writer.writeAll("    pub const COMMENT_NODE: u16 = Node.COMMENT_NODE;\n");
-            try writer.writeAll("    pub const DOCUMENT_NODE: u16 = Node.DOCUMENT_NODE;\n");
-            try writer.writeAll("    pub const DOCUMENT_TYPE_NODE: u16 = Node.DOCUMENT_TYPE_NODE;\n");
-            try writer.writeAll("    pub const DOCUMENT_FRAGMENT_NODE: u16 = Node.DOCUMENT_FRAGMENT_NODE;\n");
-        }
-
-        // Auto-generate discriminator value constant for child types
-        try writeDiscriminatorValueConstant(allocator, writer, class, enhanced, registry);
-    }
-
-    // WebIDL Metadata
-    try writer.writeAll("\n    // ========================================================================\n");
-    try writer.writeAll("    // WebIDL Metadata\n");
-    try writer.writeAll("    // ========================================================================\n\n");
-    try writer.writeAll("    pub const __webidl__ = .{\n");
-    try writer.print("        .name = \"{s}\",\n", .{class.name});
-
-    const kind_str = switch (class.kind) {
-        .interface => "interface",
-        .namespace => "namespace",
-        .mixin => "mixin",
-    };
-    try writer.print("        .kind = .{s},\n", .{kind_str});
-
-    // Parent interface (for inheritance chain)
-    if (class.parent) |parent| {
-        try writer.print("        .parent = \"{s}\",\n", .{parent});
-    } else {
-        try writer.writeAll("        .parent = null,\n");
-    }
-
-    // Extended attributes
-    if (class.extended_attrs.len > 0) {
-        try writer.writeAll("        .extended_attrs = &.{\n");
-        for (class.extended_attrs) |attr| {
-            try writer.writeAll("            .{ .name = \"");
-            try writer.writeAll(attr.name);
-            try writer.writeAll("\", .value = ");
-            try writeExtendedAttributeValue(writer, attr.value);
-            try writer.writeAll(" },\n");
-        }
-        try writer.writeAll("        },\n");
-    } else {
-        try writer.writeAll("        .extended_attrs = &.{},\n");
-    }
-
-    try writer.writeAll("    };\n");
-
-    // Methods
-    if (enhanced.all_methods.len > 0) {
-        try writer.writeAll("\n    // ========================================================================\n");
-        try writer.writeAll("    // Methods\n");
-        try writer.writeAll("    // ========================================================================\n\n");
-
-        for (enhanced.all_methods) |method| {
-            try writeMethod(allocator, writer, method, enhanced.all_imports, class.name, enhanced.struct_fields);
-            try writer.writeAll("\n");
-        }
-    }
-
-    // Type Conversion Helpers (Downcast Methods)
-    try writeDowncastHelpers(allocator, writer, enhanced, registry);
-
-    try writer.writeAll("};\n");
-}
-
-/// Inheritance hierarchy information for downcast generation
-const InheritanceInfo = struct {
-    discriminator_field: []const u8, // Field used for type checking (e.g., "node_type")
-    children: []ChildTypeInfo, // Direct children of this class
-
-    const ChildTypeInfo = struct {
-        class_name: []const u8, // Child class name (e.g., "Element", "CharacterData")
-        discriminator_values: [][]const u8, // Values that map to this type (e.g., "ELEMENT_NODE", "TEXT_NODE")
-    };
-};
-
-/// Detect discriminator field for a class by analyzing its constants and parent
-fn detectDiscriminatorField(class: ir.ClassDef, enhanced: ir.EnhancedClassIR) ?[]const u8 {
-    // Look for common discriminator patterns in own constants
-    for (class.own_constants) |constant| {
-        const name = constant.name;
-
-        // Pattern 1: *_NODE constants (DOM Node hierarchy)
-        if (std.mem.endsWith(u8, name, "_NODE")) {
-            return "node_type";
-        }
-
-        // Pattern 2: *_TYPE constants (generic type discriminator)
-        if (std.mem.endsWith(u8, name, "_TYPE")) {
-            return "type";
-        }
-
-        // Pattern 3: KIND_* constants
-        if (std.mem.startsWith(u8, name, "KIND_")) {
-            return "kind";
-        }
-    }
-
-    // Check if we have node_type field (inherited from Node)
-    for (enhanced.struct_fields) |field| {
-        if (std.mem.eql(u8, field.name, "node_type")) {
-            return "node_type";
-        }
-        if (std.mem.eql(u8, field.name, "type")) {
-            return "type";
-        }
-        if (std.mem.eql(u8, field.name, "kind")) {
-            return "kind";
-        }
-    }
-
-    return null;
-}
-
-/// Find all direct children of a class in the registry
-fn findDirectChildren(allocator: Allocator, class_name: []const u8, registry: *const optimizer.ClassRegistry) ![][]const u8 {
-    var children = infra.List([]const u8).init(allocator);
-
-    // Iterate through all classes in registry
-    var iter = registry.classes.iterator();
-    while (iter.next()) |entry| {
-        const potential_child = entry.value_ptr.*;
-
-        // Check if this class's parent matches our class_name
-        if (potential_child.parent) |parent_name| {
-            if (std.mem.eql(u8, parent_name, class_name)) {
-                try children.append(try allocator.dupe(u8, potential_child.name));
-            }
-        }
-    }
-
-    return try children.toOwnedSlice();
-}
-
-/// Try to match a constant name to a child class name
-/// Examples: TEXT_NODE -> Text, ELEMENT_NODE -> Element, TEXT_TYPE -> Text
-fn matchConstantToChildName(constant_name: []const u8, child_name: []const u8) bool {
-    // Common patterns:
-    // 1. CHILDNAME_NODE (e.g., TEXT_NODE -> Text)
-    // 2. CHILDNAME_TYPE (e.g., TEXT_TYPE -> Text)
-    // 3. KIND_CHILDNAME (e.g., KIND_TEXT -> Text)
-
-    // Convert child_name to UPPERCASE (simple)
-    var upper_child_buf: [128]u8 = undefined;
-    if (child_name.len > 64) return false; // Conservative limit
-
-    const upper_child = std.ascii.upperString(&upper_child_buf, child_name);
-
-    // Build UPPER_CASE version with underscores for CamelCase
-    // e.g., "DocumentType" -> "DOCUMENT_TYPE"
-    var upper_child_underscore_buf: [128]u8 = undefined;
-    const upper_child_underscore = blk: {
-        var write_pos: usize = 0;
-        for (child_name, 0..) |c, i| {
-            // Insert underscore before uppercase letters (except first)
-            if (i > 0 and std.ascii.isUpper(c) and !std.ascii.isUpper(child_name[i - 1])) {
-                upper_child_underscore_buf[write_pos] = '_';
-                write_pos += 1;
-            }
-            upper_child_underscore_buf[write_pos] = std.ascii.toUpper(c);
-            write_pos += 1;
-        }
-        break :blk upper_child_underscore_buf[0..write_pos];
-    };
-
-    // Pattern 1a: CHILDNAME_NODE (exact match, e.g., TEXT_NODE -> Text)
-    if (std.mem.endsWith(u8, constant_name, "_NODE")) {
-        const prefix = constant_name[0 .. constant_name.len - "_NODE".len];
-        if (std.mem.eql(u8, prefix, upper_child)) {
-            return true;
-        }
-    }
-
-    // Pattern 1a': Abbreviated form (constant prefix is abbreviated child name)
-    // e.g., ATTRIBUTE_NODE -> Attr (prefix="ATTRIBUTE" starts with "ATTR")
-    if (std.mem.endsWith(u8, constant_name, "_NODE")) {
-        const prefix = constant_name[0 .. constant_name.len - "_NODE".len];
-        // Constant prefix must exactly match child, or
-        // child must be 3+ chars and be the start of the prefix
-        if (upper_child.len >= 3 and prefix.len > upper_child.len) {
-            // The constant prefix must START with the child name
-            // e.g., "ATTRIBUTE" starts with "ATTR" ✓
-            // BUT "DOCUMENT_TYPE" does NOT start with "DOCUMENT" (it equals, then has more)
-            // Actually that DOES start with "DOCUMENT"... the issue is we need exact or abbreviated
-            // Let me be more precise: child name abbreviates the prefix
-            // ATTR abbreviates ATTRIBUTE (ATTR is start of ATTRIBUTE) ✓
-            // DOCUMENT does NOT abbreviate DOCUMENT_TYPE (can't have underscore in between)
-
-            // Only match if there's no underscore in the prefix after the child length
-            const after_child = prefix[upper_child.len..];
-            if (std.mem.startsWith(u8, prefix, upper_child) and
-                after_child.len > 0 and after_child[0] != '_')
-            {
-                return true;
-            }
-        }
-    }
-
-    // Pattern 1b: CHILD_NAME_NODE (with underscores, e.g., DOCUMENT_TYPE_NODE -> DocumentType)
-    if (std.mem.endsWith(u8, constant_name, "_NODE")) {
-        const prefix = constant_name[0 .. constant_name.len - "_NODE".len];
-        if (std.mem.eql(u8, prefix, upper_child_underscore)) {
-            return true;
-        }
-    }
-
-    // Pattern 2: CHILDNAME_TYPE or CHILD_NAME_TYPE
-    if (std.mem.endsWith(u8, constant_name, "_TYPE")) {
-        const prefix = constant_name[0 .. constant_name.len - "_TYPE".len];
-        if (std.mem.eql(u8, prefix, upper_child) or std.mem.eql(u8, prefix, upper_child_underscore)) {
-            return true;
-        }
-    }
-
-    // Pattern 3: KIND_CHILDNAME or KIND_CHILD_NAME
-    if (std.mem.startsWith(u8, constant_name, "KIND_")) {
-        const suffix = constant_name["KIND_".len..];
-        if (std.mem.eql(u8, suffix, upper_child) or std.mem.eql(u8, suffix, upper_child_underscore)) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-/// Find all constants that map to a specific child class
-fn findConstantsForChild(
-    allocator: Allocator,
-    child_name: []const u8,
-    parent_class: ir.ClassDef,
-) ![][]const u8 {
-    var matching_constants = infra.List([]const u8).init(allocator);
-
-    // Check all constants in the parent class
-    for (parent_class.own_constants) |constant| {
-        if (matchConstantToChildName(constant.name, child_name)) {
-            try matching_constants.append(constant.name);
-        }
-    }
-
-    return try matching_constants.toOwnedSlice();
-}
-
-/// Build inheritance information for generating downcast helpers
-fn buildInheritanceInfo(allocator: Allocator, class: ir.ClassDef, enhanced: ir.EnhancedClassIR, registry: *const optimizer.ClassRegistry) !?InheritanceInfo {
-    // Detect discriminator field
-    const discriminator = detectDiscriminatorField(class, enhanced) orelse return null;
-
-    // Find all direct children dynamically from registry
-    const child_names = try findDirectChildren(allocator, class.name, registry);
-    defer {
-        for (child_names) |name| allocator.free(name);
-        allocator.free(child_names);
-    }
-
-    // If no children, no downcast helpers needed
-    if (child_names.len == 0) return null;
-
-    // Build children info dynamically by auto-detecting constant-to-type mappings
-    var children_list = infra.List(InheritanceInfo.ChildTypeInfo).init(allocator);
-
-    // For each child, auto-detect which constants map to it
-    for (child_names) |child_name| {
-        // Find all constants that match this child's name
-        const constants = try findConstantsForChild(allocator, child_name, class);
-        defer allocator.free(constants);
-
-        // Only include children that have at least one matching constant
-        if (constants.len > 0) {
-            var values = infra.List([]const u8).init(allocator);
-            for (constants) |constant_name| {
-                try values.append(constant_name);
-            }
-            try children_list.append(.{
-                .class_name = try allocator.dupe(u8, child_name), // Duplicate so it survives defer cleanup
-                .discriminator_values = try values.toOwnedSlice(),
-            });
-        }
-    }
-
-    // If no children with constants found, no downcast helpers needed
-    if (children_list.len == 0) return null;
-
-    return InheritanceInfo{
-        .discriminator_field = discriminator,
-        .children = try children_list.toOwnedSlice(),
-    };
-}
-
-/// Generate single generic type conversion helper for safe downcasting
-fn writeDowncastHelpers(allocator: Allocator, writer: anytype, enhanced: ir.EnhancedClassIR, registry: *const optimizer.ClassRegistry) !void {
-    _ = allocator;
-    const class = enhanced.class;
-
-    // Detect discriminator field - if none, no downcast helper needed
-    const discriminator = detectDiscriminatorField(class, enhanced) orelse return;
-
-    try writer.writeAll("\n    // ========================================================================\n");
-    try writer.writeAll("    // Type Conversion Helper (Safe Downcasting)\n");
-    try writer.writeAll("    // ========================================================================\n");
-    try writer.writeAll("    // Generic downcast that works for any child type.\n");
-    try writer.print("    // Child types must declare: pub const {s}_VALUE = <discriminator_constant>\n\n", .{discriminator});
-
-    // Generate single generic as() method (mutable version)
-    try writer.writeAll("    /// Safe downcast to child type T\n");
-    try writer.writeAll("    /// Returns null if this instance is not of type T\n");
-    try writer.writeAll("    /// \n");
-    try writer.print("    /// Requires: T must declare `pub const {s}_VALUE`\n", .{discriminator});
-    try writer.writeAll("    /// \n");
-    try writer.writeAll("    /// Example:\n");
-    try writer.print("    ///   if (node.as(Element)) |elem| {{\n", .{});
-    try writer.writeAll("    ///       // use elem\n");
-    try writer.writeAll("    ///   }\n");
-    try writer.print("    pub fn as(self: *{s}, comptime T: type) ?*T {{\n", .{class.name});
-    try writer.writeAll("        comptime {\n");
-    try writer.print("            if (!@hasDecl(T, \"{s}_VALUE\")) {{\n", .{discriminator});
-    try writer.print("                @compileError(\"Cannot cast to \" ++ @typeName(T) ++ \": type must declare 'pub const {s}_VALUE'\");\n", .{discriminator});
-    try writer.writeAll("            }\n");
-    try writer.writeAll("        }\n");
-    try writer.print("        return if (self.{s} == T.{s}_VALUE)\n", .{ discriminator, discriminator });
-    try writer.writeAll("            @ptrCast(@alignCast(self))\n");
-    try writer.writeAll("        else\n");
-    try writer.writeAll("            null;\n");
-    try writer.writeAll("    }\n\n");
-
-    // Generate const version
-    try writer.writeAll("    /// Safe downcast to child type T (const version)\n");
-    try writer.print("    pub fn asConst(self: *const {s}, comptime T: type) ?*const T {{\n", .{class.name});
-    try writer.writeAll("        comptime {\n");
-    try writer.print("            if (!@hasDecl(T, \"{s}_VALUE\")) {{\n", .{discriminator});
-    try writer.print("                @compileError(\"Cannot cast to \" ++ @typeName(T) ++ \": type must declare 'pub const {s}_VALUE'\");\n", .{discriminator});
-    try writer.writeAll("            }\n");
-    try writer.writeAll("        }\n");
-    try writer.print("        return if (self.{s} == T.{s}_VALUE)\n", .{ discriminator, discriminator });
-    try writer.writeAll("            @ptrCast(@alignCast(self))\n");
-    try writer.writeAll("        else\n");
-    try writer.writeAll("            null;\n");
-    try writer.writeAll("    }\n\n");
-
-    _ = registry; // TODO: Use registry to generate NODE_TYPE constants in children
-}
-
-/// Rewrite self parameter type in method signature for mixin inheritance
-/// Example: (self: *ReadableStreamGenericReader, ...) -> (self: *ReadableStreamBYOBReader, ...)
-/// Also handles: (self: *const ReadableStreamGenericReader, ...) -> (self: *const ReadableStreamBYOBReader, ...)
-/// And: (self: *const @This()) -> (self: *const TargetClass)
-fn rewriteSelfParameterType(allocator: Allocator, signature: []const u8, target_class: []const u8) ![]const u8 {
-    // Find "self: " pattern in signature
-    const self_pattern = "self: ";
-    const self_start = std.mem.indexOf(u8, signature, self_pattern) orelse {
-        // No self parameter - return unchanged
-        return signature;
-    };
-
-    var cursor = self_start + self_pattern.len;
-
-    // Skip pointer syntax: * or *const
-    if (cursor < signature.len and signature[cursor] == '*') {
-        cursor += 1;
-        // Check for "const " after the *
-        if (cursor + 6 < signature.len and std.mem.startsWith(u8, signature[cursor..], "const ")) {
-            cursor += 6; // "const "
-        }
-    }
-
-    const type_start = cursor;
-
-    // Check for @This() special case
-    var type_end = type_start;
-    if (std.mem.startsWith(u8, signature[type_start..], "@This()")) {
-        type_end = type_start + "@This()".len;
-    } else {
-        // Find the end of the type name (next comma, paren, or whitespace)
-        while (type_end < signature.len) : (type_end += 1) {
-            const c = signature[type_end];
-            if (c == ',' or c == ')' or c == ' ' or c == '\t' or c == '\n') {
-                break;
-            }
-        }
-    }
-
-    const original_type = signature[type_start..type_end];
-
-    // If the type is already the target class, no rewrite needed
-    if (std.mem.eql(u8, original_type, target_class)) {
-        return signature;
-    }
-
-    // Build rewritten signature
-    var result = infra.List(u8).init(allocator);
-    defer result.deinit();
-
-    try result.appendSlice(signature[0..type_start]); // Up to and including "self: *" or "self: *const "
-    try result.appendSlice(target_class); // New type name
-    try result.appendSlice(signature[type_end..]); // Rest of signature (including closing paren if @This())
-
-    return try result.toOwnedSlice();
-}
-
-/// Synthesize init method body from field init expressions
-fn synthesizeInitMethod(
-    allocator: Allocator,
-    struct_fields: []ir.Field,
-    method_signature: []const u8,
-    class_name: []const u8,
-) ![]const u8 {
-    var body = infra.List(u8).init(allocator);
-    errdefer body.deinit();
-    const writer = body.writer();
-
-    // Parse parameters from signature to know what's available
-    const params = try parseInitParameters(allocator, method_signature);
-    defer {
-        for (params) |param| {
-            allocator.free(param.name);
-            allocator.free(param.type_name);
-        }
-        allocator.free(params);
-    }
-
-    try writer.writeAll("\n        return .{\n");
-
-    // For each field, generate initialization code
-    for (struct_fields) |field| {
-        const init_code = if (field.init_expr) |expr|
-            try generateInitCodeFromExpression(allocator, expr, params, class_name)
-        else
-            try inferDefaultInit(allocator, field.type_name, params, class_name);
-
-        defer allocator.free(init_code);
-
-        try writer.print("            .{s} = {s},\n", .{ field.name, init_code });
-    }
-
-    try writer.writeAll("        };\n    ");
-
-    return body.toOwnedSlice();
-}
-
-/// Parameter info extracted from init signature
-const InitParameter = struct {
-    name: []const u8,
-    type_name: []const u8,
-};
-
-/// Parse init method parameters from signature
-fn parseInitParameters(allocator: Allocator, signature: []const u8) ![]InitParameter {
-    var params_list = infra.List(InitParameter).init(allocator);
-    errdefer {
-        for (params_list.toSliceMut()) |param| {
-            allocator.free(param.name);
-            allocator.free(param.type_name);
-        }
-        params_list.deinit();
-    }
-
-    // Find parameter list: (param1: Type1, param2: Type2) !ReturnType
-    const paren_start = std.mem.indexOf(u8, signature, "(") orelse return params_list.toOwnedSlice();
-    const paren_end = std.mem.indexOf(u8, signature[paren_start..], ")") orelse return params_list.toOwnedSlice();
-    const params_str = signature[paren_start + 1 .. paren_start + paren_end];
-
-    // Split by comma (accounting for nested generics)
-    var pos: usize = 0;
-    var param_start: usize = 0;
-    var angle_depth: i32 = 0;
-
-    while (pos < params_str.len) : (pos += 1) {
-        if (params_str[pos] == '<') angle_depth += 1;
-        if (params_str[pos] == '>') angle_depth -= 1;
-
-        if (params_str[pos] == ',' and angle_depth == 0) {
-            const param_str = std.mem.trim(u8, params_str[param_start..pos], " \t\n\r");
-            if (param_str.len > 0) {
-                if (try parseParameter(allocator, param_str)) |param| {
-                    try params_list.append(param);
-                }
-            }
-            param_start = pos + 1;
-        }
-    }
-
-    // Last parameter
-    const param_str = std.mem.trim(u8, params_str[param_start..], " \t\n\r");
-    if (param_str.len > 0) {
-        if (try parseParameter(allocator, param_str)) |param| {
-            try params_list.append(param);
-        }
-    }
-
-    return params_list.toOwnedSlice();
-}
-
-/// Parse a single parameter: "name: Type"
-fn parseParameter(allocator: Allocator, param_str: []const u8) !?InitParameter {
-    const colon_pos = std.mem.indexOf(u8, param_str, ":") orelse return null;
-
-    const name = std.mem.trim(u8, param_str[0..colon_pos], " \t");
-    const type_name = std.mem.trim(u8, param_str[colon_pos + 1 ..], " \t");
-
-    return InitParameter{
-        .name = try allocator.dupe(u8, name),
-        .type_name = try allocator.dupe(u8, type_name),
-    };
-}
-
-/// Generate init code from an InitExpression
-fn generateInitCodeFromExpression(
-    allocator: Allocator,
-    expr: ir.Field.InitExpression,
-    params: []InitParameter,
-    class_name: []const u8,
-) ![]const u8 {
-    return switch (expr) {
-        .literal => |lit| try allocator.dupe(u8, lit),
-
-        .function_call => |fc| blk: {
-            var code = infra.List(u8).init(allocator);
-            defer code.deinit();
-
-            try code.appendSlice(fc.function);
-            try code.append('(');
-            for (fc.args, 0..) |arg, i| {
-                if (i > 0) try code.appendSlice(", ");
-                try code.appendSlice(arg);
-            }
-            try code.append(')');
-
-            break :blk try code.toOwnedSlice();
-        },
-
-        .constant_ref => |cr| try allocator.dupe(u8, cr),
-
-        .parameter => |p| blk: {
-            // Verify parameter exists
-            for (params) |param| {
-                if (std.mem.eql(u8, param.name, p)) {
-                    break :blk try allocator.dupe(u8, p);
-                }
-            }
-            // Parameter not found in current signature - use class-specific defaults
-            // This happens when a child class inherits a field that was initialized
-            // from a parameter in the parent's init, but child's init doesn't have that param
-            if (std.mem.eql(u8, p, "node_type")) {
-                break :blk try getDefaultNodeType(allocator, class_name);
-            } else if (std.mem.eql(u8, p, "node_name")) {
-                break :blk try getDefaultNodeName(allocator, class_name);
-            }
-            // Fallback: assume it's available (will cause compile error if not, which is good)
-            break :blk try allocator.dupe(u8, p);
-        },
-
-        .complex => |c| try allocator.dupe(u8, c),
-    };
-}
-
-/// Get default node_type for a class
-fn getDefaultNodeType(allocator: Allocator, class_name: []const u8) ![]const u8 {
-    // Map class names to their node types
-    if (std.mem.eql(u8, class_name, "Document")) {
-        return try allocator.dupe(u8, "Node.DOCUMENT_NODE");
-    } else if (std.mem.eql(u8, class_name, "DocumentType")) {
-        return try allocator.dupe(u8, "Node.DOCUMENT_TYPE_NODE");
-    } else if (std.mem.eql(u8, class_name, "DocumentFragment")) {
-        return try allocator.dupe(u8, "Node.DOCUMENT_FRAGMENT_NODE");
-    } else if (std.mem.eql(u8, class_name, "CharacterData")) {
-        // CharacterData is abstract, should not be instantiated directly
-        // But if it is, use a safe default
-        return try allocator.dupe(u8, "Node.TEXT_NODE");
-    }
-    // Default: 0 (will cause compile error if wrong, which is good)
-    return try allocator.dupe(u8, "0");
-}
-
-/// Get default node_name for a class
-fn getDefaultNodeName(allocator: Allocator, class_name: []const u8) ![]const u8 {
-    // Map class names to their node names
-    if (std.mem.eql(u8, class_name, "Document")) {
-        return try allocator.dupe(u8, "\"#document\"");
-    } else if (std.mem.eql(u8, class_name, "DocumentFragment")) {
-        return try allocator.dupe(u8, "\"#document-fragment\"");
-    } else if (std.mem.eql(u8, class_name, "CharacterData")) {
-        return try allocator.dupe(u8, "\"#text\"");
-    }
-    // Default: empty string
-    return try allocator.dupe(u8, "\"\"");
-}
-
-/// Infer default initialization for a field type
-fn inferDefaultInit(
-    allocator: Allocator,
-    type_name: []const u8,
-    params: []InitParameter,
-    class_name: []const u8,
-) ![]const u8 {
-    _ = params; // May use params for smarter inference later
-    _ = class_name; // May use class_name for smarter inference later
-
-    // Optional types → null
-    if (type_name.len > 0 and type_name[0] == '?') {
-        return try allocator.dupe(u8, "null");
-    }
-
-    // Lists → List.init(allocator)
-    if (std.mem.indexOf(u8, type_name, "infra.List(") != null or
-        std.mem.indexOf(u8, type_name, "List(") != null)
-    {
-        return try std.fmt.allocPrint(allocator, "{s}.init(allocator)", .{type_name});
-    }
-
-    // Integers → 0
-    if (std.mem.eql(u8, type_name, "u8") or
-        std.mem.eql(u8, type_name, "u16") or
-        std.mem.eql(u8, type_name, "u32") or
-        std.mem.eql(u8, type_name, "u64") or
-        std.mem.eql(u8, type_name, "usize") or
-        std.mem.eql(u8, type_name, "i8") or
-        std.mem.eql(u8, type_name, "i16") or
-        std.mem.eql(u8, type_name, "i32") or
-        std.mem.eql(u8, type_name, "i64") or
-        std.mem.eql(u8, type_name, "isize"))
-    {
-        return try allocator.dupe(u8, "0");
-    }
-
-    // Booleans → false
-    if (std.mem.eql(u8, type_name, "bool")) {
-        return try allocator.dupe(u8, "false");
-    }
-
-    // Strings → ""
-    if (std.mem.eql(u8, type_name, "[]const u8") or
-        std.mem.eql(u8, type_name, "[]u8"))
-    {
-        return try allocator.dupe(u8, "\"\"");
-    }
-
-    // std.Thread.Mutex → {}
-    if (std.mem.indexOf(u8, type_name, "std.Thread.Mutex") != null or
-        std.mem.indexOf(u8, type_name, "Thread.Mutex") != null or
-        std.mem.indexOf(u8, type_name, "Mutex") != null)
-    {
-        return try std.fmt.allocPrint(allocator, "{s}{{}}", .{type_name});
-    }
-
-    // HashMaps → HashMap.init(allocator)
-    if (std.mem.indexOf(u8, type_name, "HashMap") != null or
-        std.mem.indexOf(u8, type_name, "StringHashMap") != null)
-    {
-        return try std.fmt.allocPrint(allocator, "{s}.init(allocator)", .{type_name});
-    }
-
-    // Default: null for complex types (likely pointers or optionals)
-    return try allocator.dupe(u8, "null");
-}
-
-/// Write a single method
-fn writeMethod(
-    allocator: Allocator,
-    writer: anytype,
-    method: ir.Method,
-    top_level_imports: []ir.Import,
-    class_name: []const u8,
-    struct_fields: []ir.Field,
+/// Generate root.zig file that exports all implementations
+pub fn generateImplsRoot(
+    allocator: std.mem.Allocator,
+    impls_path: []const u8,
+    interface_names: []const []const u8,
+    namespace_names: []const []const u8,
 ) !void {
-    // Doc comment
-    if (method.doc_comment) |doc| {
-        var lines = std.mem.splitScalar(u8, doc, '\n');
-        while (lines.next()) |line| {
-            try writer.print("    /// {s}\n", .{line});
+    const root_path = try std.fs.path.join(allocator, &.{ impls_path, "root.zig" });
+    defer allocator.free(root_path);
+
+    const root_file = try std.fs.cwd().createFile(root_path, .{});
+    defer root_file.close();
+
+    var buffer: [4096]u8 = undefined;
+    var file_writer = root_file.writer(&buffer);
+    const w = &file_writer.interface;
+
+    // Write header
+    try w.writeAll("//! Auto-generated root file for all WebIDL implementations\n");
+    try w.writeAll("//!\n");
+    try w.writeAll("//! This file is AUTO-GENERATED and will be overwritten.\n");
+    try w.writeAll("\n");
+
+    // Sort interface names for deterministic output
+    const sorted_names = try allocator.dupe([]const u8, interface_names);
+    defer allocator.free(sorted_names);
+    std.mem.sort([]const u8, sorted_names, {}, struct {
+        fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+            return std.mem.lessThan(u8, a, b);
         }
-    }
+    }.lessThan);
 
-    // Method signature - rewrite self parameter type for inherited and mixin methods
-    const rewritten_signature = try rewriteSelfParameterType(allocator, method.signature, class_name);
-    defer if (rewritten_signature.ptr != method.signature.ptr) allocator.free(rewritten_signature);
+    // Export all interface implementations
+    for (sorted_names) |name| {
+        // Check if implementation file exists
+        const impl_filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{name});
+        defer allocator.free(impl_filename);
 
-    const pub_str = if (method.modifiers.is_public) "pub " else "";
-    const inline_str = if (method.modifiers.is_inline) "inline " else "";
+        const impl_path = try std.fs.path.join(allocator, &.{ impls_path, impl_filename });
+        defer allocator.free(impl_path);
 
-    try writer.print("    {s}{s}fn {s}{s} {{\n", .{
-        pub_str,
-        inline_str,
-        method.name,
-        rewritten_signature,
-    });
-
-    // Check if this is an init method - only synthesize if body is empty/missing
-    // If the source file has a custom init implementation, preserve it
-    const should_synthesize_init = std.mem.eql(u8, method.name, "init") and
-        std.mem.trim(u8, method.body, " \t\n\r").len == 0;
-
-    if (should_synthesize_init) {
-        const synthesized_body = try synthesizeInitMethod(allocator, struct_fields, method.signature, class_name);
-        defer allocator.free(synthesized_body);
-
-        try writer.writeAll(synthesized_body);
-        try writer.writeAll("\n    }\n");
-        return; // Early return - synthesized init replaces original body
-    }
-
-    // Check if this is an inherited method (signature was rewritten)
-    const is_inherited = rewritten_signature.ptr != method.signature.ptr;
-
-    if (is_inherited) {
-        // For inherited methods, add a @ptrCast at the start to convert self to parent type
-        // Extract the original parent type from the method signature
-        const parent_type_info = try extractSelfTypeInfo(allocator, method.signature);
-        defer if (parent_type_info) |pti| {
-            if (pti.type_name) |tn| allocator.free(tn);
+        std.fs.cwd().access(impl_path, .{}) catch {
+            // File doesn't exist - export a stub that will fail at compile time
+            try w.print("pub const {s} = @compileError(\"Implementation for {s} not found. Create {s}/{s}.zig\");\n", .{ name, name, impls_path, name });
+            continue;
         };
 
-        if (parent_type_info) |pti| {
-            if (pti.type_name != null) {
-                // Rewrite body to use self_parent for field access, self for method calls
-                const rewritten_body = try rewriteSelfReferences(allocator, method.body, "self_parent");
-                defer allocator.free(rewritten_body);
+        // File exists - import it as namespace (impl files don't have struct types)
+        try w.print("pub const {s} = @import(\"{s}.zig\");\n", .{ name, name });
+    }
 
-                // Check if self_parent is actually used in the rewritten body
-                const needs_self_parent = std.mem.indexOf(u8, rewritten_body, "self_parent") != null;
+    // Export all namespace implementations
+    const sorted_ns_names = try allocator.dupe([]const u8, namespace_names);
+    defer allocator.free(sorted_ns_names);
+    std.mem.sort([]const u8, sorted_ns_names, {}, struct {
+        fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+            return std.mem.lessThan(u8, a, b);
+        }
+    }.lessThan);
 
-                // Only declare self_parent if it's actually used (for field access)
-                if (needs_self_parent) {
-                    // Don't cast - just pass self directly
-                    // Child structs have all parent fields duplicated, so they can be used directly
-                    // Note: @ptrCast doesn't work due to Zig's field reordering optimization
-                    try writer.print("        const self_parent = self;\n", .{});
+    for (sorted_ns_names) |name| {
+        const impl_filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{name});
+        defer allocator.free(impl_filename);
+
+        const impl_path = try std.fs.path.join(allocator, &.{ impls_path, impl_filename });
+        defer allocator.free(impl_path);
+
+        std.fs.cwd().access(impl_path, .{}) catch {
+            // File doesn't exist - skip it
+            continue;
+        };
+
+        // File exists - import it (namespaces use same naming as interfaces)
+        try w.print("pub const {s} = @import(\"{s}.zig\");\n", .{ name, name });
+    }
+
+    try w.flush();
+}
+
+/// Generate root.zig file that exports all typedefs
+pub fn generateTypedefsRoot(
+    allocator: std.mem.Allocator,
+    typedefs_path: []const u8,
+    typedef_names: []const []const u8,
+) !void {
+    const root_path = try std.fs.path.join(allocator, &.{ typedefs_path, "root.zig" });
+    defer allocator.free(root_path);
+
+    const root_file = try std.fs.cwd().createFile(root_path, .{});
+    defer root_file.close();
+
+    var buffer: [4096]u8 = undefined;
+    var file_writer = root_file.writer(&buffer);
+    const w = &file_writer.interface;
+
+    try w.writeAll("//! Auto-generated\n");
+
+    const sorted_names = try allocator.dupe([]const u8, typedef_names);
+    defer allocator.free(sorted_names);
+    std.mem.sort([]const u8, sorted_names, {}, struct {
+        fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+            return std.mem.lessThan(u8, a, b);
+        }
+    }.lessThan);
+
+    for (sorted_names) |name| {
+        try w.print("pub const {s} = @import(\"{s}.zig\").{s};\n", .{ name, name, name });
+    }
+
+    try w.flush();
+}
+
+/// Generate root.zig file that exports all dictionaries
+pub fn generateDictionariesRoot(
+    allocator: std.mem.Allocator,
+    dictionaries_path: []const u8,
+    dictionary_names: []const []const u8,
+) !void {
+    const root_path = try std.fs.path.join(allocator, &.{ dictionaries_path, "root.zig" });
+    defer allocator.free(root_path);
+
+    const root_file = try std.fs.cwd().createFile(root_path, .{});
+    defer root_file.close();
+
+    var buffer: [4096]u8 = undefined;
+    var file_writer = root_file.writer(&buffer);
+    const w = &file_writer.interface;
+
+    try w.writeAll("//! Auto-generated\n");
+
+    const sorted_names = try allocator.dupe([]const u8, dictionary_names);
+    defer allocator.free(sorted_names);
+    std.mem.sort([]const u8, sorted_names, {}, struct {
+        fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+            return std.mem.lessThan(u8, a, b);
+        }
+    }.lessThan);
+
+    for (sorted_names) |name| {
+        try w.print("pub const {s} = @import(\"{s}.zig\").{s};\n", .{ name, name, name });
+    }
+
+    try w.flush();
+}
+
+/// Generate root.zig file that exports all enums
+pub fn generateEnumsRoot(
+    allocator: std.mem.Allocator,
+    enums_path: []const u8,
+    enum_names: []const []const u8,
+) !void {
+    const root_path = try std.fs.path.join(allocator, &.{ enums_path, "root.zig" });
+    defer allocator.free(root_path);
+
+    const root_file = try std.fs.cwd().createFile(root_path, .{});
+    defer root_file.close();
+
+    var buffer: [4096]u8 = undefined;
+    var file_writer = root_file.writer(&buffer);
+    const w = &file_writer.interface;
+
+    try w.writeAll("//! Auto-generated\n");
+
+    const sorted_names = try allocator.dupe([]const u8, enum_names);
+    defer allocator.free(sorted_names);
+    std.mem.sort([]const u8, sorted_names, {}, struct {
+        fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+            return std.mem.lessThan(u8, a, b);
+        }
+    }.lessThan);
+
+    for (sorted_names) |name| {
+        try w.print("pub const {s} = @import(\"{s}.zig\").{s};\n", .{ name, name, name });
+    }
+
+    try w.flush();
+}
+
+/// Generate root.zig file that exports all callbacks
+pub fn generateCallbacksRoot(
+    allocator: std.mem.Allocator,
+    callbacks_path: []const u8,
+    callback_names: []const []const u8,
+) !void {
+    const root_path = try std.fs.path.join(allocator, &.{ callbacks_path, "root.zig" });
+    defer allocator.free(root_path);
+
+    const root_file = try std.fs.cwd().createFile(root_path, .{});
+    defer root_file.close();
+
+    var buffer: [4096]u8 = undefined;
+    var file_writer = root_file.writer(&buffer);
+    const w = &file_writer.interface;
+
+    try w.writeAll("//! Auto-generated\n");
+
+    const sorted_names = try allocator.dupe([]const u8, callback_names);
+    defer allocator.free(sorted_names);
+    std.mem.sort([]const u8, sorted_names, {}, struct {
+        fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+            return std.mem.lessThan(u8, a, b);
+        }
+    }.lessThan);
+
+    for (sorted_names) |name| {
+        try w.print("pub const {s} = @import(\"{s}.zig\").{s};\n", .{ name, name, name });
+    }
+
+    try w.flush();
+}
+
+/// Generate root.zig file that exports all namespaces
+pub fn generateNamespacesRoot(
+    allocator: std.mem.Allocator,
+    namespaces_path: []const u8,
+    namespace_names: []const []const u8,
+) !void {
+    const root_path = try std.fs.path.join(allocator, &.{ namespaces_path, "root.zig" });
+    defer allocator.free(root_path);
+
+    const root_file = try std.fs.cwd().createFile(root_path, .{});
+    defer root_file.close();
+
+    var buffer: [4096]u8 = undefined;
+    var file_writer = root_file.writer(&buffer);
+    const w = &file_writer.interface;
+
+    try w.writeAll("//! Auto-generated\n");
+
+    const sorted_names = try allocator.dupe([]const u8, namespace_names);
+    defer allocator.free(sorted_names);
+    std.mem.sort([]const u8, sorted_names, {}, struct {
+        fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+            return std.mem.lessThan(u8, a, b);
+        }
+    }.lessThan);
+
+    for (sorted_names) |name| {
+        try w.print("pub const {s} = @import(\"{s}.zig\").{s};\n", .{ name, name, name });
+    }
+
+    try w.flush();
+}
+
+/// Helper to write a WebIDL type as Zig type string (simplified)
+fn writeTypeSimple(w: anytype, webidl_type: types.IDLType, type_registry: ?*const ir_mod.TypeRegistry) !void {
+    var type_str = webidl_type.type;
+
+    // Strip namespace prefix if present (e.g., "dom::DOMString" -> "DOMString")
+    if (std.mem.indexOf(u8, type_str, "::")) |colon_pos| {
+        type_str = type_str[colon_pos + 2 ..];
+    }
+
+    // Map common primitive types
+    if (std.mem.eql(u8, type_str, "boolean")) {
+        try w.writeAll("bool");
+    } else if (std.mem.eql(u8, type_str, "byte")) {
+        try w.writeAll("i8");
+    } else if (std.mem.eql(u8, type_str, "octet")) {
+        try w.writeAll("u8");
+    } else if (std.mem.eql(u8, type_str, "short")) {
+        try w.writeAll("i16");
+    } else if (std.mem.eql(u8, type_str, "unsigned short")) {
+        try w.writeAll("u16");
+    } else if (std.mem.eql(u8, type_str, "long")) {
+        try w.writeAll("i32");
+    } else if (std.mem.eql(u8, type_str, "unsigned long")) {
+        try w.writeAll("u32");
+    } else if (std.mem.eql(u8, type_str, "long long")) {
+        try w.writeAll("i64");
+    } else if (std.mem.eql(u8, type_str, "unsigned long long")) {
+        try w.writeAll("u64");
+    } else if (std.mem.eql(u8, type_str, "float") or std.mem.eql(u8, type_str, "unrestricted float")) {
+        try w.writeAll("f32");
+    } else if (std.mem.eql(u8, type_str, "double") or std.mem.eql(u8, type_str, "unrestricted double")) {
+        try w.writeAll("f64");
+    } else if (std.mem.eql(u8, type_str, "DOMString")) {
+        try w.writeAll("runtime.DOMString");
+    } else if (std.mem.eql(u8, type_str, "USVString")) {
+        try w.writeAll("runtime.USVString");
+    } else if (std.mem.eql(u8, type_str, "ByteString")) {
+        try w.writeAll("runtime.ByteString");
+    } else if (std.mem.eql(u8, type_str, "undefined") or std.mem.eql(u8, type_str, "void")) {
+        try w.writeAll("void");
+    } else if (std.mem.eql(u8, type_str, "any") or std.mem.eql(u8, type_str, "object")) {
+        // Use pointer to anyopaque for 'any' and 'object' types
+        // Cannot pass anyopaque by value in Zig 0.15.2
+        try w.writeAll("*const anyopaque");
+    } else {
+        // Check type registry if available
+        if (type_registry) |reg| {
+            if (reg.lookup(type_str)) |kind| {
+                switch (kind) {
+                    .interface => {
+                        // Qualify with module (impls import `const interfaces = @import("interfaces")`)
+                        try w.print("interfaces.{s}", .{type_str});
+                    },
+                    .typedef => {
+                        // Qualify with module
+                        try w.print("typedefs.{s}", .{type_str});
+                    },
+                    .enum_type => {
+                        // Qualify with module
+                        try w.print("enums.{s}", .{type_str});
+                    },
+                    .dictionary => {
+                        // Qualify with module
+                        try w.print("dictionaries.{s}", .{type_str});
+                    },
+                    .callback => {
+                        // Qualify with callbacks module
+                        try w.print("callbacks.{s}", .{type_str});
+                    },
+                    .namespace, .primitive => {
+                        // Shouldn't appear as attribute types, but handle gracefully
+                        try w.writeAll("*const anyopaque");
+                    },
                 }
+                return;
+            }
+        }
 
-                const cleaned_body = try stripShadowingImports(allocator, rewritten_body, top_level_imports, class_name);
-                defer if (cleaned_body.ptr != rewritten_body.ptr) allocator.free(cleaned_body);
-                try writer.writeAll(cleaned_body);
+        // For unknown types (no registry or not found), use pointer to anyopaque
+        // This allows passing interface references that aren't fully resolved yet
+        try w.writeAll("*const anyopaque");
+    }
+}
+
+/// Generate implementation stub file with full method stubs
+fn generateImplFile(
+    allocator: std.mem.Allocator,
+    interface: types.Interface,
+    impls_path: []const u8,
+    ir: ?*ir_mod.IR,
+) !void {
+    // Create impls directory
+    try std.fs.cwd().makePath(impls_path);
+
+    // Create implementation stub file
+    const output_filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{interface.name});
+    defer allocator.free(output_filename);
+
+    const output_path = try std.fs.path.join(allocator, &.{ impls_path, output_filename });
+    defer allocator.free(output_path);
+
+    // Don't overwrite existing implementation files
+    std.fs.cwd().access(output_path, .{}) catch {
+        // File doesn't exist - create full stub with all methods
+        const output_file = try std.fs.cwd().createFile(output_path, .{});
+        defer output_file.close();
+
+        var buffer: [4096]u8 = undefined;
+        var file_writer = output_file.writer(&buffer);
+        const w = &file_writer.interface;
+
+        // Get type registry for proper type mapping
+        const type_reg = if (ir) |ir_ptr| &ir_ptr.type_registry else null;
+
+        // Write header
+        try w.print("//! Implementation for {s} interface\n", .{interface.name});
+        try w.writeAll("//!\n");
+        try w.writeAll("//! This file is AUTO-GENERATED on first creation.\n");
+        try w.writeAll("//! Add your custom implementation here.\n");
+        try w.writeAll("\n");
+
+        // Write imports
+        try w.writeAll("const std = @import(\"std\");\n");
+        try w.writeAll("const runtime = @import(\"runtime\");\n");
+        try w.writeAll("const interfaces = @import(\"interfaces\");\n");
+        try w.writeAll("const typedefs = @import(\"typedefs\");\n");
+        try w.writeAll("const enums = @import(\"enums\");\n");
+        try w.writeAll("const dictionaries = @import(\"dictionaries\");\n");
+        try w.writeAll("const callbacks = @import(\"callbacks\");\n");
+        try w.print("const {s} = interfaces.{s};\n\n", .{ interface.name, interface.name });
+
+        // State type alias
+        try w.print("pub const State = {s}.State;\n\n", .{interface.name});
+
+        // Error set for unimplemented methods
+        try w.writeAll("pub const ImplError = error{\n");
+        try w.writeAll("    NotImplemented,\n");
+        try w.writeAll("};\n\n");
+
+        // Init and deinit functions - delegate to runtime.Instance
+        try w.writeAll("/// Initialize instance (creates the instance)\n");
+        try w.writeAll("pub fn init(\n");
+        try w.writeAll("    allocator: std.mem.Allocator,\n");
+        try w.writeAll("    comptime StateType: type,\n");
+        try w.writeAll("    vtable: *const runtime.VTable,\n");
+        try w.writeAll("    ctx: runtime.Context,\n");
+        try w.writeAll(") !*runtime.Instance {\n");
+        try w.writeAll("    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);\n");
+        try w.writeAll("    // TODO: Initialize your instance state here if needed\n");
+        try w.writeAll("    return instance;\n");
+        try w.writeAll("}\n\n");
+
+        try w.writeAll("/// Deinitialize instance\n");
+        try w.writeAll("pub fn deinit(instance: *runtime.Instance) void {\n");
+        try w.writeAll("    // TODO: Clean up your instance resources here\n");
+        try w.writeAll("    runtime.Instance.deinit(instance);\n");
+        try w.writeAll("}\n\n");
+
+        // Collect ONLY own members (not inherited)
+        // Impl files should only implement their interface's own operations
+        // Inherited operations are implemented in parent impl files
+        var all_attrs = std.ArrayList(types.Attribute).empty;
+        defer all_attrs.deinit(allocator);
+
+        var all_ops = std.ArrayList(types.Operation).empty;
+        defer all_ops.deinit(allocator);
+
+        // Only collect constructors from THIS interface (not inherited)
+        var own_constructors = std.ArrayList(types.Constructor).empty;
+        defer own_constructors.deinit(allocator);
+
+        // Collect own members only (regardless of IR availability)
+        for (interface.members) |member| {
+            switch (member.type) {
+                .attribute => if (member.attribute) |attr| try all_attrs.append(allocator, attr),
+                .operation => if (member.operation) |op| try all_ops.append(allocator, op),
+                .constructor => if (member.constructor) |ctor| try own_constructors.append(allocator, ctor),
+                else => {},
+            }
+        }
+
+        // Deduplicate attributes, operations, and constructors before generating impl stubs
+        // This prevents duplicate function declarations from multiple partial interfaces
+        const before_attrs = all_attrs.items.len;
+        try deduplicateAttributes(allocator, &all_attrs);
+        const after_attrs = all_attrs.items.len;
+
+        const before_ops = all_ops.items.len;
+        try deduplicateOperations(allocator, &all_ops);
+        const after_ops = all_ops.items.len;
+
+        try deduplicateConstructors(allocator, &own_constructors);
+
+        // Deduplication done silently - debug output removed for performance
+        _ = before_attrs;
+        _ = after_attrs;
+        _ = before_ops;
+        _ = after_ops;
+
+        // Generate call_constructor if interface has WebIDL constructor
+        if (own_constructors.items.len > 0) {
+            try w.writeAll("/// Constructor implementation\n");
+            try w.writeAll("/// This is called when the interface is constructed from JavaScript\n");
+
+            // If multiple constructors (overloaded), accept ConstructorArgs union
+            if (own_constructors.items.len > 1) {
+                try w.print("pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, args: interfaces.{s}.ConstructorArgs) !*runtime.Instance {{\n", .{interface.name});
+                try w.writeAll("    // Create instance through init()\n");
+                try w.print("    const instance = try init(allocator, State, &{s}.vtable, ctx);\n", .{interface.name});
+                try w.writeAll("    errdefer deinit(instance);\n");
+                try w.writeAll("\n");
+                try w.writeAll("    _ = args;\n");
+                try w.writeAll("    // TODO: Implement constructor logic for each overload\n");
+                try w.writeAll("    // Use: switch (args) { .VariantName => |variant_args| { ... } }\n");
+                try w.writeAll("\n");
+                try w.writeAll("    return instance;\n");
+                try w.writeAll("}\n\n");
             } else {
-                // No type name extracted - use body as-is
-                const cleaned_body = try stripShadowingImports(allocator, method.body, top_level_imports, class_name);
-                defer if (cleaned_body.ptr != method.body.ptr) allocator.free(cleaned_body);
-                try writer.writeAll(cleaned_body);
-            }
-        } else {
-            // Fallback: use body as-is
-            const cleaned_body = try stripShadowingImports(allocator, method.body, top_level_imports, class_name);
-            defer if (cleaned_body.ptr != method.body.ptr) allocator.free(cleaned_body);
-            try writer.writeAll(cleaned_body);
-        }
-    } else {
-        // Own method - use body as-is
-        const cleaned_body = try stripShadowingImports(allocator, method.body, top_level_imports, class_name);
-        defer if (cleaned_body.ptr != method.body.ptr) allocator.free(cleaned_body);
-        try writer.writeAll(cleaned_body);
-    }
-
-    try writer.writeAll("\n    }\n");
-}
-
-/// Remove local imports from method body if they shadow top-level imports or the current class
-/// Example: removes `const DocumentType = @import("document_type").DocumentType;`
-/// if DocumentType is already imported at file level OR if it's the current class name
-fn stripShadowingImports(allocator: Allocator, body: []const u8, top_level_imports: []ir.Import, class_name: []const u8) ![]const u8 {
-    // Build set of imported names
-    var imported_names = std.StringHashMap(void).init(allocator);
-    defer imported_names.deinit();
-
-    for (top_level_imports) |import| {
-        try imported_names.put(import.name, {});
-    }
-
-    // Also add the current class name to prevent self-reference shadowing
-    try imported_names.put(class_name, {});
-
-    // Scan for local imports: `const Name = @import("...")`
-    var result = infra.List(u8).init(allocator);
-    errdefer result.deinit();
-
-    var pos: usize = 0;
-    while (pos < body.len) {
-        // Look for pattern: const Name = @import(
-        const const_pos = std.mem.indexOfPos(u8, body, pos, "const ") orelse {
-            // No more consts, append rest
-            try result.appendSlice(body[pos..]);
-            break;
-        };
-
-        // Append everything before this const
-        try result.appendSlice(body[pos..const_pos]);
-
-        // Check if this is an import statement
-        const after_const = const_pos + "const ".len;
-        const eq_pos = std.mem.indexOfScalarPos(u8, body, after_const, '=') orelse {
-            // No = sign, not an import, keep it
-            try result.appendSlice("const ");
-            pos = after_const;
-            continue;
-        };
-
-        const name_end = eq_pos;
-        // Trim whitespace
-        var name_start = after_const;
-        while (name_start < name_end and std.ascii.isWhitespace(body[name_start])) : (name_start += 1) {}
-        var name_end_trimmed = name_end;
-        while (name_end_trimmed > name_start and std.ascii.isWhitespace(body[name_end_trimmed - 1])) : (name_end_trimmed -= 1) {}
-
-        const name = body[name_start..name_end_trimmed];
-
-        // Check if this is an @import statement
-        const after_eq = eq_pos + 1;
-        const import_pos = std.mem.indexOfPos(u8, body, after_eq, "@import(") orelse {
-            // Not an import, keep it
-            try result.appendSlice(body[const_pos..after_eq]);
-            pos = after_eq;
-            continue;
-        };
-
-        // This is a const Name = @import(...); statement
-        // Find the semicolon
-        const semicolon_pos = std.mem.indexOfScalarPos(u8, body, import_pos, ';') orelse {
-            // No semicolon found, keep it
-            try result.appendSlice(body[const_pos..]);
-            pos = body.len;
-            break;
-        };
-
-        // Check if this name is already imported at top level
-        if (imported_names.contains(name)) {
-            // Skip this entire line (it shadows a top-level import)
-            // Find the end of the line
-            const newline_pos = std.mem.indexOfScalarPos(u8, body, semicolon_pos, '\n') orelse body.len;
-            pos = newline_pos;
-            if (pos < body.len and body[pos] == '\n') pos += 1; // Skip the newline
-        } else {
-            // Keep this import (not shadowing)
-            try result.appendSlice(body[const_pos .. semicolon_pos + 1]);
-            pos = semicolon_pos + 1;
-        }
-    }
-
-    return result.toOwnedSlice();
-}
-
-/// Filter module definitions to remove type aliases that duplicate top-level imports
-/// Example: removes `const Allocator = std.mem.Allocator;` if Allocator is already imported
-fn filterModuleDefinitions(allocator: Allocator, defs: []const u8, top_level_imports: []ir.Import) ![]const u8 {
-    // Build set of imported names
-    var imported_names = std.StringHashMap(void).init(allocator);
-    defer imported_names.deinit();
-
-    for (top_level_imports) |import| {
-        try imported_names.put(import.name, {});
-    }
-
-    var result = infra.List(u8).init(allocator);
-    errdefer result.deinit();
-
-    // Process line by line
-    var lines = std.mem.splitScalar(u8, defs, '\n');
-    while (lines.next()) |line| {
-        const trimmed = std.mem.trim(u8, line, " \t\r");
-
-        // Check if this is a type alias that duplicates an import
-        // Pattern: const Name = SomeOtherType; (NOT const Name = struct/enum/union)
-        var should_skip = false;
-
-        if (std.mem.startsWith(u8, trimmed, "const ") or std.mem.startsWith(u8, trimmed, "pub const ")) {
-            const after_const = if (std.mem.startsWith(u8, trimmed, "pub const "))
-                trimmed["pub const ".len..]
-            else
-                trimmed["const ".len..];
-
-            // Extract the name (before =)
-            if (std.mem.indexOfScalar(u8, after_const, '=')) |eq_pos| {
-                const name = std.mem.trim(u8, after_const[0..eq_pos], " \t\r");
-
-                // Check if this name is already imported
-                if (imported_names.contains(name)) {
-                    // Check if the value is NOT a struct/enum/union definition
-                    const after_eq = std.mem.trim(u8, after_const[eq_pos + 1 ..], " \t\r");
-                    const is_type_def = std.mem.startsWith(u8, after_eq, "struct {") or
-                        std.mem.startsWith(u8, after_eq, "enum {") or
-                        std.mem.startsWith(u8, after_eq, "union(");
-
-                    if (!is_type_def) {
-                        // This is a type alias for an already-imported name, skip it
-                        should_skip = true;
-                    }
+                // Single constructor - use direct parameters
+                const ctor = own_constructors.items[0];
+                try w.print("pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context", .{});
+                for (ctor.arguments) |arg| {
+                    try w.writeAll(", ");
+                    try writeEscapedImplParamName(w, arg.name);
+                    try w.writeAll(": ");
+                    try writeTypeSimple(w, arg.idlType, type_reg);
                 }
+                try w.writeAll(") !*runtime.Instance {\n");
+                try w.writeAll("    // Create instance through init()\n");
+                try w.print("    const instance = try init(allocator, State, &{s}.vtable, ctx);\n", .{interface.name});
+                try w.writeAll("    errdefer deinit(instance);\n");
+                try w.writeAll("\n");
+                for (ctor.arguments) |arg| {
+                    try w.writeAll("    _ = ");
+                    try writeEscapedImplParamName(w, arg.name);
+                    try w.writeAll(";\n");
+                }
+                try w.writeAll("    // TODO: Implement constructor logic with parameters\n");
+                try w.writeAll("\n");
+                try w.writeAll("    return instance;\n");
+                try w.writeAll("}\n\n");
             }
         }
 
-        if (!should_skip) {
-            try result.appendSlice(line);
-            try result.append('\n');
+        // Generate getter stubs
+        for (all_attrs.items) |attr| {
+            // Sanitize attribute name for function names (convert hyphens to underscores)
+            const sanitized_name = try sanitizeFunctionName(allocator, attr.name);
+            const name_was_sanitized = !std.mem.eql(u8, sanitized_name, attr.name);
+            defer if (name_was_sanitized) allocator.free(sanitized_name);
+
+            try w.print("/// Getter for {s}\n", .{attr.name});
+            try w.print("pub fn get_{s}(instance: *runtime.Instance) ImplError!", .{sanitized_name});
+            try writeTypeSimple(w, attr.idlType, type_reg);
+            try w.writeAll(" {\n");
+            try w.writeAll("    _ = instance;\n");
+            try w.print("    return error.NotImplemented;\n", .{});
+            try w.writeAll("}\n\n");
         }
-    }
 
-    // Trim trailing whitespace
-    const full_result = try result.toOwnedSlice();
-    const trimmed_result = std.mem.trim(u8, full_result, " \t\r\n");
-    const final = try allocator.dupe(u8, trimmed_result);
-    allocator.free(full_result);
+        // Generate setter stubs
+        for (all_attrs.items) |attr| {
+            if (!attr.readonly) {
+                // Sanitize attribute name for function names (convert hyphens to underscores)
+                const sanitized_name = try sanitizeFunctionName(allocator, attr.name);
+                const name_was_sanitized = !std.mem.eql(u8, sanitized_name, attr.name);
+                defer if (name_was_sanitized) allocator.free(sanitized_name);
 
-    return final;
-}
-
-const SelfTypeInfo = struct {
-    type_name: ?[]const u8,
-    has_pointer: bool,
-    has_const: bool,
-};
-
-/// Extract the type info from a self parameter in a method signature
-/// Example: "(self: *EventTarget, ...)" -> SelfTypeInfo{ .type_name = "EventTarget", .has_pointer = true }
-/// Example: "(self: *const Node, ...)" -> SelfTypeInfo{ .type_name = "Node", .has_pointer = true }
-/// Example: "(self: anytype, ...)" -> SelfTypeInfo{ .type_name = "anytype", .has_pointer = false }
-fn extractSelfTypeInfo(allocator: Allocator, signature: []const u8) !?SelfTypeInfo {
-    // Find "self: " pattern
-    const self_pattern = "self: ";
-    const self_start = std.mem.indexOf(u8, signature, self_pattern) orelse return null;
-
-    var cursor = self_start + self_pattern.len;
-    var has_pointer = false;
-    var has_const = false;
-
-    // Skip pointer syntax: * or *const
-    if (cursor < signature.len and signature[cursor] == '*') {
-        has_pointer = true;
-        cursor += 1;
-        // Check for "const " after the *
-        if (cursor + 6 < signature.len and std.mem.startsWith(u8, signature[cursor..], "const ")) {
-            has_const = true;
-            cursor += 6; // "const "
+                try w.print("/// Setter for {s}\n", .{attr.name});
+                try w.print("pub fn set_{s}(instance: *runtime.Instance, value: ", .{sanitized_name});
+                try writeTypeSimple(w, attr.idlType, type_reg);
+                try w.writeAll(") ImplError!void {\n");
+                try w.writeAll("    _ = instance;\n");
+                try w.writeAll("    _ = value;\n");
+                try w.writeAll("    return error.NotImplemented;\n");
+                try w.writeAll("}\n\n");
+            }
         }
-    }
 
-    const type_start = cursor;
+        // Generate operation stubs using overload-aware logic
+        // This must match the interface generation to ensure signatures are identical
+        const overload_mod = @import("overload.zig");
+        const overload_sets = try overload_mod.groupOperationsByName(allocator, all_ops.items);
+        defer overload_mod.freeOverloadSets(allocator, overload_sets);
 
-    // Check for @This() special case
-    var type_end = type_start;
-    if (std.mem.startsWith(u8, signature[type_start..], "@This()")) {
-        type_end = type_start + "@This()".len;
-    } else {
-        // Find the end of the type name (next comma, paren, or whitespace)
-        while (type_end < signature.len) : (type_end += 1) {
-            const c = signature[type_end];
-            if (c == ',' or c == ')' or c == ' ' or c == '\t' or c == '\n') {
+        for (overload_sets) |set| {
+            if (set.isOverloaded()) {
+                // Multiple overloads - generate ONE impl stub that accepts the Args union
+                const first_op = set.operations[0];
+                const op_name = first_op.name orelse "unnamed";
+
+                try w.print("/// Operation: {s} (overloaded - {d} variants)\n", .{ op_name, set.operations.len });
+                try w.print("pub fn call_{s}(instance: *runtime.Instance, args: interfaces.{s}.", .{ op_name, interface.name });
+
+                // Generate Args union type name: "StartArgs", "ItemArgs", etc.
+                var capitalized_name = std.ArrayList(u8).empty;
+                defer capitalized_name.deinit(allocator);
+                try capitalized_name.append(allocator, std.ascii.toUpper(op_name[0]));
+                try capitalized_name.appendSlice(allocator, op_name[1..]);
+                try capitalized_name.appendSlice(allocator, "Args");
+
+                try w.print("{s}) ImplError!", .{capitalized_name.items});
+                try writeTypeSimple(w, first_op.idlType, type_reg);
+                try w.writeAll(" {\n");
+                try w.writeAll("    _ = instance;\n");
+                try w.writeAll("    _ = args;\n");
+                try w.writeAll("    return error.NotImplemented;\n");
+                try w.writeAll("}\n\n");
+            } else {
+                // Single operation - generate normal function (same as before)
+                const op = set.operations[0];
+                const op_name = op.name orelse "unnamed";
+                try w.print("/// Operation: {s}\n", .{op_name});
+                try w.print("pub fn call_{s}(instance: *runtime.Instance", .{op_name});
+                for (op.arguments) |arg| {
+                    try w.writeAll(", ");
+                    try writeEscapedImplParamName(w, arg.name);
+                    try w.writeAll(": ");
+                    try writeTypeSimple(w, arg.idlType, type_reg);
+                }
+                try w.writeAll(") ImplError!");
+                try writeTypeSimple(w, op.idlType, type_reg);
+                try w.writeAll(" {\n");
+                try w.writeAll("    _ = instance;\n");
+                for (op.arguments) |arg| {
+                    try w.writeAll("    _ = ");
+                    try writeEscapedImplParamName(w, arg.name);
+                    try w.writeAll(";\n");
+                }
+                try w.writeAll("    return error.NotImplemented;\n");
+                try w.writeAll("}\n\n");
+            }
+        }
+
+        // Add forEach stub for iterable interfaces
+        var has_iterable = false;
+        for (interface.members) |member| {
+            if (member.type == .iterable) {
+                has_iterable = true;
                 break;
             }
         }
-    }
 
-    if (type_end <= type_start) return null;
+        if (has_iterable) {
+            try w.writeAll("/// Operation: forEach\n");
+            try w.writeAll("pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) ImplError!void {\n");
+            try w.writeAll("    _ = instance;\n");
+            try w.writeAll("    _ = callback;\n");
+            try w.writeAll("    return error.NotImplemented;\n");
+            try w.writeAll("}\n\n");
+        }
 
-    const type_name = signature[type_start..type_end];
-    return SelfTypeInfo{
-        .type_name = try allocator.dupe(u8, type_name),
-        .has_pointer = has_pointer,
-        .has_const = has_const,
+        try w.flush();
+        return;
     };
+
+    // File already exists - don't overwrite
 }
 
-/// Rewrite "self" references in method body to use a different name for field access
-/// Example: rewriteSelfReferences(body, "self_parent") replaces "self.field" with "self_parent.field"
+/// Generate Zig code for a single WebIDL interface
 ///
-/// Method calls (self.methodName()) are kept as "self" because inherited methods
-/// exist in the child class and should be called on self, not self_parent.
-fn rewriteSelfReferences(allocator: Allocator, body: []const u8, new_name: []const u8) ![]const u8 {
-    var result = infra.List(u8).init(allocator);
-    errdefer result.deinit();
+/// Creates a .zig file in the output directory with the generated code.
+pub fn generateInterface(
+    allocator: std.mem.Allocator,
+    interface: types.Interface,
+    source_file: []const u8,
+    ir: ?*ir_mod.IR,
+    cfg: *CodegenConfig,
+) !void {
+    // Generate interface file if path is specified
+    if (try cfg.getInterfacesPath()) |interfaces_path| {
+        try generateInterfaceFile(allocator, interface, source_file, interfaces_path, ir);
+    }
 
-    var pos: usize = 0;
-    while (pos < body.len) {
-        // Look for "self" keyword
-        const self_pos = std.mem.indexOfPos(u8, body, pos, "self") orelse {
-            // No more self references, append rest
-            try result.appendSlice(body[pos..]);
-            break;
-        };
+    // Generate impl stub file if path is specified
+    if (try cfg.getImplsPath()) |impls_path| {
+        try generateImplFile(allocator, interface, impls_path, ir);
+    }
+}
 
-        // Check if this is actually the "self" keyword (not part of another identifier)
-        const is_valid_self = blk: {
-            // Check character before "self"
-            if (self_pos > 0) {
-                const before = body[self_pos - 1];
-                if ((before >= 'a' and before <= 'z') or
-                    (before >= 'A' and before <= 'Z') or
-                    (before >= '0' and before <= '9') or
-                    before == '_')
-                {
-                    break :blk false; // Part of another identifier
-                }
-            }
+fn generateInterfaceFile(
+    allocator: std.mem.Allocator,
+    interface: types.Interface,
+    source_file: []const u8,
+    interfaces_path: []const u8,
+    ir: ?*ir_mod.IR,
+) !void {
+    // Create interfaces directory
+    try std.fs.cwd().makePath(interfaces_path);
 
-            // Check character after "self"
-            const after_pos = self_pos + 4;
-            if (after_pos < body.len) {
-                const after = body[after_pos];
-                if ((after >= 'a' and after <= 'z') or
-                    (after >= 'A' and after <= 'Z') or
-                    (after >= '0' and after <= '9') or
-                    after == '_')
-                {
-                    break :blk false; // Part of another identifier
-                }
-            }
+    // Create output file in interfaces directory
+    const output_filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{interface.name});
+    defer allocator.free(output_filename);
 
-            break :blk true;
-        };
+    const output_path = try std.fs.path.join(allocator, &.{ interfaces_path, output_filename });
+    defer allocator.free(output_path);
 
-        // Append everything before this self
-        try result.appendSlice(body[pos..self_pos]);
+    const output_file = try std.fs.cwd().createFile(output_path, .{});
+    defer output_file.close();
 
-        if (is_valid_self) {
-            // Check if this is a method call: self.methodName(
-            // If so, keep as "self" because methods are inherited into child class
-            const is_method_call = blk: {
-                var scan_pos = self_pos + 4; // After "self"
+    var buffer: [4096]u8 = undefined;
+    var file_writer = output_file.writer(&buffer);
+    const w = &file_writer.interface;
 
-                // Skip whitespace
-                while (scan_pos < body.len and (body[scan_pos] == ' ' or body[scan_pos] == '\t')) {
-                    scan_pos += 1;
-                }
+    // First, collect interface references from own members
+    const own_interface_refs = try refs.collectInterfaceReferences(allocator, interface);
+    defer {
+        for (own_interface_refs) |ref| allocator.free(ref);
+        allocator.free(own_interface_refs);
+    }
 
-                // Must have '.'
-                if (scan_pos >= body.len or body[scan_pos] != '.') break :blk false;
-                scan_pos += 1;
+    // Then collect additional refs from ALL members (including inherited)
+    // This is needed to import types used in inherited operations
+    const all_members_for_refs = if (ir) |ir_ptr|
+        try ir_ptr.resolveAllMembers(interface.name)
+    else
+        interface.members;
+    defer if (ir != null) allocator.free(all_members_for_refs);
 
-                // Skip whitespace
-                while (scan_pos < body.len and (body[scan_pos] == ' ' or body[scan_pos] == '\t')) {
-                    scan_pos += 1;
-                }
+    const all_interface_refs = try refs.collectMemberReferences(allocator, all_members_for_refs);
+    defer {
+        for (all_interface_refs) |ref| allocator.free(ref);
+        allocator.free(all_interface_refs);
+    }
 
-                // Must have identifier
-                if (scan_pos >= body.len) break :blk false;
-                const first_char = body[scan_pos];
-                if (!((first_char >= 'a' and first_char <= 'z') or
-                    (first_char >= 'A' and first_char <= 'Z') or
-                    first_char == '_'))
-                {
-                    break :blk false;
-                }
+    // Merge both sets of refs (deduplicating)
+    var merged_refs = std.StringHashMap(void).init(allocator);
+    defer merged_refs.deinit();
 
-                // Skip identifier
-                while (scan_pos < body.len) {
-                    const ch = body[scan_pos];
-                    if ((ch >= 'a' and ch <= 'z') or
-                        (ch >= 'A' and ch <= 'Z') or
-                        (ch >= '0' and ch <= '9') or
-                        ch == '_')
-                    {
-                        scan_pos += 1;
-                    } else {
-                        break;
-                    }
-                }
+    for (own_interface_refs) |ref| {
+        try merged_refs.put(ref, {});
+    }
+    for (all_interface_refs) |ref| {
+        try merged_refs.put(ref, {});
+    }
 
-                // Skip whitespace
-                while (scan_pos < body.len and (body[scan_pos] == ' ' or body[scan_pos] == '\t')) {
-                    scan_pos += 1;
-                }
+    // Convert to slice
+    var interface_refs_list = std.ArrayList([]const u8).empty;
+    defer interface_refs_list.deinit(allocator);
 
-                // Check if followed by '(' - if so, it's a method call
-                if (scan_pos < body.len and body[scan_pos] == '(') {
-                    break :blk true;
-                }
+    var iter = merged_refs.keyIterator();
+    while (iter.next()) |key| {
+        const name = try allocator.dupe(u8, key.*);
+        try interface_refs_list.append(allocator, name);
+    }
 
-                break :blk false;
-            };
+    const interface_refs = try interface_refs_list.toOwnedSlice(allocator);
+    defer {
+        for (interface_refs) |ref| allocator.free(ref);
+        allocator.free(interface_refs);
+    }
 
-            if (is_method_call) {
-                // Keep as "self" for method calls (inherited methods are in child class)
-                try result.appendSlice("self");
-            } else {
-                // Replace with new name for field access
-                try result.appendSlice(new_name);
-            }
-            pos = self_pos + 4; // Skip "self"
-        } else {
-            // Keep original "self" (it's part of another word)
-            try result.appendSlice("self");
-            pos = self_pos + 4;
+    // Generate header with source filename
+    const source_basename = std.fs.path.basename(source_file);
+    try writer.writeHeader(w, source_basename, null);
+
+    // Generate imports
+    var mixin_list = std.ArrayList([]const u8).empty;
+    defer mixin_list.deinit(allocator);
+
+    for (interface.includes) |mixin| {
+        try mixin_list.append(allocator, mixin);
+    }
+
+    const type_registry = if (ir) |interface_ir| &interface_ir.type_registry else null;
+    try writer.writeImports(w, interface.name, interface.inheritance, mixin_list.items, interface_refs, type_registry);
+
+    // Generate interface struct
+    try writer.writeInterfaceStruct(w, interface.name);
+
+    // Collect OWN members (for State struct - no inheritance)
+    var own_attrs = std.ArrayList(types.Attribute).empty;
+    defer own_attrs.deinit(allocator);
+
+    var own_ops = std.ArrayList(types.Operation).empty;
+    defer own_ops.deinit(allocator);
+
+    var own_constructors = std.ArrayList(types.Constructor).empty;
+    defer own_constructors.deinit(allocator);
+
+    var own_constants = std.ArrayList(types.Constant).empty;
+    defer own_constants.deinit(allocator);
+
+    var iterable_member: ?types.Iterable = null;
+
+    for (interface.members) |member| {
+        switch (member.type) {
+            .attribute => if (member.attribute) |attr| {
+                try own_attrs.append(allocator, attr);
+            },
+            .operation => if (member.operation) |op| {
+                try own_ops.append(allocator, op);
+            },
+            .constructor => if (member.constructor) |ctor| {
+                try own_constructors.append(allocator, ctor);
+            },
+            .constant => if (member.constant) |const_val| {
+                try own_constants.append(allocator, const_val);
+            },
+            .iterable => if (member.iterable) |iterable_def| {
+                iterable_member = iterable_def;
+            },
         }
     }
 
-    return result.toOwnedSlice();
+    // Collect ALL members (including inherited - for VTable and delegate functions)
+    const all_members = if (ir) |ir_ptr|
+        try ir_ptr.resolveAllMembers(interface.name)
+    else
+        interface.members;
+    defer if (ir != null) allocator.free(all_members);
+
+    var all_attrs = std.ArrayList(types.Attribute).empty;
+    defer all_attrs.deinit(allocator);
+
+    var all_ops = std.ArrayList(types.Operation).empty;
+    defer all_ops.deinit(allocator);
+
+    var all_constants = std.ArrayList(types.Constant).empty;
+    defer all_constants.deinit(allocator);
+
+    for (all_members) |member| {
+        switch (member.type) {
+            .attribute => if (member.attribute) |attr| {
+                try all_attrs.append(allocator, attr);
+            },
+            .operation => if (member.operation) |op| {
+                try all_ops.append(allocator, op);
+            },
+            .constant => if (member.constant) |const_val| {
+                try all_constants.append(allocator, const_val);
+            },
+            else => {},
+        }
+    }
+
+    // Check if interface has constructors
+    const has_constructor = own_constructors.items.len > 0;
+
+    // Deduplicate own constants before generating constant getters
+    // Partial interfaces can cause duplicate constant definitions
+    try deduplicateConstants(allocator, &own_constants);
+
+    // Track allocated forEach arrays for cleanup
+    var forEach_args_own_alloc: ?[]types.Argument = null;
+    var forEach_extAttrs_own_alloc: ?[]types.ExtendedAttribute = null;
+    defer if (forEach_args_own_alloc) |arr| allocator.free(arr);
+    defer if (forEach_extAttrs_own_alloc) |arr| allocator.free(arr);
+
+    // Add forEach to own_ops for iterable interfaces (per WebIDL spec)
+    // This ensures forEach appears in own_methods and gets registered in V8
+    if (iterable_member != null) {
+        var forEach_args_own = try allocator.alloc(types.Argument, 1);
+        forEach_args_own_alloc = forEach_args_own;
+        forEach_args_own[0] = types.Argument{
+            .name = "callback",
+            .idlType = types.IDLType{ .type = "any" },
+            .optional = false,
+            .variadic = false,
+            .default = null,
+        };
+
+        const forEach_extAttrs_own = try allocator.alloc(types.ExtendedAttribute, 0);
+        forEach_extAttrs_own_alloc = forEach_extAttrs_own;
+
+        const forEach_op_own = types.Operation{
+            .name = "forEach",
+            .idlType = types.IDLType{ .type = "void" },
+            .arguments = forEach_args_own,
+            .special = null,
+            .extAttrs = forEach_extAttrs_own,
+        };
+        try own_ops.append(allocator, forEach_op_own);
+    }
+
+    // Generate metadata with property/method hints for V8 bindings
+    try writer.writeMetadata(
+        w,
+        interface.name,
+        null, // spec_url - would come from extended attributes
+        interface.inheritance,
+        mixin_list.items,
+        interface.extAttrs,
+        all_attrs.items, // Metadata includes all attributes (for reflection)
+        all_ops.items, // All operations including inherited
+        own_ops.items, // Own operations (for tracking overrides)
+        own_constants.items, // Constants (for V8 static property registration)
+        has_constructor,
+        interface.mixin, // Whether this is a mixin interface
+        iterable_member, // Iterable declaration if present
+        own_attrs.items, // Own attributes (for V8 property registration)
+    );
+
+    // Deduplicate own attributes before generating State struct
+    // Partial interfaces can cause duplicate attribute definitions
+    try deduplicateAttributes(allocator, &own_attrs);
+
+    // Deduplicate own operations before generating methods metadata
+    // Partial interfaces can cause duplicate operation definitions
+    try deduplicateOperations(allocator, &own_ops);
+
+    // Deduplicate own constructors before generating constructor functions
+    // Partial interfaces can cause duplicate constructor definitions
+    try deduplicateConstructors(allocator, &own_constructors);
+
+    // Generate State struct from OWN attributes only (preserving WebIDL casing and types)
+    // State includes only this interface's own attributes
+    // FullState will flatten with inheritance/mixins via runtime.FlattenedState
+    try writer.writeGeneratedState(w, own_attrs.items);
+
+    // Generate constant getters (static functions returning const values)
+    // Only generate OWN constants - inherited constants accessed via parent vtable
+    try writer.writeConstants(w, own_constants.items);
+
+    // impl_name still needed for lifecycle and delegate functions
+    const impl_name = try std.fmt.allocPrint(allocator, "{s}Impl", .{interface.name});
+    defer allocator.free(impl_name);
+
+    // Deduplicate attributes, operations, and constants before generating VTable and delegate functions
+    // This prevents duplicate vtable entries and delegate functions from multiple inheritance/mixins
+    try deduplicateAttributes(allocator, &all_attrs);
+    try deduplicateOperations(allocator, &all_ops);
+    try deduplicateConstants(allocator, &all_constants);
+
+    // Track allocated forEach arrays for cleanup
+    var forEach_args_alloc: ?[]types.Argument = null;
+    var forEach_extAttrs_alloc: ?[]types.ExtendedAttribute = null;
+    defer if (forEach_args_alloc) |arr| allocator.free(arr);
+    defer if (forEach_extAttrs_alloc) |arr| allocator.free(arr);
+
+    // Add forEach operation for iterable interfaces (per WebIDL spec)
+    if (iterable_member != null) {
+        // Create synthetic forEach operation
+        var forEach_args = try allocator.alloc(types.Argument, 1);
+        forEach_args_alloc = forEach_args;
+        forEach_args[0] = types.Argument{
+            .name = "callback",
+            .idlType = types.IDLType{ .type = "any" },
+            .optional = false,
+            .variadic = false,
+            .default = null,
+        };
+
+        const forEach_extAttrs = try allocator.alloc(types.ExtendedAttribute, 0);
+        forEach_extAttrs_alloc = forEach_extAttrs;
+
+        const forEach_op = types.Operation{
+            .name = "forEach",
+            .idlType = types.IDLType{ .type = "void" },
+            .arguments = forEach_args,
+            .special = null,
+            .extAttrs = forEach_extAttrs,
+        };
+        try all_ops.append(allocator, forEach_op);
+    }
+
+    // Generate VTable (with ONLY own attributes/operations, not inherited)
+    try writer.writeVTable(w, interface.name, interface.inheritance, all_constants.items, own_constants.items, own_attrs.items, own_ops.items);
+
+    // Generate lifecycle functions
+    try writer.writeLifecycleFunctions(w, impl_name);
+
+    // Generate constructors (WebIDL interfaces can have multiple constructors)
+    if (own_constructors.items.len > 0) {
+        const type_reg = if (ir) |ir_ptr| &ir_ptr.type_registry else null;
+
+        if (own_constructors.items.len == 1) {
+            // Single constructor - generate normal function
+            try writer.writeConstructor(w, impl_name, own_constructors.items[0], type_reg);
+        } else {
+            // Multiple constructors - generate overloaded version with tagged union
+            const ctor_set = try overload.groupConstructors(allocator, own_constructors.items);
+            defer overload.freeConstructorSet(allocator, ctor_set);
+            try writer.writeOverloadedConstructor(w, impl_name, ctor_set, type_reg);
+        }
+    }
+
+    // Generate delegate functions (ONLY for own attributes/operations, not inherited)
+    const type_reg = if (ir) |ir_ptr| &ir_ptr.type_registry else null;
+    try writer.writeDelegateFunctions(w, impl_name, type_reg, own_attrs.items, own_ops.items);
+
+    // Close struct
+    try writer.writeStructEnd(w);
+
+    // Flush writer
+    try w.flush();
+}
+
+/// Generate Zig code for all interfaces in a WebIDL file (.idl or .json)
+pub fn generateFromFile(
+    allocator: std.mem.Allocator,
+    input_path: []const u8,
+    cfg: *CodegenConfig,
+) !void {
+    const parsed = try parser.parseIDLFile(allocator, input_path);
+    defer parsed.deinit();
+
+    // Use IR to merge partial interfaces
+    var ir = try ir_mod.IR.init(allocator);
+    defer ir.deinit();
+
+    // Add all interfaces to IR (this merges partials automatically)
+    for (parsed.value.interfaces) |iface| {
+        ir.addInterface(iface, input_path) catch |err| {
+            if (err == error.DuplicateInterface) {
+                // Skip duplicates
+                continue;
+            } else {
+                return err;
+            }
+        };
+    }
+
+    // Add dictionaries to IR
+    for (parsed.value.dictionaries) |dict| {
+        try ir.addDictionary(dict, input_path);
+    }
+
+    // Add typedefs to IR
+    for (parsed.value.typedefs) |typedef| {
+        try ir.addTypedef(typedef, input_path);
+    }
+
+    // Add namespaces to IR
+    for (parsed.value.namespaces) |namespace| {
+        try ir.addNamespace(namespace, input_path);
+    }
+
+    // Process includes statements to merge mixins
+    try ir.processIncludes(parsed.value.includes);
+
+    // Collect interface names for root.zig generation
+    var interface_names = std.ArrayList([]const u8).empty;
+    defer {
+        for (interface_names.items) |name| {
+            allocator.free(name);
+        }
+        interface_names.deinit(allocator);
+    }
+
+    // Generate code for each merged interface
+    var iface_iter = ir.interfaces.iterator();
+    while (iface_iter.next()) |entry| {
+        const merged_iface = entry.value_ptr;
+
+        // Convert back to types.Interface for generation
+        const types_iface = try merged_iface.toTypes(allocator);
+        defer {
+            allocator.free(types_iface.name);
+            if (types_iface.inheritance) |inh| allocator.free(inh);
+            allocator.free(types_iface.members);
+            allocator.free(types_iface.extAttrs);
+            allocator.free(types_iface.includes);
+        }
+
+        // Collect interface name for root.zig
+        const name_copy = try allocator.dupe(u8, types_iface.name);
+        try interface_names.append(allocator, name_copy);
+
+        try generateInterface(allocator, types_iface, input_path, &ir, cfg);
+    }
+
+    // Generate typedefs
+    if (try cfg.getTypedefsPath()) |typedefs_path| {
+        var typedef_iter = ir.typedefs.iterator();
+        while (typedef_iter.next()) |entry| {
+            const typedef = entry.value_ptr.*;
+            try generateTypedef(allocator, typedef, typedefs_path);
+        }
+    }
+
+    // Generate dictionaries
+    if (try cfg.getDictionariesPath()) |dictionaries_path| {
+        var dict_iter = ir.dictionaries.iterator();
+        while (dict_iter.next()) |entry| {
+            const dict = entry.value_ptr.*;
+            try generateDictionary(allocator, dict, dictionaries_path);
+        }
+    }
+
+    // Generate enums
+    if (try cfg.getEnumsPath()) |enums_path| {
+        var enum_iter = ir.enums.iterator();
+        while (enum_iter.next()) |entry| {
+            const enum_type = entry.value_ptr.*;
+            try generateEnum(allocator, enum_type, enums_path);
+        }
+    }
+
+    // Generate callbacks
+    if (try cfg.getCallbacksPath()) |callbacks_path| {
+        var callback_iter = ir.callbacks.iterator();
+        while (callback_iter.next()) |entry| {
+            const callback = entry.value_ptr.*;
+            try generateCallback(allocator, callback, callbacks_path);
+        }
+    }
+
+    // Collect namespace names for root.zig generation
+    var namespace_names = std.ArrayList([]const u8).empty;
+    defer {
+        for (namespace_names.items) |name| {
+            allocator.free(name);
+        }
+        namespace_names.deinit(allocator);
+    }
+
+    // Generate namespaces
+    if (try cfg.getNamespacesPath()) |namespaces_path| {
+        var namespace_iter = ir.namespaces.iterator();
+        while (namespace_iter.next()) |entry| {
+            const namespace = entry.value_ptr.*;
+            try generateNamespace(allocator, namespace, namespaces_path);
+
+            // Generate impl stub if requested
+            if (try cfg.getImplsPath()) |impls_path_for_ns| {
+                try generateNamespaceImpl(allocator, namespace, impls_path_for_ns);
+            }
+
+            // Collect namespace name for root.zig
+            const name_copy = try allocator.dupe(u8, namespace.name);
+            try namespace_names.append(allocator, name_copy);
+        }
+    }
+
+    // Generate root.zig files
+    if (try cfg.getInterfacesPath()) |interfaces_path| {
+        try generateInterfacesRoot(allocator, interfaces_path, interface_names.items);
+    }
+
+    if (try cfg.getImplsPath()) |impls_path| {
+        try generateImplsRoot(allocator, impls_path, interface_names.items, namespace_names.items);
+    }
+}
+
+/// Generate Zig code for all WebIDL JSON files in a directory
+pub fn generateFromDirectory(
+    allocator: std.mem.Allocator,
+    input_dir: []const u8,
+    cfg: *CodegenConfig,
+) !void {
+    const idl_files = try files.findIDLFiles(allocator, input_dir);
+    defer {
+        for (idl_files) |path| allocator.free(path);
+        allocator.free(idl_files);
+    }
+
+    for (idl_files) |file_path| {
+        try generateFromFile(allocator, file_path, cfg);
+    }
+}
+
+// Unit tests
+const testing = std.testing;
+
+test "generateInterface creates output file" {
+    const allocator = testing.allocator;
+
+    // Create a temporary directory for output
+    var tmp_dir = testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
+
+    const tmp_path = try tmp_dir.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(tmp_path);
+
+    // Simple test interface
+    const test_interface: types.Interface = .{
+        .name = "TestInterface",
+    };
+
+    // Generate code
+    var cfg = CodegenConfig.default(allocator);
+    defer cfg.deinit();
+    cfg.dest_root = tmp_path;
+
+    try generateInterface(allocator, test_interface, "test.idl", null, &cfg);
+
+    // Verify output file was created
+    const interfaces_path = try std.fs.path.join(allocator, &.{ tmp_path, "interfaces" });
+    defer allocator.free(interfaces_path);
+    const output_path = try std.fs.path.join(allocator, &.{ interfaces_path, "TestInterface.zig" });
+    defer allocator.free(output_path);
+
+    const file = try std.fs.cwd().openFile(output_path, .{});
+    defer file.close();
+
+    // Read and verify content
+    const content = try file.readToEndAlloc(allocator, 10 * 1024);
+    defer allocator.free(content);
+
+    // Should contain struct declaration
+    try testing.expect(std.mem.indexOf(u8, content, "pub const TestInterface = struct {") != null);
+    // Should contain header
+    try testing.expect(std.mem.indexOf(u8, content, "Generated from: test.idl") != null);
+}
+
+test "generateInterface includes base type in imports" {
+    const allocator = testing.allocator;
+
+    var tmp_dir = testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
+
+    const tmp_path = try tmp_dir.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(tmp_path);
+
+    const test_interface: types.Interface = .{
+        .name = "Node",
+        .inheritance = "EventTarget",
+    };
+
+    var cfg = CodegenConfig.default(allocator);
+    defer cfg.deinit();
+    cfg.dest_root = tmp_path;
+
+    try generateInterface(allocator, test_interface, "dom.idl", null, &cfg);
+
+    const interfaces_path = try std.fs.path.join(allocator, &.{ tmp_path, "interfaces" });
+    defer allocator.free(interfaces_path);
+    const output_path = try std.fs.path.join(allocator, &.{ interfaces_path, "Node.zig" });
+    defer allocator.free(output_path);
+
+    const file = try std.fs.cwd().openFile(output_path, .{});
+    defer file.close();
+
+    const content = try file.readToEndAlloc(allocator, 10 * 1024);
+    defer allocator.free(content);
+
+    // Should import base type from "interfaces" module
+    try testing.expect(std.mem.indexOf(u8, content, "const EventTarget = @import(\"interfaces\").EventTarget;") != null);
+}
+
+test "generateInterface includes lifecycle functions" {
+    const allocator = testing.allocator;
+
+    var tmp_dir = testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
+
+    const tmp_path = try tmp_dir.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(tmp_path);
+
+    const test_interface: types.Interface = .{
+        .name = "TestInterface",
+    };
+
+    var cfg = CodegenConfig.default(allocator);
+    defer cfg.deinit();
+    cfg.dest_root = tmp_path;
+
+    try generateInterface(allocator, test_interface, "test.idl", null, &cfg);
+
+    const interfaces_path = try std.fs.path.join(allocator, &.{ tmp_path, "interfaces" });
+    defer allocator.free(interfaces_path);
+    const output_path = try std.fs.path.join(allocator, &.{ interfaces_path, "TestInterface.zig" });
+    defer allocator.free(output_path);
+
+    const file = try std.fs.cwd().openFile(output_path, .{});
+    defer file.close();
+
+    const content = try file.readToEndAlloc(allocator, 10 * 1024);
+    defer allocator.free(content);
+
+    // Should have init and deinit
+    try testing.expect(std.mem.indexOf(u8, content, "pub fn init(") != null);
+    try testing.expect(std.mem.indexOf(u8, content, "pub fn deinit(") != null);
+    // init() should delegate to TestInterfaceImpl with State and vtable
+    try testing.expect(std.mem.indexOf(u8, content, "TestInterfaceImpl.init(allocator, State, &vtable, ctx)") != null);
+}
+
+/// Check if a type references a callback (by checking if callback file exists)
+fn typeReferencesCallback(allocator: std.mem.Allocator, idl_type: types.IDLType, typedefs_path: []const u8) !bool {
+    // Get the callbacks directory (sibling to typedefs)
+    const parent_dir = std.fs.path.dirname(typedefs_path) orelse ".";
+    const callbacks_dir = try std.fs.path.join(allocator, &.{ parent_dir, "callbacks" });
+    defer allocator.free(callbacks_dir);
+
+    // Check if the type name exists as a callback file
+    const callback_filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{idl_type.type});
+    defer allocator.free(callback_filename);
+
+    const callback_path = try std.fs.path.join(allocator, &.{ callbacks_dir, callback_filename });
+    defer allocator.free(callback_path);
+
+    // If file exists, this is a callback reference
+    std.fs.cwd().access(callback_path, .{}) catch {
+        return false;
+    };
+
+    return true;
+}
+
+/// Write a type for typedef generation (handles callback references)
+fn writeTypeForTypedef(allocator: std.mem.Allocator, w: anytype, idl_type: types.IDLType, typedefs_path: []const u8) !void {
+    const type_str = idl_type.type;
+
+    // Check if this is a callback reference
+    if (try typeReferencesCallback(allocator, idl_type, typedefs_path)) {
+        // Reference the callback from callbacks module
+        try w.print("callbacks.{s}", .{type_str});
+        return;
+    }
+
+    // Otherwise use writeTypeSimple
+    try writeTypeSimple(w, idl_type, null);
+}
+
+/// Generate a typedef Zig file
+pub fn generateTypedef(
+    allocator: std.mem.Allocator,
+    typedef: types.Typedef,
+    typedefs_path: []const u8,
+) !void {
+    // Create typedefs directory
+    try std.fs.cwd().makePath(typedefs_path);
+
+    // Create typedef file
+    const output_filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{typedef.name});
+    defer allocator.free(output_filename);
+
+    const output_path = try std.fs.path.join(allocator, &.{ typedefs_path, output_filename });
+    defer allocator.free(output_path);
+
+    const output_file = try std.fs.cwd().createFile(output_path, .{});
+    defer output_file.close();
+
+    var buffer: [4096]u8 = undefined;
+    var file_writer = output_file.writer(&buffer);
+    const w = &file_writer.interface;
+
+    // Write header
+    try w.print("//! WebIDL typedef: {s}\n", .{typedef.name});
+    try w.writeAll("//!\n");
+    try w.writeAll("//! This file is AUTO-GENERATED. Do not edit manually.\n");
+    try w.writeAll("\n");
+
+    // Import runtime (needed for DOMString types)
+    try w.writeAll("const runtime = @import(\"runtime\");\n");
+
+    // Check if typedef references a callback - if so, import callbacks module
+    const needs_callbacks = try typeReferencesCallback(allocator, typedef.idlType, typedefs_path);
+    if (needs_callbacks) {
+        try w.writeAll("const callbacks = @import(\"callbacks\");\n");
+    }
+    try w.writeAll("\n");
+
+    // Check if it's a union type
+    if (typedef.idlType.unionTypes) |union_types| {
+        // Generate tagged union
+        try w.print("pub const {s} = union(enum) {{\n", .{typedef.name});
+
+        for (union_types, 0..) |union_type, i| {
+            const variant_name = try std.fmt.allocPrint(allocator, "variant_{d}", .{i});
+            defer allocator.free(variant_name);
+
+            try w.print("    {s}: ", .{variant_name});
+            try writeTypeForTypedef(allocator, w, union_type, typedefs_path);
+            try w.writeAll(",\n");
+        }
+
+        try w.writeAll("};\n");
+    } else {
+        // Simple type alias
+        try w.print("pub const {s} = ", .{typedef.name});
+
+        // Handle nullable prefix
+        if (typedef.idlType.nullable) {
+            try w.writeAll("?");
+        }
+
+        try writeTypeForTypedef(allocator, w, typedef.idlType, typedefs_path);
+        try w.writeAll(";\n");
+    }
+
+    try w.flush();
+}
+
+/// Generate a dictionary Zig struct
+pub fn generateDictionary(
+    allocator: std.mem.Allocator,
+    dictionary: types.Dictionary,
+    dictionaries_path: []const u8,
+) !void {
+    // Create dictionaries directory
+    try std.fs.cwd().makePath(dictionaries_path);
+
+    // Create dictionary file
+    const output_filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{dictionary.name});
+    defer allocator.free(output_filename);
+
+    const output_path = try std.fs.path.join(allocator, &.{ dictionaries_path, output_filename });
+    defer allocator.free(output_path);
+
+    const output_file = try std.fs.cwd().createFile(output_path, .{});
+    defer output_file.close();
+
+    var buffer: [4096]u8 = undefined;
+    var file_writer = output_file.writer(&buffer);
+    const w = &file_writer.interface;
+
+    // Write header
+    try w.print("//! WebIDL dictionary: {s}\n", .{dictionary.name});
+    try w.writeAll("//!\n");
+    try w.writeAll("//! This file is AUTO-GENERATED. Do not edit manually.\n");
+    try w.writeAll("\n");
+
+    // Write imports
+    try w.writeAll("const runtime = @import(\"runtime\");\n");
+
+    // Import base dictionary if inheritance exists
+    if (dictionary.inheritance) |base_name| {
+        try w.print("const {s} = @import(\"{s}.zig\").{s};\n", .{ base_name, base_name, base_name });
+    }
+
+    try w.writeAll("\n");
+
+    // Generate struct
+    try w.print("pub const {s} = struct {{\n", .{dictionary.name});
+
+    // If inheriting, embed base dictionary fields
+    if (dictionary.inheritance) |base_name| {
+        try w.print("    // Inherited from {s}\n", .{base_name});
+        try w.print("    base: {s},\n\n", .{base_name});
+    }
+
+    // Generate fields from members
+    for (dictionary.members) |member| {
+        // Escape Zig keywords by wrapping in @"..." syntax
+        if (isZigKeyword(member.name)) {
+            try w.print("    @\"{s}\": ", .{member.name});
+        } else {
+            try w.print("    {s}: ", .{member.name});
+        }
+
+        // Dictionary members are optional by default unless required
+        const is_required = member.required;
+        if (!is_required) {
+            try w.writeAll("?");
+        }
+
+        try writeTypeSimple(w, member.idlType, null);
+
+        // Default value
+        if (!is_required) {
+            try w.writeAll(" = null");
+        }
+
+        try w.writeAll(",\n");
+    }
+
+    try w.writeAll("};\n");
+
+    try w.flush();
+}
+
+/// Generate an enum Zig file
+pub fn generateEnum(
+    allocator: std.mem.Allocator,
+    enum_type: types.Enum,
+    enums_path: []const u8,
+) !void {
+    // Create enums directory
+    try std.fs.cwd().makePath(enums_path);
+
+    // Create enum file
+    const output_filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{enum_type.name});
+    defer allocator.free(output_filename);
+
+    const output_path = try std.fs.path.join(allocator, &.{ enums_path, output_filename });
+    defer allocator.free(output_path);
+
+    const output_file = try std.fs.cwd().createFile(output_path, .{});
+    defer output_file.close();
+
+    var buffer: [4096]u8 = undefined;
+    var file_writer = output_file.writer(&buffer);
+    const w = &file_writer.interface;
+
+    // Write header
+    try w.print("//! WebIDL enum: {s}\n", .{enum_type.name});
+    try w.writeAll("//!\n");
+    try w.writeAll("//! This file is AUTO-GENERATED. Do not edit manually.\n");
+    try w.writeAll("\n");
+
+    // Generate enum
+    try w.print("pub const {s} = enum {{\n", .{enum_type.name});
+
+    for (enum_type.values) |value| {
+        // Convert enum value to valid Zig identifier
+        const zig_name = try allocator.dupe(u8, value);
+        defer allocator.free(zig_name);
+
+        // Replace invalid characters with underscores
+        for (zig_name) |*c| {
+            if (!std.ascii.isAlphanumeric(c.*) and c.* != '_') {
+                c.* = '_';
+            }
+        }
+
+        try w.print("    {s},\n", .{zig_name});
+    }
+
+    try w.writeAll("};\n");
+
+    try w.flush();
+}
+
+/// Generate a callback Zig file
+pub fn generateCallback(
+    allocator: std.mem.Allocator,
+    callback: types.Callback,
+    callbacks_path: []const u8,
+) !void {
+    // Create callbacks directory
+    try std.fs.cwd().makePath(callbacks_path);
+
+    // Create callback file
+    const output_filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{callback.name});
+    defer allocator.free(output_filename);
+
+    const output_path = try std.fs.path.join(allocator, &.{ callbacks_path, output_filename });
+    defer allocator.free(output_path);
+
+    const output_file = try std.fs.cwd().createFile(output_path, .{});
+    defer output_file.close();
+
+    var buffer: [4096]u8 = undefined;
+    var file_writer = output_file.writer(&buffer);
+    const w = &file_writer.interface;
+
+    // Write header
+    try w.print("//! WebIDL callback: {s}\n", .{callback.name});
+    try w.writeAll("//!\n");
+    try w.writeAll("//! This file is AUTO-GENERATED. Do not edit manually.\n");
+    try w.writeAll("\n");
+
+    // Write imports
+    try w.writeAll("const runtime = @import(\"runtime\");\n\n");
+
+    // Generate callback function type
+    try w.print("pub const {s} = *const fn (", .{callback.name});
+
+    for (callback.arguments, 0..) |arg, i| {
+        if (i > 0) try w.writeAll(", ");
+
+        // Escape Zig keywords by wrapping in @"..." syntax
+        if (isZigKeyword(arg.name)) {
+            try w.print("@\"{s}\": ", .{arg.name});
+        } else {
+            try w.print("{s}: ", .{arg.name});
+        }
+
+        try writeTypeSimple(w, arg.idlType, null);
+    }
+
+    try w.writeAll(") ");
+    try writeTypeSimple(w, callback.idlType, null);
+    try w.writeAll(";\n");
+
+    try w.flush();
+}
+
+/// Generate a namespace Zig file
+pub fn generateNamespace(
+    allocator: std.mem.Allocator,
+    namespace: types.Namespace,
+    namespaces_path: []const u8,
+) !void {
+    // Create namespaces directory
+    try std.fs.cwd().makePath(namespaces_path);
+
+    // Create namespace file
+    const output_filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{namespace.name});
+    defer allocator.free(output_filename);
+
+    const output_path = try std.fs.path.join(allocator, &.{ namespaces_path, output_filename });
+    defer allocator.free(output_path);
+
+    const output_file = try std.fs.cwd().createFile(output_path, .{});
+    defer output_file.close();
+
+    var buffer: [4096]u8 = undefined;
+    var file_writer = output_file.writer(&buffer);
+    const w = &file_writer.interface;
+
+    // Write header
+    try w.print("//! WebIDL namespace: {s}\n", .{namespace.name});
+    try w.writeAll("//!\n");
+    try w.writeAll("//! This file is AUTO-GENERATED. Do not edit manually.\n");
+    try w.writeAll("\n");
+
+    // Write imports
+    try w.writeAll("const runtime = @import(\"runtime\");\n");
+    try w.print("const {s}_impl = @import(\"impls\").{s};\n\n", .{ namespace.name, namespace.name });
+
+    // Generate namespace as a struct with only static methods
+    try w.print("pub const {s} = struct {{\n", .{namespace.name});
+
+    // Collect operations for overload detection
+    var operations = std.ArrayList(types.Operation).empty;
+    defer operations.deinit(allocator);
+
+    for (namespace.members) |member| {
+        if (member.type == .operation) {
+            if (member.operation) |op| {
+                try operations.append(allocator, op);
+            }
+        }
+    }
+
+    // Group operations by name to detect overloads
+    const overload_sets = try overload.groupOperationsByName(allocator, operations.items);
+    defer overload.freeOverloadSets(allocator, overload_sets);
+
+    // Generate Meta struct for V8 bindings
+    try w.print("    pub const Meta = struct {{\n", .{});
+    try w.print("        pub const name = \"{s}\";\n", .{namespace.name});
+    try w.writeAll("        pub const is_namespace = true;\n");
+    try w.writeAll("        pub const BaseType = ?*anyopaque;\n");
+    try w.writeAll("        pub const MixinTypes = &.{};\n");
+    try w.writeAll("        \n");
+    try w.writeAll("        /// Method binding hints for V8Interface (JS name, Zig function name)\n");
+    try w.writeAll("        pub const methods = .{\n");
+    for (overload_sets) |set| {
+        if (set.isOverloaded()) {
+            // Multiple operations with same name - generate variants
+            for (set.operations) |op| {
+                const variant_name = try overload.generateVariantName(allocator, op);
+                defer allocator.free(variant_name);
+                try w.print("            .{{ \"{s}_{s}\", \"call_{s}_{s}\" }},\n", .{ set.name, variant_name, set.name, variant_name });
+            }
+        } else {
+            try w.print("            .{{ \"{s}\", \"call_{s}\" }},\n", .{ set.name, set.name });
+        }
+    }
+    try w.writeAll("        };\n");
+    try w.writeAll("        \n");
+    try w.writeAll("        pub const has_constructor = false;\n");
+    try w.writeAll("        pub const properties = .{};\n");
+    try w.writeAll("    };\n\n");
+
+    // Generate empty State for V8Interface compatibility
+    try w.writeAll("    pub const State = struct {};\n\n");
+
+    // Generate operations (methods)
+    for (overload_sets) |set| {
+        if (set.isOverloaded()) {
+            // Multiple operations with same name - generate variants
+            for (set.operations) |op| {
+                const variant_name = try overload.generateVariantName(allocator, op);
+                defer allocator.free(variant_name);
+
+                const full_name = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ set.name, variant_name });
+                defer allocator.free(full_name);
+
+                // Prefix with call_ for JS bindings convention
+                const prefixed_full_name = try std.fmt.allocPrint(allocator, "call_{s}", .{full_name});
+                defer allocator.free(prefixed_full_name);
+
+                // Escape Zig keywords in function names
+                if (isZigKeyword(prefixed_full_name)) {
+                    try w.print("    pub fn @\"{s}\"(ctx: runtime.Context", .{prefixed_full_name});
+                } else {
+                    try w.print("    pub fn {s}(ctx: runtime.Context", .{prefixed_full_name});
+                }
+
+                for (op.arguments) |arg| {
+                    try w.writeAll(", ");
+                    try w.print("{s}: ", .{arg.name});
+                    if (arg.variadic) {
+                        // Variadic parameters (any...) should be a slice
+                        try w.writeAll("[]const ");
+                    }
+                    try writeTypeSimple(w, arg.idlType, null);
+                }
+
+                try w.writeAll(") ");
+                try writeTypeSimple(w, op.idlType, null);
+                try w.writeAll(" {\n");
+                // Delegate to impl - use the prefixed full_name (impl has call_ prefix too)
+                try w.print("        return {s}_impl.{s}(ctx", .{ namespace.name, prefixed_full_name });
+                for (op.arguments) |arg| {
+                    try w.writeAll(", ");
+                    try w.print("{s}", .{arg.name});
+                }
+                try w.writeAll(");\n");
+                try w.writeAll("    }\n\n");
+            }
+        } else {
+            // Single operation with this name
+            const op = set.operations[0];
+            const op_name = set.name;
+
+            // Escape Zig keywords in function names
+            // Prefix with call_ for JS bindings convention
+            const prefixed_name = try std.fmt.allocPrint(allocator, "call_{s}", .{op_name});
+            defer allocator.free(prefixed_name);
+
+            if (isZigKeyword(prefixed_name)) {
+                try w.print("    pub fn @\"{s}\"(ctx: runtime.Context", .{prefixed_name});
+            } else {
+                try w.print("    pub fn {s}(ctx: runtime.Context", .{prefixed_name});
+            }
+
+            for (op.arguments) |arg| {
+                try w.writeAll(", ");
+                try w.print("{s}: ", .{arg.name});
+                // Variadic parameters (any...) should be a slice
+                if (arg.variadic) {
+                    try w.writeAll("[]const ");
+                }
+                try writeTypeSimple(w, arg.idlType, null);
+            }
+
+            try w.writeAll(") ");
+            try writeTypeSimple(w, op.idlType, null);
+            try w.writeAll(" {\n");
+            // Delegate to impl (use prefixed name since impl has call_ prefix too)
+            if (isZigKeyword(prefixed_name)) {
+                try w.print("        return {s}_impl.@\"{s}\"(ctx", .{ namespace.name, prefixed_name });
+            } else {
+                try w.print("        return {s}_impl.{s}(ctx", .{ namespace.name, prefixed_name });
+            }
+            for (op.arguments) |arg| {
+                try w.writeAll(", ");
+                try w.print("{s}", .{arg.name});
+            }
+            try w.writeAll(");\n");
+            try w.writeAll("    }\n\n");
+        }
+    }
+
+    // Generate attributes
+    for (namespace.members) |member| {
+        if (member.type == .attribute) {
+            if (member.attribute) |attr| {
+                // Namespace attributes are typically read-only
+                // Escape Zig keywords in attribute names
+                if (isZigKeyword(attr.name)) {
+                    try w.print("    pub const @\"{s}\": ", .{attr.name});
+                } else {
+                    try w.print("    pub const {s}: ", .{attr.name});
+                }
+                try writeTypeSimple(w, attr.idlType, null);
+                try w.writeAll(" = undefined;\n\n");
+            }
+        }
+    }
+
+    try w.writeAll("};\n");
+
+    try w.flush();
+}
+
+/// Generate namespace implementation stub
+pub fn generateNamespaceImpl(
+    allocator: std.mem.Allocator,
+    namespace: types.Namespace,
+    impls_path: []const u8,
+) !void {
+    // Create impls directory
+    try std.fs.cwd().makePath(impls_path);
+
+    // Create impl file (use same naming as interfaces: {name}.zig)
+    const output_filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{namespace.name});
+    defer allocator.free(output_filename);
+
+    const output_path = try std.fs.path.join(allocator, &.{ impls_path, output_filename });
+    defer allocator.free(output_path);
+
+    const output_file = try std.fs.cwd().createFile(output_path, .{});
+    defer output_file.close();
+
+    var buffer: [4096]u8 = undefined;
+    var file_writer = output_file.writer(&buffer);
+    const w = &file_writer.interface;
+
+    // Write header
+    try w.print("//! Implementation stub for WebIDL namespace: {s}\n", .{namespace.name});
+    try w.writeAll("//!\n");
+    try w.writeAll("//! This file is AUTO-GENERATED. Do not edit manually.\n");
+    try w.writeAll("//! Implement the functions below to provide actual functionality.\n");
+    try w.writeAll("\n");
+
+    // Write imports
+    try w.writeAll("const runtime = @import(\"runtime\");\n\n");
+
+    // Collect operations for overload detection
+    var operations = std.ArrayList(types.Operation).empty;
+    defer operations.deinit(allocator);
+
+    for (namespace.members) |member| {
+        if (member.type == .operation) {
+            if (member.operation) |op| {
+                try operations.append(allocator, op);
+            }
+        }
+    }
+
+    // Group operations by name to detect overloads
+    const overload_sets = try overload.groupOperationsByName(allocator, operations.items);
+    defer overload.freeOverloadSets(allocator, overload_sets);
+
+    // Generate operation implementations
+    for (overload_sets) |set| {
+        if (set.isOverloaded()) {
+            // Multiple operations with same name - generate variants
+            for (set.operations) |op| {
+                const variant_name = try overload.generateVariantName(allocator, op);
+                defer allocator.free(variant_name);
+
+                const full_name = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ set.name, variant_name });
+                defer allocator.free(full_name);
+
+                // Prefix with call_ for JS bindings convention
+                const prefixed_full_name = try std.fmt.allocPrint(allocator, "call_{s}", .{full_name});
+                defer allocator.free(prefixed_full_name);
+
+                // Generate function signature
+                try w.print("pub fn {s}(ctx: runtime.Context", .{prefixed_full_name});
+
+                for (op.arguments) |arg| {
+                    try w.writeAll(", ");
+                    try w.print("{s}: ", .{arg.name});
+                    try writeTypeSimple(w, arg.idlType, null);
+                }
+
+                try w.writeAll(") ");
+                try writeTypeSimple(w, op.idlType, null);
+                try w.writeAll(" {\n");
+                // Unused var suppression
+                try w.writeAll("    _ = ctx;\n");
+                for (op.arguments) |arg| {
+                    try w.print("    _ = {s};\n", .{arg.name});
+                }
+                try w.writeAll("    return error.NotImplemented;\n");
+                try w.writeAll("}\n\n");
+            }
+        } else {
+            // Single operation with this name
+            const op = set.operations[0];
+            const op_name = set.name;
+
+            // Prefix with call_ for JS bindings convention
+            const prefixed_name = try std.fmt.allocPrint(allocator, "call_{s}", .{op_name});
+            defer allocator.free(prefixed_name);
+
+            // Generate function signature
+            if (isZigKeyword(prefixed_name)) {
+                try w.print("pub fn @\"{s}\"(ctx: runtime.Context", .{prefixed_name});
+            } else {
+                try w.print("pub fn {s}(ctx: runtime.Context", .{prefixed_name});
+            }
+
+            for (op.arguments) |arg| {
+                try w.writeAll(", ");
+                try w.print("{s}: ", .{arg.name});
+                try writeTypeSimple(w, arg.idlType, null);
+            }
+
+            try w.writeAll(") ");
+            try writeTypeSimple(w, op.idlType, null);
+            try w.writeAll(" {\n");
+            // Unused var suppression
+            try w.writeAll("    _ = ctx;\n");
+            for (op.arguments) |arg| {
+                try w.print("    _ = {s};\n", .{arg.name});
+            }
+            try w.writeAll("    return error.NotImplemented;\n");
+            try w.writeAll("}\n\n");
+        }
+    }
+
+    try w.flush();
 }

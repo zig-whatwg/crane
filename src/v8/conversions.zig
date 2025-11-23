@@ -1,0 +1,947 @@
+//! V8 Type Conversion Layer
+//!
+//! This module provides bidirectional type conversions between Zig WebIDL runtime types
+//! and V8 JavaScript values. All conversions follow WebIDL specification semantics.
+//!
+//! ## Conversion Flow
+//!
+//! JavaScript (V8) ←→ Zig (WebIDL Runtime)
+//!
+//! Examples:
+//! - v8::String → runtime.DOMString
+//! - v8::Number → runtime.Double / runtime.Long
+//! - v8::Array → runtime.sequence(T)
+//! - v8::Object → runtime.record(K, V)
+//! - v8::Value (any) → runtime.Any (opaque pointer)
+//!
+//! ## Error Handling
+//!
+//! Conversions can fail due to type mismatches or out-of-range values.
+//! All conversion functions return error unions for proper error propagation.
+
+const std = @import("std");
+const v8 = @import("ffi.zig");
+const runtime = @import("runtime");
+const namespace = @import("namespace.zig");
+
+/// Conversion errors that can occur during type conversion
+pub const ConversionError = error{
+    /// V8 value is not the expected type
+    TypeError,
+
+    /// Numeric value is out of range for target type
+    RangeError,
+
+    /// String contains invalid UTF-8 or violates constraints
+    StringError,
+
+    /// Memory allocation failed during conversion
+    OutOfMemory,
+
+    /// Context is required but was null
+    NullContext,
+};
+
+// ============================================================================
+// JavaScript to Zig (V8 → Runtime)
+// ============================================================================
+
+/// Convert V8 String to Zig DOMString
+///
+/// Allocates memory for the string contents using the provided allocator.
+/// Caller must call DOMString.deinit() when done.
+pub fn fromV8String(
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    value: *v8.String,
+) ConversionError!runtime.DOMString {
+    _ = isolate;
+    _ = context;
+
+    // Get UTF-8 length (excludes null terminator)
+    const length = v8.v8_String_Utf8Length(value);
+    if (length < 0) {
+        return ConversionError.StringError;
+    }
+
+    // Handle empty strings efficiently
+    if (length == 0) {
+        return runtime.DOMString.empty;
+    }
+
+    // Allocate buffer for UTF-8 data
+    const buffer = try allocator.alloc(u8, @intCast(length));
+    errdefer allocator.free(buffer);
+
+    // Write UTF-8 to buffer
+    const written = v8.v8_String_WriteUtf8(value, buffer.ptr, @intCast(length));
+    if (written != length) {
+        return ConversionError.StringError;
+    }
+
+    // Create DOMString from owned slice
+    return runtime.DOMString.initOwned(buffer);
+}
+
+/// Convert V8 Value to Zig boolean
+pub fn fromV8Boolean(
+    isolate: *v8.Isolate,
+    value: *v8.Value,
+) runtime.Boolean {
+    return v8.v8_Value_BooleanValue(value, isolate);
+}
+
+/// Convert V8 Value to Zig i32 (long)
+pub fn fromV8Long(
+    context: *v8.Context,
+    value: *v8.Value,
+) ConversionError!runtime.Long {
+    if (!v8.v8_Value_IsNumber(value)) {
+        return ConversionError.TypeError;
+    }
+    return v8.v8_Value_Int32Value(value, context);
+}
+
+/// Convert V8 Value to Zig u32 (unsigned long)
+pub fn fromV8UnsignedLong(
+    context: *v8.Context,
+    value: *v8.Value,
+) ConversionError!runtime.UnsignedLong {
+    if (!v8.v8_Value_IsNumber(value)) {
+        return ConversionError.TypeError;
+    }
+    return v8.v8_Value_Uint32Value(value, context);
+}
+
+/// Convert V8 Value to Zig i64 (long long)
+pub fn fromV8LongLong(
+    context: *v8.Context,
+    value: *v8.Value,
+) ConversionError!runtime.LongLong {
+    if (!v8.v8_Value_IsNumber(value)) {
+        return ConversionError.TypeError;
+    }
+    return v8.v8_Value_IntegerValue(value, context);
+}
+
+/// Convert V8 Value to Zig f64 (double)
+pub fn fromV8Double(
+    context: *v8.Context,
+    value: *v8.Value,
+) ConversionError!runtime.Double {
+    if (!v8.v8_Value_IsNumber(value)) {
+        return ConversionError.TypeError;
+    }
+    return v8.v8_Value_NumberValue(value, context);
+}
+
+/// Convert V8 Value to Zig f32 (float)
+pub fn fromV8Float(
+    context: *v8.Context,
+    value: *v8.Value,
+) ConversionError!runtime.Float {
+    const double = try fromV8Double(context, value);
+    return @floatCast(double);
+}
+
+/// Convert V8 Value to runtime.Any (opaque pointer)
+///
+/// The V8 value is type-erased and stored as an opaque pointer.
+/// This is used for WebIDL 'any' type parameters.
+pub fn fromV8Any(value: *v8.Value) runtime.Any {
+    return @ptrCast(value);
+}
+
+/// Convert V8 Object to runtime.Object (opaque pointer)
+pub fn fromV8Object(value: *v8.Object) runtime.Object {
+    return @ptrCast(value);
+}
+
+/// Convert V8 Array to Zig sequence
+///
+/// Allocates memory for the sequence and converts each element.
+/// Caller must free the returned slice when done.
+pub fn fromV8Sequence(
+    comptime T: type,
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    array: *v8.Array,
+) ConversionError![]T {
+    const length = v8.v8_Array_Length(array);
+    const slice = try allocator.alloc(T, length);
+    errdefer allocator.free(slice);
+
+    for (0..length) |i| {
+        const v8_value = v8.v8_Array_Get(context, array, @intCast(i)) orelse continue;
+        slice[i] = try fromV8Value(T, allocator, isolate, context, v8_value);
+    }
+
+    return slice;
+}
+
+/// Convert V8 Object to WebIDL record<K,V>
+///
+/// Iterates over object properties and creates key-value pairs.
+/// Caller must call record.deinit() when done.
+pub fn fromV8Record(
+    comptime K: type,
+    comptime V: type,
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    object: *v8.Object,
+) ConversionError!runtime.record(K, V) {
+    // Get own property names (excludes inherited properties)
+    const names = v8.v8_Object_GetOwnPropertyNames(context, object) orelse {
+        // If property enumeration fails, return empty record
+        return runtime.record(K, V).init(allocator);
+    };
+    defer v8.v8_Array_Dispose(names);
+
+    const length = v8.v8_Array_Length(names);
+    var rec = try runtime.record(K, V).init(allocator);
+    errdefer rec.deinit();
+
+    for (0..length) |i| {
+        // Get property name as V8 value
+        const key_value = v8.v8_Array_Get(names, context, @intCast(i)) orelse continue;
+        defer v8.v8_Value_Dispose(key_value);
+
+        // Convert key from V8 to K type
+        const key = try fromV8Value(K, allocator, isolate, context, key_value);
+        errdefer if (K == runtime.DOMString or K == runtime.USVString or K == runtime.ByteString) {
+            // Free string keys on error
+            if (@TypeOf(key) == runtime.DOMString) key.deinit();
+        };
+
+        // Get property value from object
+        const val_v8 = v8.v8_Object_Get(object, context, key_value) orelse {
+            // Property disappeared between enumeration and access - skip it
+            continue;
+        };
+        defer v8.v8_Value_Dispose(val_v8);
+
+        // Convert value from V8 to V type
+        const value = try fromV8Value(V, allocator, isolate, context, val_v8);
+        errdefer if (V == runtime.DOMString or V == runtime.USVString or V == runtime.ByteString) {
+            // Free string values on error
+            if (@TypeOf(value) == runtime.DOMString) value.deinit();
+        };
+
+        // Add key-value pair to record
+        try rec.put(key, value);
+    }
+
+    return rec;
+}
+
+/// Generic V8 Value to Zig type conversion
+///
+/// Dispatches to the appropriate conversion function based on target type.
+pub fn fromV8Value(
+    comptime T: type,
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    value: *v8.Value,
+) ConversionError!T {
+    // Handle optional types (nullable)
+    const type_info = @typeInfo(T);
+    if (type_info == .optional) {
+        // Check for null/undefined
+        if (v8.v8_Value_IsNullOrUndefined(value)) {
+            return null;
+        }
+        // Recursively convert the child type
+        const ChildType = type_info.optional.child;
+        return try fromV8Value(ChildType, allocator, isolate, context, value);
+    }
+
+    // Handle slices (sequence<T>)
+    if (type_info == .pointer and type_info.pointer.size == .slice) {
+        const ElemType = type_info.pointer.child;
+        if (!v8.v8_Value_IsArray(value)) {
+            return ConversionError.TypeError;
+        }
+        const array = @as(*v8.Array, @ptrCast(value));
+        return try fromV8Sequence(ElemType, allocator, isolate, context, array);
+    }
+
+    // Handle DOMString specially (it's a union type but should be treated as a string)
+    if (T == runtime.DOMString) {
+        if (!v8.v8_Value_IsString(value)) {
+            return ConversionError.TypeError;
+        }
+        const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
+        return try fromV8String(allocator, isolate, context, string);
+    }
+
+    // Handle unions (for constructor overloading and type unions)
+    if (type_info == .@"union") {
+        // For unions, we need to try each variant and see which one matches
+        // This is complex and depends on the union tag
+        // For now, we'll return a compile error and handle specific unions as needed
+        @compileError("Union type conversion not yet implemented for: " ++ @typeName(T) ++
+            ". Union types in ConstructorArgs should be handled by the impl constructor, not converted from V8.");
+    }
+
+    // Handle integers (beyond WebIDL standard types)
+    if (type_info == .int) {
+        if (!v8.v8_Value_IsNumber(value)) {
+            return ConversionError.TypeError;
+        }
+        const num_value = v8.v8_Value_NumberValue(value, context);
+
+        // Check range and convert
+        const int_value: i64 = @intFromFloat(num_value);
+        if (!runtime.isInRange(T, int_value)) {
+            return ConversionError.RangeError;
+        }
+        return @intCast(int_value);
+    }
+
+    // Handle enums (convert from string or integer)
+    if (type_info == .@"enum") {
+        if (v8.v8_Value_IsString(value)) {
+            // Try to parse enum from string name
+            const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
+            var dom_string = try fromV8String(allocator, isolate, context, string);
+            defer dom_string.deinit(allocator);
+
+            // Try to match enum name
+            const enum_name = switch (dom_string) {
+                .empty => "",
+                .interned => |s| s,
+                .owned => |s| s,
+            };
+
+            // Use @typeInfo to iterate enum fields and match by name
+            inline for (std.meta.fields(T)) |field| {
+                if (std.mem.eql(u8, field.name, enum_name)) {
+                    return @enumFromInt(field.value);
+                }
+            }
+            return ConversionError.TypeError;
+        } else if (v8.v8_Value_IsNumber(value)) {
+            // Convert from integer value
+            const num_value = v8.v8_Value_NumberValue(value, context);
+            const int_value: i32 = @intFromFloat(num_value);
+            return @enumFromInt(int_value);
+        } else {
+            return ConversionError.TypeError;
+        }
+    }
+
+    // Handle function pointers (callbacks)
+    if (type_info == .pointer) {
+        const child_info = @typeInfo(type_info.pointer.child);
+        if (child_info == .@"fn") {
+            // Function pointer - store as opaque pointer for now
+            // The V8 function object will be wrapped and called later
+            return @ptrCast(@alignCast(@constCast(value)));
+        }
+    }
+
+    // Handle structs (dictionaries vs interfaces)
+    if (type_info == .@"struct") {
+        // Check if this is a WebIDL interface (has Meta subtype)
+        if (@hasDecl(T, "Meta")) {
+            // This is a WebIDL interface, not a dictionary
+            // TODO: Extract *runtime.Instance from V8 object's internal field
+            // For now, interfaces in constructor parameters are not fully supported
+            return error.TypeError;
+        }
+
+        // Regular dictionary struct - convert from V8 object
+        if (!v8.v8_Value_IsObject(value)) {
+            return ConversionError.TypeError;
+        }
+        const object = @as(*v8.Object, @ptrCast(value));
+
+        var result: T = undefined;
+        inline for (std.meta.fields(T)) |field| {
+            // Get property name
+            const field_name_str = v8.v8_String_NewFromUtf8(
+                isolate,
+                field.name.ptr,
+                @intCast(field.name.len),
+            );
+
+            // Get property value from object
+            const field_v8_opt = v8.v8_Object_Get(object, context, @ptrCast(field_name_str));
+
+            if (field_v8_opt) |field_v8| {
+                // Convert field value
+                @field(result, field.name) = try fromV8Value(
+                    field.type,
+                    allocator,
+                    isolate,
+                    context,
+                    field_v8,
+                );
+            } else {
+                // Property doesn't exist
+                if (@typeInfo(field.type) == .optional) {
+                    @field(result, field.name) = null;
+                } else {
+                    return ConversionError.TypeError;
+                }
+            }
+        }
+        return result;
+    }
+
+    // Handle void (used for no-argument constructors)
+    if (T == void) {
+        // Void doesn't need conversion from V8
+        return {};
+    }
+
+    // Handle primitive and special types using if-chain to avoid compile errors
+    if (T == runtime.Boolean) return fromV8Boolean(isolate, value);
+    if (T == runtime.Long) return try fromV8Long(context, value);
+    if (T == runtime.UnsignedLong) return try fromV8UnsignedLong(context, value);
+    if (T == runtime.LongLong) return try fromV8LongLong(context, value);
+    if (T == runtime.Double) return try fromV8Double(context, value);
+    if (T == runtime.Float) return try fromV8Float(context, value);
+    if (T == runtime.DOMString) {
+        if (!v8.v8_Value_IsString(value)) {
+            return ConversionError.TypeError;
+        }
+        const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
+        return try fromV8String(allocator, isolate, context, string);
+    }
+    if (T == runtime.Any) return fromV8Any(value);
+    if (T == *const anyopaque) return @ptrCast(value); // Used for variadic ...any parameters
+
+    // If we get here, it's an unsupported type
+    @compileError("Unsupported type for V8 conversion: " ++ @typeName(T));
+}
+
+// ============================================================================
+// Zig to JavaScript (Runtime → V8)
+// ============================================================================
+
+/// Convert Zig DOMString to V8 String
+pub fn toV8String(
+    isolate: *v8.Isolate,
+    value: runtime.DOMString,
+) *v8.String {
+    // Get string slice from DOMString
+    const slice = switch (value) {
+        .empty => "",
+        .interned => |s| s,
+        .owned => |s| s,
+    };
+
+    if (slice.len == 0) {
+        return v8.v8_String_Empty(isolate) orelse {
+            // Fallback if Empty fails
+            return v8.v8_String_NewFromUtf8(isolate, "".ptr, 0).?;
+        };
+    }
+
+    return v8.v8_String_NewFromUtf8(
+        isolate,
+        slice.ptr,
+        @intCast(slice.len),
+    ) orelse {
+        // Fallback to empty string if creation fails
+        return v8.v8_String_Empty(isolate).?;
+    };
+}
+
+/// Convert Zig boolean to V8 Boolean
+pub fn toV8Boolean(
+    isolate: *v8.Isolate,
+    value: runtime.Boolean,
+) *v8.Boolean {
+    // TODO: Add v8_Boolean_New to FFI wrapper
+    // For now, cast number to boolean (V8 treats 0 as false, non-zero as true)
+    const num_val: f64 = if (value) 1.0 else 0.0;
+    const num = v8.v8_Number_New(isolate, num_val);
+    return @ptrCast(num);
+}
+
+/// Convert Zig i32 (long) to V8 Number
+pub fn toV8Long(
+    isolate: *v8.Isolate,
+    value: runtime.Long,
+) *v8.Number {
+    return v8.v8_Number_New(isolate, @floatFromInt(value));
+}
+
+/// Convert Zig u32 (unsigned long) to V8 Number
+pub fn toV8UnsignedLong(
+    isolate: *v8.Isolate,
+    value: runtime.UnsignedLong,
+) *v8.Number {
+    return v8.v8_Number_New(isolate, @floatFromInt(value));
+}
+
+/// Convert Zig i64 (long long) to V8 Number
+pub fn toV8LongLong(
+    isolate: *v8.Isolate,
+    value: runtime.LongLong,
+) *v8.Number {
+    return v8.v8_Number_New(isolate, @floatFromInt(value));
+}
+
+/// Convert Zig f64 (double) to V8 Number
+pub fn toV8Double(
+    isolate: *v8.Isolate,
+    value: runtime.Double,
+) *v8.Number {
+    return v8.v8_Number_New(isolate, value);
+}
+
+/// Convert Zig f32 (float) to V8 Number
+pub fn toV8Float(
+    isolate: *v8.Isolate,
+    value: runtime.Float,
+) *v8.Number {
+    return v8.v8_Number_New(isolate, @floatCast(value));
+}
+
+/// Convert runtime.Any (opaque pointer) to V8 Value
+pub fn toV8Any(value: runtime.Any) *v8.Value {
+    return @ptrCast(@alignCast(value));
+}
+
+/// Convert runtime.Object (opaque pointer) to V8 Object
+pub fn toV8Object(value: runtime.Object) *v8.Object {
+    return @ptrCast(@alignCast(value));
+}
+
+/// Convert Zig undefined to V8 Undefined
+pub fn toV8Undefined(isolate: *v8.Isolate) *v8.Value {
+    return v8.v8_Undefined(isolate) orelse unreachable; // Undefined always succeeds
+}
+
+/// Convert Zig null to V8 Null
+pub fn toV8Null(isolate: *v8.Isolate) *v8.Value {
+    return v8.v8_Null(isolate) orelse unreachable; // Null always succeeds
+}
+
+/// Convert Zig sequence to V8 Array
+pub fn toV8Sequence(
+    comptime T: type,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    slice: []const T,
+) ConversionError!*v8.Array {
+    const array = v8.v8_Array_New(isolate, @intCast(slice.len));
+
+    for (slice, 0..) |item, i| {
+        const v8_value = try toV8Value(T, isolate, context, item);
+        _ = v8.v8_Array_Set(array, context, @intCast(i), v8_value);
+    }
+
+    return array;
+}
+
+/// Convert WebIDL record<K,V> to V8 Object
+pub fn toV8Record(
+    comptime K: type,
+    comptime V: type,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    rec: runtime.record(K, V),
+) ConversionError!*v8.Object {
+    const object = v8.v8_Object_New(isolate);
+
+    for (rec.entries) |entry| {
+        const key_str = if (K == runtime.DOMString)
+            toV8String(isolate, entry.key)
+        else
+            // For ByteString/USVString, convert to string
+            // TODO: Proper conversion for different string types
+            toV8String(isolate, runtime.DOMString.initOwned(entry.key));
+
+        const value_v8 = try toV8Value(V, isolate, context, entry.value);
+        _ = v8.v8_Object_Set(object, context, @ptrCast(key_str), value_v8);
+    }
+
+    return object;
+}
+
+/// Generic Zig type to V8 Value conversion
+///
+/// Dispatches to the appropriate conversion function based on source type.
+pub fn toV8Value(
+    comptime T: type,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    value: T,
+) ConversionError!*v8.Value {
+    // Handle optional types (nullable)
+    const type_info = @typeInfo(T);
+    if (type_info == .optional) {
+        if (value) |v| {
+            // Recursively convert the child value
+            const ChildType = type_info.optional.child;
+            return try toV8Value(ChildType, isolate, context, v);
+        } else {
+            // null becomes V8 Null
+            return toV8Null(isolate);
+        }
+    }
+
+    // Handle error unions
+    if (type_info == .error_union) {
+        const unwrapped = value catch |err| {
+            // Convert error to V8 exception
+            const err_name = @errorName(err);
+            const err_msg = v8.v8_String_NewFromUtf8(isolate, err_name.ptr, @intCast(err_name.len)) orelse {
+                // Fallback to generic error if string creation fails
+                const fallback = v8.v8_String_NewFromUtf8(isolate, "Error".ptr, 5).?;
+                return @ptrCast(v8.v8_Exception_Error(fallback));
+            };
+            return @ptrCast(v8.v8_Exception_Error(err_msg));
+        };
+        const PayloadType = type_info.error_union.payload;
+        return try toV8Value(PayloadType, isolate, context, unwrapped);
+    }
+
+    // Handle slices (sequence<T>)
+    if (type_info == .pointer and type_info.pointer.size == .slice) {
+        const ElemType = type_info.pointer.child;
+        // Special case: []const u8 and []u8 are strings, not arrays
+        if (ElemType == u8) {
+            const str = v8.v8_String_NewFromUtf8(isolate, value.ptr, @intCast(value.len));
+            return @ptrCast(str);
+        }
+        return @ptrCast(try toV8Sequence(ElemType, isolate, context, value));
+    }
+
+    // Handle integers (all sizes, signed and unsigned)
+    if (type_info == .int) {
+        const num = v8.v8_Number_New(isolate, @floatFromInt(value));
+        return @ptrCast(num);
+    }
+
+    // Handle floats (f32, f64, etc.)
+    if (type_info == .float) {
+        const num = v8.v8_Number_New(isolate, @floatCast(value));
+        return @ptrCast(num);
+    }
+
+    // Handle booleans
+    if (type_info == .bool or T == bool) {
+        return @ptrCast(toV8Boolean(isolate, value));
+    }
+
+    // Handle enums (convert to string or number)
+    if (type_info == .@"enum") {
+        // Convert enum to its integer value
+        const int_value: i32 = @intFromEnum(value);
+        const num = v8.v8_Number_New(isolate, @floatFromInt(int_value));
+        return @ptrCast(num);
+    }
+
+    // Handle structs (convert to V8 object with fields)
+    if (type_info == .@"struct") {
+        const obj = v8.v8_Object_New(isolate);
+        inline for (std.meta.fields(T)) |field| {
+            const field_name_str = v8.v8_String_NewFromUtf8(
+                isolate,
+                field.name.ptr,
+                @intCast(field.name.len),
+            );
+            const field_value = @field(value, field.name);
+            const field_v8 = try toV8Value(field.type, isolate, context, field_value);
+            _ = v8.v8_Object_Set(obj, context, @ptrCast(field_name_str), field_v8);
+        }
+        return @ptrCast(obj);
+    }
+
+    // Handle void (return undefined)
+    if (T == void) {
+        return toV8Undefined(isolate);
+    }
+
+    // Handle pointers (convert to Any)
+    if (type_info == .pointer) {
+        return toV8Any(@ptrCast(@constCast(value)));
+    }
+
+    // Handle WebIDL primitive types with explicit conversion functions
+    // Note: Most types should be handled by the checks above (int, float, bool, enum, struct, pointer, etc.)
+    // This switch only catches specific runtime types that need special handling
+    if (T == runtime.Boolean) return @ptrCast(toV8Boolean(isolate, value));
+    if (T == runtime.Long) return @ptrCast(toV8Long(isolate, value));
+    if (T == runtime.UnsignedLong) return @ptrCast(toV8UnsignedLong(isolate, value));
+    if (T == runtime.LongLong) return @ptrCast(toV8LongLong(isolate, value));
+    if (T == runtime.Double) return @ptrCast(toV8Double(isolate, value));
+    if (T == runtime.Float) return @ptrCast(toV8Float(isolate, value));
+    if (T == runtime.DOMString) return @ptrCast(toV8String(isolate, value));
+    if (T == runtime.Any) return toV8Any(value);
+
+    // If we get here, it's an unsupported type that wasn't handled by any of the above cases
+    // This should be rare - most types are covered by generic handlers (int, float, struct, pointer, etc.)
+    @compileError("Unsupported type for V8 conversion: " ++ @typeName(T) ++
+        ". If this is a struct, make sure it's being handled by the struct case above.");
+}
+
+// ============================================================================
+// Argument Extraction Helpers
+// ============================================================================
+
+/// Extract and convert function arguments from V8 callback info
+///
+/// This is a convenience function for extracting multiple arguments at once.
+/// Returns a tuple of converted arguments matching the parameter types.
+///
+/// Example:
+/// ```zig
+/// const args = try extractArgs(
+///     .{ runtime.DOMString, runtime.Long, runtime.Boolean },
+///     allocator,
+///     info,
+/// );
+/// defer allocator.free(args[0]); // Free DOMString if owned
+///
+/// const label = args[0];
+/// const count = args[1];
+/// const enabled = args[2];
+/// ```
+pub fn extractArgs(
+    comptime Types: anytype,
+    allocator: std.mem.Allocator,
+    info: *const v8.FunctionCallbackInfo,
+) ConversionError!Types {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate);
+    const length = info.length();
+
+    const type_info = @typeInfo(@TypeOf(Types));
+    if (type_info != .Struct or !type_info.Struct.is_tuple) {
+        @compileError("Types must be a tuple of types");
+    }
+
+    const fields = type_info.Struct.fields;
+    var result: Types = undefined;
+
+    inline for (fields, 0..) |field, i| {
+        if (i >= length) {
+            // Not enough arguments provided
+            return ConversionError.TypeError;
+        }
+
+        const v8_value = info.get(@intCast(i));
+        result[i] = try fromV8Value(
+            field.type,
+            allocator,
+            isolate,
+            context,
+            v8_value,
+        );
+    }
+
+    return result;
+}
+
+/// Check if V8 argument at index exists and is not undefined
+pub fn hasArgument(info: *const v8.FunctionCallbackInfo, index: c_int) bool {
+    if (index >= info.length()) {
+        return false;
+    }
+    const value = info.get(index);
+    return !v8.v8_Value_IsUndefined(value);
+}
+
+/// Get optional argument with default value
+pub fn getOptionalArg(
+    comptime T: type,
+    allocator: std.mem.Allocator,
+    info: *const v8.FunctionCallbackInfo,
+    index: c_int,
+    default: T,
+) ConversionError!T {
+    if (!hasArgument(info, index)) {
+        return default;
+    }
+
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate);
+    const v8_value = info.get(index);
+
+    return try fromV8Value(T, allocator, isolate, context, v8_value);
+}
+
+// ============================================================================
+// Return Value Helpers
+// ============================================================================
+
+/// Set return value for V8 callback
+///
+/// Converts Zig value to V8 and sets it as the return value of the callback.
+pub fn setReturnValue(
+    comptime T: type,
+    info: *const v8.FunctionCallbackInfo,
+    value: T,
+) ConversionError!void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate);
+    const v8_value = try toV8Value(T, isolate, context, value);
+    info.setReturnValue(v8_value);
+}
+
+/// Set undefined as return value
+pub fn setReturnUndefined(info: *const v8.FunctionCallbackInfo) void {
+    const isolate = info.getIsolate();
+    const v8_value = toV8Undefined(isolate);
+    info.setReturnValue(v8_value);
+}
+
+/// Set null as return value
+pub fn setReturnNull(info: *const v8.FunctionCallbackInfo) void {
+    const isolate = info.getIsolate();
+    const v8_value = toV8Null(isolate);
+    info.setReturnValue(v8_value);
+}
+
+// ============================================================================
+// Exception Helpers
+// ============================================================================
+
+/// Throw a TypeError in V8
+pub fn throwTypeError(
+    isolate: *v8.Isolate,
+    message: []const u8,
+) void {
+    // Log error through context if available
+    if (namespace.getGlobalContext()) |ctx| {
+        ctx.logger.@"error"("V8 TypeError: {s}", .{message}) catch {};
+    }
+
+    const msg_str = v8.v8_String_NewFromUtf8(
+        isolate,
+        message.ptr,
+        @intCast(message.len),
+    ) orelse return; // Failed to create string, can't throw
+    const exception = v8.v8_Exception_TypeError(msg_str) orelse return; // Failed to create exception
+    v8.v8_Isolate_ThrowException(isolate, exception);
+}
+
+/// Throw a RangeError in V8
+pub fn throwRangeError(
+    isolate: *v8.Isolate,
+    message: []const u8,
+) void {
+    // Log error through context if available
+    if (namespace.getGlobalContext()) |ctx| {
+        ctx.logger.@"error"("V8 RangeError: {s}", .{message}) catch {};
+    }
+
+    const msg_str = v8.v8_String_NewFromUtf8(
+        isolate,
+        message.ptr,
+        @intCast(message.len),
+    );
+    const exception = v8.v8_Exception_RangeError(msg_str) orelse return;
+    v8.v8_Isolate_ThrowException(isolate, exception);
+}
+
+/// Throw a generic Error in V8
+pub fn throwError(
+    isolate: *v8.Isolate,
+    message: []const u8,
+) void {
+    // Log error through context if available
+    if (namespace.getGlobalContext()) |ctx| {
+        ctx.logger.@"error"("V8 Error: {s}", .{message}) catch {};
+    }
+
+    const msg_str = v8.v8_String_NewFromUtf8(
+        isolate,
+        message.ptr,
+        @intCast(message.len),
+    );
+    const exception = v8.v8_Exception_Error(msg_str.?) orelse return;
+    v8.v8_Isolate_ThrowException(isolate, exception);
+}
+
+// ============================================================================
+// Console Value Conversion
+// ============================================================================
+
+/// Convert V8 Value to ConsoleValue for console logging
+///
+/// This function inspects the V8 value type and creates an appropriate
+/// ConsoleValue representation. Strings and BigInts allocate memory that
+/// must be freed by calling ConsoleValue.deinit().
+pub fn toConsoleValue(
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    value: *v8.Value,
+) ConversionError!runtime.ConsoleValue {
+    // Check type and convert accordingly
+
+    // Undefined
+    if (v8.v8_Value_IsUndefined(value)) {
+        return runtime.ConsoleValue{ .undefined = {} };
+    }
+
+    // Null
+    if (v8.v8_Value_IsNull(value)) {
+        return runtime.ConsoleValue{ .null = {} };
+    }
+
+    // Boolean
+    if (v8.v8_Value_IsBoolean(value)) {
+        const bool_val = v8.v8_Value_BooleanValue(value, isolate);
+        return runtime.ConsoleValue{ .boolean = bool_val };
+    }
+
+    // Number
+    if (v8.v8_Value_IsNumber(value)) {
+        const num_val = v8.v8_Value_NumberValue(value, context);
+        return runtime.ConsoleValue{ .number = num_val };
+    }
+
+    // String
+    if (v8.v8_Value_IsString(value)) {
+        const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
+
+        // Get string length
+        const length = v8.v8_String_Utf8Length(string);
+
+        // Allocate buffer
+        const buffer = try allocator.alloc(u8, @intCast(length));
+        errdefer allocator.free(buffer);
+
+        // Write UTF-8 to buffer
+        _ = v8.v8_String_WriteUtf8(string, buffer.ptr, @intCast(length));
+
+        return runtime.ConsoleValue{ .string = buffer };
+    }
+
+    // Symbol
+    if (v8.v8_Value_IsSymbol(value)) {
+        return runtime.ConsoleValue{ .symbol = @ptrCast(value) };
+    }
+
+    // BigInt (convert to string representation)
+    if (v8.v8_Value_IsBigInt(value)) {
+        // For now, return placeholder
+        // TODO: Implement BigInt to string conversion
+        const bigint_str = try allocator.dupe(u8, "0");
+        return runtime.ConsoleValue{ .bigint = bigint_str };
+    }
+
+    // Everything else is an Object
+    return runtime.ConsoleValue{ .object = @ptrCast(value) };
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+test "conversion module compiles" {
+    const testing = std.testing;
+    testing.refAllDecls(@This());
+}

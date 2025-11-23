@@ -42,8 +42,8 @@ pub fn onObjectFreed(user_data: ?*anyopaque) callconv(.c) void {
 
     // Step 1: Call type-specific deinit to clean up owned resources
     // (strings, arrays, etc. allocated by the implementation)
-    if (inst.vtable.deinit_fn) |deinit| {
-        deinit(inst.state); // Calls Node.deinit_wrapper → Node.deinit
+    if (inst.vtable.deinit) |deinit| {
+        deinit(inst); // Calls Node.deinit_wrapper → Node.deinit
     }
 
     // Step 2: FullState memory is NOT freed here
@@ -149,17 +149,17 @@ test "onObjectFreed calls deinit_fn" {
     var deinit_called = false;
 
     const TestImpl = struct {
-        fn deinit(state: *anyopaque) void {
-            const called: *bool = @ptrCast(@alignCast(state));
+        fn deinit(instance: *Instance) void {
+            const called: *bool = @ptrCast(@alignCast(instance.state));
             called.* = true;
         }
     };
 
     // Create instance
-    const methods = MethodMap.initFill(null);
+    const delegates = .{}; // Empty delegates struct
     const vtable = VTable{
-        .deinit_fn = &TestImpl.deinit,
-        .fns = methods,
+        .deinit = &TestImpl.deinit,
+        .methods_ptr = &delegates,
     };
 
     const inst = try SlabAllocator.get().alloc(&vtable);
@@ -184,10 +184,10 @@ test "onObjectFreed handles null deinit_fn" {
     SlabAllocator.init(testing.allocator);
     defer SlabAllocator.deinit();
 
-    const methods = MethodMap.initFill(null);
+    const delegates = .{}; // Empty delegates struct
     const vtable = VTable{
-        .deinit_fn = null,
-        .fns = methods,
+        .deinit = null,
+        .methods_ptr = &delegates,
     };
 
     const inst = try SlabAllocator.get().alloc(&vtable);
@@ -232,10 +232,10 @@ test "onObjectFreedInstrumented increments stats" {
 
     GCStats.reset();
 
-    const methods = MethodMap.initFill(null);
+    const delegates = .{}; // Empty delegates struct
     const vtable = VTable{
-        .deinit_fn = null,
-        .fns = methods,
+        .deinit = null,
+        .methods_ptr = &delegates,
     };
 
     const inst1 = try SlabAllocator.get().alloc(&vtable);

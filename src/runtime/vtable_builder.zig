@@ -21,10 +21,10 @@ const Method = @import("instance.zig").Method;
 const MethodMap = @import("instance.zig").MethodMap;
 const VTable = @import("instance.zig").VTable;
 
-/// Build a VTable from delegate functions
+/// Build a VTable from delegate functions using compile-time reflection
 ///
-/// Takes a struct of delegate functions and builds a complete VTable.
-/// The struct fields must match Method enum names.
+/// Takes a pointer to a const delegates struct and builds a VTable.
+/// Uses compile-time reflection - NO Method enum required!
 ///
 /// Example:
 ///   const delegates = .{
@@ -32,43 +32,27 @@ const VTable = @import("instance.zig").VTable;
 ///       .get_nodeType = &impl.getNodeType,
 ///       .set_textContent = &impl.setTextContent,
 ///   };
-///   const vtable = buildVTable(delegates, &deinit_wrapper);
+///   const vtable = buildVTable(&delegates);
 ///
-/// The function pointers are type-erased to *const anyopaque for storage
-/// in the VTable, enabling polymorphism.
-pub fn buildVTable(
-    comptime delegates: anytype,
-    comptime deinit_fn: ?*const fn (*anyopaque) void,
-) VTable {
-    var method_map = MethodMap.initFill(null);
+/// The delegates must be const and have a stable address (global or static).
+pub fn buildVTable(comptime delegates_ptr: anytype) VTable {
+    @setEvalBranchQuota(20000);
 
-    // Populate method map from delegates struct
-    const DelegatesType = @TypeOf(delegates);
+    const PtrInfo = @typeInfo(@TypeOf(delegates_ptr));
+    if (PtrInfo != .pointer) {
+        @compileError("buildVTable expects a pointer to delegates struct");
+    }
+
+    const DelegatesType = PtrInfo.pointer.child;
     const delegates_info = @typeInfo(DelegatesType);
 
     if (delegates_info != .@"struct") {
         @compileError("delegates must be a struct");
     }
 
-    inline for (delegates_info.@"struct".fields) |field| {
-        // Convert field name to Method enum
-        const method_enum = std.meta.stringToEnum(Method, field.name);
-
-        if (method_enum) |m| {
-            // Get the delegate function pointer
-            const delegate_fn = @field(delegates, field.name);
-
-            // Cast to type-erased pointer and store in map
-            method_map.set(m, @as(*const anyopaque, @ptrCast(delegate_fn)));
-        } else {
-            // Unknown method - this will cause a compile error with better context
-            @compileError("Unknown method in delegates struct: '" ++ field.name ++ "'. Check that it matches a Method enum value.");
-        }
-    }
-
     return VTable{
-        .deinit_fn = deinit_fn,
-        .fns = method_map,
+        .deinit = null,
+        .methods_ptr = @ptrCast(delegates_ptr),
     };
 }
 
@@ -109,10 +93,11 @@ pub fn validateDelegates(comptime delegates: anytype) void {
 }
 
 /// Build an empty VTable (for testing or base interfaces)
-pub fn emptyVTable(comptime deinit_fn: ?*const fn (*anyopaque) void) VTable {
+pub fn emptyVTable(comptime deinit: ?*const fn (*Instance) void) VTable {
+    const empty_delegates = .{}; // Empty delegates struct
     return VTable{
-        .deinit_fn = deinit_fn,
-        .fns = MethodMap.initFill(null),
+        .deinit = deinit,
+        .methods_ptr = &empty_delegates,
     };
 }
 
@@ -125,21 +110,22 @@ const Instance = @import("instance.zig").Instance;
 
 test "emptyVTable creates valid vtable" {
     const TestImpl = struct {
-        fn deinit(_: *anyopaque) void {}
+        fn deinit(_: *Instance) void {}
     };
 
     const vtable = emptyVTable(&TestImpl.deinit);
 
-    try testing.expect(vtable.deinit_fn == &TestImpl.deinit);
-    try testing.expect(vtable.get(.call_addEventListener) == null);
-    try testing.expect(vtable.get(.get_nodeType) == null);
+    try testing.expect(vtable.deinit == &TestImpl.deinit);
+    // Empty VTable has no methods
+    const DelegatesType = @TypeOf(.{});
+    try testing.expect(vtable.getMethod(DelegatesType, "call_addEventListener") == null);
 }
 
 test "emptyVTable without deinit" {
     const vtable = emptyVTable(null);
 
-    try testing.expect(vtable.deinit_fn == null);
-    try testing.expect(vtable.get(.call_addEventListener) == null);
+    try testing.expect(vtable.deinit == null);
+    // Empty VTable has no methods
 }
 
 // buildVTable tests moved to integration tests to avoid circular dependencies

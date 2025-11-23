@@ -1,6 +1,6 @@
 //! Slab allocator for fixed-size Instance handles
 //!
-//! This allocator manages Instance structs (16 bytes each) using a slab-based
+//! This allocator manages Instance structs (24 bytes each) using a slab-based
 //! approach for O(1) allocation and deallocation with zero fragmentation.
 //!
 //! Design:
@@ -18,9 +18,9 @@ const VTable = @import("instance.zig").VTable;
 /// Slab allocator for fixed-size Instance structs
 pub const SlabAllocator = struct {
     /// Slot data - raw bytes that can hold either Instance or free list pointer
-    /// Slot is exactly 16 bytes, same as Instance
+    /// Slot is exactly 24 bytes, same as Instance
     const Slot = struct {
-        data: [16]u8 align(@alignOf(Instance)),
+        data: [24]u8 align(@alignOf(Instance)),
 
         /// Get this slot as an Instance pointer
         fn asInstance(self: *Slot) *Instance {
@@ -60,7 +60,7 @@ pub const SlabAllocator = struct {
         }
     };
 
-    /// Number of slots per slab (256 slots * 16 bytes = 4KB)
+    /// Number of slots per slab (256 slots * 24 bytes = 4KB)
     const SLOTS_PER_SLAB = 256;
 
     /// Head of slab list
@@ -122,6 +122,7 @@ pub const SlabAllocator = struct {
             inst.* = Instance{
                 .vtable = vtable,
                 .state = undefined, // Caller will set this
+                .ctx = undefined, // Caller will set this
             };
 
             self.total_allocated += 1;
@@ -151,6 +152,7 @@ pub const SlabAllocator = struct {
         inst.* = Instance{
             .vtable = vtable,
             .state = undefined,
+            .ctx = undefined,
         };
 
         self.total_allocated += 1;
@@ -191,7 +193,7 @@ pub const SlabAllocator = struct {
 
 // Compile-time verification
 comptime {
-    // Verify Slot is same size as Instance (16 bytes)
+    // Verify Slot is same size as Instance (24 bytes)
     const slot_size = @sizeOf(SlabAllocator.Slot);
     const instance_size = @sizeOf(Instance);
     if (slot_size != instance_size) {
@@ -201,11 +203,11 @@ comptime {
         ));
     }
 
-    // Verify Slab size is reasonable (4KB)
+    // Verify Slab size is reasonable (6KB for 24-byte instances)
     const slab_size = @sizeOf(SlabAllocator.Slab);
-    if (slab_size > 4096 + 64) { // Allow some overhead
+    if (slab_size > 6144 + 64) { // Allow some overhead
         @compileError(std.fmt.comptimePrint(
-            "Slab size too large: {d} bytes (expected ~4KB)",
+            "Slab size too large: {d} bytes (expected ~6KB)",
             .{slab_size},
         ));
     }
@@ -230,10 +232,10 @@ test "SlabAllocator.alloc creates first slab" {
     const slab_allocator = SlabAllocator.get();
 
     // Create dummy vtable
-    const methods = @import("instance.zig").MethodMap.initFill(null);
+    const delegates = .{}; // Empty delegates struct
     const vtable = VTable{
-        .deinit_fn = null,
-        .fns = methods,
+        .deinit = null,
+        .methods_ptr = &delegates,
     };
 
     // Allocate first instance
@@ -252,10 +254,10 @@ test "SlabAllocator.alloc reuses freed slots" {
 
     const slab_allocator = SlabAllocator.get();
 
-    const methods = @import("instance.zig").MethodMap.initFill(null);
+    const delegates = .{}; // Empty delegates struct
     const vtable = VTable{
-        .deinit_fn = null,
-        .fns = methods,
+        .deinit = null,
+        .methods_ptr = &delegates,
     };
 
     // Allocate and free
@@ -280,10 +282,10 @@ test "SlabAllocator.alloc expands to multiple slabs" {
 
     const slab_allocator = SlabAllocator.get();
 
-    const methods = @import("instance.zig").MethodMap.initFill(null);
+    const delegates = .{}; // Empty delegates struct
     const vtable = VTable{
-        .deinit_fn = null,
-        .fns = methods,
+        .deinit = null,
+        .methods_ptr = &delegates,
     };
 
     // Allocate more than one slab worth (256 + 1)
@@ -316,10 +318,10 @@ test "SlabAllocator.free and alloc maintains free list" {
 
     const slab_allocator = SlabAllocator.get();
 
-    const methods = @import("instance.zig").MethodMap.initFill(null);
+    const delegates = .{}; // Empty delegates struct
     const vtable = VTable{
-        .deinit_fn = null,
-        .fns = methods,
+        .deinit = null,
+        .methods_ptr = &delegates,
     };
 
     // Allocate 3 instances
@@ -349,10 +351,10 @@ test "SlabAllocator.stats accuracy" {
 
     const slab_allocator = SlabAllocator.get();
 
-    const methods = @import("instance.zig").MethodMap.initFill(null);
+    const delegates = .{}; // Empty delegates struct
     const vtable = VTable{
-        .deinit_fn = null,
-        .fns = methods,
+        .deinit = null,
+        .methods_ptr = &delegates,
     };
 
     // Initial stats
