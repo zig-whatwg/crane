@@ -40,9 +40,11 @@ pub const ReadResult = struct {
 /// Per WHATWG Streams spec § 4.3.2
 /// Includes slots from ReadableStreamGenericReader mixin
 pub const InternalState = struct {
-    /// [[stream]]: ReadableStream or undefined if released
+    /// [[stream]]: ReadableStream reference or undefined if released
     /// From ReadableStreamGenericReader mixin
-    stream: ?*runtime.Instance,
+    /// TODO: This should be *runtime.Instance once we solve the interface parameter issue
+    /// For now, store as opaque pointer
+    stream: ?*const anyopaque,
 
     /// [[closedPromise]]: Promise<undefined> that fulfills when stream closes
     /// From ReadableStreamGenericReader mixin
@@ -115,18 +117,16 @@ pub fn call_constructor(
     // Get event loop from context (required for async operations)
     const event_loop = try ctx.getEventLoop();
 
-    // The stream parameter is already an interface struct, not an instance
-    // We need to store it appropriately
-    // TODO: Properly handle stream reference - need to get the runtime.Instance
-    // for the stream to store it
-    _ = stream;
-
-    // TODO: Call SetUpReadableStreamDefaultReader(this, stream)
-    // This requires:
+    // TODO: SetUpReadableStreamDefaultReader(this, stream)
+    // Full implementation requires:
     // 1. Check if stream is locked (if so, throw TypeError)
     // 2. Set stream.[[reader]] to this
     // 3. Initialize closed promise
     // 4. Initialize read requests list
+    //
+    // Current limitation: stream parameter is interfaces.ReadableStream struct,
+    // but we need *runtime.Instance to access/modify stream's internal state.
+    // For now, store stream reference as opaque pointer.
 
     // Create closed promise
     const closed_promise = try AsyncPromise(void).init(allocator, event_loop);
@@ -136,8 +136,11 @@ pub fn call_constructor(
     const internal = try allocator.create(InternalState);
     errdefer allocator.destroy(internal);
 
+    // Store stream reference (as opaque for now)
+    const stream_ref: *const anyopaque = &stream;
+
     internal.* = InternalState{
-        .stream = null, // TODO: Store stream reference properly (need runtime.Instance)
+        .stream = stream_ref,
         .closed_promise = closed_promise,
         .read_requests = std.ArrayList(*AsyncPromise(ReadResult)){},
         .event_loop = event_loop,
