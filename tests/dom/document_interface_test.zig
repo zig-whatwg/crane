@@ -5,6 +5,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 // Type aliases
 const Document = dom.Document;
 
@@ -13,7 +14,7 @@ test "dom.Document - internString basic deduplication" {
 
     const doc = try allocator.create(dom.Document);
     defer allocator.destroy(doc);
-    doc.* = try dom.Document.init(allocator);
+    doc.* = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Intern same string twice
@@ -29,7 +30,7 @@ test "dom.Document - internString different strings" {
 
     const doc = try allocator.create(dom.Document);
     defer allocator.destroy(doc);
-    doc.* = try dom.Document.init(allocator);
+    doc.* = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const div = try doc.internString("div");
@@ -45,7 +46,7 @@ test "dom.Document - createElement uses interned tag names" {
 
     const doc = try allocator.create(dom.Document);
     defer allocator.destroy(doc);
-    doc.* = try dom.Document.init(allocator);
+    doc.* = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create multiple elements with same tag
@@ -72,7 +73,7 @@ test "dom.Document - string interning memory cleanup" {
     {
         const doc = try allocator.create(dom.Document);
         defer allocator.destroy(doc);
-        doc.* = try dom.Document.init(allocator);
+        doc.* = try dom.Document.init(allocator, ctx);
 
         // Intern several strings
         _ = try doc.internString("div");

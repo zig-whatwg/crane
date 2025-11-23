@@ -5,6 +5,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 
 const testing = std.testing;
 const mutation = @import("dom").mutation;
@@ -18,10 +19,14 @@ const Text = dom.TextWithBase;
 test "adopt - node already in target document updates ownerDocument" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create document
     const doc = try allocator.create(Document);
     defer allocator.destroy(doc);
-    doc.* = try Document.init(allocator);
+    doc.* = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create element in document
@@ -45,15 +50,19 @@ test "adopt - node already in target document updates ownerDocument" {
 test "adopt - node removed from old parent" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create two documents
     const doc1 = try allocator.create(Document);
     defer allocator.destroy(doc1);
-    doc1.* = try Document.init(allocator);
+    doc1.* = try Document.init(allocator, ctx);
     defer doc1.deinit();
 
     const doc2 = try allocator.create(Document);
     defer allocator.destroy(doc2);
-    doc2.* = try Document.init(allocator);
+    doc2.* = try Document.init(allocator, ctx);
     defer doc2.deinit();
 
     // Create parent element in doc1
@@ -90,15 +99,19 @@ test "adopt - node removed from old parent" {
 test "adopt - all descendants get new document" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create two documents
     const doc1 = try allocator.create(Document);
     defer allocator.destroy(doc1);
-    doc1.* = try Document.init(allocator);
+    doc1.* = try Document.init(allocator, ctx);
     defer doc1.deinit();
 
     const doc2 = try allocator.create(Document);
     defer allocator.destroy(doc2);
-    doc2.* = try Document.init(allocator);
+    doc2.* = try Document.init(allocator, ctx);
     defer doc2.deinit();
 
     // Create parent with nested children
@@ -132,15 +145,19 @@ test "adopt - all descendants get new document" {
 test "adopt - text nodes adopt correctly" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create two documents
     const doc1 = try allocator.create(Document);
     defer allocator.destroy(doc1);
-    doc1.* = try Document.init(allocator);
+    doc1.* = try Document.init(allocator, ctx);
     defer doc1.deinit();
 
     const doc2 = try allocator.create(Document);
     defer allocator.destroy(doc2);
-    doc2.* = try Document.init(allocator);
+    doc2.* = try Document.init(allocator, ctx);
     defer doc2.deinit();
 
     // Create text node in doc1
@@ -162,15 +179,19 @@ test "adopt - text nodes adopt correctly" {
 test "adopt - node with multiple children all updated" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create two documents
     const doc1 = try allocator.create(Document);
     defer allocator.destroy(doc1);
-    doc1.* = try Document.init(allocator);
+    doc1.* = try Document.init(allocator, ctx);
     defer doc1.deinit();
 
     const doc2 = try allocator.create(Document);
     defer allocator.destroy(doc2);
-    doc2.* = try Document.init(allocator);
+    doc2.* = try Document.init(allocator, ctx);
     defer doc2.deinit();
 
     // Create parent with multiple children

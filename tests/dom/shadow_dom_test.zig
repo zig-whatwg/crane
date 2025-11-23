@@ -5,6 +5,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 
 const Element = dom.ElementWithBase;
 const ShadowRoot = dom.ShadowRoot;
@@ -15,7 +16,7 @@ const Text = dom.TextWithBase;
 test "Shadow DOM: attachShadow creates open shadow root" {
     const allocator = std.testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var div = try doc.call_createElement("div");
@@ -52,7 +53,7 @@ test "Shadow DOM: attachShadow creates open shadow root" {
 test "Shadow DOM: attachShadow creates closed shadow root" {
     const allocator = std.testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var div = try doc.call_createElement("div");
@@ -86,7 +87,7 @@ test "Shadow DOM: attachShadow creates closed shadow root" {
 test "Shadow DOM: shadowRoot getter returns open shadow" {
     const allocator = std.testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var div = try doc.call_createElement("div");
@@ -119,7 +120,7 @@ test "Shadow DOM: shadowRoot getter returns open shadow" {
 test "Shadow DOM: shadowRoot getter returns null for closed shadow" {
     const allocator = std.testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var div = try doc.call_createElement("div");
@@ -151,7 +152,7 @@ test "Shadow DOM: shadowRoot getter returns null for closed shadow" {
 test "Shadow DOM: attachShadow throws for invalid element" {
     const allocator = std.testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // script is not a valid shadow host
@@ -177,7 +178,7 @@ test "Shadow DOM: attachShadow throws for invalid element" {
 test "Shadow DOM: double attachShadow throws for non-declarative" {
     const allocator = std.testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var div = try doc.call_createElement("div");
@@ -210,7 +211,7 @@ test "Shadow DOM: double attachShadow throws for non-declarative" {
 test "Shadow DOM: valid shadow host names" {
     const allocator = std.testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const valid_names = [_][]const u8{

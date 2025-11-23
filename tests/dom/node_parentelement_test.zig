@@ -2,6 +2,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 
 // Type aliases
 const Document = dom.Document;
@@ -34,7 +35,7 @@ test "Node.parentElement - element parent returns element" {
 test "Node.parentElement - document parent returns null" {
     const allocator = std.testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var elem = try Element.init(allocator, "html");

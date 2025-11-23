@@ -5,6 +5,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 
 const testing = std.testing;
 const Document = dom.Document;
@@ -14,7 +15,11 @@ const Element = dom.ElementWithBase;
 test "Element.matches: basic type selector" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const div = try doc.call_createElement("div");
@@ -33,7 +38,11 @@ test "Element.matches: basic type selector" {
 test "Element.matches: universal selector" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem = try doc.call_createElement("anything");
@@ -49,7 +58,11 @@ test "Element.matches: universal selector" {
 test "Element.matches: invalid selector throws SyntaxError" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem = try doc.call_createElement("div");
@@ -66,7 +79,11 @@ test "Element.matches: invalid selector throws SyntaxError" {
 test "Element.closest: finds self when matching" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create tree: div > span
@@ -94,7 +111,11 @@ test "Element.closest: finds self when matching" {
 test "Element.closest: finds ancestor" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create tree: div > span > p
@@ -135,7 +156,11 @@ test "Element.closest: finds ancestor" {
 test "Element.closest: returns null when no match" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create tree: div > span
@@ -163,7 +188,11 @@ test "Element.closest: returns null when no match" {
 test "Element.closest: invalid selector throws SyntaxError" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem = try doc.call_createElement("div");
@@ -180,7 +209,11 @@ test "Element.closest: invalid selector throws SyntaxError" {
 test "Element.closest: finds closest match when multiple ancestors match" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create tree: div(outer) > div(inner) > span
@@ -221,13 +254,17 @@ test "Element.closest: finds closest match when multiple ancestors match" {
 test "Element.classList: returns DOMTokenList" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Type aliases
     const DOMTokenList = dom.DOMTokenList;
     const Document = dom.Document;
     const Element = dom.ElementWithBase;
     const Node = dom.Node;
 
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem = try doc.call_createElement("div");
@@ -256,7 +293,11 @@ test "Element.classList: returns DOMTokenList" {
 test "Element.classList: empty when no class attribute" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem = try doc.call_createElement("div");
@@ -279,7 +320,11 @@ test "Element.classList: empty when no class attribute" {
 test "Element.classList: can add tokens" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem = try doc.call_createElement("div");
@@ -309,7 +354,11 @@ test "Element.classList: can add tokens" {
 test "Element.classList: updates element attribute on modification" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem = try doc.call_createElement("div");

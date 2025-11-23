@@ -6,6 +6,7 @@ const dom = @import("dom");
 const Document = dom.Document;
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 // Type aliases
 const CharacterData = dom.CharacterData;
 
@@ -14,7 +15,11 @@ const testing = std.testing;
 test "CharacterData: data getter returns data" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("Hello World");
@@ -29,7 +34,11 @@ test "CharacterData: data getter returns data" {
 test "CharacterData: data setter replaces data" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("Original");
@@ -45,7 +54,11 @@ test "CharacterData: data setter replaces data" {
 test "CharacterData: length returns code unit count" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("12345");
@@ -60,7 +73,11 @@ test "CharacterData: length returns code unit count" {
 test "CharacterData: length for empty data" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("");
@@ -75,7 +92,11 @@ test "CharacterData: length for empty data" {
 test "CharacterData: substringData extracts substring" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("Hello World");
@@ -94,7 +115,11 @@ test "CharacterData: substringData extracts substring" {
 test "CharacterData: substringData with count overflow" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("Hello");
@@ -111,7 +136,11 @@ test "CharacterData: substringData with count overflow" {
 test "CharacterData: substringData throws on invalid offset" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("Hello");
@@ -128,7 +157,11 @@ test "CharacterData: substringData throws on invalid offset" {
 test "CharacterData: appendData adds to end" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("Hello");
@@ -145,7 +178,11 @@ test "CharacterData: appendData adds to end" {
 test "CharacterData: appendData to empty string" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("");
@@ -161,7 +198,11 @@ test "CharacterData: appendData to empty string" {
 test "CharacterData: insertData at beginning" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("World");
@@ -177,7 +218,11 @@ test "CharacterData: insertData at beginning" {
 test "CharacterData: insertData in middle" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("Heo");
@@ -193,7 +238,11 @@ test "CharacterData: insertData in middle" {
 test "CharacterData: insertData at end" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("Hello");
@@ -209,7 +258,11 @@ test "CharacterData: insertData at end" {
 test "CharacterData: insertData throws on invalid offset" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("Hello");
@@ -225,7 +278,11 @@ test "CharacterData: insertData throws on invalid offset" {
 test "CharacterData: deleteData from beginning" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("Hello World");
@@ -241,7 +298,11 @@ test "CharacterData: deleteData from beginning" {
 test "CharacterData: deleteData from middle" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("Hello World");
@@ -257,7 +318,11 @@ test "CharacterData: deleteData from middle" {
 test "CharacterData: deleteData with count overflow" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("Hello World");
@@ -274,7 +339,11 @@ test "CharacterData: deleteData with count overflow" {
 test "CharacterData: deleteData entire string" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("Hello");
@@ -291,7 +360,11 @@ test "CharacterData: deleteData entire string" {
 test "CharacterData: replaceData in middle" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("Hello World");
@@ -307,7 +380,11 @@ test "CharacterData: replaceData in middle" {
 test "CharacterData: replaceData with longer string" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("Hi");
@@ -323,7 +400,11 @@ test "CharacterData: replaceData with longer string" {
 test "CharacterData: replaceData with shorter string" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("Hello");
@@ -339,7 +420,11 @@ test "CharacterData: replaceData with shorter string" {
 test "CharacterData: replaceData with count overflow" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("Hello World");
@@ -356,7 +441,11 @@ test "CharacterData: replaceData with count overflow" {
 test "CharacterData: replaceData throws on invalid offset" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("Hello");
@@ -372,7 +461,11 @@ test "CharacterData: replaceData throws on invalid offset" {
 test "CharacterData: works with Comment nodes" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var comment = try doc.call_createComment("Original comment");
@@ -391,7 +484,11 @@ test "CharacterData: works with Comment nodes" {
 test "CharacterData: multiple operations in sequence" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("abc");

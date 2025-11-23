@@ -5,6 +5,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 
 const Document = dom.Document;
 const Element = dom.ElementWithBase;
@@ -18,7 +19,7 @@ test "Document - internString basic functionality" {
 
     const doc = try allocator.create(Document);
     defer allocator.destroy(doc);
-    doc.* = try Document.init(allocator);
+    doc.* = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Intern first string
@@ -39,7 +40,7 @@ test "Document - internString different strings" {
 
     const doc = try allocator.create(Document);
     defer allocator.destroy(doc);
-    doc.* = try Document.init(allocator);
+    doc.* = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const div = try doc.internString("div");
@@ -62,7 +63,7 @@ test "Document - internString repeated calls" {
 
     const doc = try allocator.create(Document);
     defer allocator.destroy(doc);
-    doc.* = try Document.init(allocator);
+    doc.* = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Intern same string multiple times
@@ -82,7 +83,7 @@ test "Document - internString empty string" {
 
     const doc = try allocator.create(Document);
     defer allocator.destroy(doc);
-    doc.* = try Document.init(allocator);
+    doc.* = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const empty1 = try doc.internString("");
@@ -98,7 +99,7 @@ test "Document - internString common tag names" {
 
     const doc = try allocator.create(Document);
     defer allocator.destroy(doc);
-    doc.* = try Document.init(allocator);
+    doc.* = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Common HTML tags
@@ -127,7 +128,7 @@ test "Document - createElement uses interned strings" {
 
     const doc = try allocator.create(Document);
     defer allocator.destroy(doc);
-    doc.* = try Document.init(allocator);
+    doc.* = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Intern a tag name first
@@ -150,7 +151,7 @@ test "Document - multiple elements share interned tag names" {
 
     const doc = try allocator.create(Document);
     defer allocator.destroy(doc);
-    doc.* = try Document.init(allocator);
+    doc.* = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create multiple elements with same tag name
@@ -187,7 +188,7 @@ test "Document - memory cleanup of interned strings" {
     {
         const doc = try allocator.create(Document);
         defer allocator.destroy(doc);
-        doc.* = try Document.init(allocator);
+        doc.* = try Document.init(allocator, ctx);
 
         // Intern several strings
         _ = try doc.internString("div");
@@ -208,7 +209,7 @@ test "Document - internString with special characters" {
 
     const doc = try allocator.create(Document);
     defer allocator.destroy(doc);
-    doc.* = try Document.init(allocator);
+    doc.* = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Test with special characters (Unicode)
@@ -231,7 +232,7 @@ test "Document - internString performance characteristic" {
 
     const doc = try allocator.create(Document);
     defer allocator.destroy(doc);
-    doc.* = try Document.init(allocator);
+    doc.* = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Intern a few strings
@@ -255,7 +256,7 @@ test "Document - string comparison via pointer equality" {
 
     const doc = try allocator.create(Document);
     defer allocator.destroy(doc);
-    doc.* = try Document.init(allocator);
+    doc.* = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const div1 = try doc.internString("div");
@@ -275,7 +276,7 @@ test "Document - internString with dynamically allocated strings" {
 
     const doc = try allocator.create(Document);
     defer allocator.destroy(doc);
-    doc.* = try Document.init(allocator);
+    doc.* = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create a dynamically allocated string

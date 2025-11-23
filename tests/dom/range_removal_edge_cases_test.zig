@@ -9,6 +9,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 // Type aliases
 const Document = dom.Document;
 const Range = dom.Range;
@@ -29,10 +30,14 @@ const testing = std.testing;
 test "Range removal - start in removed, end in kept" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create document
     const doc_ptr = try allocator.create(dom.Document);
     defer allocator.destroy(doc_ptr);
-    doc_ptr.* = try dom.Document.init(allocator);
+    doc_ptr.* = try dom.Document.init(allocator, ctx);
     defer doc_ptr.deinit();
 
     // Create parent element
@@ -107,10 +112,14 @@ test "Range removal - start in removed, end in kept" {
 test "Range removal - fully contained in removed subtree" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create document
     const doc_ptr = try allocator.create(dom.Document);
     defer allocator.destroy(doc_ptr);
-    doc_ptr.* = try dom.Document.init(allocator);
+    doc_ptr.* = try dom.Document.init(allocator, ctx);
     defer doc_ptr.deinit();
 
     // Create parent element
@@ -179,10 +188,14 @@ test "Range removal - fully contained in removed subtree" {
 test "Range removal - multiple overlapping ranges" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create document
     const doc_ptr = try allocator.create(dom.Document);
     defer allocator.destroy(doc_ptr);
-    doc_ptr.* = try dom.Document.init(allocator);
+    doc_ptr.* = try dom.Document.init(allocator, ctx);
     defer doc_ptr.deinit();
 
     // Create parent and siblings
@@ -275,10 +288,14 @@ test "Range removal - multiple overlapping ranges" {
 test "Range removal - offset adjustment in parent" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create document
     const doc_ptr = try allocator.create(dom.Document);
     defer allocator.destroy(doc_ptr);
-    doc_ptr.* = try dom.Document.init(allocator);
+    doc_ptr.* = try dom.Document.init(allocator, ctx);
     defer doc_ptr.deinit();
 
     // Create parent and children

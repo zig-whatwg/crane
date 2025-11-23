@@ -5,6 +5,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 
 const testing = std.testing;
 
@@ -16,7 +17,11 @@ const Document = dom.Document;
 test "NamedNodeMap: init creates empty map" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var elem = try doc.call_createElement("div");
@@ -34,7 +39,11 @@ test "NamedNodeMap: init creates empty map" {
 test "NamedNodeMap: length returns attribute count" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var elem = try doc.call_createElement("div");
@@ -55,7 +64,11 @@ test "NamedNodeMap: length returns attribute count" {
 test "NamedNodeMap: item returns attribute at index" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var elem = try doc.call_createElement("div");
@@ -89,7 +102,11 @@ test "NamedNodeMap: item returns attribute at index" {
 test "NamedNodeMap: item returns null for out of bounds" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var elem = try doc.call_createElement("div");
@@ -108,7 +125,11 @@ test "NamedNodeMap: item returns null for out of bounds" {
 test "NamedNodeMap: getNamedItem finds attribute by name" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var elem = try doc.call_createElement("div");
@@ -141,7 +162,11 @@ test "NamedNodeMap: getNamedItem finds attribute by name" {
 test "NamedNodeMap: getNamedItem returns null for missing attribute" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var elem = try doc.call_createElement("div");
@@ -162,7 +187,11 @@ test "NamedNodeMap: getNamedItem returns null for missing attribute" {
 test "NamedNodeMap: is live collection" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var elem = try doc.call_createElement("div");
@@ -192,7 +221,11 @@ test "NamedNodeMap: is live collection" {
 test "NamedNodeMap: multiple attributes in order" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var elem = try doc.call_createElement("input");
@@ -233,7 +266,11 @@ test "NamedNodeMap: multiple attributes in order" {
 test "NamedNodeMap: getNamedItem is case-sensitive" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var elem = try doc.call_createElement("div");
@@ -260,7 +297,11 @@ test "NamedNodeMap: getNamedItem is case-sensitive" {
 test "NamedNodeMap: empty attribute value" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var elem = try doc.call_createElement("div");

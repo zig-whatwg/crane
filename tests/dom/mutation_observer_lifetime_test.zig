@@ -5,6 +5,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 // Type aliases
 const MutationRecord = dom.MutationRecord;
 
@@ -25,7 +26,7 @@ test "MutationObserver: node list stores weak references (doesn't own nodes)" {
     defer observer.deinit();
 
     // Create document and node
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem = try doc.call_createElement("div");
@@ -69,7 +70,7 @@ test "MutationObserver: isObserving checks if node is observed" {
     defer observer.deinit();
 
     // Create document and nodes
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem1 = try doc.call_createElement("div");
@@ -123,7 +124,7 @@ test "MutationObserver: unobserveNode removes specific node" {
     defer observer.deinit();
 
     // Create document and nodes
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem1 = try doc.call_createElement("div");
@@ -174,7 +175,7 @@ test "MutationObserver: disconnect removes all observations" {
     defer observer.deinit();
 
     // Create document and nodes
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem1 = try doc.call_createElement("div");
@@ -222,7 +223,7 @@ test "MutationObserver: node list length via getNodeList" {
     defer observer.deinit();
 
     // Create document and nodes
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem1 = try doc.call_createElement("div");

@@ -25,7 +25,7 @@ test "addEventListener with once=true removes listener after first dispatch" {
     resetCallbackCount();
 
     // Create event target
-    var target = try EventTarget.init(allocator);
+    var target = try EventTarget.init(allocator, ctx);
     defer target.deinit();
 
     // Create event
@@ -76,7 +76,7 @@ test "addEventListener with once=false keeps listener after dispatch" {
     resetCallbackCount();
 
     // Create event target
-    var target = try EventTarget.init(allocator);
+    var target = try EventTarget.init(allocator, ctx);
     defer target.deinit();
 
     // Create event
@@ -126,7 +126,7 @@ test "multiple once listeners are removed independently" {
     resetCallbackCount();
 
     // Create event target
-    var target = try EventTarget.init(allocator);
+    var target = try EventTarget.init(allocator, ctx);
     defer target.deinit();
 
     // Add two once listeners for different event types
@@ -178,7 +178,7 @@ test "once listener removed even if stopPropagation is called" {
     resetCallbackCount();
 
     // Create event target
-    var target = try EventTarget.init(allocator);
+    var target = try EventTarget.init(allocator, ctx);
     defer target.deinit();
 
     // Add once listener
@@ -213,10 +213,10 @@ test "once listener in capture phase is removed" {
     resetCallbackCount();
 
     // Create parent and child targets
-    var parent = try EventTarget.init(allocator);
+    var parent = try EventTarget.init(allocator, ctx);
     defer parent.deinit();
 
-    var child = try EventTarget.init(allocator);
+    var child = try EventTarget.init(allocator, ctx);
     defer child.deinit();
 
     // Add once listener in capture phase on parent

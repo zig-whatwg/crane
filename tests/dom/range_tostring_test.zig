@@ -2,6 +2,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 // Type aliases
 const Document = dom.Document;
 const Node = dom.Node;
@@ -11,7 +12,7 @@ const Text = dom.TextWithBase;
 test "Range.toString - collapsed range returns empty string" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const div = try doc.call_createElement("div");
@@ -33,7 +34,7 @@ test "Range.toString - collapsed range returns empty string" {
 test "Range.toString - single Text node substring" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const text = try doc.call_createTextNode("Hello World");
@@ -57,7 +58,7 @@ test "Range.toString - single Text node substring" {
 test "Range.toString - entire Text node" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const text = try doc.call_createTextNode("Hello");
@@ -81,7 +82,7 @@ test "Range.toString - entire Text node" {
 test "Range.toString - multiple Text nodes" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create: <div>Hello<span>World</span>!</div>
@@ -113,7 +114,7 @@ test "Range.toString - multiple Text nodes" {
 test "Range.toString - partial Text node at start" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create: <div>Hello<span>World</span></div>
@@ -143,7 +144,7 @@ test "Range.toString - partial Text node at start" {
 test "Range.toString - partial Text node at end" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create: <div>Hello<span>World</span></div>
@@ -173,7 +174,7 @@ test "Range.toString - partial Text node at end" {
 test "Range.toString - no Text nodes" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create: <div><span></span><span></span></div>
@@ -201,7 +202,7 @@ test "Range.toString - no Text nodes" {
 test "Range.toString - nested elements with text" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create: <div>A<span>B<em>C</em>D</span>E</div>
@@ -239,7 +240,7 @@ test "Range.toString - nested elements with text" {
 test "Range.toString - empty Text node" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const text = try doc.call_createTextNode("");

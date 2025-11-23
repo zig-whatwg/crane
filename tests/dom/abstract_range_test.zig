@@ -5,6 +5,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 // Type aliases
 const AbstractRange = dom.AbstractRange;
 const Document = dom.Document;
@@ -17,7 +18,7 @@ test "StaticRange - basic construction" {
     const allocator = std.testing.allocator;
 
     // Create a simple document node
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const doc_node: *dom.Node = @ptrCast(&doc);
@@ -61,7 +62,7 @@ test "StaticRange - rejects DocumentType nodes" {
 test "StaticRange - collapsed property" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const doc_node: *dom.Node = @ptrCast(&doc);
@@ -88,7 +89,7 @@ test "StaticRange - collapsed property" {
 test "AbstractRange - basic interface" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const doc_node: *dom.Node = @ptrCast(&doc);

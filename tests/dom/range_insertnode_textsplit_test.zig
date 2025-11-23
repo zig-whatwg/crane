@@ -2,6 +2,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 // Type aliases
 const Document = dom.Document;
 const Range = dom.Range;
@@ -10,7 +11,7 @@ const Text = dom.TextWithBase;
 test "Range.insertNode - splits Text node at start offset" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const div = try doc.call_createElement("div");
@@ -47,7 +48,7 @@ test "Range.insertNode - splits Text node at start offset" {
 test "Range.insertNode - splits at start of Text node" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const div = try doc.call_createElement("div");
@@ -77,7 +78,7 @@ test "Range.insertNode - splits at start of Text node" {
 test "Range.insertNode - splits at end of Text node" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const div = try doc.call_createElement("div");

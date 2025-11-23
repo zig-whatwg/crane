@@ -2,6 +2,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 
 const testing = std.testing;
 const Document = dom.Document;
@@ -24,7 +25,11 @@ const NamedNodeMap = dom.NamedNodeMap;
 test "Integration: Document creates all node types" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create element
@@ -75,7 +80,11 @@ test "Integration: Document creates all node types" {
 test "Integration: DOMImplementation creates documents with nodes" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var impl = try DOMImplementation.init(allocator, &doc);
@@ -110,7 +119,11 @@ test "Integration: DOMImplementation creates documents with nodes" {
 test "Integration: Text node (CharacterData) operations" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const text = try doc.call_createTextNode("Hello World");
@@ -144,7 +157,11 @@ test "Integration: Text node (CharacterData) operations" {
 test "Integration: Comment node (CharacterData) operations" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const comment = try doc.call_createComment("Initial comment");
@@ -166,7 +183,11 @@ test "Integration: Comment node (CharacterData) operations" {
 test "Integration: ProcessingInstruction extends CharacterData" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const pi = try doc.call_createProcessingInstruction("xml-stylesheet", "href=\"style.css\"");
@@ -187,7 +208,11 @@ test "Integration: ProcessingInstruction extends CharacterData" {
 test "Integration: CDATASection extends Text extends CharacterData" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const cdata = try doc.call_createCDATASection("Some CDATA content");
@@ -214,7 +239,11 @@ test "Integration: CDATASection extends Text extends CharacterData" {
 test "Integration: Element with Attr nodes" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var elem = try doc.call_createElement("div");
@@ -247,7 +276,11 @@ test "Integration: Element with Attr nodes" {
 test "Integration: NodeList with multiple elements" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create elements
@@ -288,7 +321,11 @@ test "Integration: NodeList with multiple elements" {
 test "Integration: DocumentType with DOMImplementation" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var impl = try DOMImplementation.init(allocator, &doc);
@@ -315,7 +352,11 @@ test "Integration: DocumentType with DOMImplementation" {
 test "Integration: CharacterData unicode handling across types" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const emoji = "Hello 👋 World 🌍";
@@ -358,7 +399,11 @@ test "Integration: CharacterData unicode handling across types" {
 test "Integration: Document.implementation [SameObject] behavior" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Get implementation first time
@@ -375,7 +420,11 @@ test "Integration: Document.implementation [SameObject] behavior" {
 test "Integration: Text.splitText creates new Text node" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const original_text = try doc.call_createTextNode("Hello World");
@@ -407,6 +456,10 @@ test "Integration: Text.splitText creates new Text node" {
 test "Integration: Attr namespace handling" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create namespaced attribute (xmlns)
     var xmlns_attr = try Attr.init(allocator, "http://www.w3.org/2000/xmlns/", "xmlns", "xlink", "http://www.w3.org/1999/xlink");
     defer xmlns_attr.deinit();
@@ -433,7 +486,11 @@ test "Integration: Attr namespace handling" {
 test "Integration: NamedNodeMap wraps Element attributes" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var elem = try doc.call_createElement("div");

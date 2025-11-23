@@ -5,13 +5,18 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 
 const testing = std.testing;
 
 test "selectors: scopeMatchSelectorsString with no matches" {
     const allocator = testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const root = try doc.call_createElement("div");
@@ -29,7 +34,11 @@ test "selectors: scopeMatchSelectorsString with no matches" {
 test "selectors: scopeMatchSelectorsString with syntax error" {
     const allocator = testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const root = try doc.call_createElement("div");

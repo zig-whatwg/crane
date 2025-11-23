@@ -89,6 +89,10 @@ const MockCharacterData = struct {
 test "NodeBase - upcast from Element to NodeBase" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var element = MockElement.init(allocator, "div");
     defer element.deinit();
 
@@ -102,6 +106,10 @@ test "NodeBase - upcast from Element to NodeBase" {
 
 test "NodeBase - downcast from NodeBase to Element" {
     const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var element = MockElement.init(allocator, "div");
     defer element.deinit();
@@ -121,6 +129,10 @@ test "NodeBase - downcast from NodeBase to Element" {
 test "NodeBase - failed downcast to wrong type" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var element = MockElement.init(allocator, "div");
     defer element.deinit();
 
@@ -134,6 +146,10 @@ test "NodeBase - failed downcast to wrong type" {
 
 test "NodeBase - downcast to CharacterData" {
     const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var char_data = try MockCharacterData.init(allocator, "Hello");
     defer char_data.deinit();
@@ -152,6 +168,10 @@ test "NodeBase - downcast to CharacterData" {
 
 test "NodeBase - tree navigation with mixed types" {
     const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var parent = MockElement.init(allocator, "div");
     defer parent.deinit();
@@ -200,6 +220,10 @@ test "NodeBase - tree navigation with mixed types" {
 test "NodeBase - contains check across type hierarchy" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var parent = MockElement.init(allocator, "div");
     defer parent.deinit();
 
@@ -228,6 +252,10 @@ test "NodeBase - memory layout validation" {
 
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var element = MockElement.init(allocator, "div");
     defer element.deinit();
 
@@ -244,6 +272,10 @@ test "NodeBase - real CharacterData integration" {
     // This ensures removing the stub didn't break anything
 
     const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     // Create a real CharacterData node
     var char_data = try CharacterData.init(allocator);

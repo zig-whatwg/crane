@@ -2,6 +2,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 // Type aliases
 const Comment = dom.Comment;
 const Document = dom.Document;
@@ -11,7 +12,7 @@ const Text = dom.TextWithBase;
 test "Range.deleteContents - deletes text data within same Text node" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create a text node with "Hello World"
@@ -38,7 +39,7 @@ test "Range.deleteContents - deletes text data within same Text node" {
 test "Range.deleteContents - deletes from start of Text node" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const text = try doc.call_createTextNode("Hello World");
@@ -64,7 +65,7 @@ test "Range.deleteContents - deletes from start of Text node" {
 test "Range.deleteContents - deletes to end of Text node" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const text = try doc.call_createTextNode("Hello World");
@@ -90,7 +91,7 @@ test "Range.deleteContents - deletes to end of Text node" {
 test "Range.deleteContents - deletes entire Text node content" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const text = try doc.call_createTextNode("Hello");
@@ -116,7 +117,7 @@ test "Range.deleteContents - deletes entire Text node content" {
 test "Range.deleteContents - deletes contained element nodes" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create: <div><span>A</span><span>B</span><span>C</span></div>
@@ -161,7 +162,7 @@ test "Range.deleteContents - deletes contained element nodes" {
 test "Range.deleteContents - collapsed range does nothing" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const text = try doc.call_createTextNode("Hello");
@@ -187,7 +188,7 @@ test "Range.deleteContents - collapsed range does nothing" {
 test "Range.deleteContents - Comment node data deletion" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create a comment node with "This is a comment"

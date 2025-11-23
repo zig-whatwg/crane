@@ -5,6 +5,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 
 const Document = dom.Document;
 const Element = dom.ElementWithBase;
@@ -16,7 +17,7 @@ test "importNode: shallow copy of element" {
     const allocator = std.testing.allocator;
 
     // Create source document
-    var source_doc = try Document.init(allocator);
+    var source_doc = try Document.init(allocator, ctx);
     defer source_doc.deinit();
 
     // Create element in source document
@@ -27,7 +28,7 @@ test "importNode: shallow copy of element" {
     }
 
     // Create target document
-    var target_doc = try Document.init(allocator);
+    var target_doc = try Document.init(allocator, ctx);
     defer target_doc.deinit();
 
     // Import the element (shallow)
@@ -51,7 +52,7 @@ test "importNode: deep copy of element with children" {
     const allocator = std.testing.allocator;
 
     // Create source document
-    var source_doc = try Document.init(allocator);
+    var source_doc = try Document.init(allocator, ctx);
     defer source_doc.deinit();
 
     // Create element tree: div > p > text
@@ -72,7 +73,7 @@ test "importNode: deep copy of element with children" {
     source_p.parent_node = @ptrCast(source_div);
 
     // Create target document
-    var target_doc = try Document.init(allocator);
+    var target_doc = try Document.init(allocator, ctx);
     defer target_doc.deinit();
 
     // Import the element (deep)
@@ -115,7 +116,7 @@ test "importNode: text node" {
     const allocator = std.testing.allocator;
 
     // Create source document
-    var source_doc = try Document.init(allocator);
+    var source_doc = try Document.init(allocator, ctx);
     defer source_doc.deinit();
 
     // Create text node
@@ -126,7 +127,7 @@ test "importNode: text node" {
     }
 
     // Create target document
-    var target_doc = try Document.init(allocator);
+    var target_doc = try Document.init(allocator, ctx);
     defer target_doc.deinit();
 
     // Import the text node
@@ -147,7 +148,7 @@ test "importNode: comment node" {
     const allocator = std.testing.allocator;
 
     // Create source document
-    var source_doc = try Document.init(allocator);
+    var source_doc = try Document.init(allocator, ctx);
     defer source_doc.deinit();
 
     // Create comment node
@@ -158,7 +159,7 @@ test "importNode: comment node" {
     }
 
     // Create target document
-    var target_doc = try Document.init(allocator);
+    var target_doc = try Document.init(allocator, ctx);
     defer target_doc.deinit();
 
     // Import the comment node
@@ -179,7 +180,7 @@ test "importNode: element with attributes" {
     const allocator = std.testing.allocator;
 
     // Create source document
-    var source_doc = try Document.init(allocator);
+    var source_doc = try Document.init(allocator, ctx);
     defer source_doc.deinit();
 
     // Create element with attributes
@@ -192,7 +193,7 @@ test "importNode: element with attributes" {
     try source_elem.call_setAttribute("class", "container");
 
     // Create target document
-    var target_doc = try Document.init(allocator);
+    var target_doc = try Document.init(allocator, ctx);
     defer target_doc.deinit();
 
     // Import the element
@@ -220,11 +221,11 @@ test "importNode: document node throws NotSupportedError" {
     const allocator = std.testing.allocator;
 
     // Create source document
-    var source_doc = try Document.init(allocator);
+    var source_doc = try Document.init(allocator, ctx);
     defer source_doc.deinit();
 
     // Create target document
-    var target_doc = try Document.init(allocator);
+    var target_doc = try Document.init(allocator, ctx);
     defer target_doc.deinit();
 
     // Try to import document - should throw

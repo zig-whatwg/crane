@@ -2,6 +2,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 
 
 // Type aliases
@@ -14,17 +15,21 @@ const testing = std.testing;
 test "Range tracking - per-document isolation" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Import types
 
     // Create two documents
     const doc1_ptr = try allocator.create(Document);
     defer allocator.destroy(doc1_ptr);
-    doc1_ptr.* = try Document.init(allocator);
+    doc1_ptr.* = try Document.init(allocator, ctx);
     defer doc1_ptr.deinit();
 
     const doc2_ptr = try allocator.create(Document);
     defer allocator.destroy(doc2_ptr);
-    doc2_ptr.* = try Document.init(allocator);
+    doc2_ptr.* = try Document.init(allocator, ctx);
     defer doc2_ptr.deinit();
 
     // Get Node pointers
@@ -58,10 +63,14 @@ test "Range tracking - per-document isolation" {
 test "Range tracking - auto unregister on deinit" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
 
     const doc_ptr = try allocator.create(Document);
     defer allocator.destroy(doc_ptr);
-    doc_ptr.* = try Document.init(allocator);
+    doc_ptr.* = try Document.init(allocator, ctx);
     defer doc_ptr.deinit();
 
     const doc_node: *Node = @ptrCast(doc_ptr);
@@ -88,10 +97,14 @@ test "Range tracking - auto unregister on deinit" {
 test "Range tracking - replaceData updates range offsets" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
 
     const doc_ptr = try allocator.create(Document);
     defer allocator.destroy(doc_ptr);
-    doc_ptr.* = try Document.init(allocator);
+    doc_ptr.* = try Document.init(allocator, ctx);
     defer doc_ptr.deinit();
 
     const doc_node: *Node = @ptrCast(doc_ptr);
@@ -129,10 +142,14 @@ test "Range tracking - replaceData updates range offsets" {
 test "Range tracking - replaceData collapses range within replaced region" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
 
     const doc_ptr = try allocator.create(Document);
     defer allocator.destroy(doc_ptr);
-    doc_ptr.* = try Document.init(allocator);
+    doc_ptr.* = try Document.init(allocator, ctx);
     defer doc_ptr.deinit();
 
     const doc_node: *Node = @ptrCast(doc_ptr);
@@ -166,10 +183,14 @@ test "Range tracking - replaceData collapses range within replaced region" {
 test "Range tracking - splitText updates ranges correctly" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
 
     const doc_ptr = try allocator.create(Document);
     defer allocator.destroy(doc_ptr);
-    doc_ptr.* = try Document.init(allocator);
+    doc_ptr.* = try Document.init(allocator, ctx);
     defer doc_ptr.deinit();
 
     const doc_node: *Node = @ptrCast(doc_ptr);
@@ -213,10 +234,14 @@ test "Range tracking - splitText updates ranges correctly" {
 test "Range tracking - splitText updates parent-relative ranges" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
 
     const doc_ptr = try allocator.create(Document);
     defer allocator.destroy(doc_ptr);
-    doc_ptr.* = try Document.init(allocator);
+    doc_ptr.* = try Document.init(allocator, ctx);
     defer doc_ptr.deinit();
 
     const doc_node: *Node = @ptrCast(doc_ptr);
@@ -259,10 +284,14 @@ test "Range tracking - splitText updates parent-relative ranges" {
 test "Range tracking - node removal updates ranges" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
 
     const doc_ptr = try allocator.create(Document);
     defer allocator.destroy(doc_ptr);
-    doc_ptr.* = try Document.init(allocator);
+    doc_ptr.* = try Document.init(allocator, ctx);
     defer doc_ptr.deinit();
 
     const doc_node: *Node = @ptrCast(doc_ptr);
@@ -309,10 +338,14 @@ test "Range tracking - node removal updates ranges" {
 test "Range tracking - multiple ranges update independently" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
 
     const doc_ptr = try allocator.create(Document);
     defer allocator.destroy(doc_ptr);
-    doc_ptr.* = try Document.init(allocator);
+    doc_ptr.* = try Document.init(allocator, ctx);
     defer doc_ptr.deinit();
 
     const doc_node: *Node = @ptrCast(doc_ptr);

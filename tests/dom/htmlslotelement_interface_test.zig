@@ -9,7 +9,7 @@ const webidl = @import("webidl");
 test "dom.HTMLSlotElement - initialization" {
     const allocator = std.testing.allocator;
 
-    var slot = try dom.HTMLSlotElement.init(allocator);
+    var slot = try dom.HTMLSlotElement.init(allocator, ctx);
     defer slot.deinit();
 
     // Default name is empty string
@@ -23,7 +23,7 @@ test "dom.HTMLSlotElement - initialization" {
 test "dom.HTMLSlotElement - set and get name" {
     const allocator = std.testing.allocator;
 
-    var slot = try dom.HTMLSlotElement.init(allocator);
+    var slot = try dom.HTMLSlotElement.init(allocator, ctx);
     defer slot.deinit();
 
     try slot.setName("header");
@@ -36,7 +36,7 @@ test "dom.HTMLSlotElement - set and get name" {
 test "dom.HTMLSlotElement - assigned nodes" {
     const allocator = std.testing.allocator;
 
-    var slot = try dom.HTMLSlotElement.init(allocator);
+    var slot = try dom.HTMLSlotElement.init(allocator, ctx);
     defer slot.deinit();
 
     // Add some mock nodes

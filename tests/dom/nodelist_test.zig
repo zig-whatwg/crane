@@ -9,11 +9,16 @@ const NodeList = dom.NodeList;
 const Element = dom.ElementWithBase;
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 
 const testing = std.testing;
 
 test "NodeList: init creates empty list" {
     const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var list = try NodeList.init(allocator);
     defer list.deinit();
@@ -24,7 +29,11 @@ test "NodeList: init creates empty list" {
 test "NodeList: length returns node count" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var list = try NodeList.init(allocator);
@@ -45,7 +54,11 @@ test "NodeList: length returns node count" {
 test "NodeList: item returns node at index" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var list = try NodeList.init(allocator);
@@ -76,6 +89,10 @@ test "NodeList: item returns node at index" {
 test "NodeList: item returns null for out of bounds" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var list = try NodeList.init(allocator);
     defer list.deinit();
 
@@ -86,7 +103,11 @@ test "NodeList: item returns null for out of bounds" {
 test "NodeList: can hold mixed node types" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var list = try NodeList.init(allocator);
@@ -122,7 +143,11 @@ test "NodeList: can hold mixed node types" {
 test "NodeList: clear removes all nodes" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var list = try NodeList.init(allocator);
@@ -144,7 +169,11 @@ test "NodeList: clear removes all nodes" {
 test "NodeList: maintains insertion order" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var list = try NodeList.init(allocator);
@@ -185,7 +214,11 @@ test "NodeList: maintains insertion order" {
 test "NodeList: multiple elements can be accessed" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var list = try NodeList.init(allocator);

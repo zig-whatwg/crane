@@ -6,6 +6,7 @@ const dom = @import("dom");
 const Document = dom.Document;
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 // Type aliases
 const CDATASection = dom.CDATASection;
 const CharacterData = dom.CharacterData;
@@ -16,7 +17,11 @@ const testing = std.testing;
 test "CDATASection: createCDATASection creates node with data" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var cdata = try doc.call_createCDATASection("Some CDATA content");
@@ -32,7 +37,11 @@ test "CDATASection: createCDATASection creates node with data" {
 test "CDATASection: empty data" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var cdata = try doc.call_createCDATASection("");
@@ -48,7 +57,11 @@ test "CDATASection: empty data" {
 test "CDATASection: inherits Text methods" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var cdata = try doc.call_createCDATASection("Hello World");
@@ -68,7 +81,11 @@ test "CDATASection: inherits Text methods" {
 test "CDATASection: splitText works" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var cdata = try doc.call_createCDATASection("HelloWorld");
@@ -90,7 +107,11 @@ test "CDATASection: splitText works" {
 test "CDATASection: data manipulation" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var cdata = try doc.call_createCDATASection("abc");
@@ -112,7 +133,11 @@ test "CDATASection: data manipulation" {
 test "CDATASection: with special XML characters" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // CDATA sections can contain characters that would otherwise need escaping

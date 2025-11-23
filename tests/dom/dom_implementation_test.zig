@@ -2,6 +2,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 
 // Type aliases
 const Node = dom.Node;
@@ -14,7 +15,11 @@ const DocumentType = dom.DocumentType;
 test "DOMImplementation: createDocumentType with valid name" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var impl = try DOMImplementation.init(allocator, &doc);
@@ -34,7 +39,11 @@ test "DOMImplementation: createDocumentType with valid name" {
 test "DOMImplementation: createDocumentType with public and system IDs" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var impl = try DOMImplementation.init(allocator, &doc);
@@ -54,7 +63,11 @@ test "DOMImplementation: createDocumentType with public and system IDs" {
 test "DOMImplementation: createDocumentType with empty name (valid)" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var impl = try DOMImplementation.init(allocator, &doc);
@@ -73,7 +86,11 @@ test "DOMImplementation: createDocumentType with empty name (valid)" {
 test "DOMImplementation: createDocumentType with space in name (invalid)" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var impl = try DOMImplementation.init(allocator, &doc);
@@ -86,7 +103,11 @@ test "DOMImplementation: createDocumentType with space in name (invalid)" {
 test "DOMImplementation: createDocumentType with null character (invalid)" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var impl = try DOMImplementation.init(allocator, &doc);
@@ -99,7 +120,11 @@ test "DOMImplementation: createDocumentType with null character (invalid)" {
 test "DOMImplementation: createDocumentType with > character (invalid)" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var impl = try DOMImplementation.init(allocator, &doc);
@@ -112,7 +137,11 @@ test "DOMImplementation: createDocumentType with > character (invalid)" {
 test "DOMImplementation: createDocumentType with tab character (invalid)" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var impl = try DOMImplementation.init(allocator, &doc);
@@ -125,7 +154,11 @@ test "DOMImplementation: createDocumentType with tab character (invalid)" {
 test "DOMImplementation: createHTMLDocument without title" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var impl = try DOMImplementation.init(allocator, &doc);
@@ -144,7 +177,11 @@ test "DOMImplementation: createHTMLDocument without title" {
 test "DOMImplementation: createHTMLDocument with title" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var impl = try DOMImplementation.init(allocator, &doc);
@@ -163,7 +200,11 @@ test "DOMImplementation: createHTMLDocument with title" {
 test "DOMImplementation: createHTMLDocument with empty title" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var impl = try DOMImplementation.init(allocator, &doc);
@@ -181,7 +222,11 @@ test "DOMImplementation: createHTMLDocument with empty title" {
 test "DOMImplementation: createDocument without qualified name" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var impl = try DOMImplementation.init(allocator, &doc);
@@ -200,7 +245,11 @@ test "DOMImplementation: createDocument without qualified name" {
 test "DOMImplementation: createDocument with qualified name and namespace" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var impl = try DOMImplementation.init(allocator, &doc);
@@ -218,7 +267,11 @@ test "DOMImplementation: createDocument with qualified name and namespace" {
 test "DOMImplementation: createDocument with doctype" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var impl = try DOMImplementation.init(allocator, &doc);
@@ -239,7 +292,11 @@ test "DOMImplementation: createDocument with doctype" {
 test "DOMImplementation: hasFeature always returns true" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var impl = try DOMImplementation.init(allocator, &doc);
@@ -252,7 +309,11 @@ test "DOMImplementation: hasFeature always returns true" {
 test "DOMImplementation: Document.implementation getter" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Get implementation from document
@@ -274,7 +335,11 @@ test "DOMImplementation: Document.implementation getter" {
 test "DOMImplementation: createHTMLDocument creates proper tree structure" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var impl = try DOMImplementation.init(allocator, &doc);
@@ -321,7 +386,11 @@ test "DOMImplementation: createHTMLDocument creates proper tree structure" {
 test "DOMImplementation: createHTMLDocument without title has no title element" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var impl = try DOMImplementation.init(allocator, &doc);
@@ -350,7 +419,11 @@ test "DOMImplementation: createHTMLDocument without title has no title element" 
 test "DOMImplementation: createDocument with element creates tree" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var impl = try DOMImplementation.init(allocator, &doc);
@@ -374,7 +447,11 @@ test "DOMImplementation: createDocument with element creates tree" {
 test "DOMImplementation: createDocument with doctype and element" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var impl = try DOMImplementation.init(allocator, &doc);
@@ -405,7 +482,11 @@ test "DOMImplementation: createDocument with doctype and element" {
 test "DOMImplementation: createDocument with empty qualified name has no element" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var impl = try DOMImplementation.init(allocator, &doc);

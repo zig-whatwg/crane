@@ -12,11 +12,11 @@ test "AbortSignal: dependent signal aborts when source aborts" {
     const allocator = std.testing.allocator;
 
     // Create source signal
-    var source = try AbortSignal.init(allocator);
+    var source = try AbortSignal.init(allocator, ctx);
     defer source.deinit();
 
     // Create dependent signal manually
-    var dependent = try AbortSignal.init(allocator);
+    var dependent = try AbortSignal.init(allocator, ctx);
     defer dependent.deinit();
 
     // Link them
@@ -41,10 +41,10 @@ test "AbortSignal.any(): returns already-aborted signal if any input is aborted"
     const allocator = std.testing.allocator;
 
     // Create source signals, one already aborted
-    var signal1 = try AbortSignal.init(allocator);
+    var signal1 = try AbortSignal.init(allocator, ctx);
     defer signal1.deinit();
 
-    var signal2 = try AbortSignal.init(allocator);
+    var signal2 = try AbortSignal.init(allocator, ctx);
     defer signal2.deinit();
     const reason = webidl.Exception{ .simple = .{ .type = .TypeError, .message = "Already aborted" } };
     signal2.signalAbort(reason);
@@ -69,13 +69,13 @@ test "AbortSignal.any(): creates dependent signal that aborts when any source ab
     const allocator = std.testing.allocator;
 
     // Create source signals
-    var signal1 = try AbortSignal.init(allocator);
+    var signal1 = try AbortSignal.init(allocator, ctx);
     defer signal1.deinit();
 
-    var signal2 = try AbortSignal.init(allocator);
+    var signal2 = try AbortSignal.init(allocator, ctx);
     defer signal2.deinit();
 
-    var signal3 = try AbortSignal.init(allocator);
+    var signal3 = try AbortSignal.init(allocator, ctx);
     defer signal3.deinit();
 
     // Create dependent signal
@@ -106,7 +106,7 @@ test "AbortSignal.any(): multiple dependents abort when source aborts" {
     const allocator = std.testing.allocator;
 
     // Create source signal
-    var source = try AbortSignal.init(allocator);
+    var source = try AbortSignal.init(allocator, ctx);
     defer source.deinit();
 
     // Create multiple dependent signals
@@ -156,7 +156,7 @@ test "AbortSignal.any(): empty signals array returns non-aborted signal" {
 test "AbortSignal: signalAbort is idempotent" {
     const allocator = std.testing.allocator;
 
-    var signal = try AbortSignal.init(allocator);
+    var signal = try AbortSignal.init(allocator, ctx);
     defer signal.deinit();
 
     const reason1 = webidl.Exception{ .simple = .{ .type = .TypeError, .message = "First" } };

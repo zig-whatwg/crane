@@ -19,11 +19,11 @@ test "addEventListener with aborted signal does not add listener" {
     const allocator = std.testing.allocator;
 
     // Create event target
-    var target = try EventTarget.init(allocator);
+    var target = try EventTarget.init(allocator, ctx);
     defer target.deinit();
 
     // Create abort signal and abort it immediately
-    var signal = try AbortSignal.init(allocator);
+    var signal = try AbortSignal.init(allocator, ctx);
     defer signal.deinit();
     signal.signalAbort(null);
 
@@ -52,11 +52,11 @@ test "addEventListener with signal removes listener when signal is aborted" {
     const allocator = std.testing.allocator;
 
     // Create event target
-    var target = try EventTarget.init(allocator);
+    var target = try EventTarget.init(allocator, ctx);
     defer target.deinit();
 
     // Create abort signal (not aborted yet)
-    var signal = try AbortSignal.init(allocator);
+    var signal = try AbortSignal.init(allocator, ctx);
     defer signal.deinit();
 
     // Add listener with signal
@@ -90,11 +90,11 @@ test "multiple listeners with same signal are all removed when aborted" {
     const allocator = std.testing.allocator;
 
     // Create event target
-    var target = try EventTarget.init(allocator);
+    var target = try EventTarget.init(allocator, ctx);
     defer target.deinit();
 
     // Create shared signal
-    var signal = try AbortSignal.init(allocator);
+    var signal = try AbortSignal.init(allocator, ctx);
     defer signal.deinit();
 
     // Add multiple listeners with the same signal
@@ -133,11 +133,11 @@ test "listener without signal is not affected by other signal aborts" {
     const allocator = std.testing.allocator;
 
     // Create event target
-    var target = try EventTarget.init(allocator);
+    var target = try EventTarget.init(allocator, ctx);
     defer target.deinit();
 
     // Create signal
-    var signal = try AbortSignal.init(allocator);
+    var signal = try AbortSignal.init(allocator, ctx);
     defer signal.deinit();
 
     // Add listener WITHOUT signal
@@ -181,11 +181,11 @@ test "listener with signal in capture phase is removed when aborted" {
     const allocator = std.testing.allocator;
 
     // Create event target
-    var target = try EventTarget.init(allocator);
+    var target = try EventTarget.init(allocator, ctx);
     defer target.deinit();
 
     // Create signal
-    var signal = try AbortSignal.init(allocator);
+    var signal = try AbortSignal.init(allocator, ctx);
     defer signal.deinit();
 
     // Add listener with signal in capture phase
@@ -220,7 +220,7 @@ test "AbortController integration with addEventListener" {
     const allocator = std.testing.allocator;
 
     // Create event target
-    var target = try EventTarget.init(allocator);
+    var target = try EventTarget.init(allocator, ctx);
     defer target.deinit();
 
     // Create AbortController

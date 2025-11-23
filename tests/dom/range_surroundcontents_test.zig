@@ -2,6 +2,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 // Type aliases
 const Document = dom.Document;
 const DocumentFragment = dom.DocumentFragment;
@@ -11,7 +12,7 @@ const Text = dom.TextWithBase;
 test "Range.surroundContents - wraps range content in new parent" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const div = try doc.call_createElement("div");
@@ -44,7 +45,7 @@ test "Range.surroundContents - wraps range content in new parent" {
 test "Range.surroundContents - clears existing newParent children" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const div = try doc.call_createElement("div");
@@ -74,7 +75,7 @@ test "Range.surroundContents - clears existing newParent children" {
 test "Range.surroundContents - throws for Document parent" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const text = try doc.call_createTextNode("Hello");
@@ -88,7 +89,7 @@ test "Range.surroundContents - throws for Document parent" {
     try range.call_setEnd(@ptrCast(text), 5);
 
     // Try to use Document as newParent
-    var newDoc = try dom.Document.init(allocator);
+    var newDoc = try dom.Document.init(allocator, ctx);
     defer newDoc.deinit();
 
     const result = range.call_surroundContents(@ptrCast(&newDoc));
@@ -98,7 +99,7 @@ test "Range.surroundContents - throws for Document parent" {
 test "Range.surroundContents - throws for DocumentFragment parent" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const text = try doc.call_createTextNode("Hello");

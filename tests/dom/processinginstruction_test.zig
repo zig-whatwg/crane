@@ -6,6 +6,7 @@ const dom = @import("dom");
 const Document = dom.Document;
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 // Type aliases
 const CharacterData = dom.CharacterData;
 const ProcessingInstruction = dom.ProcessingInstruction;
@@ -15,7 +16,11 @@ const testing = std.testing;
 test "ProcessingInstruction: createProcessingInstruction creates PI with target and data" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var pi = try doc.call_createProcessingInstruction("xml-stylesheet", "href=\"style.css\"");
@@ -31,7 +36,11 @@ test "ProcessingInstruction: createProcessingInstruction creates PI with target 
 test "ProcessingInstruction: target is readonly" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var pi = try doc.call_createProcessingInstruction("target", "data");
@@ -47,7 +56,11 @@ test "ProcessingInstruction: target is readonly" {
 test "ProcessingInstruction: inherits CharacterData methods" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var pi = try doc.call_createProcessingInstruction("xml-stylesheet", "type=\"text/css\"");
@@ -69,7 +82,11 @@ test "ProcessingInstruction: inherits CharacterData methods" {
 test "ProcessingInstruction: data manipulation" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var pi = try doc.call_createProcessingInstruction("php", "echo 'hello';");
@@ -88,7 +105,11 @@ test "ProcessingInstruction: data manipulation" {
 test "ProcessingInstruction: empty data" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var pi = try doc.call_createProcessingInstruction("target", "");
@@ -105,7 +126,11 @@ test "ProcessingInstruction: empty data" {
 test "ProcessingInstruction: substringData" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var pi = try doc.call_createProcessingInstruction("xml", "version=\"1.0\" encoding=\"UTF-8\"");
@@ -121,7 +146,11 @@ test "ProcessingInstruction: substringData" {
 test "ProcessingInstruction: multiple PIs with different targets" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var pi1 = try doc.call_createProcessingInstruction("xml", "version=\"1.0\"");

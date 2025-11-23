@@ -5,6 +5,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 
 // Type aliases
 const Document = dom.Document;
@@ -16,7 +17,11 @@ const testing = std.testing;
 test "Range: init creates range with document boundary" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -31,7 +36,11 @@ test "Range: init creates range with document boundary" {
 test "Range: collapsed returns true for same boundary points" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -53,7 +62,11 @@ test "Range: collapsed returns true for same boundary points" {
 test "Range: setStart updates start boundary point" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -70,7 +83,11 @@ test "Range: setStart updates start boundary point" {
 test "Range: setEnd updates end boundary point" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -87,7 +104,11 @@ test "Range: setEnd updates end boundary point" {
 test "Range: collapse to start" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -113,7 +134,11 @@ test "Range: collapse to start" {
 test "Range: collapse to end" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -139,7 +164,11 @@ test "Range: collapse to end" {
 test "Range: selectNodeContents sets range to node's children" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -166,7 +195,11 @@ test "Range: selectNodeContents sets range to node's children" {
 test "Range: cloneRange creates independent copy" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range1 = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -196,7 +229,11 @@ test "Range: cloneRange creates independent copy" {
 test "Range: detach does nothing (compatibility)" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -212,7 +249,11 @@ test "Range: detach does nothing (compatibility)" {
 test "Range: commonAncestorContainer for same node" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -230,7 +271,11 @@ test "Range: commonAncestorContainer for same node" {
 test "Range: commonAncestorContainer finds parent" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -259,7 +304,11 @@ test "Range: commonAncestorContainer finds parent" {
 test "Range: compareBoundaryPoints START_TO_START" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range1 = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -284,7 +333,11 @@ test "Range: compareBoundaryPoints START_TO_START" {
 test "Range: compareBoundaryPoints END_TO_END" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range1 = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -309,7 +362,11 @@ test "Range: compareBoundaryPoints END_TO_END" {
 test "Range: compareBoundaryPoints START_TO_END" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range1 = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -334,7 +391,11 @@ test "Range: compareBoundaryPoints START_TO_END" {
 test "Range: compareBoundaryPoints equal points" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range1 = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -356,7 +417,11 @@ test "Range: compareBoundaryPoints equal points" {
 test "Range: isPointInRange returns true for point in range" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -375,7 +440,11 @@ test "Range: isPointInRange returns true for point in range" {
 test "Range: isPointInRange returns false for point outside range" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -394,7 +463,11 @@ test "Range: isPointInRange returns false for point outside range" {
 test "Range: comparePoint returns -1 for point before range" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -413,7 +486,11 @@ test "Range: comparePoint returns -1 for point before range" {
 test "Range: comparePoint returns 0 for point in range" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -432,7 +509,11 @@ test "Range: comparePoint returns 0 for point in range" {
 test "Range: comparePoint returns 1 for point after range" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -451,7 +532,11 @@ test "Range: comparePoint returns 1 for point after range" {
 test "Range: intersectsNode returns true for intersecting node" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -479,7 +564,11 @@ test "Range: intersectsNode returns true for intersecting node" {
 test "Range: intersectsNode returns false for non-intersecting node" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -511,7 +600,11 @@ test "Range: intersectsNode returns false for non-intersecting node" {
 test "Range: deleteContents removes contained children" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -542,7 +635,11 @@ test "Range: deleteContents removes contained children" {
 test "Range: insertNode adds node at range start" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -570,7 +667,11 @@ test "Range: insertNode adds node at range start" {
 test "Range: insertNode throws for invalid start node" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -591,7 +692,11 @@ test "Range: insertNode throws for invalid start node" {
 test "Range: surroundContents wraps range content in new parent" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -619,7 +724,11 @@ test "Range: surroundContents wraps range content in new parent" {
 test "Range: surroundContents throws for invalid newParent type" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -636,7 +745,11 @@ test "Range: surroundContents throws for invalid newParent type" {
 test "Range: insertNode removes node from old parent" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -670,7 +783,11 @@ test "Range: insertNode removes node from old parent" {
 test "Range: extractContents returns empty fragment for collapsed range" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -694,7 +811,11 @@ test "Range: extractContents returns empty fragment for collapsed range" {
 test "Range: extractContents moves contained children to fragment" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -729,7 +850,11 @@ test "Range: extractContents moves contained children to fragment" {
 test "Range: cloneContents returns empty fragment for collapsed range" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -753,7 +878,11 @@ test "Range: cloneContents returns empty fragment for collapsed range" {
 test "Range: cloneContents copies children without removing them" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -786,7 +915,11 @@ test "Range: cloneContents copies children without removing them" {
 test "Range: extractContents throws for doctype in range" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
@@ -806,7 +939,11 @@ test "Range: extractContents throws for doctype in range" {
 test "Range: cloneContents throws for doctype in range" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));

@@ -6,6 +6,7 @@ const dom = @import("dom");
 const Document = dom.Document;
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 // Type aliases
 const DocumentType = dom.DocumentType;
 
@@ -14,7 +15,11 @@ const testing = std.testing;
 test "DocumentType: createDocumentType with all parameters" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var doctype = try doc.call_createDocumentType(
@@ -35,7 +40,11 @@ test "DocumentType: createDocumentType with all parameters" {
 test "DocumentType: HTML5 doctype (empty publicId and systemId)" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var doctype = try doc.call_createDocumentType("html", "", "");
@@ -52,7 +61,11 @@ test "DocumentType: HTML5 doctype (empty publicId and systemId)" {
 test "DocumentType: XML doctype with systemId only" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var doctype = try doc.call_createDocumentType(
@@ -73,7 +86,11 @@ test "DocumentType: XML doctype with systemId only" {
 test "DocumentType: XHTML doctype" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var doctype = try doc.call_createDocumentType(
@@ -94,7 +111,11 @@ test "DocumentType: XHTML doctype" {
 test "DocumentType: custom XML doctype" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var doctype = try doc.call_createDocumentType("custom", "public-id", "system-id");
@@ -111,7 +132,11 @@ test "DocumentType: custom XML doctype" {
 test "DocumentType: readonly properties" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var doctype = try doc.call_createDocumentType("test", "pub", "sys");
@@ -134,7 +159,11 @@ test "DocumentType: readonly properties" {
 test "DocumentType: multiple doctypes" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var doctype1 = try doc.call_createDocumentType("html", "", "");

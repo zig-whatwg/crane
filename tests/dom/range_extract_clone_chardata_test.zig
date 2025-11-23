@@ -2,6 +2,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 // Type aliases
 const Comment = dom.Comment;
 const Document = dom.Document;
@@ -12,7 +13,7 @@ const Text = dom.TextWithBase;
 test "Range.extractContents - extracts substring from Text node" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create text node "Hello World"
@@ -49,7 +50,7 @@ test "Range.extractContents - extracts substring from Text node" {
 test "Range.extractContents - handles entire Text node" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const text = try doc.call_createTextNode("Hello");
@@ -81,7 +82,7 @@ test "Range.extractContents - handles entire Text node" {
 test "Range.extractContents - handles Comment node" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const comment = try doc.call_createComment("This is a comment");
@@ -115,7 +116,7 @@ test "Range.extractContents - handles Comment node" {
 test "Range.cloneContents - clones substring from Text node" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create text node "Hello World"
@@ -152,7 +153,7 @@ test "Range.cloneContents - clones substring from Text node" {
 test "Range.cloneContents - handles entire Text node" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const text = try doc.call_createTextNode("Hello");
@@ -184,7 +185,7 @@ test "Range.cloneContents - handles entire Text node" {
 test "Range.cloneContents - handles Comment node" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const comment = try doc.call_createComment("This is a comment");
@@ -218,7 +219,7 @@ test "Range.cloneContents - handles Comment node" {
 test "Range.extractContents vs cloneContents - different behavior" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create two identical text nodes
@@ -264,7 +265,7 @@ test "Range.extractContents vs cloneContents - different behavior" {
 test "Range.extractContents - empty range returns empty fragment" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const text = try doc.call_createTextNode("Hello");
@@ -292,7 +293,7 @@ test "Range.extractContents - empty range returns empty fragment" {
 test "Range.cloneContents - empty range returns empty fragment" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const text = try doc.call_createTextNode("Hello");

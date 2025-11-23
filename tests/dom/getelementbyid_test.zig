@@ -2,6 +2,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 // Type aliases
 const Document = dom.Document;
 const Node = dom.Node;
@@ -9,7 +10,7 @@ const Node = dom.Node;
 test "Document.getElementById - finds element by id attribute" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create element with id
@@ -28,7 +29,7 @@ test "Document.getElementById - finds element by id attribute" {
 test "Document.getElementById - returns null for non-existent id" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const div = try doc.call_createElement("div");
@@ -43,7 +44,7 @@ test "Document.getElementById - returns null for non-existent id" {
 test "Document.getElementById - finds nested element" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create nested structure: div > span > em
@@ -67,7 +68,7 @@ test "Document.getElementById - finds nested element" {
 test "Document.getElementById - returns first element when multiple have same id" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create two elements with same id (not spec-compliant, but should handle gracefully)
@@ -89,7 +90,7 @@ test "Document.getElementById - returns first element when multiple have same id
 test "Document.getElementById - case sensitive matching" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const div = try doc.call_createElement("div");
@@ -109,7 +110,7 @@ test "Document.getElementById - case sensitive matching" {
 test "Document.getElementById - ignores elements without id attribute" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create elements, only one with id
@@ -132,7 +133,7 @@ test "Document.getElementById - ignores elements without id attribute" {
 test "Document.getElementById - empty id never matches" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const div = try doc.call_createElement("div");
@@ -149,7 +150,7 @@ test "Document.getElementById - empty id never matches" {
 test "Document.getElementById - finds element after id attribute added" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const div = try doc.call_createElement("div");
@@ -171,7 +172,7 @@ test "Document.getElementById - finds element after id attribute added" {
 test "Document.getElementById - does not find element after id attribute removed" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const div = try doc.call_createElement("div");
@@ -193,7 +194,7 @@ test "Document.getElementById - does not find element after id attribute removed
 test "Document.getElementById - special characters in id" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const div = try doc.call_createElement("div");
@@ -210,7 +211,7 @@ test "Document.getElementById - special characters in id" {
 test "Document.getElementById - unicode in id" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const div = try doc.call_createElement("div");

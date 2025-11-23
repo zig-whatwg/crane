@@ -7,6 +7,7 @@ const Document = dom.Document;
 const Node = dom.Node;
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 // Type aliases
 const CharacterData = dom.CharacterData;
 
@@ -15,7 +16,11 @@ const testing = std.testing;
 test "Text: createTextNode creates text with data" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("Hello World");
@@ -31,7 +36,11 @@ test "Text: createTextNode creates text with data" {
 test "Text: createTextNode with empty string" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("");
@@ -47,7 +56,11 @@ test "Text: createTextNode with empty string" {
 test "Text: inherits CharacterData methods" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("Hello");
@@ -70,7 +83,11 @@ test "Text: inherits CharacterData methods" {
 test "Text: splitText at middle" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("HelloWorld");
@@ -98,7 +115,11 @@ test "Text: splitText at middle" {
 test "Text: splitText at beginning" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("Hello");
@@ -123,7 +144,11 @@ test "Text: splitText at beginning" {
 test "Text: splitText at end" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("Hello");
@@ -148,7 +173,11 @@ test "Text: splitText at end" {
 test "Text: splitText throws on invalid offset" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("Hello");
@@ -165,7 +194,11 @@ test "Text: splitText throws on invalid offset" {
 test "Text: splitText with unicode" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("Hello→World");
@@ -189,7 +222,11 @@ test "Text: splitText with unicode" {
 test "Text: wholeText returns data" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("Hello World");
@@ -206,7 +243,11 @@ test "Text: wholeText returns data" {
 test "Text: wholeText after modification" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("Hello");
@@ -224,7 +265,11 @@ test "Text: wholeText after modification" {
 test "Text: multiple operations" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("abc");
@@ -258,7 +303,11 @@ test "Text: multiple operations" {
 test "Text: data manipulation after split" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("0123456789");
@@ -296,7 +345,11 @@ test "Text: data manipulation after split" {
 test "Text: empty text node operations" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var text = try doc.call_createTextNode("");
@@ -326,7 +379,11 @@ test "Text: empty text node operations" {
 test "Text: splitText inserts new node into parent tree" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create parent element
@@ -372,7 +429,11 @@ test "Text: splitText inserts new node into parent tree" {
 test "Text: splitText with siblings inserts in correct position" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create parent element

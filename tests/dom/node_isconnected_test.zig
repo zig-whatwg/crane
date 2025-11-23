@@ -2,6 +2,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 
 // Type aliases
 const Document = dom.Document;
@@ -11,7 +12,7 @@ const Node = dom.Node;
 test "Node.isConnected - document is connected" {
     const allocator = std.testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const doc_node: *Node = @ptrCast(&doc);
@@ -21,7 +22,7 @@ test "Node.isConnected - document is connected" {
 test "Node.isConnected - element in document is connected" {
     const allocator = std.testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var elem = try Element.init(allocator, "div");
@@ -53,7 +54,7 @@ test "Node.isConnected - detached element is not connected" {
 test "Node.isConnected - nested elements in document are connected" {
     const allocator = std.testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var parent = try Element.init(allocator, "div");
@@ -80,7 +81,7 @@ test "Node.isConnected - nested elements in document are connected" {
 test "Node.isConnected - element removed from document is not connected" {
     const allocator = std.testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     var elem = try Element.init(allocator, "div");

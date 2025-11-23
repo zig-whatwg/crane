@@ -5,6 +5,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 // Type aliases
 const Document = dom.Document;
 const DocumentFragment = dom.DocumentFragment;
@@ -14,7 +15,11 @@ const testing = std.testing;
 test "Integration: Create element with document and set attributes" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create element using document
@@ -37,7 +42,11 @@ test "Integration: Create element with document and set attributes" {
 test "Integration: Document creates multiple elements with different attributes" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create multiple elements
@@ -82,7 +91,11 @@ test "Integration: Document creates multiple elements with different attributes"
 test "Integration: Element attribute manipulation" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem = try doc.call_createElement("div");
@@ -117,7 +130,11 @@ test "Integration: Element attribute manipulation" {
 test "Integration: Document creates text and comment nodes" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create text node
@@ -148,7 +165,11 @@ test "Integration: Document creates text and comment nodes" {
 test "Integration: DocumentFragment from document" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const fragment = try doc.call_createDocumentFragment();
@@ -164,7 +185,11 @@ test "Integration: DocumentFragment from document" {
 test "Integration: Element with namespaced creation" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create SVG element
@@ -189,7 +214,11 @@ test "Integration: Element with namespaced creation" {
 test "Integration: Element slot attribute" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem = try doc.call_createElement("div");
@@ -213,10 +242,14 @@ test "Integration: Element slot attribute" {
 test "Integration: Multiple documents create independent elements" {
     const allocator = testing.allocator;
 
-    var doc1 = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc1 = try Document.init(allocator, ctx);
     defer doc1.deinit();
 
-    var doc2 = try Document.init(allocator);
+    var doc2 = try Document.init(allocator, ctx);
     defer doc2.deinit();
 
     // Create element from first document

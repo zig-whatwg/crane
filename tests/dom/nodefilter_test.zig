@@ -5,6 +5,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 
 // Type aliases
 const Document = dom.Document;
@@ -41,7 +42,11 @@ test "NodeFilter: SHOW constants have correct bit positions" {
 test "NodeFilter: isNodeTypeShown returns true for matching type" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem = try doc.call_createElement("div");
@@ -56,7 +61,11 @@ test "NodeFilter: isNodeTypeShown returns true for matching type" {
 test "NodeFilter: isNodeTypeShown returns false for non-matching type" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem = try doc.call_createElement("div");
@@ -71,7 +80,11 @@ test "NodeFilter: isNodeTypeShown returns false for non-matching type" {
 test "NodeFilter: isNodeTypeShown works with combined bitmask" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem = try doc.call_createElement("div");
@@ -94,7 +107,11 @@ test "NodeFilter: isNodeTypeShown works with combined bitmask" {
 test "NodeFilter: filterNode skips non-matching types" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem = try doc.call_createElement("div");
@@ -107,7 +124,11 @@ test "NodeFilter: filterNode skips non-matching types" {
 test "NodeFilter: filterNode accepts matching types with no callback" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem = try doc.call_createElement("div");
@@ -120,7 +141,11 @@ test "NodeFilter: filterNode accepts matching types with no callback" {
 test "NodeFilter: filterNode calls callback for matching types" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem = try doc.call_createElement("div");
@@ -140,7 +165,11 @@ test "NodeFilter: filterNode calls callback for matching types" {
 test "NodeFilter: filterNode callback can accept nodes" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem = try doc.call_createElement("div");
@@ -160,7 +189,11 @@ test "NodeFilter: filterNode callback can accept nodes" {
 test "NodeFilter: filterNode callback can skip nodes" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem = try doc.call_createElement("div");
@@ -180,7 +213,11 @@ test "NodeFilter: filterNode callback can skip nodes" {
 test "NodeFilter: filterNode with SHOW_ALL and no callback accepts all" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Test different node types
@@ -197,7 +234,11 @@ test "NodeFilter: filterNode with SHOW_ALL and no callback accepts all" {
 test "NodeFilter: filterNode respects callback even with SHOW_ALL" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem = try doc.call_createElement("div");

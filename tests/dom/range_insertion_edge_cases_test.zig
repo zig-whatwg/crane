@@ -10,6 +10,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 // Type aliases
 const Document = dom.Document;
 const Range = dom.Range;
@@ -30,10 +31,14 @@ const testing = std.testing;
 test "Range insertion - insert before range shifts offsets" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create document
     const doc_ptr = try allocator.create(dom.Document);
     defer allocator.destroy(doc_ptr);
-    doc_ptr.* = try dom.Document.init(allocator);
+    doc_ptr.* = try dom.Document.init(allocator, ctx);
     defer doc_ptr.deinit();
 
     // Create parent element
@@ -101,10 +106,14 @@ test "Range insertion - insert before range shifts offsets" {
 test "Range insertion - insert at end boundary shifts end offset" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create document
     const doc_ptr = try allocator.create(dom.Document);
     defer allocator.destroy(doc_ptr);
-    doc_ptr.* = try dom.Document.init(allocator);
+    doc_ptr.* = try dom.Document.init(allocator, ctx);
     defer doc_ptr.deinit();
 
     // Create parent element
@@ -176,10 +185,14 @@ test "Range insertion - insert at end boundary shifts end offset" {
 test "Range insertion - multiple ranges shifted by single insertion" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create document
     const doc_ptr = try allocator.create(dom.Document);
     defer allocator.destroy(doc_ptr);
-    doc_ptr.* = try dom.Document.init(allocator);
+    doc_ptr.* = try dom.Document.init(allocator, ctx);
     defer doc_ptr.deinit();
 
     // Create parent element
@@ -252,10 +265,14 @@ test "Range insertion - multiple ranges shifted by single insertion" {
 test "Range insertion - collapsed range shifts when inserted before" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create document
     const doc_ptr = try allocator.create(dom.Document);
     defer allocator.destroy(doc_ptr);
-    doc_ptr.* = try dom.Document.init(allocator);
+    doc_ptr.* = try dom.Document.init(allocator, ctx);
     defer doc_ptr.deinit();
 
     // Create parent element

@@ -7,6 +7,7 @@ const Document = dom.Document;
 const Node = dom.Node;
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 // Type aliases
 const DocumentFragment = dom.DocumentFragment;
 const Element = dom.ElementWithBase;
@@ -30,7 +31,11 @@ const testing = std.testing;
 test "ParentNode - children attribute returns HTMLCollection" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // 1. Create parent element
@@ -100,7 +105,11 @@ test "ParentNode - children attribute returns HTMLCollection" {
 test "ParentNode - children returns empty HTMLCollection when no elements" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const parent = try doc.call_createElement("div");

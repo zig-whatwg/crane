@@ -8,6 +8,7 @@ const Node = dom.Node;
 const NodeList = dom.NodeList;
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 // Type aliases
 const CharacterData = dom.CharacterData;
 
@@ -17,7 +18,11 @@ const DocumentFragment = @import("DocumentFragment").DocumentFragment;
 test "Document: createElement creates Element node" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem = try doc.call_createElement("div");
@@ -33,7 +38,11 @@ test "Document: createElement creates Element node" {
 test "Document: createElement creates different element types" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create various element types
@@ -63,7 +72,11 @@ test "Document: createElement creates different element types" {
 test "Document: createTextNode creates Text node" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const text = try doc.call_createTextNode("Hello, World!");
@@ -79,7 +92,11 @@ test "Document: createTextNode creates Text node" {
 test "Document: createComment creates Comment node" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const comment = try doc.call_createComment("This is a comment");
@@ -95,7 +112,11 @@ test "Document: createComment creates Comment node" {
 test "Document: createDocumentFragment creates fragment" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const fragment = try doc.call_createDocumentFragment();
@@ -111,7 +132,11 @@ test "Document: createDocumentFragment creates fragment" {
 test "Document: createElementNS creates namespaced element" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem = try doc.call_createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -127,7 +152,11 @@ test "Document: createElementNS creates namespaced element" {
 test "Document: multiple nodes can be created from same document" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem1 = try doc.call_createElement("div");
@@ -168,7 +197,11 @@ test "Document: multiple nodes can be created from same document" {
 test "Document: createElement with custom tag names" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Custom element names
@@ -188,11 +221,15 @@ test "Document: createElement with custom tag names" {
 test "Document: adoptNode changes owner document" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create two documents
-    var doc1 = try Document.init(allocator);
+    var doc1 = try Document.init(allocator, ctx);
     defer doc1.deinit();
 
-    var doc2 = try Document.init(allocator);
+    var doc2 = try Document.init(allocator, ctx);
     defer doc2.deinit();
 
     // Create element in doc1
@@ -220,11 +257,15 @@ test "Document: adoptNode changes owner document" {
 test "Document: adoptNode removes from parent" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create two documents
-    var doc1 = try Document.init(allocator);
+    var doc1 = try Document.init(allocator, ctx);
     defer doc1.deinit();
 
-    var doc2 = try Document.init(allocator);
+    var doc2 = try Document.init(allocator, ctx);
     defer doc2.deinit();
 
     // Create parent and child in doc1
@@ -264,10 +305,14 @@ test "Document: adoptNode removes from parent" {
 test "Document: adoptNode throws NotSupportedError for document node" {
     const allocator = testing.allocator;
 
-    var doc1 = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc1 = try Document.init(allocator, ctx);
     defer doc1.deinit();
 
-    var doc2 = try Document.init(allocator);
+    var doc2 = try Document.init(allocator, ctx);
     defer doc2.deinit();
 
     const doc1_node: *Node = @ptrCast(&doc1);
@@ -280,11 +325,15 @@ test "Document: adoptNode throws NotSupportedError for document node" {
 test "Document: adoptNode with tree of descendants" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     // Create two documents
-    var doc1 = try Document.init(allocator);
+    var doc1 = try Document.init(allocator, ctx);
     defer doc1.deinit();
 
-    var doc2 = try Document.init(allocator);
+    var doc2 = try Document.init(allocator, ctx);
     defer doc2.deinit();
 
     // Create a tree in doc1: div > (span, p)
@@ -339,7 +388,11 @@ test "Document: adoptNode with tree of descendants" {
 test "Document: createElementNS with namespace sets namespace_uri" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create element with SVG namespace
@@ -361,7 +414,11 @@ test "Document: createElementNS with namespace sets namespace_uri" {
 test "Document: createElementNS with null namespace" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create element with null namespace
@@ -381,7 +438,11 @@ test "Document: createElementNS with null namespace" {
 test "Document: createElementNS with different namespaces" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create HTML namespace element
@@ -417,7 +478,11 @@ test "Document: createElementNS with different namespaces" {
 test "Document: createElementNS namespace memory management" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const svg_ns = "http://www.w3.org/2000/svg";
@@ -440,8 +505,12 @@ test "Document: createElementNS namespace memory management" {
 
 test "Document: baseURI defaults to about:blank" {
     const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
     
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
     
     // Default base URI should be about:blank
@@ -450,8 +519,12 @@ test "Document: baseURI defaults to about:blank" {
 
 test "Node: baseURI returns document's base_uri" {
     const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
     
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
     
     const elem = try doc.call_createElement("div");

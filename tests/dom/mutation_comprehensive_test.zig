@@ -8,6 +8,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 
 const testing = std.testing;
 const mutation = dom.mutation;
@@ -23,6 +24,10 @@ const Text = dom.TextWithBase;
 test "mutation - ensurePreInsertValidity: valid Element into Element" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var parent = try Element.init(allocator, "div");
     defer parent.deinit();
 
@@ -36,7 +41,11 @@ test "mutation - ensurePreInsertValidity: valid Element into Element" {
 test "mutation - ensurePreInsertValidity: reject Text into Document" {
     const allocator = testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const text = try doc.call_createTextNode("hello");
@@ -48,6 +57,10 @@ test "mutation - ensurePreInsertValidity: reject Text into Document" {
 
 test "mutation - ensurePreInsertValidity: reject doctype into Element" {
     const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var elem = try Element.init(allocator, "div");
     defer elem.deinit();
@@ -61,6 +74,10 @@ test "mutation - ensurePreInsertValidity: reject doctype into Element" {
 
 test "mutation - ensurePreInsertValidity: reject when child parent mismatch" {
     const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var parent1 = try Element.init(allocator, "div");
     defer parent1.deinit();
@@ -81,6 +98,10 @@ test "mutation - ensurePreInsertValidity: reject when child parent mismatch" {
 
 test "mutation - appendChild: basic insertion" {
     const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var parent = try Element.init(allocator, "div");
     defer parent.deinit();
@@ -103,6 +124,10 @@ test "mutation - appendChild: basic insertion" {
 
 test "mutation - appendChild: multiple children" {
     const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var parent = try Element.init(allocator, "div");
     defer parent.deinit();
@@ -130,6 +155,10 @@ test "mutation - appendChild: multiple children" {
 test "mutation - insertBefore: insert at beginning" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var parent = try Element.init(allocator, "div");
     defer parent.deinit();
 
@@ -150,6 +179,10 @@ test "mutation - insertBefore: insert at beginning" {
 
 test "mutation - removeChild: basic removal" {
     const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var parent = try Element.init(allocator, "div");
     defer parent.deinit();
@@ -175,6 +208,10 @@ test "mutation - removeChild: basic removal" {
 test "mutation - removeChild: remove from middle" {
     const allocator = testing.allocator;
 
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
     var parent = try Element.init(allocator, "div");
     defer parent.deinit();
 
@@ -199,6 +236,10 @@ test "mutation - removeChild: remove from middle" {
 
 test "mutation - replaceChild: basic replacement" {
     const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
 
     var parent = try Element.init(allocator, "div");
     defer parent.deinit();
@@ -229,10 +270,14 @@ test "mutation - replaceChild: basic replacement" {
 test "mutation - adopt: change document" {
     const allocator = testing.allocator;
 
-    var doc1 = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc1 = try Document.init(allocator, ctx);
     defer doc1.deinit();
 
-    var doc2 = try Document.init(allocator);
+    var doc2 = try Document.init(allocator, ctx);
     defer doc2.deinit();
 
     var elem = try Element.init(allocator, "div");
@@ -249,10 +294,14 @@ test "mutation - adopt: change document" {
 test "mutation - adopt: with descendants" {
     const allocator = testing.allocator;
 
-    var doc1 = try Document.init(allocator);
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    var doc1 = try Document.init(allocator, ctx);
     defer doc1.deinit();
 
-    var doc2 = try Document.init(allocator);
+    var doc2 = try Document.init(allocator, ctx);
     defer doc2.deinit();
 
     var parent = try Element.init(allocator, "div");

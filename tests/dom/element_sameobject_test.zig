@@ -5,6 +5,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 // Type aliases
 const DOMTokenList = dom.DOMTokenList;
 const NamedNodeMap = dom.NamedNodeMap;
@@ -15,7 +16,7 @@ const Document = dom.Document;
 test "Element.attributes returns same NamedNodeMap instance ([SameObject])" {
     const allocator = std.testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem = try doc.call_createElement("div");
@@ -33,7 +34,7 @@ test "Element.attributes returns same NamedNodeMap instance ([SameObject])" {
 test "Element.classList returns same DOMTokenList instance ([SameObject])" {
     const allocator = std.testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem = try doc.call_createElement("div");
@@ -51,7 +52,7 @@ test "Element.classList returns same DOMTokenList instance ([SameObject])" {
 test "Element.attributes NamedNodeMap reflects live changes" {
     const allocator = std.testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem = try doc.call_createElement("div");
@@ -79,7 +80,7 @@ test "Element.attributes NamedNodeMap reflects live changes" {
 test "Element.classList DOMTokenList reflects live changes" {
     const allocator = std.testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem = try doc.call_createElement("div");
@@ -103,7 +104,7 @@ test "Element.classList DOMTokenList reflects live changes" {
 test "Multiple elements have different [SameObject] instances" {
     const allocator = std.testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem1 = try doc.call_createElement("div");
@@ -127,7 +128,7 @@ test "Multiple elements have different [SameObject] instances" {
 test "Element.attributes persists across attribute modifications" {
     const allocator = std.testing.allocator;
 
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
 
     const elem = try doc.call_createElement("div");

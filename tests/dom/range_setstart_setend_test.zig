@@ -2,6 +2,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 // Type aliases
 const CharacterData = dom.CharacterData;
 const Document = dom.Document;
@@ -13,7 +14,7 @@ test "Range.setStart - throws InvalidNodeTypeError for DocumentType" {
     const allocator = std.testing.allocator;
 
     // Create a document
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create a range
@@ -33,7 +34,7 @@ test "Range.setEnd - throws InvalidNodeTypeError for DocumentType" {
     const allocator = std.testing.allocator;
 
     // Create a document
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create a range
@@ -53,7 +54,7 @@ test "Range.setStart - throws IndexSizeError when offset > node length" {
     const allocator = std.testing.allocator;
 
     // Create a document
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create an element with 2 children
@@ -76,7 +77,7 @@ test "Range.setEnd - throws IndexSizeError when offset > node length" {
     const allocator = std.testing.allocator;
 
     // Create a document
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create an element with 2 children
@@ -99,7 +100,7 @@ test "Range.setStart - valid offset within node length" {
     const allocator = std.testing.allocator;
 
     // Create a document
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create an element with 2 children
@@ -123,7 +124,7 @@ test "Range.setEnd - valid offset within node length" {
     const allocator = std.testing.allocator;
 
     // Create a document
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create an element with 2 children
@@ -147,7 +148,7 @@ test "Range.setStart - adjusts end when start is after end" {
     const allocator = std.testing.allocator;
 
     // Create a document
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create elements
@@ -177,7 +178,7 @@ test "Range.setEnd - adjusts start when end is before start" {
     const allocator = std.testing.allocator;
 
     // Create a document
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create elements
@@ -207,7 +208,7 @@ test "Range.setStart - CharacterData node uses data length" {
     const allocator = std.testing.allocator;
 
     // Create a document
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     // Create a text node with "Hello" (length 5)

@@ -2,6 +2,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 // Type aliases
 const Document = dom.Document;
 const Text = dom.TextWithBase;
@@ -9,7 +10,7 @@ const Text = dom.TextWithBase;
 test "Text.wholeText - single Text node returns own data" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const text = try doc.call_createTextNode("Hello");
@@ -25,7 +26,7 @@ test "Text.wholeText - single Text node returns own data" {
 test "Text.wholeText - concatenates contiguous Text nodes" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const div = try doc.call_createElement("div");
@@ -46,7 +47,7 @@ test "Text.wholeText - concatenates contiguous Text nodes" {
 test "Text.wholeText - stops at element boundaries" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const div = try doc.call_createElement("div");
@@ -70,7 +71,7 @@ test "Text.wholeText - stops at element boundaries" {
 test "Text.wholeText - handles empty Text nodes" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const div = try doc.call_createElement("div");
@@ -91,7 +92,7 @@ test "Text.wholeText - handles empty Text nodes" {
 test "Text.wholeText - works from first node" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const div = try doc.call_createElement("div");
@@ -112,7 +113,7 @@ test "Text.wholeText - works from first node" {
 test "Text.wholeText - works from last node" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const div = try doc.call_createElement("div");
@@ -133,7 +134,7 @@ test "Text.wholeText - works from last node" {
 test "Text.wholeText - preserves order" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const div = try doc.call_createElement("div");

@@ -2,6 +2,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 // Type aliases
 const Attr = dom.Attr;
 const Document = dom.Document;
@@ -10,7 +11,7 @@ const NamedNodeMap = dom.NamedNodeMap;
 test "NamedNodeMap.getNamedItemNS - finds attribute by namespace and local name" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const element = try doc.call_createElement("div");
@@ -35,7 +36,7 @@ test "NamedNodeMap.getNamedItemNS - finds attribute by namespace and local name"
 test "NamedNodeMap.getNamedItemNS - returns null for non-existent attribute" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const element = try doc.call_createElement("div");
@@ -56,7 +57,7 @@ test "NamedNodeMap.getNamedItemNS - returns null for non-existent attribute" {
 test "NamedNodeMap.getNamedItemNS - handles null namespace" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const element = try doc.call_createElement("div");
@@ -79,7 +80,7 @@ test "NamedNodeMap.getNamedItemNS - handles null namespace" {
 test "NamedNodeMap.getNamedItemNS - distinguishes same local name in different namespaces" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const element = try doc.call_createElement("div");
@@ -110,7 +111,7 @@ test "NamedNodeMap.getNamedItemNS - distinguishes same local name in different n
 test "NamedNodeMap - removeNamedItem with qualified name (prefix:localName)" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const element = try doc.call_createElement("div");
@@ -136,7 +137,7 @@ test "NamedNodeMap - removeNamedItem with qualified name (prefix:localName)" {
 test "NamedNodeMap - removeNamedItem with local name only (no prefix)" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const element = try doc.call_createElement("div");
@@ -162,7 +163,7 @@ test "NamedNodeMap - removeNamedItem with local name only (no prefix)" {
 test "NamedNodeMap - removeNamedItem returns null for non-existent qualified name" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const element = try doc.call_createElement("div");
@@ -185,7 +186,7 @@ test "NamedNodeMap - removeNamedItem returns null for non-existent qualified nam
 test "NamedNodeMap - removeNamedItem only matches exact qualified name" {
     const allocator = std.testing.allocator;
 
-    var doc = try dom.Document.init(allocator);
+    var doc = try dom.Document.init(allocator, ctx);
     defer doc.deinit();
 
     const element = try doc.call_createElement("div");

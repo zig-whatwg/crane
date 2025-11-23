@@ -5,6 +5,7 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 
 
 // Type aliases
@@ -15,6 +16,10 @@ const testing = std.testing;
 
 test "HTMLCollection: init creates empty collection" {
     const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
     
     var collection = try HTMLCollection.init(allocator);
     defer collection.deinit();
@@ -24,8 +29,12 @@ test "HTMLCollection: init creates empty collection" {
 
 test "HTMLCollection: length returns element count" {
     const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
     
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
     
     var collection = try HTMLCollection.init(allocator);
@@ -52,8 +61,12 @@ test "HTMLCollection: length returns element count" {
 
 test "HTMLCollection: item returns element at index" {
     const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
     
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
     
     var collection = try HTMLCollection.init(allocator);
@@ -86,6 +99,10 @@ test "HTMLCollection: item returns element at index" {
 
 test "HTMLCollection: item returns null for out of bounds index" {
     const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
     
     var collection = try HTMLCollection.init(allocator);
     defer collection.deinit();
@@ -96,8 +113,12 @@ test "HTMLCollection: item returns null for out of bounds index" {
 
 test "HTMLCollection: namedItem finds element by id" {
     const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
     
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
     
     var collection = try HTMLCollection.init(allocator);
@@ -120,8 +141,12 @@ test "HTMLCollection: namedItem finds element by id" {
 
 test "HTMLCollection: namedItem finds element by name attribute" {
     const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
     
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
     
     var collection = try HTMLCollection.init(allocator);
@@ -143,8 +168,12 @@ test "HTMLCollection: namedItem finds element by name attribute" {
 
 test "HTMLCollection: namedItem returns null for non-existent name" {
     const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
     
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
     
     var collection = try HTMLCollection.init(allocator);
@@ -164,8 +193,12 @@ test "HTMLCollection: namedItem returns null for non-existent name" {
 
 test "HTMLCollection: namedItem returns first matching element" {
     const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
     
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
     
     var collection = try HTMLCollection.init(allocator);
@@ -196,8 +229,12 @@ test "HTMLCollection: namedItem returns first matching element" {
 
 test "HTMLCollection: clear removes all elements" {
     const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
     
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
     
     var collection = try HTMLCollection.init(allocator);
@@ -218,8 +255,12 @@ test "HTMLCollection: clear removes all elements" {
 
 test "HTMLCollection: multiple elements of same type" {
     const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
     
-    var doc = try Document.init(allocator);
+    var doc = try Document.init(allocator, ctx);
     defer doc.deinit();
     
     var collection = try HTMLCollection.init(allocator);
