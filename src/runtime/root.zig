@@ -94,23 +94,9 @@ pub const GCStats = gc.GCStats;
 // JS Engine abstraction
 pub const jsengine = @import("jsengine.zig");
 
-// V8 Engine (default)
-const V8 = jsengine.select(.v8);
-
-// V8 bindings infrastructure (backward compatibility)
-pub const V8Context = V8.Context;
-pub const v8_callbacks = V8.callbacks;
-pub const v8_template = struct {
-    pub const TemplateBuilder = V8.TemplateBuilder;
-    pub const TemplateRegistry = V8.TemplateRegistry;
-    pub const FunctionTemplate = V8.FunctionTemplate;
-    pub const AttributeDescriptor = V8.AttributeDescriptor;
-    pub const MethodDescriptor = V8.MethodDescriptor;
-};
-pub const v8_types = V8.types;
-pub const v8_errors = V8.errors;
-pub const v8_persistent = V8.persistent;
-pub const v8_eventlistener = V8.eventlistener;
+// NOTE: V8 engine is in src/runtime/engines/v8/ but is imported as a SEPARATE module.
+// It is NOT part of the runtime module to avoid circular dependencies.
+// Use @import("v8") to access V8 bindings.
 
 // Convenience re-exports
 pub const initRuntime = initializeRuntime;

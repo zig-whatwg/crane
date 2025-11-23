@@ -39,7 +39,7 @@ fn addTestFilesFromDir(
         if (link_v8) {
             // Add V8 C++ wrapper
             test_exe.addCSourceFile(.{
-                .file = builder.path("src/v8/v8_wrapper.cpp"),
+                .file = builder.path("src/runtime/engines/v8/v8_wrapper.cpp"),
                 .flags = &.{
                     "-std=c++20",
                     "-fno-exceptions",
@@ -141,7 +141,7 @@ pub fn build(b: *std.Build) void {
 
     // V8 bindings module
     const v8_mod = b.addModule("v8", .{
-        .root_source_file = b.path("src/v8/root.zig"),
+        .root_source_file = b.path("src/runtime/engines/v8/root.zig"),
         .target = target,
     });
     v8_mod.addImport("runtime", runtime_mod);
@@ -244,6 +244,9 @@ pub fn build(b: *std.Build) void {
     impls_mod.addImport("dictionaries", dictionaries_mod);
     impls_mod.addImport("enums", enums_mod);
     impls_mod.addImport("callbacks", callbacks_mod);
+
+    // V8 module needs interfaces for automatic constructor inheritance setup
+    v8_mod.addImport("interfaces", interfaces_mod);
 
     // DOM module
     const dom_mod = b.addModule("dom", .{
@@ -1013,7 +1016,7 @@ pub fn build(b: *std.Build) void {
 
     // Add V8 C++ wrapper
     repl_exe.addCSourceFile(.{
-        .file = b.path("src/v8/v8_wrapper.cpp"),
+        .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
         .flags = &.{
             "-std=c++20",
             "-fno-exceptions",

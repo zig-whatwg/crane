@@ -973,6 +973,21 @@ bool v8_Object_DefineProperty(Global<Object>* object, Global<Context>* context, 
 }
 
 // ============================================================================
+// Object Prototype Functions
+// ============================================================================
+
+bool v8_Object_SetPrototype(Global<Object>* object, Global<Context>* context, Global<Value>* prototype) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Object> obj = object->Get(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Local<Value> proto = prototype->Get(isolate);
+    
+    return obj->SetPrototype(ctx, proto).FromMaybe(false);
+}
+
+// ============================================================================
 // Object Extensibility Functions
 // ============================================================================
 

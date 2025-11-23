@@ -1,57 +1,54 @@
 //! Abstract JS Engine Interface
 //!
-//! Defines the bridge between WebIDL runtime and JS engine implementations.
-//! Each engine (V8, JSC, SpiderMonkey) provides concrete implementations.
+//! NOTE: This abstraction layer is currently UNUSED.
+//! V8 engine implementation is in src/runtime/engines/v8/ but is imported
+//! as a SEPARATE module (@import("v8")) to avoid circular dependencies.
 //!
-//! ## Architecture: Bridge Pattern
+//! The "engine selection" abstraction was created for potential multi-engine
+//! support (JSC, SpiderMonkey), but only V8 exists and it uses its own module.
+//!
+//! ## Current Architecture
 //!
 //! ```
-//! WebIDL Runtime (Abstraction)
+//! WebIDL Runtime (@import("runtime"))
 //!       |
-//!       | uses
+//!       | separate from
 //!       v
-//!   JSEngine Interface (this file)
-//!       |
-//!       | implemented by
-//!       v
-//! V8Engine / JSCEngine / SpiderMonkeyEngine (Implementations)
+//! V8 Bindings (@import("v8"))
+//!   Located in: src/runtime/engines/v8/
+//!   Imported as: separate module
 //! ```
 //!
-//! ## Usage
+//! ## Future: If We Add More Engines
 //!
-//! ```zig
-//! const jsengine = @import("runtime").jsengine;
+//! - Create src/runtime/engines/jsc/ → @import("jsc") module
+//! - Create src/runtime/engines/spidermonkey/ → @import("spidermonkey") module
+//! - Keep each engine as a separate module
 //!
-//! // Select engine at compile time
-//! const Engine = jsengine.select(.v8);
-//!
-//! // Use engine-agnostic interface
-//! const ctx = try Engine.Context.init(allocator);
-//! defer ctx.deinit();
-//!
-//! const value = try Engine.types.toJS(allocator, 42);
-//! ```
+//! The comptime reflection system in V8 makes this abstraction unnecessary.
 
 const std = @import("std");
 
 /// Available JS engine implementations
+///
+/// NOTE: This enum is currently unused. V8 is imported directly as @import("v8").
 pub const EngineType = enum {
-    v8,
-    // Future engines:
-    // jsc,
-    // spidermonkey,
+    // v8,  // V8 is in src/runtime/engines/v8/ but imported as separate module @import("v8")
+    // Future engines would follow the same pattern:
+    // jsc,  // Would be @import("jsc")
+    // spidermonkey,  // Would be @import("spidermonkey")
 };
 
 /// Select JS engine implementation at compile time
 ///
-/// Returns the module for the selected engine.
-/// All engines must implement the same interface defined in this file.
+/// NOTE: This function is currently UNUSED.
+/// Use @import("v8") directly instead of jsengine.select(.v8).
+///
+/// This abstraction was created for multi-engine support but is not needed
+/// with Zig's module system - each engine is its own module.
 pub fn select(comptime engine: EngineType) type {
-    return switch (engine) {
-        .v8 => @import("engines/v8/engine.zig"),
-        // .jsc => @import("engines/jsc/engine.zig"),
-        // .spidermonkey => @import("engines/spidermonkey/engine.zig"),
-    };
+    _ = engine;
+    @compileError("Use @import(\"v8\") instead of jsengine.select(.v8). Engine selection abstraction is deprecated.");
 }
 
 /// Abstract interfaces that all engines must implement

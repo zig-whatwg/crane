@@ -73,7 +73,7 @@ pub const context_manager = @import("context_manager.zig");
 ///       which is only available in REPL context, not root module
 /// TODO: Refactor to make bindings available conditionally
 // pub const bindings = @import("v8/bindings.zig");
-// pub const interface_bindings = @import("v8/interface_bindings.zig");
+pub const interface_bindings = @import("interface_bindings.zig");
 
 // Re-export commonly used types for convenience
 pub const Isolate = ffi.Isolate;

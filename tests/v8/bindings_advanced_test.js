@@ -22,11 +22,12 @@ typeof Node.prototype.ELEMENT_NODE === "undefined"
 typeof Node.prototype.TEXT_NODE === "undefined"
 typeof Node.prototype.DOCUMENT_NODE === "undefined"
 
-// Constants are NOT on derived constructors (not inherited)
-typeof Element.ELEMENT_NODE === "undefined"
-typeof HTMLElement.ELEMENT_NODE === "undefined"
+// Constants ARE accessible on derived constructors (inherited via __proto__)
+// Element.__proto__ === Node, so Element inherits Node's constants
+Element.ELEMENT_NODE === 1
+HTMLElement.ELEMENT_NODE === 1
 
-// Constants are on the base constructor only
+// But constants are NOT own properties of derived constructors
 Node.hasOwnProperty("ELEMENT_NODE") === true
 Element.hasOwnProperty("ELEMENT_NODE") === false
 HTMLElement.hasOwnProperty("ELEMENT_NODE") === false

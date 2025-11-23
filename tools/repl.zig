@@ -178,6 +178,10 @@ const Repl = struct {
             }
         }
 
+        // Set up constructor inheritance chain after all interfaces are registered
+        // This makes Element.__proto__ === Node, Node.__proto__ === EventTarget, etc.
+        v8.interface_bindings.setupConstructorInheritance(isolate, context);
+
         return Self{
             .allocator = allocator,
             .isolate = isolate,

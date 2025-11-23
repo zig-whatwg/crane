@@ -1,476 +1,398 @@
-//! V8 FFI Interface Layer
+//! V8 JavaScript Engine FFI Bindings
 //!
-//! Provides extern function declarations and type definitions for the V8 C API.
-//! This layer can be linked to real V8 when available, or used with a mock implementation.
+//! This module provides Zig bindings to the V8 C++ API for JavaScript execution.
+//! All types and functions here map directly to V8's public API.
 //!
-//! ## Conditional Compilation
-//!
-//! Set `use_real_v8 = true` to link against real V8.
-//! When false, uses mock implementations for testing and development.
-//!
-//! ## V8 C API Reference
-//!
-//! Based on V8's C API (v8-c.h):
-//! - https://chromium.googlesource.com/v8/v8/+/refs/heads/main/include/v8-c.h
-//! - Minimal subset needed for WebIDL bindings
-//!
-//! ## Usage
-//!
-//! ```zig
-//! const v8 = @import("ffi.zig");
-//!
-//! // Create isolate
-//! const isolate = v8.v8_Isolate_New(null);
-//! defer v8.v8_Isolate_Dispose(isolate);
-//!
-//! // Create context
-//! const context = v8.v8_Context_New(isolate);
-//! defer v8.v8_Context_Dispose(context);
-//! ```
+//! Reference: https://v8.github.io/api/head/
 
 const std = @import("std");
 
-/// Use real V8 C API or mock implementation
-pub const use_real_v8 = false;
+/// V8 Isolate - Represents an isolated instance of the V8 JavaScript engine
+pub const Isolate = opaque {};
 
-// ============================================================================
-// V8 Opaque Types
-// ============================================================================
+/// V8 Context - Represents a JavaScript execution context
+pub const Context = opaque {};
 
-/// V8 Isolate - represents an isolated instance of the V8 engine
-pub const v8_Isolate = opaque {};
-
-/// V8 Context - represents a JavaScript execution context
-pub const v8_Context = opaque {};
-
-/// V8 Value - base type for all JavaScript values
-pub const v8_Value = opaque {};
+/// V8 Value - Base type for all JavaScript values
+pub const Value = opaque {};
 
 /// V8 Object - JavaScript object
-pub const v8_Object = opaque {};
-
-/// V8 Array - JavaScript array
-pub const v8_Array = opaque {};
+pub const Object = opaque {};
 
 /// V8 String - JavaScript string
-pub const v8_String = opaque {};
+pub const String = opaque {};
+
+/// V8 Name - Base type for String and Symbol (used in property accessors)
+pub const Name = opaque {};
+
+/// V8 Symbol - JavaScript symbol
+pub const Symbol = opaque {};
 
 /// V8 Number - JavaScript number
-pub const v8_Number = opaque {};
+pub const Number = opaque {};
 
 /// V8 Boolean - JavaScript boolean
-pub const v8_Boolean = opaque {};
+pub const Boolean = opaque {};
+
+/// V8 Array - JavaScript array
+pub const Array = opaque {};
 
 /// V8 Function - JavaScript function
-pub const v8_Function = opaque {};
+pub const Function = opaque {};
 
-/// V8 FunctionTemplate - template for creating functions
-pub const v8_FunctionTemplate = opaque {};
+/// V8 FunctionTemplate - Template for creating JavaScript functions
+pub const FunctionTemplate = opaque {};
 
-/// V8 ObjectTemplate - template for creating objects
-pub const v8_ObjectTemplate = opaque {};
+/// V8 ObjectTemplate - Template for creating JavaScript objects
+pub const ObjectTemplate = opaque {};
 
-/// V8 External - wrapper for native pointers
-pub const v8_External = opaque {};
+/// V8 Template - Base template type
+pub const Template = opaque {};
 
-// ============================================================================
-// V8 Callback Types
-// ============================================================================
+/// V8 External - Wraps C++ pointers for storage in V8
+pub const External = opaque {};
 
-/// Function callback info
-pub const v8_FunctionCallbackInfo = opaque {};
+/// V8 Script - Compiled JavaScript code
+pub const Script = opaque {};
 
-/// Property callback info
-pub const v8_PropertyCallbackInfo = opaque {};
+/// Property attributes (flags for property descriptors)
+/// These match V8's PropertyAttribute enum
+pub const PropertyAttribute = struct {
+    pub const None: c_int = 0;
+    pub const ReadOnly: c_int = 1 << 0;
+    pub const DontEnum: c_int = 1 << 1;
+    pub const DontDelete: c_int = 1 << 2;
+};
 
-/// Function callback type
-pub const v8_FunctionCallback = *const fn (info: *const v8_FunctionCallbackInfo) callconv(.C) void;
+/// FunctionCallbackInfo - Encapsulates information about a function call from JavaScript
+pub const FunctionCallbackInfo = opaque {
+    /// Get the V8 isolate for this callback
+    pub extern fn v8_FunctionCallbackInfo_GetIsolate(self: *const FunctionCallbackInfo) *Isolate;
 
-/// Property getter callback type
-pub const v8_AccessorGetterCallback = *const fn (
-    property: *v8_String,
-    info: *const v8_PropertyCallbackInfo,
-) callconv(.C) void;
+    /// Get the number of arguments passed to the function
+    pub extern fn v8_FunctionCallbackInfo_Length(self: *const FunctionCallbackInfo) c_int;
 
-/// Property setter callback type
-pub const v8_AccessorSetterCallback = *const fn (
-    property: *v8_String,
-    value: *v8_Value,
-    info: *const v8_PropertyCallbackInfo,
-) callconv(.C) void;
+    /// Get the argument at the specified index
+    pub extern fn v8_FunctionCallbackInfo_GetArgument(self: *const FunctionCallbackInfo, index: c_int) *Value;
 
-// ============================================================================
-// V8 Isolate Functions
-// ============================================================================
+    /// Get the 'this' object for the function call
+    pub extern fn v8_FunctionCallbackInfo_This(self: *const FunctionCallbackInfo) *Object;
 
-/// Create a new V8 isolate
-pub extern fn v8_Isolate_New(params: ?*anyopaque) ?*v8_Isolate;
+    /// Get the holder object (the object on which the function is defined)
+    pub extern fn v8_FunctionCallbackInfo_Holder(self: *const FunctionCallbackInfo) *Object;
 
-/// Dispose of a V8 isolate
-pub extern fn v8_Isolate_Dispose(isolate: *v8_Isolate) void;
+    /// Set the return value for the function
+    pub extern fn v8_FunctionCallbackInfo_SetReturnValue(self: *const FunctionCallbackInfo, value: *Value) void;
 
-/// Enter an isolate (required before any operations)
-pub extern fn v8_Isolate_Enter(isolate: *v8_Isolate) void;
+    /// Get data associated with the function template
+    pub extern fn v8_FunctionCallbackInfo_Data(self: *const FunctionCallbackInfo) *Value;
 
-/// Exit an isolate
-pub extern fn v8_Isolate_Exit(isolate: *v8_Isolate) void;
+    pub inline fn getIsolate(self: *const FunctionCallbackInfo) *Isolate {
+        return v8_FunctionCallbackInfo_GetIsolate(self);
+    }
 
-/// Get current context from isolate
-pub extern fn v8_Isolate_GetCurrentContext(isolate: *v8_Isolate) ?*v8_Context;
+    pub inline fn length(self: *const FunctionCallbackInfo) c_int {
+        return v8_FunctionCallbackInfo_Length(self);
+    }
 
-// ============================================================================
-// V8 Context Functions
-// ============================================================================
+    pub inline fn get(self: *const FunctionCallbackInfo, index: c_int) *Value {
+        return v8_FunctionCallbackInfo_GetArgument(self, index);
+    }
 
-/// Create a new V8 context
-pub extern fn v8_Context_New(isolate: *v8_Isolate) ?*v8_Context;
+    pub inline fn getThis(self: *const FunctionCallbackInfo) *Object {
+        return v8_FunctionCallbackInfo_This(self);
+    }
 
-/// Dispose of a V8 context
-pub extern fn v8_Context_Dispose(context: *v8_Context) void;
+    pub inline fn getHolder(self: *const FunctionCallbackInfo) *Object {
+        return v8_FunctionCallbackInfo_Holder(self);
+    }
 
-/// Enter a context
-pub extern fn v8_Context_Enter(context: *v8_Context) void;
+    pub inline fn setReturnValue(self: *const FunctionCallbackInfo, value: *Value) void {
+        v8_FunctionCallbackInfo_SetReturnValue(self, value);
+    }
 
-/// Exit a context
-pub extern fn v8_Context_Exit(context: *v8_Context) void;
+    pub inline fn getData(self: *const FunctionCallbackInfo) *Value {
+        return v8_FunctionCallbackInfo_Data(self);
+    }
+};
 
-/// Get global object from context
-pub extern fn v8_Context_Global(context: *v8_Context) *v8_Object;
+/// PropertyCallbackInfo - Encapsulates information about a property access from JavaScript
+pub const PropertyCallbackInfo = opaque {
+    /// Get the V8 isolate for this callback
+    pub extern fn v8_PropertyCallbackInfo_GetIsolate(self: *const PropertyCallbackInfo) *Isolate;
 
-/// Get isolate from context
-pub extern fn v8_Context_GetIsolate(context: *v8_Context) *v8_Isolate;
+    /// Get the 'this' object for the property access
+    pub extern fn v8_PropertyCallbackInfo_This(self: *const PropertyCallbackInfo) *Object;
 
-// ============================================================================
-// V8 Value Functions
-// ============================================================================
+    /// Get the holder object
+    pub extern fn v8_PropertyCallbackInfo_Holder(self: *const PropertyCallbackInfo) ?*Object;
 
-/// Check if value is undefined
-pub extern fn v8_Value_IsUndefined(value: *const v8_Value) bool;
+    /// Set the return value for the getter
+    pub extern fn v8_PropertyCallbackInfo_SetReturnValue(self: *const PropertyCallbackInfo, value: *Value) void;
 
-/// Check if value is null
-pub extern fn v8_Value_IsNull(value: *const v8_Value) bool;
+    /// Set return value to undefined (for prototype property access)
+    pub extern fn v8_PropertyCallbackInfo_SetUndefined(self: *const PropertyCallbackInfo) void;
 
-/// Check if value is boolean
-pub extern fn v8_Value_IsBoolean(value: *const v8_Value) bool;
+    /// Get data associated with the accessor
+    pub extern fn v8_PropertyCallbackInfo_Data(self: *const PropertyCallbackInfo) *Value;
 
-/// Check if value is number
-pub extern fn v8_Value_IsNumber(value: *const v8_Value) bool;
+    pub inline fn getIsolate(self: *const PropertyCallbackInfo) *Isolate {
+        return v8_PropertyCallbackInfo_GetIsolate(self);
+    }
 
-/// Check if value is string
-pub extern fn v8_Value_IsString(value: *const v8_Value) bool;
+    pub inline fn getThis(self: *const PropertyCallbackInfo) *Object {
+        return v8_PropertyCallbackInfo_This(self);
+    }
 
-/// Check if value is object
-pub extern fn v8_Value_IsObject(value: *const v8_Value) bool;
+    pub inline fn getHolder(self: *const PropertyCallbackInfo) ?*Object {
+        return v8_PropertyCallbackInfo_Holder(self);
+    }
 
-/// Check if value is array
-pub extern fn v8_Value_IsArray(value: *const v8_Value) bool;
+    pub inline fn setReturnValue(self: *const PropertyCallbackInfo, value: *Value) void {
+        v8_PropertyCallbackInfo_SetReturnValue(self, value);
+    }
 
-/// Check if value is function
-pub extern fn v8_Value_IsFunction(value: *const v8_Value) bool;
+    pub inline fn setUndefined(self: *const PropertyCallbackInfo) void {
+        v8_PropertyCallbackInfo_SetUndefined(self);
+    }
 
-// ============================================================================
-// V8 Primitive Creation Functions
-// ============================================================================
+    pub inline fn getData(self: *const PropertyCallbackInfo) *Value {
+        return v8_PropertyCallbackInfo_Data(self);
+    }
+};
 
-/// Create undefined value
-pub extern fn v8_Undefined(isolate: *v8_Isolate) *v8_Value;
+/// Function callback signature for V8 function calls
+pub const FunctionCallback = *const fn (*const FunctionCallbackInfo) callconv(.c) void;
 
-/// Create null value
-pub extern fn v8_Null(isolate: *v8_Isolate) *v8_Value;
+/// Getter callback signature for V8 property access (uses Name for modern V8 API)
+pub const AccessorGetterCallback = *const fn (
+    property_name: *Name,
+    info: *const PropertyCallbackInfo,
+) callconv(.c) void;
 
-/// Create boolean value
-pub extern fn v8_Boolean_New(isolate: *v8_Isolate, value: bool) *v8_Boolean;
+/// Setter callback signature for V8 property modification (uses Name for modern V8 API)
+pub const AccessorSetterCallback = *const fn (
+    property_name: *Name,
+    value: *Value,
+    info: *const PropertyCallbackInfoVoid,
+) callconv(.c) void;
 
-/// Create integer value
-pub extern fn v8_Integer_New(isolate: *v8_Isolate, value: i32) *v8_Number;
+/// PropertyCallbackInfo for setters (returns void)
+pub const PropertyCallbackInfoVoid = opaque {
+    pub extern fn v8_PropertyCallbackInfo_Void_GetIsolate(self: *const PropertyCallbackInfoVoid) *Isolate;
 
-/// Create number value
-pub extern fn v8_Number_New(isolate: *v8_Isolate, value: f64) *v8_Number;
-
-/// Create string from UTF-8
-pub extern fn v8_String_NewFromUtf8(
-    isolate: *v8_Isolate,
-    data: [*]const u8,
-    length: c_int,
-) ?*v8_String;
-
-// ============================================================================
-// V8 Object Functions
-// ============================================================================
-
-/// Create new object
-pub extern fn v8_Object_New(isolate: *v8_Isolate) *v8_Object;
-
-/// Set property on object
-pub extern fn v8_Object_Set(
-    object: *v8_Object,
-    context: *v8_Context,
-    key: *v8_Value,
-    value: *v8_Value,
-) bool;
-
-/// Get property from object
-pub extern fn v8_Object_Get(
-    object: *v8_Object,
-    context: *v8_Context,
-    key: *v8_Value,
-) ?*v8_Value;
-
-/// Set internal field (for storing native pointers)
-pub extern fn v8_Object_SetInternalField(
-    object: *v8_Object,
-    index: c_int,
-    value: *v8_Value,
-) void;
-
-/// Get internal field
-pub extern fn v8_Object_GetInternalField(
-    object: *v8_Object,
-    index: c_int,
-) ?*v8_Value;
-
-/// Get number of internal fields
-pub extern fn v8_Object_InternalFieldCount(object: *const v8_Object) c_int;
+    pub inline fn getIsolate(self: *const PropertyCallbackInfoVoid) *Isolate {
+        return v8_PropertyCallbackInfo_Void_GetIsolate(self);
+    }
+};
 
 // ============================================================================
-// V8 Array Functions
+// Named Property Handler Callbacks
 // ============================================================================
 
-/// Create new array
-pub extern fn v8_Array_New(isolate: *v8_Isolate, length: c_int) *v8_Array;
+/// Called when JavaScript accesses a named property (e.g., obj.propertyName or obj['propertyName'])
+/// Should set the return value if the property exists, or do nothing to continue the lookup chain
+pub const NamedPropertyGetterCallback = *const fn (
+    property: *Name,
+    info: *const PropertyCallbackInfo,
+) callconv(.c) void;
 
-/// Get array length
-pub extern fn v8_Array_Length(array: *const v8_Array) u32;
+/// Called when JavaScript sets a named property (e.g., obj.propertyName = value)
+/// Should set a return value to indicate success/failure
+pub const NamedPropertySetterCallback = *const fn (
+    property: *Name,
+    value: *Value,
+    info: *const PropertyCallbackInfo,
+) callconv(.c) void;
 
-// ============================================================================
-// V8 External Functions (for wrapping native pointers)
-// ============================================================================
+/// Called to check if a named property exists on the object
+/// Should return an integer attribute value, or do nothing if property doesn't exist
+pub const NamedPropertyQueryCallback = *const fn (
+    property: *Name,
+    info: *const PropertyCallbackInfo,
+) callconv(.c) void;
 
-/// Wrap native pointer in V8 External
-pub extern fn v8_External_New(isolate: *v8_Isolate, value: *anyopaque) *v8_External;
+/// Called when JavaScript deletes a named property (e.g., delete obj.propertyName)
+/// Should set return value to true if deletion succeeds, false if it fails
+pub const NamedPropertyDeleterCallback = *const fn (
+    property: *Name,
+    info: *const PropertyCallbackInfo,
+) callconv(.c) void;
 
-/// Unwrap native pointer from V8 External
-pub extern fn v8_External_Value(external: *v8_External) *anyopaque;
-
-// ============================================================================
-// V8 FunctionTemplate Functions
-// ============================================================================
-
-/// Create function template
-pub extern fn v8_FunctionTemplate_New(
-    isolate: *v8_Isolate,
-    callback: ?v8_FunctionCallback,
-) *v8_FunctionTemplate;
-
-/// Get function from template
-pub extern fn v8_FunctionTemplate_GetFunction(
-    template: *v8_FunctionTemplate,
-    context: *v8_Context,
-) ?*v8_Function;
-
-/// Set class name
-pub extern fn v8_FunctionTemplate_SetClassName(
-    template: *v8_FunctionTemplate,
-    name: *v8_String,
-) void;
-
-/// Get instance template
-pub extern fn v8_FunctionTemplate_InstanceTemplate(
-    template: *v8_FunctionTemplate,
-) *v8_ObjectTemplate;
-
-/// Get prototype template
-pub extern fn v8_FunctionTemplate_PrototypeTemplate(
-    template: *v8_FunctionTemplate,
-) *v8_ObjectTemplate;
-
-/// Inherit from parent template
-pub extern fn v8_FunctionTemplate_Inherit(
-    template: *v8_FunctionTemplate,
-    parent: *v8_FunctionTemplate,
-) void;
+/// Called when JavaScript enumerates object properties (e.g., for...in loop, Object.keys())
+/// Should set return value to an array of property names
+pub const NamedPropertyEnumeratorCallback = *const fn (
+    info: *const PropertyCallbackInfo,
+) callconv(.c) void;
 
 // ============================================================================
-// V8 ObjectTemplate Functions
+// V8 API Function Declarations
 // ============================================================================
 
-/// Create object template
-pub extern fn v8_ObjectTemplate_New(isolate: *v8_Isolate) *v8_ObjectTemplate;
-
-/// Set internal field count
-pub extern fn v8_ObjectTemplate_SetInternalFieldCount(
-    template: *v8_ObjectTemplate,
-    count: c_int,
-) void;
-
-/// Set accessor (property getter/setter)
-pub extern fn v8_ObjectTemplate_SetAccessor(
-    template: *v8_ObjectTemplate,
-    name: *v8_String,
-    getter: ?v8_AccessorGetterCallback,
-    setter: ?v8_AccessorSetterCallback,
-) void;
-
-/// Set method
+// ObjectTemplate functions
+pub extern fn v8_ObjectTemplate_New(isolate: *Isolate) *ObjectTemplate;
+pub extern fn v8_ObjectTemplate_NewInstance(self: *ObjectTemplate, context: *Context) *Object;
+pub extern fn v8_ObjectTemplate_SetInternalFieldCount(self: *ObjectTemplate, count: c_int) void;
 pub extern fn v8_ObjectTemplate_Set(
-    template: *v8_ObjectTemplate,
-    name: *v8_String,
-    value: *v8_Value,
+    self: *ObjectTemplate,
+    name: *String,
+    value: *Value,
+) void;
+
+pub extern fn v8_ObjectTemplate_SetWithAttributes(
+    self: *ObjectTemplate,
+    name: *String,
+    value: *Value,
+    attributes: c_int,
+) void;
+
+pub extern fn v8_ObjectTemplate_SetAccessor(
+    self: *ObjectTemplate,
+    name: *String,
+    getter: ?AccessorGetterCallback,
+    setter: ?AccessorSetterCallback,
+    data: ?*Value,
+) void;
+
+/// Set an accessor property on the ObjectTemplate (creates visible descriptor)
+/// Unlike SetAccessor, this creates property descriptors visible to Object.getOwnPropertyDescriptor
+/// with { get: [Function], set: [Function] }
+pub extern fn v8_ObjectTemplate_SetAccessorProperty(
+    self: *ObjectTemplate,
+    name: *String,
+    getter: ?AccessorGetterCallback,
+    setter: ?AccessorSetterCallback,
+) void;
+
+/// Set a named property handler on the ObjectTemplate
+/// This intercepts all property access operations that aren't explicitly defined
+pub extern fn v8_ObjectTemplate_SetNamedPropertyHandler(
+    self: *ObjectTemplate,
+    getter: ?NamedPropertyGetterCallback,
+    setter: ?NamedPropertySetterCallback,
+    query: ?NamedPropertyQueryCallback,
+    deleter: ?NamedPropertyDeleterCallback,
+    enumerator: ?NamedPropertyEnumeratorCallback,
+    data: ?*Value,
 ) void;
 
 // ============================================================================
-// V8 Callback Info Functions
+// OLD API REMOVED - See unified API below
 // ============================================================================
 
-/// Get isolate from callback info
-pub extern fn v8_FunctionCallbackInfo_GetIsolate(
-    info: *const v8_FunctionCallbackInfo,
-) *v8_Isolate;
-
-/// Get 'this' object from callback info
-pub extern fn v8_FunctionCallbackInfo_This(
-    info: *const v8_FunctionCallbackInfo,
-) *v8_Object;
-
-/// Get argument count
-pub extern fn v8_FunctionCallbackInfo_Length(
-    info: *const v8_FunctionCallbackInfo,
-) c_int;
-
-/// Get argument at index
-pub extern fn v8_FunctionCallbackInfo_GetArgument(
-    info: *const v8_FunctionCallbackInfo,
-    index: c_int,
-) *v8_Value;
-
-/// Set return value
-pub extern fn v8_FunctionCallbackInfo_GetReturnValue(
-    info: *const v8_FunctionCallbackInfo,
-) *v8_Value;
-
-/// Get holder object from property callback info
-pub extern fn v8_PropertyCallbackInfo_Holder(
-    info: *const v8_PropertyCallbackInfo,
-) *v8_Object;
-
-/// Get isolate from property callback info
-pub extern fn v8_PropertyCallbackInfo_GetIsolate(
-    info: *const v8_PropertyCallbackInfo,
-) *v8_Isolate;
-
 // ============================================================================
-// V8 Conversion Functions
+// Unified V8 C API - MixedCase Naming Convention
+// All functions use Global<T>* handles for cross-scope persistence
 // ============================================================================
 
-/// Get boolean value
-pub extern fn v8_Boolean_Value(boolean: *v8_Boolean) bool;
+// Platform initialization
+pub extern fn v8_Platform_Initialize() void;
+pub extern fn v8_Platform_Dispose() void;
 
-/// Get integer value
-pub extern fn v8_Integer_Value(number: *v8_Number) i64;
+// Isolate management
+pub extern fn v8_Isolate_New() ?*Isolate;
+pub extern fn v8_Isolate_Dispose(isolate: *Isolate) void;
+pub extern fn v8_Isolate_Enter(isolate: *Isolate) void;
+pub extern fn v8_Isolate_Exit(isolate: *Isolate) void;
+pub extern fn v8_Isolate_GetCurrentContext(isolate: *Isolate) ?*Context;
+pub extern fn v8_Isolate_ThrowException(isolate: *Isolate, exception: *Value) void;
 
-/// Get number value
-pub extern fn v8_Number_Value(number: *v8_Number) f64;
+// Isolate embedder data (for storing per-isolate state)
+pub extern fn v8_Isolate_SetData(isolate: *Isolate, slot: c_int, data: ?*anyopaque) void;
+pub extern fn v8_Isolate_GetData(isolate: *Isolate, slot: c_int) ?*anyopaque;
 
-/// Get UTF-8 length
-pub extern fn v8_String_Utf8Length(string: *v8_String, isolate: *v8_Isolate) c_int;
+// Context management
+pub extern fn v8_Context_New(isolate: *Isolate) ?*Context;
+pub extern fn v8_Context_Dispose(context: *Context) void;
+pub extern fn v8_Context_Enter(context: *Context) void;
+pub extern fn v8_Context_Exit(context: *Context) void;
+pub extern fn v8_Context_Global(context: *Context) ?*Object;
 
-/// Write UTF-8 to buffer
-pub extern fn v8_String_WriteUtf8(
-    string: *v8_String,
-    isolate: *v8_Isolate,
-    buffer: [*]u8,
-    length: c_int,
-) c_int;
+// String management
+pub extern fn v8_String_NewFromUtf8(isolate: *Isolate, data: [*]const u8, length: c_int) ?*String;
+pub extern fn v8_String_Utf8Length(str: *String) c_int;
+pub extern fn v8_String_WriteUtf8(str: *String, buffer: [*]u8, length: c_int) c_int;
+pub extern fn v8_String_Dispose(str: *String) void;
+pub extern fn v8_String_Empty(isolate: *Isolate) ?*String;
 
-// ============================================================================
-// V8 Exception Functions
-// ============================================================================
+// Value operations
+pub extern fn v8_Value_IsUndefined(value: *Value) bool;
+pub extern fn v8_Value_IsNull(value: *Value) bool;
+pub extern fn v8_Value_IsNullOrUndefined(value: *Value) bool;
+pub extern fn v8_Value_IsBoolean(value: *Value) bool;
+pub extern fn v8_Value_IsNumber(value: *Value) bool;
+pub extern fn v8_Value_IsString(value: *Value) bool;
+pub extern fn v8_Value_IsSymbol(value: *Value) bool;
+pub extern fn v8_Value_IsBigInt(value: *Value) bool;
 
-/// Create TypeError
-pub extern fn v8_Exception_TypeError(message: *v8_String) *v8_Value;
+// Symbol operations
+pub extern fn v8_Symbol_GetToStringTag(isolate: *Isolate) ?*Symbol;
+pub extern fn v8_Symbol_GetIterator(isolate: *Isolate) ?*Symbol;
+pub extern fn v8_Value_IsObject(value: *Value) bool;
+pub extern fn v8_Value_IsArray(value: *Value) bool;
+pub extern fn v8_Value_BooleanValue(value: *Value, isolate: *Isolate) bool;
+pub extern fn v8_Value_NumberValue(value: *Value, context: *Context) f64;
+pub extern fn v8_Value_Int32Value(value: *Value, context: *Context) i32;
+pub extern fn v8_Value_Uint32Value(value: *Value, context: *Context) u32;
+pub extern fn v8_Value_IntegerValue(value: *Value, context: *Context) i64;
+pub extern fn v8_Value_ToString(value: *Value, context: *Context) ?*String;
+pub extern fn v8_Value_Dispose(value: *Value) void;
 
-/// Create RangeError
-pub extern fn v8_Exception_RangeError(message: *v8_String) *v8_Value;
+// Name Functions
+pub extern fn v8_Name_IsString(name: *Name) bool;
 
-/// Create SyntaxError
-pub extern fn v8_Exception_SyntaxError(message: *v8_String) *v8_Value;
+// String Functions (for raw pointers from callbacks)
+pub extern fn v8_String_Utf8Length_Raw(str: *const String) c_int;
+pub extern fn v8_String_WriteUtf8_Raw(str: *const String, buffer: [*]u8, length: c_int) c_int;
 
-/// Create ReferenceError
-pub extern fn v8_Exception_ReferenceError(message: *v8_String) *v8_Value;
+// Object operations
+pub extern fn v8_Object_New(isolate: *Isolate) ?*Object;
+pub extern fn v8_Object_Set(object: *Object, context: *Context, key: *Value, value: *Value) bool;
+pub extern fn v8_Object_Get(object: *Object, context: *Context, key: *Value) ?*Value;
+pub extern fn v8_Object_GetOwnPropertyNames(context: *Context, obj: *Object) ?*Array;
+pub extern fn v8_Object_GetPropertyNames(context: *Context, obj: *Object) ?*Array;
+pub extern fn v8_Object_SetAlignedPointerInInternalField(object: *Object, index: c_int, value: *anyopaque) void;
+pub extern fn v8_Object_GetAlignedPointerFromInternalField(object: *Object, index: c_int) ?*anyopaque;
+pub extern fn v8_Object_Dispose(obj: *Object) void;
+pub extern fn v8_Object_DefineProperty(object: *Object, context: *Context, key: *Value, value: *Value, writable: bool, enumerable: bool, configurable: bool) bool;
+pub extern fn v8_Object_SetPrototype(object: *Object, context: *Context, prototype: *Value) bool;
+pub extern fn v8_Object_PreventExtensions(object: *Object, context: *Context) bool;
 
-/// Create generic Error
-pub extern fn v8_Exception_Error(message: *v8_String) *v8_Value;
+// Array operations
+pub extern fn v8_Array_New(isolate: *Isolate, length: c_int) *Array;
+pub extern fn v8_Array_Length(arr: *Array) u32;
+pub extern fn v8_Array_Get(context: *Context, arr: *Array, index: u32) ?*Value;
+pub extern fn v8_Array_Set(arr: *Array, context: *Context, index: u32, value: *Value) bool;
+pub extern fn v8_Array_Dispose(arr: *Array) void;
 
-// ============================================================================
-// Type Casting (safe casts between V8 types)
-// ============================================================================
+// Script compilation and execution
+pub extern fn v8_Script_Compile(context: *Context, source: *String) ?*Script;
+pub extern fn v8_Script_Run(context: *Context, script: *Script) ?*Value;
+pub extern fn v8_Script_Dispose(script: *Script) void;
 
-/// Cast Value to Object
-pub fn valueToObject(value: *v8_Value) *v8_Object {
-    return @ptrCast(value);
-}
+// Exception handling
+pub extern fn v8_Exception_TypeError(message: *String) ?*Value;
+pub extern fn v8_Exception_RangeError(message: *String) ?*Value;
+pub extern fn v8_Exception_Error(message: *String) ?*Value;
+pub extern fn v8_TryCatch_Exception(context: *Context) ?*Value;
 
-/// Cast Value to Array
-pub fn valueToArray(value: *v8_Value) *v8_Array {
-    return @ptrCast(value);
-}
+// Special values
+pub extern fn v8_Undefined(isolate: *Isolate) ?*Value;
+pub extern fn v8_Null(isolate: *Isolate) ?*Value;
 
-/// Cast Value to String
-pub fn valueToString(value: *v8_Value) *v8_String {
-    return @ptrCast(value);
-}
+// Number creation
+pub extern fn v8_Number_New(isolate: *Isolate, value: f64) *Number;
+pub extern fn v8_Integer_New(isolate: *Isolate, value: i32) *Number;
 
-/// Cast Value to Number
-pub fn valueToNumber(value: *v8_Value) *v8_Number {
-    return @ptrCast(value);
-}
+// FunctionTemplate (for namespace and interface bindings)
+pub extern fn v8_FunctionTemplate_New(isolate: *Isolate, callback: ?FunctionCallback, data: ?*Value) ?*FunctionTemplate;
+pub extern fn v8_FunctionTemplate_GetFunction(function_template: *FunctionTemplate, context: *Context) ?*Function;
+pub extern fn v8_FunctionTemplate_Dispose(tpl: *FunctionTemplate) void;
+pub extern fn v8_FunctionTemplate_SetClassName(tpl: *FunctionTemplate, name: *String) void;
+pub extern fn v8_FunctionTemplate_InstanceTemplate(tpl: *FunctionTemplate) *ObjectTemplate;
+pub extern fn v8_FunctionTemplate_PrototypeTemplate(tpl: *FunctionTemplate) *ObjectTemplate;
+pub extern fn v8_FunctionTemplate_Inherit(tpl: *FunctionTemplate, parent: *FunctionTemplate) void;
+pub extern fn v8_FunctionTemplate_SetLength(tpl: *FunctionTemplate, length: c_int) void;
 
-/// Cast Value to Boolean
-pub fn valueToBoolean(value: *v8_Value) *v8_Boolean {
-    return @ptrCast(value);
-}
-
-/// Cast Value to Function
-pub fn valueToFunction(value: *v8_Value) *v8_Function {
-    return @ptrCast(value);
-}
-
-/// Cast Value to External
-pub fn valueToExternal(value: *v8_Value) *v8_External {
-    return @ptrCast(value);
-}
-
-/// Cast Object to Value
-pub fn objectToValue(object: *v8_Object) *v8_Value {
-    return @ptrCast(object);
-}
-
-/// Cast Array to Value
-pub fn arrayToValue(array: *v8_Array) *v8_Value {
-    return @ptrCast(array);
-}
-
-/// Cast String to Value
-pub fn stringToValue(string: *v8_String) *v8_Value {
-    return @ptrCast(string);
-}
-
-/// Cast Number to Value
-pub fn numberToValue(number: *v8_Number) *v8_Value {
-    return @ptrCast(number);
-}
-
-/// Cast Boolean to Value
-pub fn booleanToValue(boolean: *v8_Boolean) *v8_Value {
-    return @ptrCast(boolean);
-}
-
-/// Cast Function to Value
-pub fn functionToValue(function: *v8_Function) *v8_Value {
-    return @ptrCast(function);
-}
-
-/// Cast External to Value
-pub fn externalToValue(external: *v8_External) *v8_Value {
-    return @ptrCast(external);
-}
+// Function
+pub extern fn v8_Function_Dispose(fn_ptr: *Function) void;
