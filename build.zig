@@ -210,6 +210,7 @@ pub fn build(b: *std.Build) void {
     });
     typedefs_mod.addImport("runtime", runtime_mod);
     typedefs_mod.addImport("callbacks", callbacks_mod);
+    typedefs_mod.addImport("webidl", webidl_mod);
 
     // ========================================================================
     // INTERFACES MODULE (WebIDL interface definitions)

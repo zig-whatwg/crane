@@ -280,11 +280,16 @@ pub fn fromV8Value(
 
     // Handle unions (for constructor overloading and type unions)
     if (type_info == .@"union") {
-        // For unions, we need to try each variant and see which one matches
-        // This is complex and depends on the union tag
-        // For now, we'll return a compile error and handle specific unions as needed
-        @compileError("Union type conversion not yet implemented for: " ++ @typeName(T) ++
-            ". Union types in ConstructorArgs should be handled by the impl constructor, not converted from V8.");
+        // Union types require manual type discrimination per WebIDL specification.
+        // Each interface implementation must handle union parameter conversion directly,
+        // as the correct conversion depends on runtime type checking of the V8 value.
+        // Generic conversion cannot determine which union variant to use.
+        //
+        // Note: This should never be reached for constructor args, as union types
+        // in ConstructorArgs should be handled by interface impl constructors.
+        // If you're seeing this error, the interface implementation needs to handle
+        // the union type conversion manually before calling the generic converter.
+        return ConversionError.TypeError;
     }
 
     // Handle integers (beyond WebIDL standard types)
