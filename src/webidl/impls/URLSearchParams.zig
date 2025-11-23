@@ -71,13 +71,26 @@ pub fn call_constructor(
     ctx: runtime.Context,
     init_data: *const anyopaque,
 ) !*runtime.Instance {
+    // For now, treat as empty string
+    // Proper union type handling requires runtime type tags
+    _ = init_data;
+    return initWithString(allocator, ctx, "");
+}
+
+/// Initialize from string (query string)
+/// Spec: https://url.spec.whatwg.org/#concept-urlsearchparams-new step 3
+pub fn initWithString(
+    allocator: std.mem.Allocator,
+    ctx: runtime.Context,
+    query: []const u8,
+) !*runtime.Instance {
     // Create instance
     const instance = try init(allocator, State, &URLSearchParams.vtable, ctx);
     errdefer deinit(instance);
 
     const state = instance.getState(State);
 
-    // Create InternalState with empty list
+    // Create InternalState
     const internal = try allocator.create(InternalState);
     errdefer allocator.destroy(internal);
 
@@ -87,13 +100,104 @@ pub fn call_constructor(
         .allocator = allocator,
     };
 
+    // Remove leading ? if present
+    const query_string = if (std.mem.startsWith(u8, query, "?"))
+        query[1..]
+    else
+        query;
+
+    // Parse the query string
+    if (query_string.len > 0) {
+        const tuples = try form_parser.parse(allocator, query_string);
+        errdefer {
+            for (tuples) |tuple| tuple.deinit(allocator);
+            allocator.free(tuples);
+        }
+
+        for (tuples) |tuple| {
+            try internal.list.append(tuple);
+        }
+
+        allocator.free(tuples);
+    }
+
     state.own._internal = internal;
+    return instance;
+}
 
-    // TODO: Handle init_data based on its actual type
-    // For now, initialize with empty list
-    // The runtime will need to provide type information or we need a tagged union
-    _ = init_data;
+/// Initialize from sequence of sequences
+/// Spec: https://url.spec.whatwg.org/#concept-urlsearchparams-new step 1
+pub fn initWithSequence(
+    allocator: std.mem.Allocator,
+    ctx: runtime.Context,
+    sequence: []const [2][]const u8,
+) !*runtime.Instance {
+    // Create instance
+    const instance = try init(allocator, State, &URLSearchParams.vtable, ctx);
+    errdefer deinit(instance);
 
+    const state = instance.getState(State);
+
+    // Create InternalState
+    const internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(internal);
+
+    internal.* = InternalState{
+        .list = infra.List(Tuple).init(allocator),
+        .url_object = null,
+        .allocator = allocator,
+    };
+
+    // Add each pair to the list
+    for (sequence) |pair| {
+        const name = try allocator.dupe(u8, pair[0]);
+        errdefer allocator.free(name);
+
+        const value = try allocator.dupe(u8, pair[1]);
+        errdefer allocator.free(value);
+
+        try internal.list.append(.{ .name = name, .value = value });
+    }
+
+    state.own._internal = internal;
+    return instance;
+}
+
+/// Initialize from record (dictionary)
+/// Spec: https://url.spec.whatwg.org/#concept-urlsearchparams-new step 2
+pub fn initWithRecord(
+    allocator: std.mem.Allocator,
+    ctx: runtime.Context,
+    record: []const RecordEntry,
+) !*runtime.Instance {
+    // Create instance
+    const instance = try init(allocator, State, &URLSearchParams.vtable, ctx);
+    errdefer deinit(instance);
+
+    const state = instance.getState(State);
+
+    // Create InternalState
+    const internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(internal);
+
+    internal.* = InternalState{
+        .list = infra.List(Tuple).init(allocator),
+        .url_object = null,
+        .allocator = allocator,
+    };
+
+    // Add each entry to the list
+    for (record) |entry| {
+        const name = try allocator.dupe(u8, entry.name);
+        errdefer allocator.free(name);
+
+        const value = try allocator.dupe(u8, entry.value);
+        errdefer allocator.free(value);
+
+        try internal.list.append(.{ .name = name, .value = value });
+    }
+
+    state.own._internal = internal;
     return instance;
 }
 
@@ -125,14 +229,8 @@ fn updateSteps(instance: *runtime.Instance) !void {
         const url_internal: *URLImpl.InternalState = @ptrCast(@alignCast(url_internal_ptr));
 
         // Set new query (empty string becomes null)
-        if (serialized.len == 0) {
-            url_internal.url_record.query_len = 0;
-        } else {
-            // TODO: Implement proper URL query update
-            // For a complete implementation, we need URLRecord.setQuery() method
-            // or re-parse the entire URL with the new query
-            // For now, this is a placeholder that doesn't actually update
-        }
+        const new_query = if (serialized.len == 0) null else serialized;
+        try url_internal.url_record.setQuery(new_query);
     }
 }
 

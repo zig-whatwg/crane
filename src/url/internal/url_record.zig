@@ -140,6 +140,57 @@ pub const URLRecord = struct {
         return false;
     }
 
+    /// Set query component
+    /// Updates the query portion of the URL by reallocating the buffer
+    /// This is needed for URLSearchParams → URL synchronization
+    pub fn setQuery(self: *URLRecord, new_query: ?[]const u8) !void {
+        // Calculate new buffer size
+        const old_buffer_len = self.buffer.len;
+        const old_query_len = self.query_len;
+        const new_query_len: u32 = if (new_query) |q| @intCast(q.len) else 0;
+
+        const size_delta: i64 = @as(i64, new_query_len) - @as(i64, old_query_len);
+        const new_buffer_len: usize = if (size_delta >= 0)
+            old_buffer_len + @as(usize, @intCast(size_delta))
+        else
+            old_buffer_len - @as(usize, @intCast(-size_delta));
+
+        // Allocate new buffer
+        const new_buffer = try self.allocator.alloc(u8, new_buffer_len);
+        errdefer self.allocator.free(new_buffer);
+
+        // Copy parts before query
+        const before_query_len = self.query_start;
+        @memcpy(new_buffer[0..before_query_len], self.buffer[0..before_query_len]);
+
+        // Copy new query (if any)
+        if (new_query) |q| {
+            @memcpy(new_buffer[self.query_start .. self.query_start + new_query_len], q);
+        }
+
+        // Copy parts after query (fragment)
+        const old_after_query_start = self.query_start + old_query_len;
+        const new_after_query_start = self.query_start + new_query_len;
+        const after_query_len = old_buffer_len - old_after_query_start;
+
+        if (after_query_len > 0) {
+            @memcpy(
+                new_buffer[new_after_query_start .. new_after_query_start + after_query_len],
+                self.buffer[old_after_query_start .. old_after_query_start + after_query_len],
+            );
+        }
+
+        // Update fragment offset if it exists
+        if (self.fragment_len > 0) {
+            self.fragment_start = @intCast(new_after_query_start);
+        }
+
+        // Free old buffer and update
+        self.allocator.free(self.buffer);
+        self.buffer = new_buffer;
+        self.query_len = new_query_len;
+    }
+
     /// Free URL record resources
     pub fn deinit(self: *URLRecord) void {
         self.allocator.free(self.buffer);
@@ -149,8 +200,3 @@ pub const URLRecord = struct {
         @import("path").deinitPath(&self.path, self.allocator);
     }
 };
-
-
-
-
-
