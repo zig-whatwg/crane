@@ -532,8 +532,19 @@ fn writableStreamDefaultControllerUpdateBackpressure(controller: *runtime.Instan
             if (writer_internal.ready_promise) |ready_promise| {
                 if (new_backpressure) {
                     // Backpressure applied: ready promise should be pending
-                    // If already fulfilled, create a new pending promise
-                    // TODO: Implement promise re-initialization
+                    // If the promise is already fulfilled, we need a new pending promise
+                    if (ready_promise.isFulfilled()) {
+                        // Clean up old promise
+                        ready_promise.deinit();
+
+                        // Create new pending promise
+                        const new_ready = AsyncPromise(void).init(
+                            writer_internal.allocator,
+                            stream_internal.event_loop,
+                        ) catch return; // Graceful handling
+
+                        writer_internal.ready_promise = new_ready;
+                    }
                 } else {
                     // Backpressure released: fulfill ready promise
                     ready_promise.fulfill({});
