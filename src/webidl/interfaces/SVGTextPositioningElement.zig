@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T01:22:14Z
+//! Generated at: 2025-11-23T14:26:29Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -243,6 +243,7 @@ pub const SVGTextPositioningElement = struct {
             cached_dx: ?SVGAnimatedLengthList = null,
             cached_dy: ?SVGAnimatedLengthList = null,
             cached_rotate: ?SVGAnimatedNumberList = null,
+            _internal: ?*SVGTextPositioningElementImpl.InternalState = null,
         },
     );
 

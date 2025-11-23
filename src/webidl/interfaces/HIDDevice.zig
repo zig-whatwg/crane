@@ -1,5 +1,5 @@
 //! Generated from: webhid.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -102,6 +102,7 @@ pub const HIDDevice = struct {
             productId: u16 = undefined,
             productName: runtime.DOMString = undefined,
             collections: runtime.FrozenArray(HIDCollectionInfo) = undefined,
+            _internal: ?*HIDDeviceImpl.InternalState = null,
         },
     );
 

@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:29Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -239,6 +239,7 @@ pub const HTMLFrameElement = struct {
             contentWindow: ?WindowProxy = null,
             marginHeight: runtime.DOMString = undefined,
             marginWidth: runtime.DOMString = undefined,
+            _internal: ?*HTMLFrameElementImpl.InternalState = null,
         },
     );
 

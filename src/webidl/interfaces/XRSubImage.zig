@@ -1,5 +1,5 @@
 //! Generated from: webxrlayers.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -57,6 +57,7 @@ pub const XRSubImage = struct {
         struct {
             viewport: XRViewport = undefined,
             cached_viewport: ?XRViewport = null,
+            _internal: ?*XRSubImageImpl.InternalState = null,
         },
     );
 

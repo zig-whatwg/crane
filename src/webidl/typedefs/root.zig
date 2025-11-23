@@ -18,7 +18,6 @@ pub const CSSColorPercent = @import("CSSColorPercent.zig").CSSColorPercent;
 pub const CSSColorRGBComp = @import("CSSColorRGBComp.zig").CSSColorRGBComp;
 pub const CSSKeywordish = @import("CSSKeywordish.zig").CSSKeywordish;
 pub const CSSNumberish = @import("CSSNumberish.zig").CSSNumberish;
-pub const CSSOMString = @import("CSSOMString.zig").CSSOMString;
 pub const CSSPerspectiveValue = @import("CSSPerspectiveValue.zig").CSSPerspectiveValue;
 pub const CSSStringSource = @import("CSSStringSource.zig").CSSStringSource;
 pub const CSSToken = @import("CSSToken.zig").CSSToken;

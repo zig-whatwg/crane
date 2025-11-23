@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:29Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -84,6 +84,7 @@ pub const SVGLength = struct {
             value: f32 = undefined,
             valueInSpecifiedUnits: f32 = undefined,
             valueAsString: runtime.DOMString = undefined,
+            _internal: ?*SVGLengthImpl.InternalState = null,
         },
     );
 

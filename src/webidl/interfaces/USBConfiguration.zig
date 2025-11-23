@@ -1,5 +1,5 @@
 //! Generated from: webusb.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -68,6 +68,7 @@ pub const USBConfiguration = struct {
             configurationValue: u8 = undefined,
             configurationName: ?runtime.DOMString = null,
             interfaces: runtime.FrozenArray(USBInterface) = undefined,
+            _internal: ?*USBConfigurationImpl.InternalState = null,
         },
     );
 

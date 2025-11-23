@@ -1,5 +1,5 @@
 //! Generated from: csp-next.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -76,6 +76,7 @@ pub const ScriptingPolicyReportBody = struct {
             violationSample: ?runtime.USVString = null,
             lineno: u32 = undefined,
             colno: u32 = undefined,
+            _internal: ?*ScriptingPolicyReportBodyImpl.InternalState = null,
         },
     );
 

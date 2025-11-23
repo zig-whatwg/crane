@@ -1,5 +1,5 @@
 //! Generated from: css-layout-api.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -80,6 +80,7 @@ pub const LayoutConstraints = struct {
             blockFragmentationOffset: ?f64 = null,
             blockFragmentationType: BlockFragmentationType = undefined,
             data: *const anyopaque = undefined,
+            _internal: ?*LayoutConstraintsImpl.InternalState = null,
         },
     );
 

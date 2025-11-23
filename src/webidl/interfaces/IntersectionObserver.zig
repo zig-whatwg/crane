@@ -1,5 +1,5 @@
 //! Generated from: intersection-observer.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -87,6 +87,7 @@ pub const IntersectionObserver = struct {
             thresholds: runtime.FrozenArray(f64) = undefined,
             delay: i32 = undefined,
             trackVisibility: bool = undefined,
+            _internal: ?*IntersectionObserverImpl.InternalState = null,
         },
     );
 

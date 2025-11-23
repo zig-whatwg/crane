@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T01:22:14Z
+//! Generated at: 2025-11-23T14:26:29Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -50,6 +50,7 @@ pub const NavigatorConcurrentHardware = struct {
         Meta.MixinTypes,
         struct {
             hardwareConcurrency: u64 = undefined,
+            _internal: ?*NavigatorConcurrentHardwareImpl.InternalState = null,
         },
     );
 

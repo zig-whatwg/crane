@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:29Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -85,6 +85,7 @@ pub const MutationRecord = struct {
             cached_target: ?Node = null,
             cached_addedNodes: ?NodeList = null,
             cached_removedNodes: ?NodeList = null,
+            _internal: ?*MutationRecordImpl.InternalState = null,
         },
     );
 

@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-23T01:22:14Z
+//! Generated at: 2025-11-23T14:26:29Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -78,6 +78,7 @@ pub const XRInputSourcesChangeEvent = struct {
             cached_session: ?XRSession = null,
             cached_added: ?runtime.FrozenArray(XRInputSource) = null,
             cached_removed: ?runtime.FrozenArray(XRInputSource) = null,
+            _internal: ?*XRInputSourcesChangeEventImpl.InternalState = null,
         },
     );
 

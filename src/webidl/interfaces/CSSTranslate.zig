@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-23T01:22:14Z
+//! Generated at: 2025-11-23T14:26:29Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -71,6 +71,7 @@ pub const CSSTranslate = struct {
             x: CSSNumericValue = undefined,
             y: CSSNumericValue = undefined,
             z: CSSNumericValue = undefined,
+            _internal: ?*CSSTranslateImpl.InternalState = null,
         },
     );
 

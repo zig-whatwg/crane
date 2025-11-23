@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -56,6 +56,7 @@ pub const AudioSinkInfo = struct {
         Meta.MixinTypes,
         struct {
             @"type": AudioSinkType = undefined,
+            _internal: ?*AudioSinkInfoImpl.InternalState = null,
         },
     );
 

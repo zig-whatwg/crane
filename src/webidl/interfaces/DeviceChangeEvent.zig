@@ -1,5 +1,5 @@
 //! Generated from: mediacapture-streams.idl
-//! Generated at: 2025-11-23T01:22:14Z
+//! Generated at: 2025-11-23T14:26:29Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -72,6 +72,7 @@ pub const DeviceChangeEvent = struct {
             userInsertedDevices: runtime.FrozenArray(MediaDeviceInfo) = undefined,
             cached_devices: ?runtime.FrozenArray(MediaDeviceInfo) = null,
             cached_userInsertedDevices: ?runtime.FrozenArray(MediaDeviceInfo) = null,
+            _internal: ?*DeviceChangeEventImpl.InternalState = null,
         },
     );
 

@@ -1,5 +1,5 @@
 //! Generated from: DOM-Style.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -414,6 +414,7 @@ pub const CSS2Properties = struct {
             width: runtime.DOMString = undefined,
             wordSpacing: runtime.DOMString = undefined,
             zIndex: runtime.DOMString = undefined,
+            _internal: ?*CSS2PropertiesImpl.InternalState = null,
         },
     );
 

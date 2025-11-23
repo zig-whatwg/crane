@@ -1,5 +1,5 @@
 //! Generated from: audio-session.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:29Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -76,6 +76,7 @@ pub const AudioSession = struct {
             @"type": AudioSessionType = undefined,
             state: AudioSessionState = undefined,
             onstatechange: EventHandler = undefined,
+            _internal: ?*AudioSessionImpl.InternalState = null,
         },
     );
 

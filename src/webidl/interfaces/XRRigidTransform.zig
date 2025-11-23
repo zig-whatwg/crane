@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -70,6 +70,7 @@ pub const XRRigidTransform = struct {
             cached_position: ?DOMPointReadOnly = null,
             cached_orientation: ?DOMPointReadOnly = null,
             cached_inverse: ?XRRigidTransform = null,
+            _internal: ?*XRRigidTransformImpl.InternalState = null,
         },
     );
 

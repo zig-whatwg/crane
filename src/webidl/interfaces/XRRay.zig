@@ -1,5 +1,5 @@
 //! Generated from: webxr-hit-test.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -69,6 +69,7 @@ pub const XRRay = struct {
             cached_origin: ?DOMPointReadOnly = null,
             cached_direction: ?DOMPointReadOnly = null,
             cached_matrix: ?runtime.Float32Array = null,
+            _internal: ?*XRRayImpl.InternalState = null,
         },
     );
 

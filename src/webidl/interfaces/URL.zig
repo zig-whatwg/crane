@@ -1,5 +1,5 @@
 //! Generated from: url.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -109,6 +109,7 @@ pub const URL = struct {
             searchParams: URLSearchParams = undefined,
             hash: runtime.USVString = undefined,
             cached_searchParams: ?URLSearchParams = null,
+            _internal: ?*URLImpl.InternalState = null,
         },
     );
 

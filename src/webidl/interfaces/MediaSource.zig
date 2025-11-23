@@ -1,5 +1,5 @@
 //! Generated from: media-source.idl
-//! Generated at: 2025-11-23T01:22:14Z
+//! Generated at: 2025-11-23T14:26:29Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -112,6 +112,7 @@ pub const MediaSource = struct {
             onsourceended: EventHandler = undefined,
             onsourceclose: EventHandler = undefined,
             cached_handle: ?MediaSourceHandle = null,
+            _internal: ?*MediaSourceImpl.InternalState = null,
         },
     );
 

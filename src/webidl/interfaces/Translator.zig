@@ -1,5 +1,5 @@
 //! Generated from: translation-api.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -83,6 +83,7 @@ pub const Translator = struct {
             sourceLanguage: runtime.DOMString = undefined,
             targetLanguage: runtime.DOMString = undefined,
             inputQuota: f64 = undefined,
+            _internal: ?*TranslatorImpl.InternalState = null,
         },
     );
 

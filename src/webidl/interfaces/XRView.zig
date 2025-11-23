@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -84,6 +84,7 @@ pub const XRView = struct {
             transform: XRRigidTransform = undefined,
             cached_camera: ?XRCamera = null,
             cached_transform: ?XRRigidTransform = null,
+            _internal: ?*XRViewImpl.InternalState = null,
         },
     );
 

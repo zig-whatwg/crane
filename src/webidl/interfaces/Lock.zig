@@ -1,5 +1,5 @@
 //! Generated from: web-locks.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -64,6 +64,7 @@ pub const Lock = struct {
         struct {
             name: runtime.DOMString = undefined,
             mode: LockMode = undefined,
+            _internal: ?*LockImpl.InternalState = null,
         },
     );
 

@@ -1,5 +1,5 @@
 //! Generated from: css-color-5.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:29Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -68,6 +68,7 @@ pub const CSSColorProfileRule = struct {
             src: CSSOMString = undefined,
             renderingIntent: CSSOMString = undefined,
             components: CSSOMString = undefined,
+            _internal: ?*CSSColorProfileRuleImpl.InternalState = null,
         },
     );
 

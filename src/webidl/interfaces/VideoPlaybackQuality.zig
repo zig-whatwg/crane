@@ -1,5 +1,5 @@
 //! Generated from: media-playback-quality.idl
-//! Generated at: 2025-11-23T01:22:14Z
+//! Generated at: 2025-11-23T14:26:29Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -65,6 +65,7 @@ pub const VideoPlaybackQuality = struct {
             droppedVideoFrames: u32 = undefined,
             totalVideoFrames: u32 = undefined,
             corruptedVideoFrames: u32 = undefined,
+            _internal: ?*VideoPlaybackQualityImpl.InternalState = null,
         },
     );
 

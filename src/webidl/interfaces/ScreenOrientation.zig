@@ -1,5 +1,5 @@
 //! Generated from: screen-orientation.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -80,6 +80,7 @@ pub const ScreenOrientation = struct {
             @"type": OrientationType = undefined,
             angle: u16 = undefined,
             onchange: EventHandler = undefined,
+            _internal: ?*ScreenOrientationImpl.InternalState = null,
         },
     );
 

@@ -1,5 +1,5 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -64,6 +64,7 @@ pub const IDBRecord = struct {
             key: *const anyopaque = undefined,
             primaryKey: *const anyopaque = undefined,
             value: *const anyopaque = undefined,
+            _internal: ?*IDBRecordImpl.InternalState = null,
         },
     );
 

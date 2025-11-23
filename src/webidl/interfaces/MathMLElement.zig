@@ -1,5 +1,5 @@
 //! Generated from: mathml-core.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -524,6 +524,7 @@ pub const MathMLElement = struct {
             onsnapchanging: EventHandler = undefined,
             cached_style: ?CSSStyleProperties = null,
             cached_attributeStyleMap: ?StylePropertyMap = null,
+            _internal: ?*MathMLElementImpl.InternalState = null,
         },
     );
 

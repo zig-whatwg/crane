@@ -1,5 +1,5 @@
 //! Generated from: scroll-animations.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -66,6 +66,7 @@ pub const ScrollTimeline = struct {
         struct {
             source: ?Element = null,
             axis: ScrollAxis = undefined,
+            _internal: ?*ScrollTimelineImpl.InternalState = null,
         },
     );
 

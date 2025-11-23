@@ -1070,18 +1070,18 @@ fn generateInterfaceFile(
     // Partial interfaces can cause duplicate constructor definitions
     try deduplicateConstructors(allocator, &own_constructors);
 
+    // impl_name needed for State generation and delegate functions
+    const impl_name = try std.fmt.allocPrint(allocator, "{s}Impl", .{interface.name});
+    defer allocator.free(impl_name);
+
     // Generate State struct from OWN attributes only (preserving WebIDL casing and types)
     // State includes only this interface's own attributes
     // FullState will flatten with inheritance/mixins via runtime.FlattenedState
-    try writer.writeGeneratedState(w, own_attrs.items);
+    try writer.writeGeneratedState(w, own_attrs.items, impl_name);
 
     // Generate constant getters (static functions returning const values)
     // Only generate OWN constants - inherited constants accessed via parent vtable
     try writer.writeConstants(w, own_constants.items);
-
-    // impl_name still needed for lifecycle and delegate functions
-    const impl_name = try std.fmt.allocPrint(allocator, "{s}Impl", .{interface.name});
-    defer allocator.free(impl_name);
 
     // Deduplicate attributes, operations, and constants before generating VTable and delegate functions
     // This prevents duplicate vtable entries and delegate functions from multiple inheritance/mixins

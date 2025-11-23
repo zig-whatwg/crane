@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:29Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -80,6 +80,7 @@ pub const BluetoothCharacteristicProperties = struct {
             authenticatedSignedWrites: bool = undefined,
             reliableWrite: bool = undefined,
             writableAuxiliaries: bool = undefined,
+            _internal: ?*BluetoothCharacteristicPropertiesImpl.InternalState = null,
         },
     );
 

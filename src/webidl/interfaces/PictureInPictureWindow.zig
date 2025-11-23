@@ -1,5 +1,5 @@
 //! Generated from: picture-in-picture.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -74,6 +74,7 @@ pub const PictureInPictureWindow = struct {
             width: i32 = undefined,
             height: i32 = undefined,
             onresize: EventHandler = undefined,
+            _internal: ?*PictureInPictureWindowImpl.InternalState = null,
         },
     );
 

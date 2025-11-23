@@ -1,5 +1,5 @@
 //! Generated from: compute-pressure.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:29Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -71,6 +71,7 @@ pub const PressureRecord = struct {
             source: PressureSource = undefined,
             state: PressureState = undefined,
             time: DOMHighResTimeStamp = undefined,
+            _internal: ?*PressureRecordImpl.InternalState = null,
         },
     );
 

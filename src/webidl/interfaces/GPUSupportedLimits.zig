@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -149,6 +149,7 @@ pub const GPUSupportedLimits = struct {
             maxComputeWorkgroupSizeY: u32 = undefined,
             maxComputeWorkgroupSizeZ: u32 = undefined,
             maxComputeWorkgroupsPerDimension: u32 = undefined,
+            _internal: ?*GPUSupportedLimitsImpl.InternalState = null,
         },
     );
 

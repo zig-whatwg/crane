@@ -1,5 +1,5 @@
 //! Generated from: push-api.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -63,6 +63,7 @@ pub const PushSubscriptionOptions = struct {
             userVisibleOnly: bool = undefined,
             applicationServerKey: ?runtime.ArrayBuffer = null,
             cached_applicationServerKey: ?runtime.ArrayBuffer = null,
+            _internal: ?*PushSubscriptionOptionsImpl.InternalState = null,
         },
     );
 

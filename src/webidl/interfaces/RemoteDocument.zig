@@ -1,5 +1,5 @@
 //! Generated from: json-ld-api.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -68,6 +68,7 @@ pub const RemoteDocument = struct {
             document: *const anyopaque = undefined,
             documentUrl: runtime.USVString = undefined,
             profile: runtime.USVString = undefined,
+            _internal: ?*RemoteDocumentImpl.InternalState = null,
         },
     );
 

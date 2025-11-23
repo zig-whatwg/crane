@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -227,6 +227,7 @@ pub const SVGPolylineElement = struct {
             animatedPoints: SVGPointList = undefined,
             cached_points: ?SVGPointList = null,
             cached_animatedPoints: ?SVGPointList = null,
+            _internal: ?*SVGPolylineElementImpl.InternalState = null,
         },
     );
 

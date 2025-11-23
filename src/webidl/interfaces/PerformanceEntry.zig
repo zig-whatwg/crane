@@ -1,5 +1,5 @@
 //! Generated from: performance-timeline.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -77,6 +77,7 @@ pub const PerformanceEntry = struct {
             startTime: DOMHighResTimeStamp = undefined,
             duration: DOMHighResTimeStamp = undefined,
             navigationId: u64 = undefined,
+            _internal: ?*PerformanceEntryImpl.InternalState = null,
         },
     );
 

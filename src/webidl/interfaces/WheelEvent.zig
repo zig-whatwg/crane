@@ -1,5 +1,5 @@
 //! Generated from: uievents.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -89,6 +89,7 @@ pub const WheelEvent = struct {
             deltaY: f64 = undefined,
             deltaZ: f64 = undefined,
             deltaMode: u32 = undefined,
+            _internal: ?*WheelEventImpl.InternalState = null,
         },
     );
 

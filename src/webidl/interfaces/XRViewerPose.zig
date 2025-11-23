@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-23T01:22:14Z
+//! Generated at: 2025-11-23T14:26:29Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -61,6 +61,7 @@ pub const XRViewerPose = struct {
         struct {
             views: runtime.FrozenArray(XRView) = undefined,
             cached_views: ?runtime.FrozenArray(XRView) = null,
+            _internal: ?*XRViewerPoseImpl.InternalState = null,
         },
     );
 

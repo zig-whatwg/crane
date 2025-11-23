@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:29Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -68,6 +68,7 @@ pub const GPUComputePipeline = struct {
         Meta.MixinTypes,
         struct {
             label: runtime.USVString = undefined,
+            _internal: ?*GPUComputePipelineImpl.InternalState = null,
         },
     );
 

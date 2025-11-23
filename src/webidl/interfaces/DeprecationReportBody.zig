@@ -1,5 +1,5 @@
 //! Generated from: deprecation-reporting.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -77,6 +77,7 @@ pub const DeprecationReportBody = struct {
             sourceFile: ?runtime.DOMString = null,
             lineNumber: ?u32 = null,
             columnNumber: ?u32 = null,
+            _internal: ?*DeprecationReportBodyImpl.InternalState = null,
         },
     );
 

@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -214,6 +214,7 @@ pub const HTMLLIElement = struct {
         struct {
             value: i32 = undefined,
             @"type": runtime.DOMString = undefined,
+            _internal: ?*HTMLLIElementImpl.InternalState = null,
         },
     );
 

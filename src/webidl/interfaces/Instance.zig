@@ -1,5 +1,5 @@
 //! Generated from: wasm-js-api.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -57,6 +57,7 @@ pub const Instance = struct {
         Meta.MixinTypes,
         struct {
             exports: *const anyopaque = undefined,
+            _internal: ?*InstanceImpl.InternalState = null,
         },
     );
 

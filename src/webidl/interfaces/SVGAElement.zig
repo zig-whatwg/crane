@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -277,6 +277,7 @@ pub const SVGAElement = struct {
             cached_target: ?SVGAnimatedString = null,
             cached_relList: ?DOMTokenList = null,
             cached_href: ?SVGAnimatedString = null,
+            _internal: ?*SVGAElementImpl.InternalState = null,
         },
     );
 

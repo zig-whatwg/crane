@@ -1,5 +1,5 @@
 //! Generated from: server-timing.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -68,6 +68,7 @@ pub const PerformanceServerTiming = struct {
             name: runtime.DOMString = undefined,
             duration: DOMHighResTimeStamp = undefined,
             description: runtime.DOMString = undefined,
+            _internal: ?*PerformanceServerTimingImpl.InternalState = null,
         },
     );
 

@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T01:22:14Z
+//! Generated at: 2025-11-23T14:26:29Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -62,6 +62,7 @@ pub const SVGAnimatedRect = struct {
             animVal: DOMRectReadOnly = undefined,
             cached_baseVal: ?DOMRect = null,
             cached_animVal: ?DOMRectReadOnly = null,
+            _internal: ?*SVGAnimatedRectImpl.InternalState = null,
         },
     );
 

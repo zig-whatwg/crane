@@ -1,5 +1,5 @@
 //! Generated from: geolocation.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -76,6 +76,7 @@ pub const GeolocationCoordinates = struct {
             altitudeAccuracy: ?f64 = null,
             heading: ?f64 = null,
             speed: ?f64 = null,
+            _internal: ?*GeolocationCoordinatesImpl.InternalState = null,
         },
     );
 

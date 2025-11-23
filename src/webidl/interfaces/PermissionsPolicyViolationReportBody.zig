@@ -1,5 +1,5 @@
 //! Generated from: permissions-policy.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -77,6 +77,7 @@ pub const PermissionsPolicyViolationReportBody = struct {
             disposition: runtime.DOMString = undefined,
             allowAttribute: ?runtime.DOMString = null,
             srcAttribute: ?runtime.DOMString = null,
+            _internal: ?*PermissionsPolicyViolationReportBodyImpl.InternalState = null,
         },
     );
 

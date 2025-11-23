@@ -1,5 +1,5 @@
 //! Generated from: FileAPI.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -117,6 +117,7 @@ pub const FileReader = struct {
             onabort: EventHandler = undefined,
             onerror: EventHandler = undefined,
             onloadend: EventHandler = undefined,
+            _internal: ?*FileReaderImpl.InternalState = null,
         },
     );
 

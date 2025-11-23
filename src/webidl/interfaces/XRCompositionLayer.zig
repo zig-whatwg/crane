@@ -1,5 +1,5 @@
 //! Generated from: webxrlayers.idl
-//! Generated at: 2025-11-23T01:22:14Z
+//! Generated at: 2025-11-23T14:26:29Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -89,6 +89,7 @@ pub const XRCompositionLayer = struct {
             mipLevels: u32 = undefined,
             quality: XRLayerQuality = undefined,
             needsRedraw: bool = undefined,
+            _internal: ?*XRCompositionLayerImpl.InternalState = null,
         },
     );
 

@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -74,6 +74,7 @@ pub const RTCError = struct {
             receivedAlert: ?u32 = null,
             sentAlert: ?u32 = null,
             httpRequestStatusCode: ?i32 = null,
+            _internal: ?*RTCErrorImpl.InternalState = null,
         },
     );
 

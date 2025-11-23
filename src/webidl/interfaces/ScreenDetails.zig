@@ -1,5 +1,5 @@
 //! Generated from: window-management.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -79,6 +79,7 @@ pub const ScreenDetails = struct {
             currentScreen: ScreenDetailed = undefined,
             onscreenschange: EventHandler = undefined,
             oncurrentscreenchange: EventHandler = undefined,
+            _internal: ?*ScreenDetailsImpl.InternalState = null,
         },
     );
 

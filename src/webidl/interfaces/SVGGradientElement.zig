@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T01:22:14Z
+//! Generated at: 2025-11-23T14:26:29Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -231,6 +231,7 @@ pub const SVGGradientElement = struct {
             cached_gradientTransform: ?SVGAnimatedTransformList = null,
             cached_spreadMethod: ?SVGAnimatedEnumeration = null,
             cached_href: ?SVGAnimatedString = null,
+            _internal: ?*SVGGradientElementImpl.InternalState = null,
         },
     );
 

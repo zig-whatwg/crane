@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -69,6 +69,7 @@ pub const XRSessionEvent = struct {
         struct {
             session: XRSession = undefined,
             cached_session: ?XRSession = null,
+            _internal: ?*XRSessionEventImpl.InternalState = null,
         },
     );
 

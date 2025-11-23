@@ -1,5 +1,5 @@
 //! Generated from: long-animation-frames.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -95,6 +95,7 @@ pub const PerformanceLongAnimationFrameTiming = struct {
             paintTime: DOMHighResTimeStamp = undefined,
             presentationTime: ?DOMHighResTimeStamp = null,
             cached_scripts: ?runtime.FrozenArray(PerformanceScriptTiming) = null,
+            _internal: ?*PerformanceLongAnimationFrameTimingImpl.InternalState = null,
         },
     );
 

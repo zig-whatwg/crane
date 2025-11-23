@@ -1,5 +1,5 @@
 //! Generated from: webrtc-identity.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -59,6 +59,7 @@ pub const RTCIdentityAssertion = struct {
         struct {
             idp: runtime.DOMString = undefined,
             name: runtime.DOMString = undefined,
+            _internal: ?*RTCIdentityAssertionImpl.InternalState = null,
         },
     );
 

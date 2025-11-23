@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -78,6 +78,7 @@ pub const CSSHWB = struct {
             w: CSSNumberish = undefined,
             b: CSSNumberish = undefined,
             alpha: CSSNumberish = undefined,
+            _internal: ?*CSSHWBImpl.InternalState = null,
         },
     );
 

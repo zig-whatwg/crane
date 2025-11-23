@@ -1052,6 +1052,7 @@ pub fn writeStateStruct(
 pub fn writeGeneratedState(
     writer: anytype,
     attributes: []const types.Attribute,
+    impl_name: []const u8,
 ) !void {
     // Check if we have any non-static attributes
     var has_fields = false;
@@ -1180,6 +1181,11 @@ pub fn writeGeneratedState(
 
             try writer.writeAll(" = null,\n");
         }
+
+        // Add _internal field for impl-specific state
+        // This allows implementations to store custom state (like URLRecord)
+        // while keeping the codegen automated
+        try writer.print("            _internal: ?*{s}.InternalState = null,\n", .{impl_name});
 
         try writer.writeAll("        },\n");
     }

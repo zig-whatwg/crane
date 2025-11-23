@@ -1,5 +1,5 @@
 //! Generated from: encrypted-media.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -71,6 +71,7 @@ pub const MediaKeyMessageEvent = struct {
         struct {
             messageType: MediaKeyMessageType = undefined,
             message: runtime.ArrayBuffer = undefined,
+            _internal: ?*MediaKeyMessageEventImpl.InternalState = null,
         },
     );
 

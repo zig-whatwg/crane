@@ -1,5 +1,5 @@
 //! Generated from: webvtt.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:29Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -105,6 +105,7 @@ pub const VTTCue = struct {
             size: f64 = undefined,
             @"align": AlignSetting = undefined,
             text: runtime.DOMString = undefined,
+            _internal: ?*VTTCueImpl.InternalState = null,
         },
     );
 

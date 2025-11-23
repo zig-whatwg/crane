@@ -1,5 +1,5 @@
 //! Generated from: css-font-loading.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -112,6 +112,7 @@ pub const FontFace = struct {
             features: FontFaceFeatures = undefined,
             variations: FontFaceVariations = undefined,
             palettes: FontFacePalettes = undefined,
+            _internal: ?*FontFaceImpl.InternalState = null,
         },
     );
 

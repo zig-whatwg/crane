@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -280,6 +280,7 @@ pub const HTMLAreaElement = struct {
             search: runtime.USVString = undefined,
             hash: runtime.USVString = undefined,
             cached_relList: ?DOMTokenList = null,
+            _internal: ?*HTMLAreaElementImpl.InternalState = null,
         },
     );
 

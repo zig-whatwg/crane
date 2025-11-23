@@ -1,5 +1,5 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -85,6 +85,7 @@ pub const DOMRectReadOnly = struct {
             right: f64 = undefined,
             bottom: f64 = undefined,
             left: f64 = undefined,
+            _internal: ?*DOMRectReadOnlyImpl.InternalState = null,
         },
     );
 

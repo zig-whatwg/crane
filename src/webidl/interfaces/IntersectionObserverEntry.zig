@@ -1,5 +1,5 @@
 //! Generated from: intersection-observer.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -80,6 +80,7 @@ pub const IntersectionObserverEntry = struct {
             isVisible: bool = undefined,
             intersectionRatio: f64 = undefined,
             target: Element = undefined,
+            _internal: ?*IntersectionObserverEntryImpl.InternalState = null,
         },
     );
 

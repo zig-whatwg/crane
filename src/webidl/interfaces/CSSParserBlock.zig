@@ -1,5 +1,5 @@
 //! Generated from: css-parser-api.idl
-//! Generated at: 2025-11-23T01:22:14Z
+//! Generated at: 2025-11-23T14:26:29Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -60,6 +60,7 @@ pub const CSSParserBlock = struct {
         struct {
             name: runtime.DOMString = undefined,
             body: runtime.FrozenArray(CSSParserValue) = undefined,
+            _internal: ?*CSSParserBlockImpl.InternalState = null,
         },
     );
 

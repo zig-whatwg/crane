@@ -1,5 +1,5 @@
 //! Generated from: css-animations.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -73,6 +73,7 @@ pub const CSSKeyframesRule = struct {
             name: CSSOMString = undefined,
             cssRules: CSSRuleList = undefined,
             length: u32 = undefined,
+            _internal: ?*CSSKeyframesRuleImpl.InternalState = null,
         },
     );
 

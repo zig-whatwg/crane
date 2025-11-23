@@ -1,5 +1,5 @@
 //! Generated from: webauthn.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -99,6 +99,7 @@ pub const PublicKeyCredential = struct {
             authenticatorAttachment: ?runtime.DOMString = null,
             cached_rawId: ?runtime.ArrayBuffer = null,
             cached_response: ?AuthenticatorResponse = null,
+            _internal: ?*PublicKeyCredentialImpl.InternalState = null,
         },
     );
 

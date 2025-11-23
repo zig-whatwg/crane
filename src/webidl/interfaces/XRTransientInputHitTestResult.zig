@@ -1,5 +1,5 @@
 //! Generated from: webxr-hit-test.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -62,6 +62,7 @@ pub const XRTransientInputHitTestResult = struct {
             inputSource: XRInputSource = undefined,
             results: runtime.FrozenArray(XRHitTestResult) = undefined,
             cached_inputSource: ?XRInputSource = null,
+            _internal: ?*XRTransientInputHitTestResultImpl.InternalState = null,
         },
     );
 

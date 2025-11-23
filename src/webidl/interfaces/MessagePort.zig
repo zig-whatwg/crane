@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:29Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -91,6 +91,7 @@ pub const MessagePort = struct {
             onclose: EventHandler = undefined,
             onmessage: EventHandler = undefined,
             onmessageerror: EventHandler = undefined,
+            _internal: ?*MessagePortImpl.InternalState = null,
         },
     );
 

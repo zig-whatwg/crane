@@ -1,5 +1,5 @@
 //! Generated from: css-paint-api.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -58,6 +58,7 @@ pub const PaintSize = struct {
         struct {
             width: f64 = undefined,
             height: f64 = undefined,
+            _internal: ?*PaintSizeImpl.InternalState = null,
         },
     );
 

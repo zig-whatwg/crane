@@ -1,5 +1,5 @@
 //! Generated from: long-animation-frames.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -102,6 +102,7 @@ pub const PerformanceScriptTiming = struct {
             forcedStyleAndLayoutDuration: DOMHighResTimeStamp = undefined,
             window: ?Window = null,
             windowAttribution: ScriptWindowAttribution = undefined,
+            _internal: ?*PerformanceScriptTimingImpl.InternalState = null,
         },
     );
 

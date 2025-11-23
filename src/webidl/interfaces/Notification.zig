@@ -1,5 +1,5 @@
 //! Generated from: notifications.idl
-//! Generated at: 2025-11-23T01:22:14Z
+//! Generated at: 2025-11-23T14:26:29Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -147,6 +147,7 @@ pub const Notification = struct {
             cached_vibrate: ?runtime.FrozenArray(unsignedlong) = null,
             cached_data: ?*const anyopaque = null,
             cached_actions: ?runtime.FrozenArray(NotificationAction) = null,
+            _internal: ?*NotificationImpl.InternalState = null,
         },
     );
 

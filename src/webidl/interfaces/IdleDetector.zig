@@ -1,5 +1,5 @@
 //! Generated from: idle-detection.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -86,6 +86,7 @@ pub const IdleDetector = struct {
             userState: ?UserIdleState = null,
             screenState: ?ScreenIdleState = null,
             onchange: EventHandler = undefined,
+            _internal: ?*IdleDetectorImpl.InternalState = null,
         },
     );
 

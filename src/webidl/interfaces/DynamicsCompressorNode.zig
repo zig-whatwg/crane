@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -96,6 +96,7 @@ pub const DynamicsCompressorNode = struct {
             reduction: f32 = undefined,
             attack: AudioParam = undefined,
             release: AudioParam = undefined,
+            _internal: ?*DynamicsCompressorNodeImpl.InternalState = null,
         },
     );
 

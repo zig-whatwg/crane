@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-23T01:22:15Z
+//! Generated at: 2025-11-23T14:26:30Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -94,6 +94,7 @@ pub const XRWebGLLayer = struct {
             framebufferWidth: u32 = undefined,
             framebufferHeight: u32 = undefined,
             cached_framebuffer: ?WebGLFramebuffer = null,
+            _internal: ?*XRWebGLLayerImpl.InternalState = null,
         },
     );
 
