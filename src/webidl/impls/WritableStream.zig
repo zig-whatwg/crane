@@ -18,8 +18,7 @@ const WritableStream = interfaces.WritableStream;
 const streams_common = @import("streams_common");
 const event_loop = @import("streams_event_loop");
 const AsyncPromise = @import("streams_async_promise").AsyncPromise;
-// Note: WriteRequest from streams_write_request uses placeholder Promise
-// For now we use AsyncPromise directly until we can update WriteRequest
+const WriteRequest = @import("streams_write_request").WriteRequest;
 
 pub const State = WritableStream.State;
 
@@ -61,11 +60,11 @@ pub const InternalState = struct {
     /// [[storedError]]: any - stored error if state is "errored"
     stored_error: ?*anyopaque,
 
-    /// [[writeRequests]]: List of pending write promises
-    write_requests: std.ArrayList(*AsyncPromise(void)),
+    /// [[writeRequests]]: List of pending write requests
+    write_requests: std.ArrayList(*WriteRequest),
 
-    /// [[inFlightWriteRequest]]: Currently executing write promise
-    in_flight_write_request: ?*AsyncPromise(void),
+    /// [[inFlightWriteRequest]]: Currently executing write request
+    in_flight_write_request: ?*WriteRequest,
 
     /// [[closeRequest]]: Promise for pending close request
     close_request: ?*AsyncPromise(void),
@@ -101,14 +100,14 @@ pub fn init(
 /// Deinitialize InternalState
 fn deinitInternal(internal: *InternalState, allocator: std.mem.Allocator) void {
     // Clean up write requests
-    for (internal.write_requests.items) |promise| {
-        promise.deinit();
+    for (internal.write_requests.items) |request| {
+        request.deinit();
     }
     internal.write_requests.deinit(allocator);
 
     // Clean up in-flight write request
-    if (internal.in_flight_write_request) |promise| {
-        promise.deinit();
+    if (internal.in_flight_write_request) |request| {
+        request.deinit();
     }
 
     // Clean up close requests

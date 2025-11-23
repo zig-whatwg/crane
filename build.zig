@@ -630,6 +630,9 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .imports = &.{
             .{ .name = "queue_with_sizes", .module = streams_queue_mod },
+            .{ .name = "async_promise", .module = streams_async_promise_mod },
+            .{ .name = "event_loop", .module = streams_event_loop_mod },
+            .{ .name = "webidl", .module = webidl_mod },
         },
     });
 
