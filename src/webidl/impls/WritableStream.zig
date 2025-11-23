@@ -568,6 +568,10 @@ fn setUpWritableStreamDefaultController(
     const controller_internal = try allocator.create(WritableStreamDefaultControllerImpl.InternalState);
     errdefer allocator.destroy(controller_internal);
 
+    // Create AbortController for the controller
+    // Note: AbortController impl is currently a stub, but we create instance for structure
+    const abort_controller = interfaces.AbortController.call_constructor(allocator, stream_instance.ctx) catch null;
+
     // Initialize controller internal state
     controller_internal.* = .{
         .stream = stream_instance,
@@ -575,11 +579,11 @@ fn setUpWritableStreamDefaultController(
         .close_algorithm = closeAlgorithm,
         .abort_algorithm = abortAlgorithm,
         .strategy_hwm = highWaterMark,
-        .strategy_size_algorithm = null, // Future: Pass size algorithm
+        .strategy_size_algorithm = null, // TODO: Pass size algorithm from strategy
         .started = false,
         .queue = .{},
         .queue_total_size = 0.0,
-        .abort_controller = null, // Future: Create AbortController instance
+        .abort_controller = abort_controller, // AbortController instance (stub implementation)
         .allocator = allocator,
     };
 

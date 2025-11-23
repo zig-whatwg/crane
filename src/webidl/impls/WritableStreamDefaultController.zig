@@ -207,7 +207,7 @@ fn resetQueue(controller: *runtime.Instance) void {
 /// 5. If WritableStreamCloseQueuedOrInFlight(stream) is false and stream.[[state]] is "writable",
 ///    perform WritableStreamDefaultControllerAdvanceQueueIfNeeded(this)
 /// 6. Return writeRecord's promise
-pub fn write(controller: *runtime.Instance, chunk: *const anyopaque, chunk_size: f64) !*AsyncPromise(void) {
+pub fn write(controller: *runtime.Instance, chunk: *const anyopaque, chunk_size_param: f64) !*AsyncPromise(void) {
     const state = controller.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const allocator = internal.allocator;
@@ -221,10 +221,16 @@ pub fn write(controller: *runtime.Instance, chunk: *const anyopaque, chunk_size:
     const stream_state = stream.getState(interfaces.WritableStream.State);
     const stream_internal = stream_state.own._internal orelse return error.InvalidState;
 
-    // 2. Wrap chunk in JSValue (simplified - treat as opaque object for now)
+    // 2. Calculate actual chunk size using strategy size algorithm
+    const chunk_size = if (internal.strategy_size_algorithm != null)
+        chunk_size_param // TODO: Actually call sizeAlgorithm(chunk) when runtime supports it
+    else
+        chunk_size_param;
+
+    // 3. Wrap chunk in JSValue (simplified - treat as opaque object for now)
     const js_chunk = common.JSValue{ .object = {} };
 
-    // 3. Create write request with chunk and promise
+    // 4. Create write request with chunk and promise
     const request = try write_request.WriteRequest.init(
         allocator,
         stream_internal.event_loop,
@@ -232,24 +238,24 @@ pub fn write(controller: *runtime.Instance, chunk: *const anyopaque, chunk_size:
     );
     errdefer request.deinit();
 
-    // 4. Enqueue to controller's queue (using QueueValue wrapper from this module)
+    // 5. Enqueue to controller's queue (using QueueValue wrapper from this module)
     const value = QueueValue{ .chunk = @constCast(chunk) };
     try internal.queue.append(allocator, value);
     internal.queue_total_size += chunk_size;
 
-    // 5. Store WriteRequest in stream's write_requests queue
+    // 6. Store WriteRequest in stream's write_requests queue
     try stream_internal.write_requests.append(allocator, request);
 
-    // 6. Update backpressure after adding to queue
+    // 7. Update backpressure after adding to queue
     writableStreamDefaultControllerUpdateBackpressure(controller);
 
-    // 7. If stream is writable and no close pending, advance the queue
+    // 8. If stream is writable and no close pending, advance the queue
     const close_pending = stream_internal.close_request != null or stream_internal.in_flight_close_request != null;
     if (stream_internal.state == .writable and !close_pending) {
         writableStreamDefaultControllerAdvanceQueueIfNeeded(controller);
     }
 
-    // 8. Return the write request's promise
+    // 9. Return the write request's promise
     return request.promise;
 }
 
