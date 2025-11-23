@@ -538,6 +538,19 @@ pub fn build(b: *std.Build) void {
     url_mod.addImport("equivalence", url_equivalence_mod);
     url_mod.addImport("path_serializer", url_path_serializer_mod);
 
+    // URL infrastructure modules for impls (needed by URL.zig impl)
+    impls_mod.addImport("url_record", url_internal_url_record_mod);
+    impls_mod.addImport("api_parser", url_parser_api_mod);
+    impls_mod.addImport("basic_parser", url_basic_parser_mod);
+    impls_mod.addImport("url_serializer", url_serializer_mod);
+    impls_mod.addImport("host_serializer", url_host_serializer_mod);
+    impls_mod.addImport("path_serializer", url_path_serializer_mod);
+    impls_mod.addImport("origin", url_origin_mod_internal);
+    impls_mod.addImport("percent_encoding", url_percent_encoding_mod);
+    impls_mod.addImport("encode_sets", url_encode_sets_mod);
+    impls_mod.addImport("parser_state", url_parser_state_mod);
+    impls_mod.addImport("form_parser", url_form_parser_mod);
+
     const console_mod = b.addModule("console", .{
         .root_source_file = b.path("src/console/root.zig"),
         .target = target,
