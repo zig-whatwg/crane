@@ -190,6 +190,226 @@ fn resetQueue(controller: *runtime.Instance) void {
 // Internal Methods (called by WritableStream)
 // ============================================================================
 
+/// WritableStreamDefaultControllerWrite - Queue a write operation
+///
+/// Spec: https://streams.spec.whatwg.org/#writable-stream-default-controller-write
+/// Arguments:
+///   controller: WritableStreamDefaultController instance
+///   chunk: The chunk to write
+///   chunk_size: Size of the chunk
+/// Returns: Promise that resolves when write completes
+///
+/// Steps:
+/// 1. Let writeAlgorithm be this.[[writeAlgorithm]]
+/// 2. Let writeRecord be a new write record with chunk and a new promise
+/// 3. Enqueue writeRecord to this.[[queue]]
+/// 4. Let stream be this.[[stream]]
+/// 5. If WritableStreamCloseQueuedOrInFlight(stream) is false and stream.[[state]] is "writable",
+///    perform WritableStreamDefaultControllerAdvanceQueueIfNeeded(this)
+/// 6. Return writeRecord's promise
+pub fn write(controller: *runtime.Instance, chunk: *const anyopaque, chunk_size: f64) !*AsyncPromise(void) {
+    const state = controller.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    const allocator = internal.allocator;
+
+    // Import modules
+    const write_request = @import("streams_write_request");
+    const common = @import("streams_common");
+
+    // 1. Get stream to access event loop
+    const stream = internal.stream orelse return error.InvalidState;
+    const stream_state = stream.getState(interfaces.WritableStream.State);
+    const stream_internal = stream_state.own._internal orelse return error.InvalidState;
+
+    // 2. Wrap chunk in JSValue (simplified - treat as opaque object for now)
+    const js_chunk = common.JSValue{ .object = {} };
+
+    // 3. Create write request with chunk and promise
+    const request = try write_request.WriteRequest.init(
+        allocator,
+        stream_internal.event_loop,
+        js_chunk,
+    );
+    errdefer request.deinit();
+
+    // 4. Enqueue to controller's queue (using QueueValue wrapper from this module)
+    const value = QueueValue{ .chunk = @constCast(chunk) };
+    try internal.queue.append(allocator, value);
+    internal.queue_total_size += chunk_size;
+
+    // 5. Store WriteRequest in stream's write_requests queue
+    try stream_internal.write_requests.append(allocator, request);
+
+    // 6. If stream is writable and no close pending, advance the queue
+    const close_pending = stream_internal.close_request != null or stream_internal.in_flight_close_request != null;
+    if (stream_internal.state == .writable and !close_pending) {
+        writableStreamDefaultControllerAdvanceQueueIfNeeded(controller);
+    }
+
+    // 7. Return the write request's promise
+    return request.promise;
+}
+
+/// WritableStreamDefaultControllerAdvanceQueueIfNeeded - Process write queue
+///
+/// Spec: https://streams.spec.whatwg.org/#writable-stream-default-controller-advance-queue-if-needed
+/// Arguments:
+///   controller: WritableStreamDefaultController instance
+///
+/// Steps:
+/// 1. Let controller be this
+/// 2. If controller.[[started]] is false, return
+/// 3. Let stream be controller.[[stream]]
+/// 4. If stream.[[inFlightWriteRequest]] is not undefined, return
+/// 5. Let state be stream.[[state]]
+/// 6. Assert: state is not "closed" or "errored"
+/// 7. If state is "erroring", perform WritableStreamFinishErroring(stream) and return
+/// 8. If controller.[[queue]] is empty, return
+/// 9. Let value be PeekQueueValue(controller)
+/// 10. If value is close sentinel, perform WritableStreamDefaultControllerProcessClose(controller)
+/// 11. Otherwise, perform WritableStreamDefaultControllerProcessWrite(controller, value)
+fn writableStreamDefaultControllerAdvanceQueueIfNeeded(controller: *runtime.Instance) void {
+    const state = controller.getState(State);
+    const internal = state.own._internal orelse return;
+
+    // 1-2. If controller not started, return
+    if (!internal.started) {
+        return;
+    }
+
+    // 3. Get stream
+    const stream = internal.stream orelse return;
+    const stream_state = stream.getState(interfaces.WritableStream.State);
+    const stream_internal = stream_state.own._internal orelse return;
+
+    // 4. If there's an in-flight write, return
+    if (stream_internal.in_flight_write_request != null) {
+        return;
+    }
+
+    // 5-6. Check stream state
+    const current_state = stream_internal.state;
+    if (current_state == .closed or current_state == .errored) {
+        return; // Assert violation in spec, but we handle gracefully
+    }
+
+    // 7. If erroring, finish erroring
+    if (current_state == .erroring) {
+        // Future: Call WritableStreamFinishErroring
+        return;
+    }
+
+    // 8. If queue is empty, return
+    if (internal.queue.items.len == 0) {
+        return;
+    }
+
+    // 9. Peek at next value
+    const value = internal.queue.items[0];
+
+    // 10-11. Process close or write
+    switch (value) {
+        .close_sentinel => {
+            // Future: Call WritableStreamDefaultControllerProcessClose
+            // For now, just advance queue recursively
+            writableStreamDefaultControllerAdvanceQueueIfNeeded(controller);
+        },
+        .chunk => |chunk| {
+            writableStreamDefaultControllerProcessWrite(controller, chunk);
+        },
+    }
+}
+
+/// WritableStreamDefaultControllerProcessWrite - Execute underlying sink write
+///
+/// Spec: https://streams.spec.whatwg.org/#writable-stream-default-controller-process-write
+/// Arguments:
+///   controller: WritableStreamDefaultController instance
+///   chunk: The chunk to write
+///
+/// Steps:
+/// 1. Let stream be controller.[[stream]]
+/// 2. Assert: stream.[[state]] is "writable"
+/// 3. Dequeue writeRecord from stream.[[writeRequests]]
+/// 4. Set stream.[[inFlightWriteRequest]] to writeRecord
+/// 5. Let sink be controller.[[writeAlgorithm]]
+/// 6. Upon fulfillment of sink(chunk, controller):
+///    - Resolve writeRecord's promise
+///    - Set stream.[[inFlightWriteRequest]] to undefined
+///    - Update backpressure and advance queue
+/// 7. Upon rejection: handle error
+fn writableStreamDefaultControllerProcessWrite(controller: *runtime.Instance, chunk: *const anyopaque) void {
+    const state = controller.getState(State);
+    const internal = state.own._internal orelse return;
+
+    // 1-2. Get stream and verify state
+    const stream = internal.stream orelse return;
+    const stream_state = stream.getState(interfaces.WritableStream.State);
+    const stream_internal = stream_state.own._internal orelse return;
+
+    if (stream_internal.state != .writable) {
+        return; // Assert violation
+    }
+
+    // 3. Dequeue the write request from stream's write_requests
+    if (stream_internal.write_requests.items.len == 0) {
+        return; // No write requests
+    }
+    const write_request = stream_internal.write_requests.orderedRemove(0);
+
+    // Also dequeue from controller's internal queue
+    const value = internal.queue.orderedRemove(0);
+
+    // Get size and update total
+    // TODO: Use actual chunk size from strategy (currently hardcoded to 1.0)
+    const chunk_size = 1.0;
+    internal.queue_total_size -= chunk_size;
+
+    // 4. Mark as in-flight
+    stream_internal.in_flight_write_request = write_request;
+
+    // 5. Invoke underlying sink write algorithm
+    // TODO: Actually call write_algorithm callback when runtime supports it
+    // For now, we'll immediately fulfill the write promise
+    //
+    // The real implementation would be:
+    // const result = internal.write_algorithm.?(chunk, controller);
+    // result.then(onFulfilled, onRejected)
+    //
+    // Where onFulfilled = writableStreamDefaultControllerFinishWrite
+    // And onRejected = writableStreamDefaultControllerError
+    _ = chunk;
+    _ = value;
+
+    // 6. Simulate immediate fulfillment (placeholder)
+    writableStreamDefaultControllerFinishWrite(controller, stream);
+}
+
+/// WritableStreamDefaultControllerFinishWrite - Complete a write operation
+///
+/// Called when underlying sink write succeeds
+/// Arguments:
+///   controller: WritableStreamDefaultController instance
+///   stream: WritableStream instance
+fn writableStreamDefaultControllerFinishWrite(controller: *runtime.Instance, stream: *runtime.Instance) void {
+    const stream_state = stream.getState(interfaces.WritableStream.State);
+    const stream_internal = stream_state.own._internal orelse return;
+
+    // Fulfill the write request's promise
+    if (stream_internal.in_flight_write_request) |request| {
+        request.fulfill();
+    }
+
+    // Clear in-flight write request
+    stream_internal.in_flight_write_request = null;
+
+    // Update backpressure (TODO: Implement in Phase 2)
+    // writableStreamDefaultControllerUpdateBackpressure(controller);
+
+    // Advance the queue to process next write
+    writableStreamDefaultControllerAdvanceQueueIfNeeded(controller);
+}
+
 /// [[AbortSteps]] - Handle abort request
 ///
 /// Spec: https://streams.spec.whatwg.org/#ws-default-controller-internal-abort

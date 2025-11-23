@@ -453,7 +453,20 @@ fn writableStreamDefaultWriterAbort(
 ///   chunk: Data to write
 /// Returns: Promise<undefined>
 ///
-/// Simplified - returns placeholder promise
+/// Steps:
+/// 1. Let stream be writer.[[stream]]
+/// 2. Assert: stream is not undefined
+/// 3. Let controller be stream.[[controller]]
+/// 4. Let chunkSize be WritableStreamDefaultControllerGetChunkSize(controller, chunk)
+/// 5. If stream is not equal to writer.[[stream]], return promise rejected with TypeError
+/// 6. Let state be stream.[[state]]
+/// 7. If state is "errored", return promise rejected with stream.[[storedError]]
+/// 8. If WritableStreamCloseQueuedOrInFlight(stream) or state is "closed",
+///    return promise rejected with TypeError
+/// 9. If state is "erroring", return promise rejected with stream.[[storedError]]
+/// 10. Assert: state is "writable"
+/// 11. Let promise be WritableStreamDefaultControllerWrite(controller, chunk, chunkSize)
+/// 12. Return promise
 fn writableStreamDefaultWriterWrite(
     writer: *runtime.Instance,
     stream: *runtime.Instance,
@@ -462,14 +475,47 @@ fn writableStreamDefaultWriterWrite(
     const writer_state = writer.getState(State);
     const writer_internal = writer_state.own._internal orelse return error.InvalidState;
 
-    // Future: Implement full write algorithm with queueing
-    _ = stream;
-    _ = chunk;
-
-    // For now, return ready promise as placeholder
-    if (writer_internal.ready_promise) |promise| {
-        return @ptrCast(promise);
+    // 1-2. Get stream (already passed in, verify it matches)
+    if (writer_internal.stream != stream) {
+        return error.TypeError; // 5. Stream mismatch
     }
 
-    return error.InvalidState;
+    // 3. Get controller
+    const stream_state = stream.getState(interfaces.WritableStream.State);
+    const stream_internal = stream_state.own._internal orelse return error.InvalidState;
+    const controller = stream_internal.controller orelse return error.InvalidState;
+
+    // 4. Get chunk size (simplified - use 1.0 for now)
+    // Future: Call WritableStreamDefaultControllerGetChunkSize
+    const chunk_size: f64 = 1.0;
+
+    // 6. Let state be stream.[[state]]
+    const current_state = stream_internal.state;
+
+    // 7. If errored, reject with stored error
+    if (current_state == .errored) {
+        return error.TypeError; // Future: Reject with actual stored_error
+    }
+
+    // 8. If close queued/in-flight or closed, reject with TypeError
+    if (writableStreamCloseQueuedOrInFlight(stream_internal) or current_state == .closed) {
+        return error.TypeError;
+    }
+
+    // 9. If erroring, reject with stored error
+    if (current_state == .erroring) {
+        return error.TypeError; // Future: Reject with actual stored_error
+    }
+
+    // 10. Assert: state is "writable"
+    if (current_state != .writable) {
+        return error.InvalidState;
+    }
+
+    // 11. Let promise be WritableStreamDefaultControllerWrite(controller, chunk, chunkSize)
+    const WritableStreamDefaultController = @import("WritableStreamDefaultController.zig");
+    const write_promise = try WritableStreamDefaultController.write(controller, chunk, chunk_size);
+
+    // 12. Return promise
+    return @ptrCast(write_promise);
 }
