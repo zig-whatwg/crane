@@ -317,7 +317,7 @@ fn readableStreamDefaultControllerEnqueue(internal: *InternalState, chunk: *cons
             // Fulfill with chunk
             const ReadableStreamDefaultReaderImpl = @import("ReadableStreamDefaultReader.zig");
             read_request.*.fulfill(ReadableStreamDefaultReaderImpl.ReadResult{
-                .value = chunk,
+                .value = @constCast(chunk),
                 .done = false,
             });
             return;
@@ -328,8 +328,13 @@ fn readableStreamDefaultControllerEnqueue(internal: *InternalState, chunk: *cons
     // Calculate chunk size (for now, always 1)
     const chunk_size: f64 = 1.0; // TODO: Call strategySizeAlgorithm
 
-    // Enqueue the chunk (chunk is already *const anyopaque, need to convert to Value)
-    const value: streams_common.JSValue = @ptrCast(@constCast(chunk));
+    // Enqueue the chunk
+    // In the real implementation, chunk would be a JavaScript value
+    // For now, we wrap the opaque pointer in a JSValue
+    const chunk_ptr: *anyopaque = @constCast(chunk);
+    const value: streams_common.JSValue = .{ .object = {} }; // Placeholder - in real impl would box the JS value
+    _ = chunk_ptr; // Will be used when we properly handle JS values
+
     try internal.queue.enqueueValueWithSize(value, chunk_size);
     internal.queue_total_size = internal.queue.queue_total_size;
 

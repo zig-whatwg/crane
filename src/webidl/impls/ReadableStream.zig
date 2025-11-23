@@ -19,6 +19,7 @@ const ReadableStream = interfaces.ReadableStream;
 const streams_common = @import("streams_common");
 const event_loop = @import("streams_event_loop");
 const AsyncPromise = @import("streams_async_promise").AsyncPromise;
+const QueueWithSizes = @import("streams_queue").QueueWithSizes;
 
 pub const State = ReadableStream.State;
 
@@ -108,15 +109,86 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Constructor implementation
-/// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, underlyingSource: *const anyopaque, strategy: dictionaries.QueuingStrategy) !*runtime.Instance {
-    // Create instance through init()
+///
+/// Spec: https://streams.spec.whatwg.org/#rs-constructor
+/// new ReadableStream(underlyingSource, strategy)
+///
+/// Steps:
+/// 1. If underlyingSource is missing, set it to null
+/// 2. Let underlyingSourceDict be underlyingSource, converted to IDL type UnderlyingSource
+/// 3. Perform ! InitializeReadableStream(this)
+/// 4. If underlyingSourceDict["type"] is "bytes": [handle byte streams]
+/// 5. Otherwise:
+///    1. Assert: underlyingSourceDict["type"] does not exist
+///    2. Let sizeAlgorithm be ! ExtractSizeAlgorithm(strategy)
+///    3. Let highWaterMark be ? ExtractHighWaterMark(strategy, 1)
+///    4. Perform ? SetUpReadableStreamDefaultControllerFromUnderlyingSource(...)
+pub fn call_constructor(
+    allocator: std.mem.Allocator,
+    ctx: runtime.Context,
+    underlyingSource: *const anyopaque,
+    strategy: dictionaries.QueuingStrategy,
+) !*runtime.Instance {
+    // Get event loop from context (required for async operations)
+    const loop = try ctx.getEventLoop();
+
+    // Step 1: If underlyingSource is missing, it would be null
+    // (handled by caller setting it to null/undefined)
+
+    // Step 2: Convert to UnderlyingSource dictionary
+    // For now, we'll assume underlyingSource is already a dictionary pointer
+    // In real implementation, this would involve WebIDL type conversion
+    const underlying_source_dict: *const dictionaries.UnderlyingSource = @ptrCast(@alignCast(underlyingSource));
+
+    // Step 3: Perform InitializeReadableStream
     const instance = try init(allocator, State, &ReadableStream.vtable, ctx);
     errdefer deinit(instance);
 
-    _ = underlyingSource;
+    const state = instance.getState(State);
+
+    // Create internal state
+    const internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(internal);
+
+    // InitializeReadableStream: Set initial state
+    internal.* = InternalState{
+        .controller = undefined, // Will be set by SetUp
+        .reader = .none,
+        .state = .readable,
+        .stored_error = null,
+        .detached = false,
+        .disturbed = false,
+        .event_loop = loop,
+        .allocator = allocator,
+    };
+
+    state.own._internal = internal;
+
+    // Step 4: Check if this is a byte stream
+    if (underlying_source_dict.type != null) {
+        // TODO: Byte streams not yet implemented
+        return error.NotImplemented;
+    }
+
+    // Step 5: Default stream (not byte stream)
+    // Step 5.1: Assert type does not exist (checked above)
+
+    // Step 5.2: Extract size algorithm
+    // For now, we use a default size algorithm that returns 1
+    // TODO: Implement proper ExtractSizeAlgorithm from strategy
     _ = strategy;
-    // TODO: Implement constructor logic with parameters
+
+    // Step 5.3: Extract high water mark (default 1 for count-based queuing)
+    const high_water_mark: f64 = 1.0; // TODO: Extract from strategy
+
+    // Step 5.4: Perform SetUpReadableStreamDefaultControllerFromUnderlyingSource
+    try setUpReadableStreamDefaultControllerFromUnderlyingSource(
+        instance,
+        internal,
+        underlyingSource,
+        underlying_source_dict,
+        high_water_mark,
+    );
 
     return instance;
 }
@@ -350,4 +422,168 @@ pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) Imp
     _ = instance;
     _ = callback;
     return error.NotImplemented;
+}
+
+// ============================================================================
+// Internal Algorithms
+// ============================================================================
+
+/// SetUpReadableStreamDefaultControllerFromUnderlyingSource
+///
+/// Spec: https://streams.spec.whatwg.org/#set-up-readable-stream-default-controller-from-underlying-source
+///
+/// Steps:
+/// 1. Let controller be a new ReadableStreamDefaultController
+/// 2. Let startAlgorithm be an algorithm that returns undefined
+/// 3. Let pullAlgorithm be an algorithm that returns a promise resolved with undefined
+/// 4. Let cancelAlgorithm be an algorithm that returns a promise resolved with undefined
+/// 5. If underlyingSourceDict["start"] exists, set startAlgorithm to invoke it
+/// 6. If underlyingSourceDict["pull"] exists, set pullAlgorithm to invoke it
+/// 7. If underlyingSourceDict["cancel"] exists, set cancelAlgorithm to invoke it
+/// 8. Perform ? SetUpReadableStreamDefaultController(...)
+fn setUpReadableStreamDefaultControllerFromUnderlyingSource(
+    stream_instance: *runtime.Instance,
+    stream_internal: *InternalState,
+    underlyingSource: *const anyopaque,
+    underlyingSourceDict: *const dictionaries.UnderlyingSource,
+    highWaterMark: f64,
+) !void {
+    const allocator = stream_internal.allocator;
+    const ctx = stream_instance.ctx;
+
+    // Step 1: Create new controller
+    const controller_instance = try interfaces.ReadableStreamDefaultController.init(
+        allocator,
+        ctx,
+    );
+    errdefer interfaces.ReadableStreamDefaultController.deinit(controller_instance);
+
+    // Step 2-4: Default algorithms (no-ops that return undefined/resolved promise)
+    // For now, we store null and handle it in the controller
+    var start_algorithm: ?*const anyopaque = null;
+    var pull_algorithm: ?*const anyopaque = null;
+    var cancel_algorithm: ?*const anyopaque = null;
+
+    // Step 5: If start callback exists, wrap it
+    if (underlyingSourceDict.start) |_| {
+        // TODO: Wrap the callback
+        // For now, store the callback pointer
+        start_algorithm = underlyingSourceDict.start;
+    }
+
+    // Step 6: If pull callback exists, wrap it
+    if (underlyingSourceDict.pull) |_| {
+        // TODO: Wrap the callback
+        // For now, store the callback pointer
+        pull_algorithm = underlyingSourceDict.pull;
+    }
+
+    // Step 7: If cancel callback exists, wrap it
+    if (underlyingSourceDict.cancel) |_| {
+        // TODO: Wrap the callback
+        // For now, store the callback pointer
+        cancel_algorithm = underlyingSourceDict.cancel;
+    }
+
+    // Step 8: SetUpReadableStreamDefaultController
+    try setUpReadableStreamDefaultController(
+        stream_instance,
+        stream_internal,
+        controller_instance,
+        start_algorithm,
+        pull_algorithm,
+        cancel_algorithm,
+        highWaterMark,
+    );
+
+    _ = underlyingSource; // Will be used when we invoke callbacks
+}
+
+/// SetUpReadableStreamDefaultController
+///
+/// Spec: https://streams.spec.whatwg.org/#set-up-readable-stream-default-controller
+///
+/// Steps:
+/// 1. Assert: stream.[[controller]] is undefined
+/// 2. Set controller.[[stream]] to stream
+/// 3. Perform ! ResetQueue(controller)
+/// 4. Set controller.[[started]], [[closeRequested]], [[pullAgain]], [[pulling]] to false
+/// 5. Set controller.[[strategySizeAlgorithm]] to sizeAlgorithm and [[strategyHWM]] to highWaterMark
+/// 6. Set controller.[[pullAlgorithm]] to pullAlgorithm
+/// 7. Set controller.[[cancelAlgorithm]] to cancelAlgorithm
+/// 8. Set stream.[[controller]] to controller
+/// 9. Let startResult be the result of performing startAlgorithm
+/// 10. Let startPromise be a promise resolved with startResult
+/// 11. Upon fulfillment of startPromise:
+///     1. Set controller.[[started]] to true
+///     2. Assert: controller.[[pulling]] is false
+///     3. Assert: controller.[[pullAgain]] is false
+///     4. Perform ! ReadableStreamDefaultControllerCallPullIfNeeded(controller)
+/// 12. Upon rejection of startPromise with reason r:
+///     1. Perform ! ReadableStreamDefaultControllerError(controller, r)
+fn setUpReadableStreamDefaultController(
+    stream_instance: *runtime.Instance,
+    stream_internal: *InternalState,
+    controller_instance: *runtime.Instance,
+    startAlgorithm: ?*const anyopaque,
+    pullAlgorithm: ?*const anyopaque,
+    cancelAlgorithm: ?*const anyopaque,
+    highWaterMark: f64,
+) !void {
+    const allocator = stream_internal.allocator;
+    const loop = stream_internal.event_loop;
+
+    // Step 1: Assert controller is undefined (guaranteed by constructor)
+
+    // Get controller state
+    const controller_state = controller_instance.getState(interfaces.ReadableStreamDefaultController.State);
+
+    // Create controller internal state
+    const controller_internal = try allocator.create(@import("ReadableStreamDefaultController.zig").InternalState);
+    errdefer allocator.destroy(controller_internal);
+
+    // Step 2: Set controller.[[stream]] to stream
+    // Step 3: Perform ResetQueue
+    // Step 4: Initialize flags to false
+    // Step 5: Set strategy parameters
+    // Step 6-7: Set algorithms
+    controller_internal.* = .{
+        .stream = stream_instance,
+        .queue = QueueWithSizes.init(allocator),
+        .queue_total_size = 0.0,
+        .started = false,
+        .close_requested = false,
+        .pull_again = false,
+        .pulling = false,
+        .strategy_size_algorithm = null, // TODO: Pass sizeAlgorithm
+        .strategy_hwm = highWaterMark,
+        .pull_algorithm = pullAlgorithm,
+        .cancel_algorithm = cancelAlgorithm,
+        .allocator = allocator,
+    };
+
+    controller_state.own._internal = controller_internal;
+
+    // Step 8: Set stream.[[controller]] to controller
+    stream_internal.controller = controller_instance;
+
+    // Step 9-12: Perform startAlgorithm and handle promise
+    // For now, if no start algorithm, immediately mark as started
+    if (startAlgorithm == null) {
+        // No start algorithm - immediately mark as started
+        controller_internal.started = true;
+
+        // Call pull if needed
+        const ReadableStreamDefaultControllerImpl = @import("ReadableStreamDefaultController.zig");
+        ReadableStreamDefaultControllerImpl.readableStreamDefaultControllerCallPullIfNeeded(controller_internal);
+    } else {
+        // TODO: Invoke start algorithm and handle promise
+        // For now, just mark as started
+        controller_internal.started = true;
+
+        const ReadableStreamDefaultControllerImpl = @import("ReadableStreamDefaultController.zig");
+        ReadableStreamDefaultControllerImpl.readableStreamDefaultControllerCallPullIfNeeded(controller_internal);
+    }
+
+    _ = loop; // Will be used for promise handling
 }
