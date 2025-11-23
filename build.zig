@@ -581,6 +581,28 @@ pub fn build(b: *std.Build) void {
         },
     });
 
+    const streams_event_loop_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/event_loop.zig"),
+        .target = target,
+    });
+
+    const streams_async_promise_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/async_promise.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "event_loop", .module = streams_event_loop_mod },
+            .{ .name = "common", .module = streams_common_mod },
+        },
+    });
+
+    const streams_test_event_loop_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/test_event_loop.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "event_loop", .module = streams_event_loop_mod },
+        },
+    });
+
     const streams_queue_mod = b.createModule(.{
         .root_source_file = b.path("src/streams/internal/queue_with_sizes.zig"),
         .target = target,
@@ -676,6 +698,9 @@ pub fn build(b: *std.Build) void {
     streams_mod.addImport("dom", dom_mod);
     // Add internal modules so root.zig can access them
     streams_mod.addImport("common", streams_common_mod);
+    streams_mod.addImport("event_loop", streams_event_loop_mod);
+    streams_mod.addImport("async_promise", streams_async_promise_mod);
+    streams_mod.addImport("test_event_loop", streams_test_event_loop_mod);
     streams_mod.addImport("queue_with_sizes", streams_queue_mod);
     streams_mod.addImport("read_request", streams_read_request_mod);
     streams_mod.addImport("read_into_request", streams_read_into_request_mod);
@@ -688,6 +713,17 @@ pub fn build(b: *std.Build) void {
     streams_mod.addImport("cross_realm_transform", streams_cross_realm_transform_mod);
     // Add unified interfaces module
     streams_mod.addImport("interfaces", interfaces_mod);
+
+    // Add streams modules to impls for ReadableStream, WritableStream, TransformStream implementations
+    impls_mod.addImport("streams_common", streams_common_mod);
+    impls_mod.addImport("streams_event_loop", streams_event_loop_mod);
+    impls_mod.addImport("streams_async_promise", streams_async_promise_mod);
+    impls_mod.addImport("streams_test_event_loop", streams_test_event_loop_mod);
+    impls_mod.addImport("streams_queue", streams_queue_mod);
+    impls_mod.addImport("streams_read_request", streams_read_request_mod);
+    impls_mod.addImport("streams_write_request", streams_write_request_mod);
+    impls_mod.addImport("streams_read_into_request", streams_read_into_request_mod);
+    impls_mod.addImport("streams_pull_into_descriptor", streams_pull_into_descriptor_mod);
 
     const mimesniff_mod = b.addModule("mimesniff", .{
         .root_source_file = b.path("src/mimesniff/root.zig"),

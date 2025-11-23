@@ -1,7 +1,9 @@
-//! Implementation for ReadableStream interface
+//! ReadableStream Implementation
 //!
-//! This file is AUTO-GENERATED on first creation.
-//! Add your custom implementation here.
+//! WHATWG Streams Standard: https://streams.spec.whatwg.org/#rs-class
+//!
+//! A readable stream represents a source of data from which you can read.
+//! All of its internal state is encapsulated in InternalState.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -12,15 +14,79 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const ReadableStream = interfaces.ReadableStream;
 
+// Import streams infrastructure
+const streams_common = @import("streams_common");
+const event_loop = @import("streams_event_loop");
+const AsyncPromise = @import("streams_async_promise").AsyncPromise;
+
 pub const State = ReadableStream.State;
 
 pub const ImplError = error{
     NotImplemented,
+    TypeError,
+    RangeError,
+    InvalidState,
+    OutOfMemory,
 };
 
-/// Internal state for this implementation
-/// Can be used to store browser-specific data structures
-pub const InternalState = struct {};
+/// Stream state enumeration per WHATWG spec
+pub const StreamState = enum {
+    readable,
+    closed,
+    errored,
+};
+
+/// Reader union type - can be default reader, BYOB reader, or none
+pub const Reader = union(enum) {
+    none: void,
+    default: *runtime.Instance,
+    byob: *runtime.Instance,
+};
+
+/// Internal state for ReadableStream
+///
+/// This mirrors the internal slots defined in the WHATWG Streams spec § 4.1
+pub const InternalState = struct {
+    /// [[controller]]: ReadableStreamDefaultController or ReadableByteStreamController
+    controller: *runtime.Instance,
+
+    /// [[reader]]: ReadableStreamReader or undefined
+    reader: Reader,
+
+    /// [[state]]: "readable", "closed", or "errored"
+    state: StreamState,
+
+    /// [[storedError]]: any - stored error if state is "errored"
+    stored_error: ?*anyopaque,
+
+    /// [[detached]]: boolean - transferred via postMessage
+    detached: bool,
+
+    /// [[disturbed]]: boolean - ever had a reader
+    disturbed: bool,
+
+    /// Event loop for async operations (borrowed from context)
+    event_loop: event_loop.EventLoop,
+
+    /// Resource management
+    allocator: std.mem.Allocator,
+
+    pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
+        // Clean up controller
+        // Note: controller is a runtime.Instance that manages its own lifecycle
+
+        // Clean up reader if present
+        switch (self.reader) {
+            .none => {},
+            .default, .byob => {
+                // Reader instances manage their own lifecycle
+            },
+        }
+
+        // Free the internal state itself
+        allocator.destroy(self);
+    }
+};
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -109,4 +175,3 @@ pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) Imp
     _ = callback;
     return error.NotImplemented;
 }
-
