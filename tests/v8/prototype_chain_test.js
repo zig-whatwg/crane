@@ -61,12 +61,11 @@ typeof EventTarget.prototype.appendChild === "undefined"
 Object.getOwnPropertyDescriptor(Node.prototype, "nodeType") !== undefined
 Object.getOwnPropertyDescriptor(Node.prototype, "nodeType").get !== undefined
 
-// ⚠️ CURRENT BEHAVIOR (TO BE FIXED): Attributes ARE duplicated on child prototypes
-// nodeType IS currently an own property of Element.prototype (should be inherited)
-Object.getOwnPropertyDescriptor(Element.prototype, "nodeType") !== undefined
+// nodeType should NOT be an own property of Element.prototype (inherited from Node)
+Object.getOwnPropertyDescriptor(Element.prototype, "nodeType") === undefined
 
-// nodeType IS currently an own property of HTMLElement.prototype (should be inherited)
-Object.getOwnPropertyDescriptor(HTMLElement.prototype, "nodeType") !== undefined
+// nodeType should NOT be an own property of HTMLElement.prototype (inherited from Node)
+Object.getOwnPropertyDescriptor(HTMLElement.prototype, "nodeType") === undefined
 
 // But it should be accessible via prototype chain (once we have instances)
 // We can't test the actual value without creating instances, so we verify the getter exists
@@ -159,8 +158,7 @@ Object.hasOwnProperty.call(EventTarget.prototype, "addEventListener")
 !Object.hasOwnProperty.call(Node.prototype, "addEventListener")
 !Object.hasOwnProperty.call(Element.prototype, "addEventListener")
 
-// ⚠️ ISSUE: Attributes ARE currently duplicated on child prototypes  
-// This should be fixed to match Chrome's behavior
+// Verify nodeType is only on Node.prototype (not duplicated on child prototypes)
 Object.hasOwnProperty.call(Node.prototype, "nodeType")
-Object.hasOwnProperty.call(Element.prototype, "nodeType")  // Should be false
-Object.hasOwnProperty.call(HTMLElement.prototype, "nodeType")  // Should be false
+!Object.hasOwnProperty.call(Element.prototype, "nodeType")  // Should NOT have it
+!Object.hasOwnProperty.call(HTMLElement.prototype, "nodeType")  // Should NOT have it

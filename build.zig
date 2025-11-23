@@ -1042,11 +1042,21 @@ pub fn build(b: *std.Build) void {
 
     // Run advanced tests
     const run_advanced_tests = b.addRunArtifact(test_runner_exe);
-    run_advanced_tests.step.dependOn(&run_basic_tests.step); // Run after basic tests
+    run_advanced_tests.step.dependOn(&run_basic_tests.step);
     run_advanced_tests.addArtifactArg(repl_exe);
     run_advanced_tests.addArg("tests/v8/bindings_advanced_test.js");
 
-    test_v8_step.dependOn(&run_advanced_tests.step);
+    // Run prototype chain tests
+    const run_prototype_chain_tests = b.addRunArtifact(test_runner_exe);
+    run_prototype_chain_tests.step.dependOn(&run_advanced_tests.step);
+    run_prototype_chain_tests.addArtifactArg(repl_exe);
+    run_prototype_chain_tests.addArg("tests/v8/prototype_chain_test.js");
+
+    test_v8_step.dependOn(&run_prototype_chain_tests.step);
+
+    // Note: bindings_test_verbose.js and prototype_property_access_test.js use
+    // console.log() format and are not compatible with the simple test runner.
+    // Run them manually with: ./zig-out/bin/repl < tests/v8/[test-file].js
 
     // ========================================================================
     // COMPREHENSIVE BUILD TEST
