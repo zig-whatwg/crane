@@ -248,6 +248,7 @@ pub fn build(b: *std.Build) void {
     impls_mod.addImport("dictionaries", dictionaries_mod);
     impls_mod.addImport("enums", enums_mod);
     impls_mod.addImport("callbacks", callbacks_mod);
+    impls_mod.addImport("webidl", webidl_mod); // For error types and WebIDL infrastructure
 
     // V8 module needs interfaces for automatic constructor inheritance setup
     v8_mod.addImport("interfaces", interfaces_mod);

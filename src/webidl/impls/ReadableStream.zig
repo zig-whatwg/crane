@@ -12,6 +12,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const ReadableStream = interfaces.ReadableStream;
 
 // Import streams infrastructure
@@ -121,9 +122,18 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
 }
 
 /// Getter for locked
+///
+/// Spec: https://streams.spec.whatwg.org/#rs-locked
+/// readonly attribute boolean locked
+///
+/// Returns true if the stream is locked to a reader.
+/// A stream is locked if stream.[[reader]] is not undefined.
 pub fn get_locked(instance: *runtime.Instance) ImplError!bool {
-    _ = instance;
-    return error.NotImplemented;
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+
+    // IsReadableStreamLocked(stream): return stream.[[reader]] !== undefined
+    return internal.reader != .none;
 }
 
 /// Operation: from
@@ -142,17 +152,167 @@ pub fn call_pipeThrough(instance: *runtime.Instance, transform: dictionaries.Rea
 }
 
 /// Operation: cancel
+///
+/// Spec: https://streams.spec.whatwg.org/#rs-cancel
+/// Promise<undefined> cancel(optional any reason)
+///
+/// Steps:
+/// 1. If ! IsReadableStreamLocked(this) is true, return rejected promise with TypeError
+/// 2. Return ! ReadableStreamCancel(this, reason)
+///
+/// ReadableStreamCancel(stream, reason):
+/// 1. Set stream.[[disturbed]] to true
+/// 2. If stream.[[state]] is "closed", return resolved promise with undefined
+/// 3. If stream.[[state]] is "errored", return rejected promise with stream.[[storedError]]
+/// 4. Perform ! ReadableStreamClose(stream)
+/// 5. Let reader be stream.[[reader]]
+/// 6. If reader is not undefined and reader implements ReadableStreamBYOBReader, [handle BYOB]
+/// 7. Let sourceCancelPromise be ! stream.[[controller]].[[CancelSteps]](reason)
+/// 8. Return result of reacting to sourceCancelPromise with fulfillment step that returns undefined
 pub fn call_cancel(instance: *runtime.Instance, reason: *const anyopaque) ImplError!*const anyopaque {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+
+    // Step 1: Check if stream is locked
+    // IsReadableStreamLocked(stream): return stream.[[reader]] !== undefined
+    if (internal.reader != .none) {
+        // Stream is locked - return rejected promise with TypeError
+        const promise = try AsyncPromise(void).init(
+            internal.allocator,
+            internal.event_loop,
+        );
+        const exception = try webidl.errors.Exception.typeError(internal.allocator, "Cannot cancel a locked stream");
+        promise.*.reject(exception);
+        return @ptrCast(promise);
+    }
+
+    // Step 2: Perform ReadableStreamCancel(this, reason)
+    return readableStreamCancel(instance, internal, reason);
+}
+
+/// ReadableStreamCancel algorithm
+/// Internal implementation of stream cancellation
+fn readableStreamCancel(
+    instance: *runtime.Instance,
+    internal: *InternalState,
+    reason: *const anyopaque,
+) !*const anyopaque {
     _ = instance;
+
+    // Step 1: Set stream.[[disturbed]] to true
+    internal.disturbed = true;
+
+    // Step 2: If stream.[[state]] is "closed", return resolved promise
+    if (internal.state == .closed) {
+        const promise = try AsyncPromise(void).init(
+            internal.allocator,
+            internal.event_loop,
+        );
+        promise.*.fulfill({});
+        return @ptrCast(promise);
+    }
+
+    // Step 3: If stream.[[state]] is "errored", return rejected promise
+    if (internal.state == .errored) {
+        const promise = try AsyncPromise(void).init(
+            internal.allocator,
+            internal.event_loop,
+        );
+        // TODO: Reject with actual stream.[[storedError]]
+        const exception = try webidl.errors.Exception.typeError(internal.allocator, "Stream is errored");
+        promise.*.reject(exception);
+        return @ptrCast(promise);
+    }
+
+    // Step 4: Perform ReadableStreamClose(stream)
+    readableStreamClose(internal);
+
+    // Step 5: Get reader
+    const reader = internal.reader;
+
+    // Step 6: If reader is BYOB reader, handle readIntoRequests
+    if (reader == .byob) {
+        // TODO: Handle BYOB reader readIntoRequests
+        // For each readIntoRequest, call close steps with undefined
+    }
+
+    // Step 7: Call controller.[[CancelSteps]](reason)
+    // TODO: Implement controller.[[CancelSteps]]
+    // For now, return a resolved promise
     _ = reason;
-    return error.NotImplemented;
+
+    const promise = try AsyncPromise(void).init(
+        internal.allocator,
+        internal.event_loop,
+    );
+
+    // Step 8: React to sourceCancelPromise with fulfillment that returns undefined
+    // For now, just fulfill immediately
+    // TODO: Chain promises properly when controller.[[CancelSteps]] is implemented
+    promise.*.fulfill({});
+
+    return @ptrCast(promise);
+}
+
+/// ReadableStreamClose algorithm
+/// Internal implementation of stream closing
+fn readableStreamClose(internal: *InternalState) void {
+    // Assert: stream.[[state]] is "readable"
+    std.debug.assert(internal.state == .readable);
+
+    // Set stream.[[state]] to "closed"
+    internal.state = .closed;
+
+    // Note: The spec also requires:
+    // - Resolving reader.[[closedPromise]] if reader exists
+    // - This is handled by the reader implementation
 }
 
 /// Operation: getReader
+///
+/// Spec: https://streams.spec.whatwg.org/#rs-get-reader
+/// ReadableStreamReader getReader(optional ReadableStreamGetReaderOptions options = {})
+///
+/// Steps:
+/// 1. If options["mode"] does not exist, return ? AcquireReadableStreamDefaultReader(this)
+/// 2. Assert: options["mode"] is "byob"
+/// 3. Return ? AcquireReadableStreamBYOBReader(this)
+///
+/// AcquireReadableStreamDefaultReader(stream):
+/// 1. Let reader be a new ReadableStreamDefaultReader
+/// 2. Perform ? SetUpReadableStreamDefaultReader(reader, stream)
+/// 3. Return reader
 pub fn call_getReader(instance: *runtime.Instance, options: dictionaries.ReadableStreamGetReaderOptions) ImplError!typedefs.ReadableStreamReader {
-    _ = instance;
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    const allocator = internal.allocator;
+    const ctx = instance.ctx;
+
+    // Step 1: Check if mode exists in options
+    // TODO: Once we have proper option handling, check options.mode
+    // For now, assume default mode (no mode specified)
     _ = options;
-    return error.NotImplemented;
+
+    // AcquireReadableStreamDefaultReader:
+    // Step 1-2: Create reader and call SetUpReadableStreamDefaultReader
+    // This is done by the ReadableStreamDefaultReader constructor
+    const reader = interfaces.ReadableStreamDefaultReader.call_constructor(
+        allocator,
+        ctx,
+        instance,
+    ) catch |err| {
+        // Remap errors to ImplError
+        return switch (err) {
+            error.TypeError => error.TypeError,
+            error.OutOfMemory => error.OutOfMemory,
+            error.InvalidState => error.InvalidState,
+            else => error.NotImplemented,
+        };
+    };
+
+    // Step 3: Return reader
+    // The return type is typedefs.ReadableStreamReader which is *const anyopaque
+    return @ptrCast(reader);
 }
 
 /// Operation: pipeTo

@@ -12,6 +12,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const ReadableStreamDefaultReader = interfaces.ReadableStreamDefaultReader;
 
 // Import streams infrastructure
@@ -96,53 +97,87 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Steps:
 /// 1. Perform ? SetUpReadableStreamDefaultReader(this, stream)
 ///
-/// TODO: Stream instance (runtime.Instance) is not accessible from interfaces.ReadableStream.
-/// This needs to be addressed - either:
-/// 1. Change constructor signature to accept *runtime.Instance
-/// 2. Add a way to get *runtime.Instance from interfaces.ReadableStream
-/// 3. Store stream reference differently
+/// SetUpReadableStreamDefaultReader(reader, stream):
+/// 1. If ! IsReadableStreamLocked(stream) is true, throw a TypeError exception
+/// 2. Perform ! ReadableStreamReaderGenericInitialize(reader, stream)
+/// 3. Set reader.[[readRequests]] to a new empty list
 pub fn call_constructor(
     allocator: std.mem.Allocator,
     ctx: runtime.Context,
     stream_instance: *runtime.Instance,
 ) !*runtime.Instance {
+    // Get event loop from context (required for async operations)
+    const event_loop = try ctx.getEventLoop();
+
+    // SetUpReadableStreamDefaultReader Step 1: Check if stream is locked
+    // IsReadableStreamLocked(stream): return stream.[[reader]] !== undefined
+    const stream_state = stream_instance.getState(interfaces.ReadableStream.State);
+    const stream_internal = stream_state.own._internal orelse return error.InvalidState;
+
+    if (stream_internal.reader != .none) {
+        // Stream is already locked - throw TypeError
+        return error.TypeError;
+    }
+
     // Create instance
     const instance = try init(allocator, State, &ReadableStreamDefaultReader.vtable, ctx);
     errdefer deinit(instance);
 
-    const state = instance.getState(State);
+    const reader_state = instance.getState(State);
 
-    // Get event loop from context (required for async operations)
-    const event_loop = try ctx.getEventLoop();
+    // Create InternalState for reader
+    const reader_internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(reader_internal);
 
-    // TODO: SetUpReadableStreamDefaultReader(this, stream)
-    // Full implementation requires:
-    // 1. Check if stream is locked (if so, throw TypeError)
-    // 2. Set stream.[[reader]] to this
-    // 3. Initialize closed promise
-    // 4. Initialize read requests list
-    //
-    // Current limitation: stream parameter is interfaces.ReadableStream struct,
-    // but we need *runtime.Instance to access/modify stream's internal state.
-    // For now, store stream reference as opaque pointer.
+    // SetUpReadableStreamDefaultReader Step 2: ReadableStreamReaderGenericInitialize
+    // This sets up the bidirectional relationship between reader and stream
 
-    // Create closed promise
-    const closed_promise = try AsyncPromise(void).init(allocator, event_loop);
+    // ReadableStreamReaderGenericInitialize Step 1: Set reader.[[stream]] to stream
+    reader_internal.stream = stream_instance;
+
+    // ReadableStreamReaderGenericInitialize Step 2: Set stream.[[reader]] to reader
+    stream_internal.reader = .{ .default = instance };
+
+    // ReadableStreamReaderGenericInitialize Step 3-5: Initialize closedPromise based on stream state
+    const closed_promise = switch (stream_internal.state) {
+        // Step 3: If stream.[[state]] is "readable", create pending promise
+        .readable => try AsyncPromise(void).init(allocator, event_loop),
+
+        // Step 4: If stream.[[state]] is "closed", create resolved promise
+        .closed => blk: {
+            const promise = try AsyncPromise(void).init(allocator, event_loop);
+            promise.*.fulfill({});
+            break :blk promise;
+        },
+
+        // Step 5: If stream.[[state]] is "errored", create rejected promise
+        .errored => blk: {
+            const promise = try AsyncPromise(void).init(allocator, event_loop);
+            // TODO: Reject with stream.[[storedError]]
+            // For now, reject with generic TypeError
+            const exception = try webidl.errors.Exception.typeError(allocator, "Stream is errored");
+            promise.*.reject(exception);
+            // Note: Should set promise.[[PromiseIsHandled]] to true
+            break :blk promise;
+        },
+    };
     errdefer closed_promise.deinit();
 
-    // Create InternalState
-    const internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(internal);
+    // SetUpReadableStreamDefaultReader Step 3: Initialize readRequests to empty list
+    const read_requests: std.ArrayList(*AsyncPromise(ReadResult)) = .{
+        .items = &.{},
+        .capacity = 0,
+    };
 
-    internal.* = InternalState{
+    reader_internal.* = InternalState{
         .stream = stream_instance,
         .closed_promise = closed_promise,
-        .read_requests = std.ArrayList(*AsyncPromise(ReadResult)){},
+        .read_requests = read_requests,
         .event_loop = event_loop,
         .allocator = allocator,
     };
 
-    state.own._internal = internal;
+    reader_state.own._internal = reader_internal;
 
     return instance;
 }
@@ -172,35 +207,83 @@ pub fn get_closed(instance: *runtime.Instance) !*const anyopaque {
 ///
 /// Steps:
 /// 1. If this.[[stream]] is undefined, return promise rejected with TypeError
-/// 2. Return ! ReadableStreamDefaultReaderRead(this)
+/// 2. Let promise be a new promise
+/// 3. Let readRequest be a new read request with:
+///    - chunk steps: Resolve promise with { value: chunk, done: false }
+///    - close steps: Resolve promise with { value: undefined, done: true }
+///    - error steps: Reject promise with e
+/// 4. Perform ! ReadableStreamDefaultReaderRead(this, readRequest)
+/// 5. Return promise
 ///
 /// Returns: Pointer to AsyncPromise(ReadResult) - caller owns and must deinit
-///
-/// TODO: Stream instance access needed to implement full algorithm
 pub fn call_read(instance: *runtime.Instance) !*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.TypeError;
 
     // Step 1: Check if reader has been released
     if (internal.stream == null) {
-        // TODO: Return rejected promise with TypeError
-        // For now, return Zig error until webidl.errors is accessible
-        return error.TypeError;
+        // Return rejected promise with TypeError
+        const promise = try AsyncPromise(ReadResult).init(
+            internal.allocator,
+            internal.event_loop,
+        );
+        const exception = try webidl.errors.Exception.typeError(internal.allocator, "Reader has been released");
+        promise.*.reject(exception);
+        return @ptrCast(promise);
     }
 
-    // Step 2: Perform ReadableStreamDefaultReaderRead(this)
-    // TODO: Implement full read algorithm:
-    // - If stream has queued chunks, return fulfilled promise immediately
-    // - Otherwise, create pending promise and add to readRequests
-    // - The controller will fulfill this promise when data arrives
-
-    // Placeholder: return pending promise and add to read requests
+    // Step 2: Create promise
     const promise = try AsyncPromise(ReadResult).init(
         internal.allocator,
         internal.event_loop,
     );
-    try internal.read_requests.append(internal.allocator, promise);
+    errdefer promise.deinit();
 
+    // Step 3: Create read request
+    // Note: The readRequest is conceptually an object with three callbacks:
+    // - chunk steps (called when chunk available)
+    // - close steps (called when stream closes)
+    // - error steps (called when stream errors)
+    //
+    // In our implementation, we store the promise in read_requests list,
+    // and the controller will resolve/reject it appropriately.
+    //
+    // For now, we'll queue the promise. The controller's PullSteps will
+    // either fulfill it immediately (if data available) or keep it pending.
+
+    // Step 4: Perform ReadableStreamDefaultReaderRead(this, readRequest)
+    // This delegates to the stream's controller to pull data
+    const stream_instance = internal.stream.?;
+    const stream_state = stream_instance.getState(interfaces.ReadableStream.State);
+    const stream_internal = stream_state.own._internal orelse return error.InvalidState;
+
+    // Check stream state
+    switch (stream_internal.state) {
+        .closed => {
+            // Close steps: Resolve with { value: undefined, done: true }
+            promise.*.fulfill(ReadResult{
+                .value = null,
+                .done = true,
+            });
+        },
+        .errored => {
+            // Error steps: Reject with stream.[[storedError]]
+            // TODO: Use actual stored error from stream_internal.stored_error
+            const exception = try webidl.errors.Exception.typeError(internal.allocator, "Stream is errored");
+            promise.*.reject(exception);
+        },
+        .readable => {
+            // Add promise to read requests queue
+            // The controller will fulfill this when data becomes available
+            try internal.read_requests.append(internal.allocator, promise);
+
+            // TODO: Call controller.[[PullSteps]](readRequest)
+            // This would trigger the underlying source's pull() method
+            // For now, the promise remains pending until fulfilled externally
+        },
+    }
+
+    // Step 5: Return promise
     return @ptrCast(promise);
 }
 
@@ -212,6 +295,17 @@ pub fn call_read(instance: *runtime.Instance) !*const anyopaque {
 /// Steps:
 /// 1. If this.[[stream]] is undefined, return
 /// 2. Perform ! ReadableStreamReaderGenericRelease(this)
+///
+/// ReadableStreamReaderGenericRelease(reader):
+/// 1. Let stream be reader.[[stream]]
+/// 2. Assert: stream is not undefined
+/// 3. Assert: stream.[[reader]] is reader
+/// 4. If stream.[[state]] is "readable", reject reader.[[closedPromise]] with TypeError
+/// 5. Otherwise, set reader.[[closedPromise]] to a promise rejected with TypeError
+/// 6. Set reader.[[closedPromise]].[[PromiseIsHandled]] to true
+/// 7. Perform ! stream.[[controller]].[[ReleaseSteps]]()
+/// 8. Set stream.[[reader]] to undefined
+/// 9. Set reader.[[stream]] to undefined
 pub fn call_releaseLock(instance: *runtime.Instance) !void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.TypeError;
@@ -221,15 +315,39 @@ pub fn call_releaseLock(instance: *runtime.Instance) !void {
         return;
     }
 
-    // Step 2: Perform generic release
-    // TODO: Implement ReadableStreamReaderGenericRelease
-    // This involves:
-    // - Rejecting closed promise if stream is readable
-    // - Calling controller release steps
-    // - Clearing stream.[[reader]]
-    // - Clearing this.[[stream]]
+    // ReadableStreamReaderGenericRelease Step 1: Get stream
+    const stream_instance = internal.stream.?;
+    const stream_state = stream_instance.getState(interfaces.ReadableStream.State);
+    const stream_internal = stream_state.own._internal orelse return error.InvalidState;
 
-    // Placeholder
+    // Step 2-3: Assertions (stream exists and reader matches)
+    // These are guaranteed by our type system
+
+    // Step 4-5: Reject closedPromise with TypeError
+    const type_error = try webidl.errors.Exception.typeError(internal.allocator, "Reader lock released");
+
+    if (stream_internal.state == .readable) {
+        // Step 4: Stream is readable, reject existing promise
+        internal.closed_promise.*.reject(type_error);
+    } else {
+        // Step 5: Stream is closed/errored, create new rejected promise
+        // Note: We can't replace the promise here as it's already created
+        // Just reject the existing one
+        internal.closed_promise.*.reject(type_error);
+    }
+
+    // Step 6: Set promise.[[PromiseIsHandled]] to true
+    // TODO: Implement PromiseIsHandled flag on AsyncPromise
+    // This prevents unhandled rejection warnings
+
+    // Step 7: Perform controller.[[ReleaseSteps]]()
+    // TODO: Implement ReleaseSteps on controller
+    // For now, this is a no-op for default controllers
+
+    // Step 8: Clear stream.[[reader]]
+    stream_internal.reader = .none;
+
+    // Step 9: Clear reader.[[stream]]
     internal.stream = null;
 }
 
@@ -244,31 +362,38 @@ pub fn call_releaseLock(instance: *runtime.Instance) !void {
 /// 1. If this.[[stream]] is undefined, return rejected promise with TypeError
 /// 2. Return ! ReadableStreamReaderGenericCancel(this, reason)
 ///
-/// Returns: Pointer to AsyncPromise(void) - caller owns and must deinit
+/// ReadableStreamReaderGenericCancel(reader, reason):
+/// 1. Let stream be reader.[[stream]]
+/// 2. Assert: stream is not undefined
+/// 3. Return ! ReadableStreamCancel(stream, reason)
 ///
-/// TODO: Stream instance access needed to implement full algorithm
+/// Returns: Pointer to AsyncPromise(void) - caller owns and must deinit
 pub fn call_cancel(instance: *runtime.Instance, reason: *const anyopaque) !*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.TypeError;
 
     // Step 1: Check if reader has been released
     if (internal.stream == null) {
-        // TODO: Return rejected promise with TypeError
-        // For now, return Zig error until webidl.errors is accessible
-        return error.TypeError;
+        // Return rejected promise with TypeError
+        const promise = try AsyncPromise(void).init(
+            internal.allocator,
+            internal.event_loop,
+        );
+        const exception = try webidl.errors.Exception.typeError(internal.allocator, "Reader has been released");
+        promise.*.reject(exception);
+        return @ptrCast(promise);
     }
 
-    // Step 2: Perform ReadableStreamReaderGenericCancel(this, reason)
-    // TODO: Implement generic cancel algorithm:
-    // - Get stream from internal.stream
-    // - Call stream's cancel method with reason
-    // - Return the promise from stream.cancel()
-    _ = reason;
+    // Step 2: ReadableStreamReaderGenericCancel
+    // Get stream and delegate to stream.cancel(reason)
+    const stream_instance = internal.stream.?;
 
-    // Placeholder: return pending promise
-    const promise = try AsyncPromise(void).init(
-        internal.allocator,
-        internal.event_loop,
+    // Call stream's cancel method
+    // This returns a promise that we return to the caller
+    const cancel_promise = try interfaces.ReadableStream.call_cancel(
+        stream_instance,
+        reason,
     );
-    return @ptrCast(promise);
+
+    return cancel_promise;
 }
