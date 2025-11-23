@@ -2644,33 +2644,36 @@ test "writeMetadata includes extended attributes" {
 }
 
 test "writeMetadata includes legacy unforgeable properties" {
-    // TODO: This test needs to be updated to match current writeMetadata implementation
-    // The legacy_unforgeable_properties generation may have changed or been removed
-    return error.SkipZigTest;
+    // LegacyUnforgeable attributes appear in the properties list like any other attribute
+    // The LegacyUnforgeable extended attribute appears in extended_attributes
+    // This test verifies that attributes with LegacyUnforgeable are included in properties
 
-    // var buffer = std.ArrayList(u8).empty;
-    // defer buffer.deinit(testing.allocator);
+    var buffer = std.ArrayList(u8).empty;
+    defer buffer.deinit(testing.allocator);
 
-    // const writer = buffer.writer(testing.allocator);
+    const writer = buffer.writer(testing.allocator);
 
-    // var ext_attrs = [_]types.ExtendedAttribute{
-    //     .{ .name = "LegacyUnforgeable", .rhs = null },
-    // };
+    var ext_attrs = [_]types.ExtendedAttribute{
+        .{ .name = "LegacyUnforgeable", .rhs = null },
+    };
 
-    // var attrs = [_]types.Attribute{
-    //     .{
-    //         .name = "isTrusted",
-    //         .idlType = .{ .type = "boolean" },
-    //         .readonly = true,
-    //         .extAttrs = &ext_attrs,
-    //     },
-    // };
+    var attrs = [_]types.Attribute{
+        .{
+            .name = "isTrusted",
+            .idlType = .{ .type = "boolean" },
+            .readonly = true,
+            .extAttrs = &ext_attrs,
+        },
+    };
 
-    // try writeMetadata(writer.any(), "Event", null, null, &.{}, &.{}, &attrs, &.{}, &.{}, &.{}, false, false, null, &attrs);
+    try writeMetadata(writer.any(), "Event", null, null, &.{}, &.{}, &attrs, &.{}, &.{}, &.{}, false, false, null, &attrs);
 
-    // const output = buffer.items;
-    // try testing.expect(std.mem.indexOf(u8, output, "legacy_unforgeable_properties") != null);
-    // try testing.expect(std.mem.indexOf(u8, output, "\"isTrusted\"") != null);
+    const output = buffer.items;
+
+    // LegacyUnforgeable attributes should appear in the properties list
+    try testing.expect(std.mem.indexOf(u8, output, "pub const properties = .{") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\"isTrusted\"") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\"get_isTrusted\"") != null);
 }
 
 test "writeStateTypeAlias generates type alias" {
