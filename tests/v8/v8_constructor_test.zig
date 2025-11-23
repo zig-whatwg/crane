@@ -38,7 +38,8 @@ test "V8 constructor - compiles with zero arguments" {
     };
 
     // Verify type compiles
-    const Binding = @import("../src/v8/interface.zig").V8Interface(MockInterface);
+    const v8 = @import("v8");
+    const Binding = v8.V8Interface(MockInterface);
     try testing.expectEqualStrings("MockZeroArg", Binding.name);
 }
 
@@ -68,7 +69,8 @@ test "V8 constructor - compiles with one argument" {
         }
     };
 
-    const Binding = @import("../src/v8/interface.zig").V8Interface(MockInterface);
+    const v8 = @import("v8");
+    const Binding = v8.V8Interface(MockInterface);
     try testing.expectEqualStrings("MockOneArg", Binding.name);
 }
 
@@ -98,7 +100,8 @@ test "V8 constructor - compiles with two arguments" {
         }
     };
 
-    const Binding = @import("../src/v8/interface.zig").V8Interface(MockInterface);
+    const v8 = @import("v8");
+    const Binding = v8.V8Interface(MockInterface);
     try testing.expectEqualStrings("MockTwoArg", Binding.name);
 }
 
@@ -131,7 +134,8 @@ test "V8 constructor - compiles with three arguments" {
         }
     };
 
-    const Binding = @import("../src/v8/interface.zig").V8Interface(MockInterface);
+    const v8 = @import("v8");
+    const Binding = v8.V8Interface(MockInterface);
     try testing.expectEqualStrings("MockThreeArg", Binding.name);
 }
 
@@ -167,7 +171,8 @@ test "V8 constructor - compiles with four arguments" {
         }
     };
 
-    const Binding = @import("../src/v8/interface.zig").V8Interface(MockInterface);
+    const v8 = @import("v8");
+    const Binding = v8.V8Interface(MockInterface);
     try testing.expectEqualStrings("MockFourArg", Binding.name);
 }
 
@@ -202,7 +207,8 @@ test "V8 constructor - compiles with mixed types" {
         }
     };
 
-    const Binding = @import("../src/v8/interface.zig").V8Interface(MockInterface);
+    const v8 = @import("v8");
+    const Binding = v8.V8Interface(MockInterface);
     try testing.expectEqualStrings("MockMixedTypes", Binding.name);
 }
 

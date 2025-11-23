@@ -1,6 +1,7 @@
 const std = @import("std");
-const URL = @import("../src/url.zig").URL;
-const helpers = @import("url").test_helpers;
+const url_mod = @import("url");
+const URL = url_mod.URL;
+const helpers = url_mod.test_helpers;
 
 test "debug setUsername corruption" {
     const allocator = std.testing.allocator;

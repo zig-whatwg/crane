@@ -5,9 +5,9 @@
 
 const std = @import("std");
 const testing = std.testing;
-const tok_mod = @import("../../src/selector/tokenizer.zig");
-const Tokenizer = tok_mod.Tokenizer;
-const Token = tok_mod.Token;
+const selector = @import("selector");
+const Tokenizer = selector.Tokenizer;
+const Token = selector.Token;
 
 // ============================================================================
 // Basic Token Tests

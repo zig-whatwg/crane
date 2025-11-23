@@ -1,6 +1,7 @@
 const std = @import("std");
-const URL = @import("../webidl/src/url/URL.zig").URL;
-const URLSearchParams = @import("../webidl/src/url/URLSearchParams.zig").URLSearchParams;
+const interfaces = @import("interfaces");
+const URL = interfaces.URL.URL;
+const URLSearchParams = interfaces.URLSearchParams.URLSearchParams;
 
 test "URL - basic initialization" {
     const allocator = std.testing.allocator;

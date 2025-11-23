@@ -15,7 +15,8 @@ const testing = std.testing;
 const runtime = @import("runtime");
 
 // Import conversion module
-const conv = @import("../src/v8/conversions.zig");
+const v8 = @import("v8");
+const conv = v8.conversions;
 
 // ============================================================================
 // String Conversion Tests

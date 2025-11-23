@@ -5,10 +5,11 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
+const streams = @import("streams");
 
 // Import from internal
-const structured_clone = @import("../src/streams/internal/structured_clone.zig");
-const common = @import("../src/streams/internal/common.zig");
+const structured_clone = streams.internal.structured_clone;
+const common = streams.internal.common;
 
 test "structured_clone: CloneAsUint8Array - basic clone" {
     const allocator = std.testing.allocator;

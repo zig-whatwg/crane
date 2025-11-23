@@ -8,15 +8,18 @@ const std = @import("std");
 const testing = std.testing;
 
 // Import BYOB components
-const ReadableStream = @import("../webidl/src/streams/ReadableStream.zig").ReadableStream;
-const ReadableByteStreamController = @import("../webidl/src/streams/ReadableByteStreamController.zig").ReadableByteStreamController;
-const PullIntoDescriptorModule = @import("../src/streams/internal/pull_into_descriptor.zig");
+const interfaces = @import("interfaces");
+const streams = @import("streams");
+
+const ReadableStream = interfaces.ReadableStream.ReadableStream;
+const ReadableByteStreamController = interfaces.ReadableByteStreamController.ReadableByteStreamController;
+const PullIntoDescriptorModule = streams.internal.pull_into_descriptor;
 const PullIntoDescriptor = PullIntoDescriptorModule.PullIntoDescriptor;
 const ArrayBuffer = PullIntoDescriptorModule.ArrayBuffer;
 const ViewConstructor = PullIntoDescriptorModule.ViewConstructor;
 const ReaderType = PullIntoDescriptorModule.ReaderType;
-const common = @import("../src/streams/internal/common.zig");
-const TestEventLoop = @import("../src/streams/internal/test_event_loop.zig").TestEventLoop;
+const common = streams.internal.common;
+const TestEventLoop = streams.internal.test_event_loop.TestEventLoop;
 
 // ============================================================================
 // ReadableByteStreamController Tests
