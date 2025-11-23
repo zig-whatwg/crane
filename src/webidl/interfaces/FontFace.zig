@@ -1,5 +1,5 @@
 //! Generated from: css-font-loading.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const FontFaceImpl = @import("impls").FontFace;
 const FontFaceLoadStatus = @import("enums").FontFaceLoadStatus;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const BufferSource = @import("typedefs").BufferSource;
 const FontFaceVariations = @import("interfaces").FontFaceVariations;
 const FontFacePalettes = @import("interfaces").FontFacePalettes;
@@ -162,96 +162,96 @@ pub const FontFace = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, family: *const anyopaque, source: *const anyopaque, descriptors: FontFaceDescriptors) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, family: CSSOMString, source: *const anyopaque, descriptors: FontFaceDescriptors) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try FontFaceImpl.call_constructor(allocator, ctx, family, source, descriptors);
     }
 
-    pub fn get_family(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_family(instance: *runtime.Instance) anyerror!CSSOMString {
         return try FontFaceImpl.get_family(instance);
     }
 
-    pub fn set_family(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_family(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try FontFaceImpl.set_family(instance, value);
     }
 
-    pub fn get_style(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_style(instance: *runtime.Instance) anyerror!CSSOMString {
         return try FontFaceImpl.get_style(instance);
     }
 
-    pub fn set_style(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_style(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try FontFaceImpl.set_style(instance, value);
     }
 
-    pub fn get_weight(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_weight(instance: *runtime.Instance) anyerror!CSSOMString {
         return try FontFaceImpl.get_weight(instance);
     }
 
-    pub fn set_weight(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_weight(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try FontFaceImpl.set_weight(instance, value);
     }
 
-    pub fn get_stretch(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_stretch(instance: *runtime.Instance) anyerror!CSSOMString {
         return try FontFaceImpl.get_stretch(instance);
     }
 
-    pub fn set_stretch(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_stretch(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try FontFaceImpl.set_stretch(instance, value);
     }
 
-    pub fn get_unicodeRange(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_unicodeRange(instance: *runtime.Instance) anyerror!CSSOMString {
         return try FontFaceImpl.get_unicodeRange(instance);
     }
 
-    pub fn set_unicodeRange(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_unicodeRange(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try FontFaceImpl.set_unicodeRange(instance, value);
     }
 
-    pub fn get_featureSettings(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_featureSettings(instance: *runtime.Instance) anyerror!CSSOMString {
         return try FontFaceImpl.get_featureSettings(instance);
     }
 
-    pub fn set_featureSettings(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_featureSettings(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try FontFaceImpl.set_featureSettings(instance, value);
     }
 
-    pub fn get_variationSettings(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_variationSettings(instance: *runtime.Instance) anyerror!CSSOMString {
         return try FontFaceImpl.get_variationSettings(instance);
     }
 
-    pub fn set_variationSettings(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_variationSettings(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try FontFaceImpl.set_variationSettings(instance, value);
     }
 
-    pub fn get_display(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_display(instance: *runtime.Instance) anyerror!CSSOMString {
         return try FontFaceImpl.get_display(instance);
     }
 
-    pub fn set_display(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_display(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try FontFaceImpl.set_display(instance, value);
     }
 
-    pub fn get_ascentOverride(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_ascentOverride(instance: *runtime.Instance) anyerror!CSSOMString {
         return try FontFaceImpl.get_ascentOverride(instance);
     }
 
-    pub fn set_ascentOverride(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_ascentOverride(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try FontFaceImpl.set_ascentOverride(instance, value);
     }
 
-    pub fn get_descentOverride(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_descentOverride(instance: *runtime.Instance) anyerror!CSSOMString {
         return try FontFaceImpl.get_descentOverride(instance);
     }
 
-    pub fn set_descentOverride(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_descentOverride(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try FontFaceImpl.set_descentOverride(instance, value);
     }
 
-    pub fn get_lineGapOverride(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_lineGapOverride(instance: *runtime.Instance) anyerror!CSSOMString {
         return try FontFaceImpl.get_lineGapOverride(instance);
     }
 
-    pub fn set_lineGapOverride(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_lineGapOverride(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try FontFaceImpl.set_lineGapOverride(instance, value);
     }
 

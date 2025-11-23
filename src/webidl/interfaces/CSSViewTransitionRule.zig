@@ -1,5 +1,5 @@
 //! Generated from: css-view-transitions.idl
-//! Generated at: 2025-11-23T14:26:29Z
+//! Generated at: 2025-11-23T16:59:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,7 @@ const runtime = @import("runtime");
 const CSSViewTransitionRuleImpl = @import("impls").CSSViewTransitionRule;
 const CSSRule = @import("interfaces").CSSRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSViewTransitionRule = struct {
@@ -84,7 +84,7 @@ pub const CSSViewTransitionRule = struct {
         CSSViewTransitionRuleImpl.deinit(instance);
     }
 
-    pub fn get_navigation(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_navigation(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSViewTransitionRuleImpl.get_navigation(instance);
     }
 

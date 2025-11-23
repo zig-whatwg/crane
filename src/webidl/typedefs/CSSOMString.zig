@@ -1,4 +1,7 @@
 //! WebIDL typedef: CSSOMString
-//! CSSOMString is an alias for DOMString used in CSSOM specs
+//!
+//! This file is AUTO-GENERATED. Do not edit manually.
 
-pub const CSSOMString = []const u8;
+const runtime = @import("runtime");
+
+pub const CSSOMString = runtime.DOMString;

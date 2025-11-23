@@ -18,6 +18,10 @@ pub const ImplError = error{
     NotImplemented,
 };
 
+/// Internal state for this implementation
+/// Can be used to store browser-specific data structures
+pub const InternalState = struct {};
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -38,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": *const anyopaque, animationEventInitDict: dictionaries.AnimationEventInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": typedefs.CSSOMString, animationEventInitDict: dictionaries.AnimationEventInit) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &AnimationEvent.vtable, ctx);
     errdefer deinit(instance);
@@ -51,7 +55,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for animationName
-pub fn get_animationName(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_animationName(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
@@ -63,7 +67,7 @@ pub fn get_elapsedTime(instance: *runtime.Instance) ImplError!f64 {
 }
 
 /// Getter for pseudoElement
-pub fn get_pseudoElement(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_pseudoElement(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }

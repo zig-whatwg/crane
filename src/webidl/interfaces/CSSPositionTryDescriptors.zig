@@ -1,5 +1,5 @@
 //! Generated from: css-anchor-position.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:14Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const CSSPositionTryDescriptorsImpl = @import("impls").CSSPositionTryDescriptors;
 const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const CSSRule = @import("interfaces").CSSRule;
 const DOMString = @import("typedefs").DOMString;
 const CSSValue = @import("interfaces").CSSValue;
@@ -438,563 +438,563 @@ pub const CSSPositionTryDescriptors = struct {
         CSSPositionTryDescriptorsImpl.deinit(instance);
     }
 
-    pub fn get_margin(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_margin(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_margin(instance);
     }
 
-    pub fn set_margin(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_margin(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_margin(instance, value);
     }
 
-    pub fn get_marginTop(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_marginTop(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_marginTop(instance);
     }
 
-    pub fn set_marginTop(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_marginTop(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_marginTop(instance, value);
     }
 
-    pub fn get_marginRight(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_marginRight(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_marginRight(instance);
     }
 
-    pub fn set_marginRight(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_marginRight(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_marginRight(instance, value);
     }
 
-    pub fn get_marginBottom(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_marginBottom(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_marginBottom(instance);
     }
 
-    pub fn set_marginBottom(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_marginBottom(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_marginBottom(instance, value);
     }
 
-    pub fn get_marginLeft(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_marginLeft(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_marginLeft(instance);
     }
 
-    pub fn set_marginLeft(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_marginLeft(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_marginLeft(instance, value);
     }
 
-    pub fn get_marginBlock(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_marginBlock(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_marginBlock(instance);
     }
 
-    pub fn set_marginBlock(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_marginBlock(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_marginBlock(instance, value);
     }
 
-    pub fn get_marginBlockStart(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_marginBlockStart(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_marginBlockStart(instance);
     }
 
-    pub fn set_marginBlockStart(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_marginBlockStart(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_marginBlockStart(instance, value);
     }
 
-    pub fn get_marginBlockEnd(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_marginBlockEnd(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_marginBlockEnd(instance);
     }
 
-    pub fn set_marginBlockEnd(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_marginBlockEnd(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_marginBlockEnd(instance, value);
     }
 
-    pub fn get_marginInline(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_marginInline(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_marginInline(instance);
     }
 
-    pub fn set_marginInline(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_marginInline(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_marginInline(instance, value);
     }
 
-    pub fn get_marginInlineStart(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_marginInlineStart(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_marginInlineStart(instance);
     }
 
-    pub fn set_marginInlineStart(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_marginInlineStart(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_marginInlineStart(instance, value);
     }
 
-    pub fn get_marginInlineEnd(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_marginInlineEnd(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_marginInlineEnd(instance);
     }
 
-    pub fn set_marginInlineEnd(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_marginInlineEnd(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_marginInlineEnd(instance, value);
     }
 
-    pub fn get_margin_top(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_margin_top(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_margin_top(instance);
     }
 
-    pub fn set_margin_top(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_margin_top(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_margin_top(instance, value);
     }
 
-    pub fn get_margin_right(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_margin_right(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_margin_right(instance);
     }
 
-    pub fn set_margin_right(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_margin_right(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_margin_right(instance, value);
     }
 
-    pub fn get_margin_bottom(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_margin_bottom(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_margin_bottom(instance);
     }
 
-    pub fn set_margin_bottom(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_margin_bottom(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_margin_bottom(instance, value);
     }
 
-    pub fn get_margin_left(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_margin_left(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_margin_left(instance);
     }
 
-    pub fn set_margin_left(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_margin_left(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_margin_left(instance, value);
     }
 
-    pub fn get_margin_block(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_margin_block(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_margin_block(instance);
     }
 
-    pub fn set_margin_block(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_margin_block(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_margin_block(instance, value);
     }
 
-    pub fn get_margin_block_start(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_margin_block_start(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_margin_block_start(instance);
     }
 
-    pub fn set_margin_block_start(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_margin_block_start(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_margin_block_start(instance, value);
     }
 
-    pub fn get_margin_block_end(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_margin_block_end(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_margin_block_end(instance);
     }
 
-    pub fn set_margin_block_end(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_margin_block_end(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_margin_block_end(instance, value);
     }
 
-    pub fn get_margin_inline(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_margin_inline(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_margin_inline(instance);
     }
 
-    pub fn set_margin_inline(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_margin_inline(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_margin_inline(instance, value);
     }
 
-    pub fn get_margin_inline_start(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_margin_inline_start(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_margin_inline_start(instance);
     }
 
-    pub fn set_margin_inline_start(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_margin_inline_start(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_margin_inline_start(instance, value);
     }
 
-    pub fn get_margin_inline_end(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_margin_inline_end(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_margin_inline_end(instance);
     }
 
-    pub fn set_margin_inline_end(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_margin_inline_end(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_margin_inline_end(instance, value);
     }
 
-    pub fn get_inset(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_inset(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_inset(instance);
     }
 
-    pub fn set_inset(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_inset(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_inset(instance, value);
     }
 
-    pub fn get_insetBlock(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_insetBlock(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_insetBlock(instance);
     }
 
-    pub fn set_insetBlock(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_insetBlock(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_insetBlock(instance, value);
     }
 
-    pub fn get_insetBlockStart(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_insetBlockStart(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_insetBlockStart(instance);
     }
 
-    pub fn set_insetBlockStart(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_insetBlockStart(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_insetBlockStart(instance, value);
     }
 
-    pub fn get_insetBlockEnd(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_insetBlockEnd(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_insetBlockEnd(instance);
     }
 
-    pub fn set_insetBlockEnd(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_insetBlockEnd(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_insetBlockEnd(instance, value);
     }
 
-    pub fn get_insetInline(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_insetInline(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_insetInline(instance);
     }
 
-    pub fn set_insetInline(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_insetInline(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_insetInline(instance, value);
     }
 
-    pub fn get_insetInlineStart(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_insetInlineStart(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_insetInlineStart(instance);
     }
 
-    pub fn set_insetInlineStart(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_insetInlineStart(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_insetInlineStart(instance, value);
     }
 
-    pub fn get_insetInlineEnd(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_insetInlineEnd(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_insetInlineEnd(instance);
     }
 
-    pub fn set_insetInlineEnd(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_insetInlineEnd(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_insetInlineEnd(instance, value);
     }
 
-    pub fn get_top(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_top(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_top(instance);
     }
 
-    pub fn set_top(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_top(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_top(instance, value);
     }
 
-    pub fn get_left(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_left(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_left(instance);
     }
 
-    pub fn set_left(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_left(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_left(instance, value);
     }
 
-    pub fn get_right(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_right(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_right(instance);
     }
 
-    pub fn set_right(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_right(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_right(instance, value);
     }
 
-    pub fn get_bottom(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_bottom(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_bottom(instance);
     }
 
-    pub fn set_bottom(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_bottom(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_bottom(instance, value);
     }
 
-    pub fn get_inset_block(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_inset_block(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_inset_block(instance);
     }
 
-    pub fn set_inset_block(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_inset_block(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_inset_block(instance, value);
     }
 
-    pub fn get_inset_block_start(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_inset_block_start(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_inset_block_start(instance);
     }
 
-    pub fn set_inset_block_start(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_inset_block_start(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_inset_block_start(instance, value);
     }
 
-    pub fn get_inset_block_end(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_inset_block_end(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_inset_block_end(instance);
     }
 
-    pub fn set_inset_block_end(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_inset_block_end(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_inset_block_end(instance, value);
     }
 
-    pub fn get_inset_inline(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_inset_inline(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_inset_inline(instance);
     }
 
-    pub fn set_inset_inline(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_inset_inline(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_inset_inline(instance, value);
     }
 
-    pub fn get_inset_inline_start(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_inset_inline_start(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_inset_inline_start(instance);
     }
 
-    pub fn set_inset_inline_start(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_inset_inline_start(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_inset_inline_start(instance, value);
     }
 
-    pub fn get_inset_inline_end(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_inset_inline_end(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_inset_inline_end(instance);
     }
 
-    pub fn set_inset_inline_end(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_inset_inline_end(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_inset_inline_end(instance, value);
     }
 
-    pub fn get_width(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_width(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_width(instance);
     }
 
-    pub fn set_width(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_width(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_width(instance, value);
     }
 
-    pub fn get_minWidth(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_minWidth(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_minWidth(instance);
     }
 
-    pub fn set_minWidth(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_minWidth(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_minWidth(instance, value);
     }
 
-    pub fn get_maxWidth(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_maxWidth(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_maxWidth(instance);
     }
 
-    pub fn set_maxWidth(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_maxWidth(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_maxWidth(instance, value);
     }
 
-    pub fn get_height(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_height(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_height(instance);
     }
 
-    pub fn set_height(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_height(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_height(instance, value);
     }
 
-    pub fn get_minHeight(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_minHeight(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_minHeight(instance);
     }
 
-    pub fn set_minHeight(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_minHeight(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_minHeight(instance, value);
     }
 
-    pub fn get_maxHeight(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_maxHeight(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_maxHeight(instance);
     }
 
-    pub fn set_maxHeight(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_maxHeight(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_maxHeight(instance, value);
     }
 
-    pub fn get_blockSize(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_blockSize(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_blockSize(instance);
     }
 
-    pub fn set_blockSize(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_blockSize(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_blockSize(instance, value);
     }
 
-    pub fn get_minBlockSize(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_minBlockSize(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_minBlockSize(instance);
     }
 
-    pub fn set_minBlockSize(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_minBlockSize(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_minBlockSize(instance, value);
     }
 
-    pub fn get_maxBlockSize(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_maxBlockSize(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_maxBlockSize(instance);
     }
 
-    pub fn set_maxBlockSize(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_maxBlockSize(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_maxBlockSize(instance, value);
     }
 
-    pub fn get_inlineSize(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_inlineSize(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_inlineSize(instance);
     }
 
-    pub fn set_inlineSize(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_inlineSize(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_inlineSize(instance, value);
     }
 
-    pub fn get_minInlineSize(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_minInlineSize(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_minInlineSize(instance);
     }
 
-    pub fn set_minInlineSize(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_minInlineSize(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_minInlineSize(instance, value);
     }
 
-    pub fn get_maxInlineSize(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_maxInlineSize(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_maxInlineSize(instance);
     }
 
-    pub fn set_maxInlineSize(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_maxInlineSize(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_maxInlineSize(instance, value);
     }
 
-    pub fn get_min_width(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_min_width(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_min_width(instance);
     }
 
-    pub fn set_min_width(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_min_width(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_min_width(instance, value);
     }
 
-    pub fn get_max_width(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_max_width(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_max_width(instance);
     }
 
-    pub fn set_max_width(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_max_width(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_max_width(instance, value);
     }
 
-    pub fn get_min_height(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_min_height(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_min_height(instance);
     }
 
-    pub fn set_min_height(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_min_height(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_min_height(instance, value);
     }
 
-    pub fn get_max_height(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_max_height(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_max_height(instance);
     }
 
-    pub fn set_max_height(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_max_height(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_max_height(instance, value);
     }
 
-    pub fn get_block_size(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_block_size(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_block_size(instance);
     }
 
-    pub fn set_block_size(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_block_size(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_block_size(instance, value);
     }
 
-    pub fn get_min_block_size(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_min_block_size(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_min_block_size(instance);
     }
 
-    pub fn set_min_block_size(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_min_block_size(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_min_block_size(instance, value);
     }
 
-    pub fn get_max_block_size(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_max_block_size(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_max_block_size(instance);
     }
 
-    pub fn set_max_block_size(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_max_block_size(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_max_block_size(instance, value);
     }
 
-    pub fn get_inline_size(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_inline_size(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_inline_size(instance);
     }
 
-    pub fn set_inline_size(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_inline_size(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_inline_size(instance, value);
     }
 
-    pub fn get_min_inline_size(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_min_inline_size(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_min_inline_size(instance);
     }
 
-    pub fn set_min_inline_size(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_min_inline_size(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_min_inline_size(instance, value);
     }
 
-    pub fn get_max_inline_size(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_max_inline_size(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_max_inline_size(instance);
     }
 
-    pub fn set_max_inline_size(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_max_inline_size(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_max_inline_size(instance, value);
     }
 
-    pub fn get_placeSelf(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_placeSelf(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_placeSelf(instance);
     }
 
-    pub fn set_placeSelf(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_placeSelf(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_placeSelf(instance, value);
     }
 
-    pub fn get_alignSelf(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_alignSelf(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_alignSelf(instance);
     }
 
-    pub fn set_alignSelf(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_alignSelf(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_alignSelf(instance, value);
     }
 
-    pub fn get_justifySelf(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_justifySelf(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_justifySelf(instance);
     }
 
-    pub fn set_justifySelf(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_justifySelf(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_justifySelf(instance, value);
     }
 
-    pub fn get_place_self(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_place_self(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_place_self(instance);
     }
 
-    pub fn set_place_self(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_place_self(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_place_self(instance, value);
     }
 
-    pub fn get_align_self(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_align_self(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_align_self(instance);
     }
 
-    pub fn set_align_self(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_align_self(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_align_self(instance, value);
     }
 
-    pub fn get_justify_self(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_justify_self(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_justify_self(instance);
     }
 
-    pub fn set_justify_self(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_justify_self(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_justify_self(instance, value);
     }
 
-    pub fn get_positionAnchor(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_positionAnchor(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_positionAnchor(instance);
     }
 
-    pub fn set_positionAnchor(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_positionAnchor(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_positionAnchor(instance, value);
     }
 
-    pub fn get_position_anchor(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_position_anchor(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_position_anchor(instance);
     }
 
-    pub fn set_position_anchor(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_position_anchor(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_position_anchor(instance, value);
     }
 
-    pub fn get_positionArea(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_positionArea(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_positionArea(instance);
     }
 
-    pub fn set_positionArea(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_positionArea(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_positionArea(instance, value);
     }
 
-    pub fn get_position_area(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_position_area(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryDescriptorsImpl.get_position_area(instance);
     }
 
-    pub fn set_position_area(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_position_area(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_position_area(instance, value);
     }
 

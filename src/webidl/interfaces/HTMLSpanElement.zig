@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T14:26:29Z
+//! Generated at: 2025-11-23T16:59:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,7 @@ const runtime = @import("runtime");
 const HTMLSpanElementImpl = @import("impls").HTMLSpanElement;
 const HTMLElement = @import("interfaces").HTMLElement;
 const DOMStringMap = @import("interfaces").DOMStringMap;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const HTMLCollection = @import("interfaces").HTMLCollection;
 const TogglePopoverOptions = @import("dictionaries").TogglePopoverOptions;
 const DOMPointInit = @import("dictionaries").DOMPointInit;

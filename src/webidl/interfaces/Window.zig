@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T14:26:29Z
+//! Generated at: 2025-11-23T16:59:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -15,7 +15,7 @@ const AnimationFrameProvider = @import("interfaces").AnimationFrameProvider;
 const WindowSessionStorage = @import("interfaces").WindowSessionStorage;
 const WindowLocalStorage = @import("interfaces").WindowLocalStorage;
 const External = @import("interfaces").External;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const Navigator = @import("interfaces").Navigator;
 const FetchLaterResult = @import("interfaces").FetchLaterResult;
 const ImageBitmapSource = @import("typedefs").ImageBitmapSource;
@@ -66,7 +66,7 @@ const OnBeforeUnloadEventHandler = @import("typedefs").OnBeforeUnloadEventHandle
 const ImageBitmap = @import("interfaces").ImageBitmap;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const SpatialNavigationDirection = @import("enums").SpatialNavigationDirection;
-const WindowProxy = @import("interfaces").WindowProxy;
+const WindowProxy = @import("typedefs").WindowProxy;
 const ScreenDetails = @import("interfaces").ScreenDetails;
 const RequestInfo = @import("typedefs").RequestInfo;
 const Screen = @import("interfaces").Screen;
@@ -1245,12 +1245,12 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [LegacyUnforgeable]
-    pub fn get_window(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_window(instance: *runtime.Instance) anyerror!WindowProxy {
         return try WindowImpl.get_window(instance);
     }
 
     /// Extended attributes: [Replaceable]
-    pub fn get_self(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_self(instance: *runtime.Instance) anyerror!WindowProxy {
         return try WindowImpl.get_self(instance);
     }
 
@@ -1328,7 +1328,7 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [Replaceable]
-    pub fn get_frames(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_frames(instance: *runtime.Instance) anyerror!WindowProxy {
         return try WindowImpl.get_frames(instance);
     }
 
@@ -1338,7 +1338,7 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [LegacyUnforgeable]
-    pub fn get_top(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_top(instance: *runtime.Instance) anyerror!WindowProxy {
         return try WindowImpl.get_top(instance);
     }
 
@@ -1351,7 +1351,7 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [Replaceable]
-    pub fn get_parent(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_parent(instance: *runtime.Instance) anyerror!WindowProxy {
         return try WindowImpl.get_parent(instance);
     }
 
@@ -2714,7 +2714,7 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_matchMedia(instance: *runtime.Instance, query: *const anyopaque) anyerror!MediaQueryList {
+    pub fn call_matchMedia(instance: *runtime.Instance, query: CSSOMString) anyerror!MediaQueryList {
         // [NewObject] - Caller owns the returned object
         
         return try WindowImpl.call_matchMedia(instance, query);
@@ -2831,7 +2831,7 @@ pub const Window = struct {
         return try WindowImpl.call_resizeBy(instance, x, y);
     }
 
-    pub fn call_open(instance: *runtime.Instance, url: runtime.USVString, target: DOMString, features: DOMString) anyerror!*const anyopaque {
+    pub fn call_open(instance: *runtime.Instance, url: runtime.USVString, target: DOMString, features: DOMString) anyerror!WindowProxy {
         
         return try WindowImpl.call_open(instance, url, target, features);
     }
@@ -2862,7 +2862,7 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getComputedStyle(instance: *runtime.Instance, elt: Element, pseudoElt: *const anyopaque) anyerror!CSSStyleProperties {
+    pub fn call_getComputedStyle(instance: *runtime.Instance, elt: Element, pseudoElt: CSSOMString) anyerror!CSSStyleProperties {
         // [NewObject] - Caller owns the returned object
         
         return try WindowImpl.call_getComputedStyle(instance, elt, pseudoElt);

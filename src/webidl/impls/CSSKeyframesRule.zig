@@ -18,6 +18,10 @@ pub const ImplError = error{
     NotImplemented,
 };
 
+/// Internal state for this implementation
+/// Can be used to store browser-specific data structures
+pub const InternalState = struct {};
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -37,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_name(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
@@ -55,28 +59,28 @@ pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
 }
 
 /// Setter for name
-pub fn set_name(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_name(instance: *runtime.Instance, value: typedefs.CSSOMString) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: deleteRule
-pub fn call_deleteRule(instance: *runtime.Instance, select: *const anyopaque) ImplError!void {
+pub fn call_deleteRule(instance: *runtime.Instance, select: typedefs.CSSOMString) ImplError!void {
     _ = instance;
     _ = select;
     return error.NotImplemented;
 }
 
 /// Operation: findRule
-pub fn call_findRule(instance: *runtime.Instance, select: *const anyopaque) ImplError!interfaces.CSSKeyframeRule {
+pub fn call_findRule(instance: *runtime.Instance, select: typedefs.CSSOMString) ImplError!interfaces.CSSKeyframeRule {
     _ = instance;
     _ = select;
     return error.NotImplemented;
 }
 
 /// Operation: appendRule
-pub fn call_appendRule(instance: *runtime.Instance, rule: *const anyopaque) ImplError!void {
+pub fn call_appendRule(instance: *runtime.Instance, rule: typedefs.CSSOMString) ImplError!void {
     _ = instance;
     _ = rule;
     return error.NotImplemented;

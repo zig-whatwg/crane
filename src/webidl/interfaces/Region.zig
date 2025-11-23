@@ -1,12 +1,12 @@
 //! Generated from: css-regions.idl
-//! Generated at: 2025-11-23T14:26:29Z
+//! Generated at: 2025-11-23T16:59:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const RegionImpl = @import("impls").Region;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const Range = @import("interfaces").Range;
 
 pub const Region = struct {
@@ -76,7 +76,7 @@ pub const Region = struct {
         RegionImpl.deinit(instance);
     }
 
-    pub fn get_regionOverset(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_regionOverset(instance: *runtime.Instance) anyerror!CSSOMString {
         return try RegionImpl.get_regionOverset(instance);
     }
 

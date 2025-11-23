@@ -18,6 +18,10 @@ pub const ImplError = error{
     NotImplemented,
 };
 
+/// Internal state for this implementation
+/// Can be used to store browser-specific data structures
+pub const InternalState = struct {};
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -91,7 +95,7 @@ pub fn get_contentDocument(instance: *runtime.Instance) ImplError!interfaces.Doc
 }
 
 /// Getter for contentWindow
-pub fn get_contentWindow(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_contentWindow(instance: *runtime.Instance) ImplError!typedefs.WindowProxy {
     _ = instance;
     return error.NotImplemented;
 }

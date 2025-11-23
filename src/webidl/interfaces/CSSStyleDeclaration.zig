@@ -1,12 +1,12 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-23T14:26:29Z
+//! Generated at: 2025-11-23T16:59:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const CSSStyleDeclarationImpl = @import("impls").CSSStyleDeclaration;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const CSSRule = @import("interfaces").CSSRule;
 const DOMString = @import("typedefs").DOMString;
 const CSSValue = @import("interfaces").CSSValue;
@@ -125,12 +125,12 @@ pub const CSSStyleDeclaration = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_cssText(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_cssText(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSStyleDeclarationImpl.get_cssText(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_cssText(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_cssText(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -146,13 +146,13 @@ pub const CSSStyleDeclaration = struct {
         return try CSSStyleDeclarationImpl.get_parentRule(instance);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!*const anyopaque {
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!CSSOMString {
         
         return try CSSStyleDeclarationImpl.call_item(instance, index);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_removeProperty(instance: *runtime.Instance, property: *const anyopaque) anyerror!*const anyopaque {
+    pub fn call_removeProperty(instance: *runtime.Instance, property: CSSOMString) anyerror!CSSOMString {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -166,13 +166,13 @@ pub const CSSStyleDeclaration = struct {
         return try CSSStyleDeclarationImpl.call_getPropertyCSSValue(instance, propertyName);
     }
 
-    pub fn call_getPropertyPriority(instance: *runtime.Instance, property: *const anyopaque) anyerror!*const anyopaque {
+    pub fn call_getPropertyPriority(instance: *runtime.Instance, property: CSSOMString) anyerror!CSSOMString {
         
         return try CSSStyleDeclarationImpl.call_getPropertyPriority(instance, property);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_setProperty(instance: *runtime.Instance, property: *const anyopaque, value: *const anyopaque, priority: *const anyopaque) anyerror!void {
+    pub fn call_setProperty(instance: *runtime.Instance, property: CSSOMString, value: CSSOMString, priority: CSSOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -181,7 +181,7 @@ pub const CSSStyleDeclaration = struct {
         return try CSSStyleDeclarationImpl.call_setProperty(instance, property, value, priority);
     }
 
-    pub fn call_getPropertyValue(instance: *runtime.Instance, property: *const anyopaque) anyerror!*const anyopaque {
+    pub fn call_getPropertyValue(instance: *runtime.Instance, property: CSSOMString) anyerror!CSSOMString {
         
         return try CSSStyleDeclarationImpl.call_getPropertyValue(instance, property);
     }

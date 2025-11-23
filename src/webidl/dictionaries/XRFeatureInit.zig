@@ -5,6 +5,4 @@
 const runtime = @import("runtime");
 
 pub const XRFeatureInit = struct {
-    requiredFeatures: ?[]const []const u8 = null,
-    optionalFeatures: ?[]const []const u8 = null,
 };

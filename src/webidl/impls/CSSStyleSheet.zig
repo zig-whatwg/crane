@@ -18,6 +18,10 @@ pub const ImplError = error{
     NotImplemented,
 };
 
+/// Internal state for this implementation
+/// Can be used to store browser-specific data structures
+pub const InternalState = struct {};
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -89,7 +93,7 @@ pub fn call_replace(instance: *runtime.Instance, text: runtime.USVString) ImplEr
 }
 
 /// Operation: insertRule
-pub fn call_insertRule(instance: *runtime.Instance, rule: *const anyopaque, index: u32) ImplError!u32 {
+pub fn call_insertRule(instance: *runtime.Instance, rule: typedefs.CSSOMString, index: u32) ImplError!u32 {
     _ = instance;
     _ = rule;
     _ = index;

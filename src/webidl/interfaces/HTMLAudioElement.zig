@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T14:26:29Z
+//! Generated at: 2025-11-23T16:59:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,7 +9,7 @@ const HTMLAudioElementImpl = @import("impls").HTMLAudioElement;
 const HTMLMediaElement = @import("interfaces").HTMLMediaElement;
 const DOMStringMap = @import("interfaces").DOMStringMap;
 const TextTrackKind = @import("enums").TextTrackKind;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const HTMLCollection = @import("interfaces").HTMLCollection;
 const TogglePopoverOptions = @import("dictionaries").TogglePopoverOptions;
 const DOMPointInit = @import("dictionaries").DOMPointInit;

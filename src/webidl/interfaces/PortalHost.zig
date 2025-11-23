@@ -1,5 +1,5 @@
 //! Generated from: portals.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:14Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -11,7 +11,7 @@ const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const DOMString = @import("typedefs").DOMString;
 const Event = @import("interfaces").Event;
-const PostMessageOptions = @import("interfaces").PostMessageOptions;
+const PostMessageOptions = @import("dictionaries").PostMessageOptions;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const EventListener = @import("interfaces").EventListener;
 const EventHandler = @import("typedefs").EventHandler;
@@ -116,7 +116,7 @@ pub const PortalHost = struct {
         try PortalHostImpl.set_onmessageerror(instance, value);
     }
 
-    pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, options: *const anyopaque) anyerror!void {
+    pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, options: PostMessageOptions) anyerror!void {
         
         return try PortalHostImpl.call_postMessage(instance, message, options);
     }

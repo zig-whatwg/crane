@@ -1,5 +1,5 @@
 //! Generated from: svg-animations.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,7 +9,7 @@ const TimeEventImpl = @import("impls").TimeEvent;
 const Event = @import("interfaces").Event;
 const Window = @import("interfaces").Window;
 const EventTarget = @import("interfaces").EventTarget;
-const WindowProxy = @import("interfaces").WindowProxy;
+const WindowProxy = @import("typedefs").WindowProxy;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
 const DOMString = @import("typedefs").DOMString;
@@ -95,7 +95,7 @@ pub const TimeEvent = struct {
         TimeEventImpl.deinit(instance);
     }
 
-    pub fn get_view(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_view(instance: *runtime.Instance) anyerror!WindowProxy {
         return try TimeEventImpl.get_view(instance);
     }
 

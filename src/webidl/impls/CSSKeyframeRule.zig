@@ -18,6 +18,10 @@ pub const ImplError = error{
     NotImplemented,
 };
 
+/// Internal state for this implementation
+/// Can be used to store browser-specific data structures
+pub const InternalState = struct {};
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -37,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for keyText
-pub fn get_keyText(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_keyText(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
@@ -49,7 +53,7 @@ pub fn get_style(instance: *runtime.Instance) ImplError!interfaces.CSSStylePrope
 }
 
 /// Setter for keyText
-pub fn set_keyText(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_keyText(instance: *runtime.Instance, value: typedefs.CSSOMString) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

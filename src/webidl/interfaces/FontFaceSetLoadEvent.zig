@@ -1,5 +1,5 @@
 //! Generated from: css-font-loading.idl
-//! Generated at: 2025-11-23T14:26:29Z
+//! Generated at: 2025-11-23T16:59:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const FontFaceSetLoadEventImpl = @import("impls").FontFaceSetLoadEvent;
 const Event = @import("interfaces").Event;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const EventTarget = @import("interfaces").EventTarget;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const FontFaceSetLoadEventInit = @import("dictionaries").FontFaceSetLoadEventInit;
@@ -93,7 +93,7 @@ pub const FontFaceSetLoadEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": *const anyopaque, eventInitDict: FontFaceSetLoadEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": CSSOMString, eventInitDict: FontFaceSetLoadEventInit) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try FontFaceSetLoadEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }

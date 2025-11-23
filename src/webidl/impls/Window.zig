@@ -18,6 +18,10 @@ pub const ImplError = error{
     NotImplemented,
 };
 
+/// Internal state for this implementation
+/// Can be used to store browser-specific data structures
+pub const InternalState = struct {};
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -37,13 +41,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for window
-pub fn get_window(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_window(instance: *runtime.Instance) ImplError!typedefs.WindowProxy {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for self
-pub fn get_self(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_self(instance: *runtime.Instance) ImplError!typedefs.WindowProxy {
     _ = instance;
     return error.NotImplemented;
 }
@@ -133,7 +137,7 @@ pub fn get_closed(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Getter for frames
-pub fn get_frames(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_frames(instance: *runtime.Instance) ImplError!typedefs.WindowProxy {
     _ = instance;
     return error.NotImplemented;
 }
@@ -145,7 +149,7 @@ pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
 }
 
 /// Getter for top
-pub fn get_top(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_top(instance: *runtime.Instance) ImplError!typedefs.WindowProxy {
     _ = instance;
     return error.NotImplemented;
 }
@@ -157,7 +161,7 @@ pub fn get_opener(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Getter for parent
-pub fn get_parent(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_parent(instance: *runtime.Instance) ImplError!typedefs.WindowProxy {
     _ = instance;
     return error.NotImplemented;
 }
@@ -2187,7 +2191,7 @@ pub fn call_showDirectoryPicker(instance: *runtime.Instance, options: dictionari
 }
 
 /// Operation: matchMedia
-pub fn call_matchMedia(instance: *runtime.Instance, query: *const anyopaque) ImplError!interfaces.MediaQueryList {
+pub fn call_matchMedia(instance: *runtime.Instance, query: typedefs.CSSOMString) ImplError!interfaces.MediaQueryList {
     _ = instance;
     _ = query;
     return error.NotImplemented;
@@ -2356,7 +2360,7 @@ pub fn call_resizeBy(instance: *runtime.Instance, x: i32, y: i32) ImplError!void
 }
 
 /// Operation: open
-pub fn call_open(instance: *runtime.Instance, url: runtime.USVString, target: runtime.DOMString, features: runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_open(instance: *runtime.Instance, url: runtime.USVString, target: runtime.DOMString, features: runtime.DOMString) ImplError!typedefs.WindowProxy {
     _ = instance;
     _ = url;
     _ = target;
@@ -2402,7 +2406,7 @@ pub fn call_clearTimeout(instance: *runtime.Instance, id: i32) ImplError!void {
 }
 
 /// Operation: getComputedStyle
-pub fn call_getComputedStyle(instance: *runtime.Instance, elt: interfaces.Element, pseudoElt: *const anyopaque) ImplError!interfaces.CSSStyleProperties {
+pub fn call_getComputedStyle(instance: *runtime.Instance, elt: interfaces.Element, pseudoElt: typedefs.CSSOMString) ImplError!interfaces.CSSStyleProperties {
     _ = instance;
     _ = elt;
     _ = pseudoElt;

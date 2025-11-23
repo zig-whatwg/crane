@@ -1,5 +1,5 @@
 //! Generated from: css-fonts.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:14Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,7 +9,7 @@ const CSSFontFeatureValuesRuleImpl = @import("impls").CSSFontFeatureValuesRule;
 const CSSRule = @import("interfaces").CSSRule;
 const CSSFontFeatureValuesMap = @import("interfaces").CSSFontFeatureValuesMap;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSFontFeatureValuesRule = struct {
@@ -110,11 +110,11 @@ pub const CSSFontFeatureValuesRule = struct {
         CSSFontFeatureValuesRuleImpl.deinit(instance);
     }
 
-    pub fn get_fontFamily(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_fontFamily(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFeatureValuesRuleImpl.get_fontFamily(instance);
     }
 
-    pub fn set_fontFamily(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_fontFamily(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFeatureValuesRuleImpl.set_fontFamily(instance, value);
     }
 

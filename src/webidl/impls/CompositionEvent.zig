@@ -18,6 +18,10 @@ pub const ImplError = error{
     NotImplemented,
 };
 
+/// Internal state for this implementation
+/// Can be used to store browser-specific data structures
+pub const InternalState = struct {};
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -57,7 +61,7 @@ pub fn get_data(instance: *runtime.Instance) ImplError!runtime.USVString {
 }
 
 /// Operation: initCompositionEvent
-pub fn call_initCompositionEvent(instance: *runtime.Instance, typeArg: runtime.DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: *const anyopaque, dataArg: runtime.DOMString) ImplError!void {
+pub fn call_initCompositionEvent(instance: *runtime.Instance, typeArg: runtime.DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: typedefs.WindowProxy, dataArg: runtime.DOMString) ImplError!void {
     _ = instance;
     _ = typeArg;
     _ = bubblesArg;

@@ -1,5 +1,5 @@
 //! Generated from: css-fonts-5.idl
-//! Generated at: 2025-11-23T14:26:29Z
+//! Generated at: 2025-11-23T16:59:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const CSSFontFaceDescriptorsImpl = @import("impls").CSSFontFaceDescriptors;
 const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const CSSRule = @import("interfaces").CSSRule;
 const DOMString = @import("typedefs").DOMString;
 const CSSValue = @import("interfaces").CSSValue;
@@ -294,412 +294,412 @@ pub const CSSFontFaceDescriptors = struct {
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_src(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_src(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_src(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_src(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_src(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_src(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_fontFamily(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_fontFamily(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_fontFamily(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_fontFamily(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_fontFamily(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_fontFamily(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_font_family(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_font_family(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_font_family(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_font_family(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_font_family(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_font_family(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_fontStyle(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_fontStyle(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_fontStyle(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_fontStyle(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_fontStyle(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_fontStyle(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_font_style(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_font_style(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_font_style(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_font_style(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_font_style(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_font_style(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_fontWeight(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_fontWeight(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_fontWeight(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_fontWeight(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_fontWeight(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_fontWeight(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_font_weight(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_font_weight(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_font_weight(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_font_weight(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_font_weight(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_font_weight(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_fontStretch(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_fontStretch(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_fontStretch(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_fontStretch(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_fontStretch(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_fontStretch(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_font_stretch(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_font_stretch(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_font_stretch(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_font_stretch(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_font_stretch(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_font_stretch(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_fontWidth(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_fontWidth(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_fontWidth(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_fontWidth(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_fontWidth(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_fontWidth(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_font_width(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_font_width(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_font_width(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_font_width(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_font_width(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_font_width(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_fontSize(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_fontSize(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_fontSize(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_fontSize(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_fontSize(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_fontSize(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_font_size(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_font_size(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_font_size(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_font_size(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_font_size(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_font_size(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_sizeAdjust(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_sizeAdjust(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_sizeAdjust(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_sizeAdjust(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_sizeAdjust(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_sizeAdjust(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_size_adjust(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_size_adjust(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_size_adjust(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_size_adjust(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_size_adjust(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_size_adjust(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_unicodeRange(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_unicodeRange(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_unicodeRange(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_unicodeRange(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_unicodeRange(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_unicodeRange(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_unicode_range(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_unicode_range(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_unicode_range(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_unicode_range(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_unicode_range(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_unicode_range(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_fontFeatureSettings(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_fontFeatureSettings(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_fontFeatureSettings(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_fontFeatureSettings(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_fontFeatureSettings(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_fontFeatureSettings(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_font_feature_settings(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_font_feature_settings(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_font_feature_settings(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_font_feature_settings(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_font_feature_settings(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_font_feature_settings(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_fontVariationSettings(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_fontVariationSettings(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_fontVariationSettings(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_fontVariationSettings(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_fontVariationSettings(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_fontVariationSettings(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_font_variation_settings(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_font_variation_settings(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_font_variation_settings(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_font_variation_settings(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_font_variation_settings(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_font_variation_settings(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_fontNamedInstance(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_fontNamedInstance(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_fontNamedInstance(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_fontNamedInstance(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_fontNamedInstance(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_fontNamedInstance(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_font_named_instance(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_font_named_instance(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_font_named_instance(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_font_named_instance(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_font_named_instance(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_font_named_instance(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_fontDisplay(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_fontDisplay(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_fontDisplay(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_fontDisplay(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_fontDisplay(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_fontDisplay(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_font_display(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_font_display(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_font_display(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_font_display(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_font_display(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_font_display(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_fontLanguageOverride(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_fontLanguageOverride(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_fontLanguageOverride(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_fontLanguageOverride(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_fontLanguageOverride(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_fontLanguageOverride(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_font_language_override(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_font_language_override(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_font_language_override(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_font_language_override(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_font_language_override(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_font_language_override(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_ascentOverride(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_ascentOverride(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_ascentOverride(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_ascentOverride(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_ascentOverride(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_ascentOverride(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_ascent_override(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_ascent_override(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_ascent_override(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_ascent_override(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_ascent_override(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_ascent_override(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_descentOverride(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_descentOverride(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_descentOverride(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_descentOverride(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_descentOverride(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_descentOverride(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_descent_override(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_descent_override(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_descent_override(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_descent_override(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_descent_override(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_descent_override(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_lineGapOverride(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_lineGapOverride(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_lineGapOverride(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_lineGapOverride(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_lineGapOverride(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_lineGapOverride(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_line_gap_override(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_line_gap_override(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_line_gap_override(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_line_gap_override(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_line_gap_override(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_line_gap_override(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_superscriptPositionOverride(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_superscriptPositionOverride(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_superscriptPositionOverride(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_superscriptPositionOverride(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_superscriptPositionOverride(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_superscriptPositionOverride(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_superscript_position_override(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_superscript_position_override(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_superscript_position_override(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_superscript_position_override(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_superscript_position_override(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_superscript_position_override(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_subscriptPositionOverride(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_subscriptPositionOverride(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_subscriptPositionOverride(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_subscriptPositionOverride(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_subscriptPositionOverride(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_subscriptPositionOverride(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_subscript_position_override(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_subscript_position_override(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_subscript_position_override(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_subscript_position_override(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_subscript_position_override(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_subscript_position_override(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_superscriptSizeOverride(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_superscriptSizeOverride(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_superscriptSizeOverride(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_superscriptSizeOverride(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_superscriptSizeOverride(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_superscriptSizeOverride(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_superscript_size_override(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_superscript_size_override(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_superscript_size_override(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_superscript_size_override(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_superscript_size_override(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_superscript_size_override(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_subscriptSizeOverride(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_subscriptSizeOverride(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_subscriptSizeOverride(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_subscriptSizeOverride(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_subscriptSizeOverride(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_subscriptSizeOverride(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_subscript_size_override(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_subscript_size_override(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_subscript_size_override(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_subscript_size_override(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_subscript_size_override(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_subscript_size_override(instance, value);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-23T14:26:29Z
+//! Generated at: 2025-11-23T16:59:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,7 @@ const runtime = @import("runtime");
 const StyleSheetImpl = @import("impls").StyleSheet;
 const Element = @import("interfaces").Element;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const ProcessingInstruction = @import("interfaces").ProcessingInstruction;
 const Node = @import("interfaces").Node;
 const USVString = @import("interfaces").USVString;
@@ -127,7 +127,7 @@ pub const StyleSheet = struct {
         StyleSheetImpl.deinit(instance);
     }
 
-    pub fn get_type(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_type(instance: *runtime.Instance) anyerror!CSSOMString {
         return try StyleSheetImpl.get_type(instance);
     }
 

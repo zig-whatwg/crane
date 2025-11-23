@@ -1,5 +1,5 @@
 //! Generated from: css-regions.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:14Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -11,7 +11,7 @@ const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const Element = @import("interfaces").Element;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const Event = @import("interfaces").Event;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const EventListener = @import("interfaces").EventListener;
 const Node = @import("interfaces").Node;
@@ -108,7 +108,7 @@ pub const NamedFlow = struct {
         NamedFlowImpl.deinit(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_name(instance: *runtime.Instance) anyerror!CSSOMString {
         return try NamedFlowImpl.get_name(instance);
     }
 

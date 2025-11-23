@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,7 @@ const runtime = @import("runtime");
 const CSSStyleRuleImpl = @import("impls").CSSStyleRule;
 const CSSGroupingRule = @import("interfaces").CSSGroupingRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const CSSRule = @import("interfaces").CSSRule;
 const StylePropertyMap = @import("interfaces").StylePropertyMap;
 const CSSRuleList = @import("interfaces").CSSRuleList;
@@ -102,11 +102,11 @@ pub const CSSStyleRule = struct {
         CSSStyleRuleImpl.deinit(instance);
     }
 
-    pub fn get_selectorText(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_selectorText(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSStyleRuleImpl.get_selectorText(instance);
     }
 
-    pub fn set_selectorText(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_selectorText(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSStyleRuleImpl.set_selectorText(instance, value);
     }
 

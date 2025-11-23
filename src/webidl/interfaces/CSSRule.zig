@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const CSSRuleImpl = @import("impls").CSSRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSRule = struct {
@@ -206,11 +206,11 @@ pub const CSSRule = struct {
         CSSRuleImpl.deinit(instance);
     }
 
-    pub fn get_cssText(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_cssText(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSRuleImpl.get_cssText(instance);
     }
 
-    pub fn set_cssText(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_cssText(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSRuleImpl.set_cssText(instance, value);
     }
 

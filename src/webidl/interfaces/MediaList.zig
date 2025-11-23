@@ -1,12 +1,12 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-23T14:26:29Z
+//! Generated at: 2025-11-23T16:59:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const MediaListImpl = @import("impls").MediaList;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const MediaList = struct {
@@ -104,12 +104,12 @@ pub const MediaList = struct {
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_mediaText(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_mediaText(instance: *runtime.Instance) anyerror!CSSOMString {
         return try MediaListImpl.get_mediaText(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_mediaText(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_mediaText(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try MediaListImpl.set_mediaText(instance, value);
     }
 
@@ -117,17 +117,17 @@ pub const MediaList = struct {
         return try MediaListImpl.get_length(instance);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!*const anyopaque {
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!CSSOMString {
         
         return try MediaListImpl.call_item(instance, index);
     }
 
-    pub fn call_deleteMedium(instance: *runtime.Instance, medium: *const anyopaque) anyerror!void {
+    pub fn call_deleteMedium(instance: *runtime.Instance, medium: CSSOMString) anyerror!void {
         
         return try MediaListImpl.call_deleteMedium(instance, medium);
     }
 
-    pub fn call_appendMedium(instance: *runtime.Instance, medium: *const anyopaque) anyerror!void {
+    pub fn call_appendMedium(instance: *runtime.Instance, medium: CSSOMString) anyerror!void {
         
         return try MediaListImpl.call_appendMedium(instance, medium);
     }

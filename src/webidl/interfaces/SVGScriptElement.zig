@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:14Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,7 +9,7 @@ const SVGScriptElementImpl = @import("impls").SVGScriptElement;
 const SVGElement = @import("interfaces").SVGElement;
 const SVGURIReference = @import("interfaces").SVGURIReference;
 const DOMStringMap = @import("interfaces").DOMStringMap;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const HTMLCollection = @import("interfaces").HTMLCollection;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;

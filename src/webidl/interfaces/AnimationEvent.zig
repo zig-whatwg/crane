@@ -1,5 +1,5 @@
 //! Generated from: css-animations.idl
-//! Generated at: 2025-11-23T14:26:29Z
+//! Generated at: 2025-11-23T16:59:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,7 @@ const runtime = @import("runtime");
 const AnimationEventImpl = @import("impls").AnimationEvent;
 const Event = @import("interfaces").Event;
 const AnimationEventInit = @import("dictionaries").AnimationEventInit;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const EventTarget = @import("interfaces").EventTarget;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
@@ -96,12 +96,12 @@ pub const AnimationEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": *const anyopaque, animationEventInitDict: AnimationEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": CSSOMString, animationEventInitDict: AnimationEventInit) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try AnimationEventImpl.call_constructor(allocator, ctx, @"type", animationEventInitDict);
     }
 
-    pub fn get_animationName(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_animationName(instance: *runtime.Instance) anyerror!CSSOMString {
         return try AnimationEventImpl.get_animationName(instance);
     }
 
@@ -109,7 +109,7 @@ pub const AnimationEvent = struct {
         return try AnimationEventImpl.get_elapsedTime(instance);
     }
 
-    pub fn get_pseudoElement(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_pseudoElement(instance: *runtime.Instance) anyerror!CSSOMString {
         return try AnimationEventImpl.get_pseudoElement(instance);
     }
 

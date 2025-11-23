@@ -1,5 +1,5 @@
 //! Generated from: css-counter-styles.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:14Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,7 @@ const runtime = @import("runtime");
 const CSSCounterStyleRuleImpl = @import("impls").CSSCounterStyleRule;
 const CSSRule = @import("interfaces").CSSRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSCounterStyleRule = struct {
@@ -131,91 +131,91 @@ pub const CSSCounterStyleRule = struct {
         CSSCounterStyleRuleImpl.deinit(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_name(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSCounterStyleRuleImpl.get_name(instance);
     }
 
-    pub fn set_name(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_name(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSCounterStyleRuleImpl.set_name(instance, value);
     }
 
-    pub fn get_system(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_system(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSCounterStyleRuleImpl.get_system(instance);
     }
 
-    pub fn set_system(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_system(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSCounterStyleRuleImpl.set_system(instance, value);
     }
 
-    pub fn get_symbols(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_symbols(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSCounterStyleRuleImpl.get_symbols(instance);
     }
 
-    pub fn set_symbols(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_symbols(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSCounterStyleRuleImpl.set_symbols(instance, value);
     }
 
-    pub fn get_additiveSymbols(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_additiveSymbols(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSCounterStyleRuleImpl.get_additiveSymbols(instance);
     }
 
-    pub fn set_additiveSymbols(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_additiveSymbols(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSCounterStyleRuleImpl.set_additiveSymbols(instance, value);
     }
 
-    pub fn get_negative(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_negative(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSCounterStyleRuleImpl.get_negative(instance);
     }
 
-    pub fn set_negative(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_negative(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSCounterStyleRuleImpl.set_negative(instance, value);
     }
 
-    pub fn get_prefix(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_prefix(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSCounterStyleRuleImpl.get_prefix(instance);
     }
 
-    pub fn set_prefix(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_prefix(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSCounterStyleRuleImpl.set_prefix(instance, value);
     }
 
-    pub fn get_suffix(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_suffix(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSCounterStyleRuleImpl.get_suffix(instance);
     }
 
-    pub fn set_suffix(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_suffix(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSCounterStyleRuleImpl.set_suffix(instance, value);
     }
 
-    pub fn get_range(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_range(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSCounterStyleRuleImpl.get_range(instance);
     }
 
-    pub fn set_range(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_range(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSCounterStyleRuleImpl.set_range(instance, value);
     }
 
-    pub fn get_pad(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_pad(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSCounterStyleRuleImpl.get_pad(instance);
     }
 
-    pub fn set_pad(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_pad(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSCounterStyleRuleImpl.set_pad(instance, value);
     }
 
-    pub fn get_speakAs(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_speakAs(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSCounterStyleRuleImpl.get_speakAs(instance);
     }
 
-    pub fn set_speakAs(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_speakAs(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSCounterStyleRuleImpl.set_speakAs(instance, value);
     }
 
-    pub fn get_fallback(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_fallback(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSCounterStyleRuleImpl.get_fallback(instance);
     }
 
-    pub fn set_fallback(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_fallback(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSCounterStyleRuleImpl.set_fallback(instance, value);
     }
 

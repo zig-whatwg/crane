@@ -1,5 +1,5 @@
 //! Generated from: css-font-loading.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,7 +9,7 @@ const FontFaceSetImpl = @import("impls").FontFaceSet;
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const FontFace = @import("interfaces").FontFace;
 const Observable = @import("interfaces").Observable;
 const Event = @import("interfaces").Event;
@@ -180,12 +180,12 @@ pub const FontFaceSet = struct {
         return try FontFaceSetImpl.call_clear(instance);
     }
 
-    pub fn call_load(instance: *runtime.Instance, font: *const anyopaque, text: *const anyopaque) anyerror!*const anyopaque {
+    pub fn call_load(instance: *runtime.Instance, font: CSSOMString, text: CSSOMString) anyerror!*const anyopaque {
         
         return try FontFaceSetImpl.call_load(instance, font, text);
     }
 
-    pub fn call_check(instance: *runtime.Instance, font: *const anyopaque, text: *const anyopaque) anyerror!bool {
+    pub fn call_check(instance: *runtime.Instance, font: CSSOMString, text: CSSOMString) anyerror!bool {
         
         return try FontFaceSetImpl.call_check(instance, font, text);
     }

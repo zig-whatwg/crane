@@ -18,6 +18,10 @@ pub const ImplError = error{
     NotImplemented,
 };
 
+/// Internal state for this implementation
+/// Can be used to store browser-specific data structures
+pub const InternalState = struct {};
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -37,13 +41,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for cssFloat
-pub fn get_cssFloat(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_cssFloat(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for cssFloat
-pub fn set_cssFloat(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_cssFloat(instance: *runtime.Instance, value: typedefs.CSSOMString) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

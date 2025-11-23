@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:14Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,7 @@ const runtime = @import("runtime");
 const CSSNamespaceRuleImpl = @import("impls").CSSNamespaceRule;
 const CSSRule = @import("interfaces").CSSRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSNamespaceRule = struct {
@@ -83,11 +83,11 @@ pub const CSSNamespaceRule = struct {
         CSSNamespaceRuleImpl.deinit(instance);
     }
 
-    pub fn get_namespaceURI(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_namespaceURI(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSNamespaceRuleImpl.get_namespaceURI(instance);
     }
 
-    pub fn get_prefix(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_prefix(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSNamespaceRuleImpl.get_prefix(instance);
     }
 

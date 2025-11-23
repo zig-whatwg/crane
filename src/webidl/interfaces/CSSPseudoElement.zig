@@ -1,5 +1,5 @@
 //! Generated from: css-pseudo.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -11,7 +11,7 @@ const GeometryUtils = @import("interfaces").GeometryUtils;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const DOMString = @import("typedefs").DOMString;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const DOMQuad = @import("interfaces").DOMQuad;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
@@ -127,7 +127,7 @@ pub const CSSPseudoElement = struct {
         CSSPseudoElementImpl.deinit(instance);
     }
 
-    pub fn get_type(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_type(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPseudoElementImpl.get_type(instance);
     }
 
@@ -149,7 +149,7 @@ pub const CSSPseudoElement = struct {
         return try CSSPseudoElementImpl.call_convertPointFromNode(instance, point, from, options);
     }
 
-    pub fn call_pseudo(instance: *runtime.Instance, @"type": *const anyopaque) anyerror!CSSPseudoElement {
+    pub fn call_pseudo(instance: *runtime.Instance, @"type": CSSOMString) anyerror!CSSPseudoElement {
         
         return try CSSPseudoElementImpl.call_pseudo(instance, @"type");
     }

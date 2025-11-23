@@ -1,5 +1,5 @@
 //! Generated from: css-fonts-5.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:14Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,7 @@ const runtime = @import("runtime");
 const CSSFontFaceRuleImpl = @import("impls").CSSFontFaceRule;
 const CSSRule = @import("interfaces").CSSRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
 const CSSFontFaceDescriptors = @import("interfaces").CSSFontFaceDescriptors;
 const DOMString = @import("typedefs").DOMString;

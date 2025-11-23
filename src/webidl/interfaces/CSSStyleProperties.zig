@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const CSSStylePropertiesImpl = @import("impls").CSSStyleProperties;
 const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const CSSRule = @import("interfaces").CSSRule;
 const DOMString = @import("typedefs").DOMString;
 const CSSValue = @import("interfaces").CSSValue;
@@ -94,12 +94,12 @@ pub const CSSStyleProperties = struct {
     }
 
     /// Extended attributes: [CEReactions], [LegacyNullToEmptyString]
-    pub fn get_cssFloat(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_cssFloat(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSStylePropertiesImpl.get_cssFloat(instance);
     }
 
     /// Extended attributes: [CEReactions], [LegacyNullToEmptyString]
-    pub fn set_cssFloat(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_cssFloat(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

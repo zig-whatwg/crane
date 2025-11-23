@@ -18,6 +18,10 @@ pub const ImplError = error{
     NotImplemented,
 };
 
+/// Internal state for this implementation
+/// Can be used to store browser-specific data structures
+pub const InternalState = struct {};
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -108,7 +112,7 @@ pub fn call_activate(instance: *runtime.Instance, options: dictionaries.PortalAc
 }
 
 /// Operation: postMessage
-pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, options: *const anyopaque) ImplError!void {
+pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, options: dictionaries.PostMessageOptions) ImplError!void {
     _ = instance;
     _ = message;
     _ = options;

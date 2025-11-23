@@ -1,5 +1,5 @@
 //! Generated from: css-fonts.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:14Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const CSSFontFeatureValuesMapImpl = @import("impls").CSSFontFeatureValuesMap;
 const sequence = @import("interfaces").sequence;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 
 pub const CSSFontFeatureValuesMap = struct {
     pub const Meta = struct {
@@ -78,7 +78,7 @@ pub const CSSFontFeatureValuesMap = struct {
         CSSFontFeatureValuesMapImpl.deinit(instance);
     }
 
-    pub fn call_set(instance: *runtime.Instance, featureValueName: *const anyopaque, values: *const anyopaque) anyerror!void {
+    pub fn call_set(instance: *runtime.Instance, featureValueName: CSSOMString, values: *const anyopaque) anyerror!void {
         
         return try CSSFontFeatureValuesMapImpl.call_set(instance, featureValueName, values);
     }

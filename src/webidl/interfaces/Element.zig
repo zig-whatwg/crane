@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -15,7 +15,7 @@ const NonDocumentTypeChildNode = @import("interfaces").NonDocumentTypeChildNode;
 const ChildNode = @import("interfaces").ChildNode;
 const Slottable = @import("interfaces").Slottable;
 const GeometryUtils = @import("interfaces").GeometryUtils;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const HTMLCollection = @import("interfaces").HTMLCollection;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
@@ -1712,7 +1712,7 @@ pub const Element = struct {
         try ElementImpl.set_ariaValueText(instance, value);
     }
 
-    pub fn get_regionOverset(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_regionOverset(instance: *runtime.Instance) anyerror!CSSOMString {
         return try ElementImpl.get_regionOverset(instance);
     }
 
@@ -2072,7 +2072,7 @@ pub const Element = struct {
         return try ElementImpl.call_toggleAttribute(instance, qualifiedName, force);
     }
 
-    pub fn call_pseudo(instance: *runtime.Instance, @"type": *const anyopaque) anyerror!CSSPseudoElement {
+    pub fn call_pseudo(instance: *runtime.Instance, @"type": CSSOMString) anyerror!CSSPseudoElement {
         
         return try ElementImpl.call_pseudo(instance, @"type");
     }

@@ -1,5 +1,5 @@
 //! Generated from: css-mixins.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,7 +9,7 @@ const CSSFunctionDeclarationsImpl = @import("impls").CSSFunctionDeclarations;
 const CSSRule = @import("interfaces").CSSRule;
 const CSSFunctionDescriptors = @import("interfaces").CSSFunctionDescriptors;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSFunctionDeclarations = struct {

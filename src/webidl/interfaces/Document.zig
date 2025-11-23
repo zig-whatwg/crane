@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -69,7 +69,7 @@ const HTMLElement = @import("interfaces").HTMLElement;
 const StorageAccessTypes = @import("dictionaries").StorageAccessTypes;
 const Attr = @import("interfaces").Attr;
 const TrustedHTML = @import("interfaces").TrustedHTML;
-const WindowProxy = @import("interfaces").WindowProxy;
+const WindowProxy = @import("typedefs").WindowProxy;
 const NodeList = @import("interfaces").NodeList;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const ElementCreationOptions = @import("dictionaries").ElementCreationOptions;
@@ -1543,7 +1543,7 @@ pub const Document = struct {
         return try DocumentImpl.get_currentScript(instance);
     }
 
-    pub fn get_defaultView(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_defaultView(instance: *runtime.Instance) anyerror!WindowProxy {
         return try DocumentImpl.get_defaultView(instance);
     }
 

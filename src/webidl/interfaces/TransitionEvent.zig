@@ -1,5 +1,5 @@
 //! Generated from: css-transitions.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,7 @@ const runtime = @import("runtime");
 const TransitionEventImpl = @import("impls").TransitionEvent;
 const Event = @import("interfaces").Event;
 const TransitionEventInit = @import("dictionaries").TransitionEventInit;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const EventTarget = @import("interfaces").EventTarget;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
@@ -96,12 +96,12 @@ pub const TransitionEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": *const anyopaque, transitionEventInitDict: TransitionEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": CSSOMString, transitionEventInitDict: TransitionEventInit) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try TransitionEventImpl.call_constructor(allocator, ctx, @"type", transitionEventInitDict);
     }
 
-    pub fn get_propertyName(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_propertyName(instance: *runtime.Instance) anyerror!CSSOMString {
         return try TransitionEventImpl.get_propertyName(instance);
     }
 
@@ -109,7 +109,7 @@ pub const TransitionEvent = struct {
         return try TransitionEventImpl.get_elapsedTime(instance);
     }
 
-    pub fn get_pseudoElement(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_pseudoElement(instance: *runtime.Instance) anyerror!CSSOMString {
         return try TransitionEventImpl.get_pseudoElement(instance);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: css-fonts.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:14Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,7 @@ const runtime = @import("runtime");
 const CSSFontPaletteValuesRuleImpl = @import("impls").CSSFontPaletteValuesRule;
 const CSSRule = @import("interfaces").CSSRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSFontPaletteValuesRule = struct {
@@ -91,19 +91,19 @@ pub const CSSFontPaletteValuesRule = struct {
         CSSFontPaletteValuesRuleImpl.deinit(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_name(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontPaletteValuesRuleImpl.get_name(instance);
     }
 
-    pub fn get_fontFamily(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_fontFamily(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontPaletteValuesRuleImpl.get_fontFamily(instance);
     }
 
-    pub fn get_basePalette(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_basePalette(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontPaletteValuesRuleImpl.get_basePalette(instance);
     }
 
-    pub fn get_overrideColors(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_overrideColors(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontPaletteValuesRuleImpl.get_overrideColors(instance);
     }
 

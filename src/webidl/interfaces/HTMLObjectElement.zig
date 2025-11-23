@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-23T14:26:29Z
+//! Generated at: 2025-11-23T16:59:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,7 @@ const runtime = @import("runtime");
 const HTMLObjectElementImpl = @import("impls").HTMLObjectElement;
 const HTMLElement = @import("interfaces").HTMLElement;
 const DOMStringMap = @import("interfaces").DOMStringMap;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const HTMLCollection = @import("interfaces").HTMLCollection;
 const TogglePopoverOptions = @import("dictionaries").TogglePopoverOptions;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
@@ -59,7 +59,7 @@ const GetAnimationsOptions = @import("dictionaries").GetAnimationsOptions;
 const EventHandler = @import("typedefs").EventHandler;
 const ConvertCoordinateOptions = @import("dictionaries").ConvertCoordinateOptions;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
-const WindowProxy = @import("interfaces").WindowProxy;
+const WindowProxy = @import("typedefs").WindowProxy;
 const SpatialNavigationDirection = @import("enums").SpatialNavigationDirection;
 const StylePropertyMap = @import("interfaces").StylePropertyMap;
 const ShadowRoot = @import("interfaces").ShadowRoot;
@@ -432,7 +432,7 @@ pub const HTMLObjectElement = struct {
         return try HTMLObjectElementImpl.get_contentDocument(instance);
     }
 
-    pub fn get_contentWindow(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_contentWindow(instance: *runtime.Instance) anyerror!WindowProxy {
         return try HTMLObjectElementImpl.get_contentWindow(instance);
     }
 

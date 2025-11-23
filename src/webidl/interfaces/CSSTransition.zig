@@ -1,5 +1,5 @@
 //! Generated from: css-transitions-2.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -10,7 +10,7 @@ const Animation = @import("interfaces").Animation;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const AnimationPlayState = @import("enums").AnimationPlayState;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const TimelineRangeOffset = @import("dictionaries").TimelineRangeOffset;
 const CSSKeywordValue = @import("interfaces").CSSKeywordValue;
 const AnimationTrigger = @import("interfaces").AnimationTrigger;
@@ -106,7 +106,7 @@ pub const CSSTransition = struct {
         CSSTransitionImpl.deinit(instance);
     }
 
-    pub fn get_transitionProperty(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_transitionProperty(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSTransitionImpl.get_transitionProperty(instance);
     }
 

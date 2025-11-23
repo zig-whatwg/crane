@@ -18,6 +18,10 @@ pub const ImplError = error{
     NotImplemented,
 };
 
+/// Internal state for this implementation
+/// Can be used to store browser-specific data structures
+pub const InternalState = struct {};
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -55,13 +59,13 @@ pub fn get_styleSheet(instance: *runtime.Instance) ImplError!interfaces.CSSStyle
 }
 
 /// Getter for layerName
-pub fn get_layerName(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_layerName(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for supportsText
-pub fn get_supportsText(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_supportsText(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }

@@ -1,5 +1,5 @@
 //! Generated from: web-animations.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,7 +9,7 @@ const KeyframeEffectImpl = @import("impls").KeyframeEffect;
 const AnimationEffect = @import("interfaces").AnimationEffect;
 const Element = @import("interfaces").Element;
 const IterationCompositeOperation = @import("enums").IterationCompositeOperation;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const GroupEffect = @import("interfaces").GroupEffect;
 const EffectTiming = @import("dictionaries").EffectTiming;
 const KeyframeEffectOptions = @import("dictionaries").KeyframeEffectOptions;
@@ -142,11 +142,11 @@ pub const KeyframeEffect = struct {
         try KeyframeEffectImpl.set_target(instance, value);
     }
 
-    pub fn get_pseudoElement(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_pseudoElement(instance: *runtime.Instance) anyerror!CSSOMString {
         return try KeyframeEffectImpl.get_pseudoElement(instance);
     }
 
-    pub fn set_pseudoElement(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_pseudoElement(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try KeyframeEffectImpl.set_pseudoElement(instance, value);
     }
 

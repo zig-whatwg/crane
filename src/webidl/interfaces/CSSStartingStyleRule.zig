@@ -1,5 +1,5 @@
 //! Generated from: css-transitions-2.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:14Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,7 @@ const runtime = @import("runtime");
 const CSSStartingStyleRuleImpl = @import("impls").CSSStartingStyleRule;
 const CSSGroupingRule = @import("interfaces").CSSGroupingRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const CSSRule = @import("interfaces").CSSRule;
 const DOMString = @import("typedefs").DOMString;
 const CSSRuleList = @import("interfaces").CSSRuleList;

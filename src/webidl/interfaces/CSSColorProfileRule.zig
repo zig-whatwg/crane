@@ -1,5 +1,5 @@
 //! Generated from: css-color-5.idl
-//! Generated at: 2025-11-23T14:26:29Z
+//! Generated at: 2025-11-23T16:59:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,7 @@ const runtime = @import("runtime");
 const CSSColorProfileRuleImpl = @import("impls").CSSColorProfileRule;
 const CSSRule = @import("interfaces").CSSRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSColorProfileRule = struct {
@@ -91,19 +91,19 @@ pub const CSSColorProfileRule = struct {
         CSSColorProfileRuleImpl.deinit(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_name(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSColorProfileRuleImpl.get_name(instance);
     }
 
-    pub fn get_src(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_src(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSColorProfileRuleImpl.get_src(instance);
     }
 
-    pub fn get_renderingIntent(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_renderingIntent(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSColorProfileRuleImpl.get_renderingIntent(instance);
     }
 
-    pub fn get_components(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_components(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSColorProfileRuleImpl.get_components(instance);
     }
 

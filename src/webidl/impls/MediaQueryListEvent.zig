@@ -18,6 +18,10 @@ pub const ImplError = error{
     NotImplemented,
 };
 
+/// Internal state for this implementation
+/// Can be used to store browser-specific data structures
+pub const InternalState = struct {};
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -38,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": *const anyopaque, eventInitDict: dictionaries.MediaQueryListEventInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": typedefs.CSSOMString, eventInitDict: dictionaries.MediaQueryListEventInit) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &MediaQueryListEvent.vtable, ctx);
     errdefer deinit(instance);
@@ -51,7 +55,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for media
-pub fn get_media(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_media(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }

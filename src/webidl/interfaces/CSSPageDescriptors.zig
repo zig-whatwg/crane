@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-23T14:26:29Z
+//! Generated at: 2025-11-23T16:59:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const CSSPageDescriptorsImpl = @import("impls").CSSPageDescriptors;
 const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const CSSRule = @import("interfaces").CSSRule;
 const DOMString = @import("typedefs").DOMString;
 const CSSValue = @import("interfaces").CSSValue;
@@ -159,142 +159,142 @@ pub const CSSPageDescriptors = struct {
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_margin(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_margin(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPageDescriptorsImpl.get_margin(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_margin(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_margin(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPageDescriptorsImpl.set_margin(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_marginTop(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_marginTop(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPageDescriptorsImpl.get_marginTop(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_marginTop(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_marginTop(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPageDescriptorsImpl.set_marginTop(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_marginRight(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_marginRight(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPageDescriptorsImpl.get_marginRight(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_marginRight(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_marginRight(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPageDescriptorsImpl.set_marginRight(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_marginBottom(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_marginBottom(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPageDescriptorsImpl.get_marginBottom(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_marginBottom(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_marginBottom(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPageDescriptorsImpl.set_marginBottom(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_marginLeft(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_marginLeft(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPageDescriptorsImpl.get_marginLeft(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_marginLeft(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_marginLeft(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPageDescriptorsImpl.set_marginLeft(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_margin_top(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_margin_top(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPageDescriptorsImpl.get_margin_top(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_margin_top(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_margin_top(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPageDescriptorsImpl.set_margin_top(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_margin_right(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_margin_right(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPageDescriptorsImpl.get_margin_right(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_margin_right(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_margin_right(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPageDescriptorsImpl.set_margin_right(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_margin_bottom(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_margin_bottom(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPageDescriptorsImpl.get_margin_bottom(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_margin_bottom(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_margin_bottom(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPageDescriptorsImpl.set_margin_bottom(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_margin_left(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_margin_left(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPageDescriptorsImpl.get_margin_left(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_margin_left(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_margin_left(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPageDescriptorsImpl.set_margin_left(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_size(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_size(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPageDescriptorsImpl.get_size(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_size(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_size(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPageDescriptorsImpl.set_size(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_pageOrientation(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_pageOrientation(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPageDescriptorsImpl.get_pageOrientation(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_pageOrientation(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_pageOrientation(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPageDescriptorsImpl.set_pageOrientation(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_page_orientation(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_page_orientation(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPageDescriptorsImpl.get_page_orientation(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_page_orientation(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_page_orientation(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPageDescriptorsImpl.set_page_orientation(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_marks(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_marks(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPageDescriptorsImpl.get_marks(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_marks(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_marks(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPageDescriptorsImpl.set_marks(instance, value);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_bleed(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_bleed(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPageDescriptorsImpl.get_bleed(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_bleed(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_bleed(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPageDescriptorsImpl.set_bleed(instance, value);
     }
 

@@ -18,6 +18,10 @@ pub const ImplError = error{
     NotImplemented,
 };
 
+/// Internal state for this implementation
+/// Can be used to store browser-specific data structures
+pub const InternalState = struct {};
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -37,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for cssText
-pub fn get_cssText(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_cssText(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
@@ -55,21 +59,21 @@ pub fn get_parentRule(instance: *runtime.Instance) ImplError!interfaces.CSSRule 
 }
 
 /// Setter for cssText
-pub fn set_cssText(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_cssText(instance: *runtime.Instance, value: typedefs.CSSOMString) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: item
-pub fn call_item(instance: *runtime.Instance, index: u32) ImplError!*const anyopaque {
+pub fn call_item(instance: *runtime.Instance, index: u32) ImplError!typedefs.CSSOMString {
     _ = instance;
     _ = index;
     return error.NotImplemented;
 }
 
 /// Operation: removeProperty
-pub fn call_removeProperty(instance: *runtime.Instance, property: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_removeProperty(instance: *runtime.Instance, property: typedefs.CSSOMString) ImplError!typedefs.CSSOMString {
     _ = instance;
     _ = property;
     return error.NotImplemented;
@@ -83,14 +87,14 @@ pub fn call_getPropertyCSSValue(instance: *runtime.Instance, propertyName: runti
 }
 
 /// Operation: getPropertyPriority
-pub fn call_getPropertyPriority(instance: *runtime.Instance, property: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_getPropertyPriority(instance: *runtime.Instance, property: typedefs.CSSOMString) ImplError!typedefs.CSSOMString {
     _ = instance;
     _ = property;
     return error.NotImplemented;
 }
 
 /// Operation: setProperty
-pub fn call_setProperty(instance: *runtime.Instance, property: *const anyopaque, value: *const anyopaque, priority: *const anyopaque) ImplError!void {
+pub fn call_setProperty(instance: *runtime.Instance, property: typedefs.CSSOMString, value: typedefs.CSSOMString, priority: typedefs.CSSOMString) ImplError!void {
     _ = instance;
     _ = property;
     _ = value;
@@ -99,7 +103,7 @@ pub fn call_setProperty(instance: *runtime.Instance, property: *const anyopaque,
 }
 
 /// Operation: getPropertyValue
-pub fn call_getPropertyValue(instance: *runtime.Instance, property: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_getPropertyValue(instance: *runtime.Instance, property: typedefs.CSSOMString) ImplError!typedefs.CSSOMString {
     _ = instance;
     _ = property;
     return error.NotImplemented;

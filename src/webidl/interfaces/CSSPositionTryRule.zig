@@ -1,5 +1,5 @@
 //! Generated from: css-anchor-position.idl
-//! Generated at: 2025-11-23T14:26:29Z
+//! Generated at: 2025-11-23T16:59:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,7 @@ const runtime = @import("runtime");
 const CSSPositionTryRuleImpl = @import("impls").CSSPositionTryRule;
 const CSSRule = @import("interfaces").CSSRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const DOMString = @import("typedefs").DOMString;
 const CSSPositionTryDescriptors = @import("interfaces").CSSPositionTryDescriptors;
 
@@ -85,7 +85,7 @@ pub const CSSPositionTryRule = struct {
         CSSPositionTryRuleImpl.deinit(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_name(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPositionTryRuleImpl.get_name(instance);
     }
 

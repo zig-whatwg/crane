@@ -1,5 +1,5 @@
 //! Generated from: mediaqueries-5.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:14Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,7 +9,7 @@ const CSSCustomMediaRuleImpl = @import("impls").CSSCustomMediaRule;
 const CSSRule = @import("interfaces").CSSRule;
 const CustomMediaQuery = @import("typedefs").CustomMediaQuery;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSCustomMediaRule = struct {
@@ -84,7 +84,7 @@ pub const CSSCustomMediaRule = struct {
         CSSCustomMediaRuleImpl.deinit(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_name(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSCustomMediaRuleImpl.get_name(instance);
     }
 

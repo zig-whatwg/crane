@@ -1,5 +1,5 @@
 //! Generated from: portals.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:14Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,7 @@ const runtime = @import("runtime");
 const HTMLPortalElementImpl = @import("impls").HTMLPortalElement;
 const HTMLElement = @import("interfaces").HTMLElement;
 const DOMStringMap = @import("interfaces").DOMStringMap;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const HTMLCollection = @import("interfaces").HTMLCollection;
 const TogglePopoverOptions = @import("dictionaries").TogglePopoverOptions;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
@@ -21,7 +21,7 @@ const Element = @import("interfaces").Element;
 const CheckVisibilityOptions = @import("dictionaries").CheckVisibilityOptions;
 const ScrollIntoViewOptions = @import("dictionaries").ScrollIntoViewOptions;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
-const PostMessageOptions = @import("interfaces").PostMessageOptions;
+const PostMessageOptions = @import("dictionaries").PostMessageOptions;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const FocusableAreasOption = @import("dictionaries").FocusableAreasOption;
 const EventListener = @import("interfaces").EventListener;
@@ -314,7 +314,7 @@ pub const HTMLPortalElement = struct {
         return try HTMLPortalElementImpl.call_activate(instance, options);
     }
 
-    pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, options: *const anyopaque) anyerror!void {
+    pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, options: PostMessageOptions) anyerror!void {
         
         return try HTMLPortalElementImpl.call_postMessage(instance, message, options);
     }

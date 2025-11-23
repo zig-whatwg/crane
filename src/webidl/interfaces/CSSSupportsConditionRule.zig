@@ -1,5 +1,5 @@
 //! Generated from: css-conditional-5.idl
-//! Generated at: 2025-11-23T14:26:29Z
+//! Generated at: 2025-11-23T16:59:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,7 @@ const runtime = @import("runtime");
 const CSSSupportsConditionRuleImpl = @import("impls").CSSSupportsConditionRule;
 const CSSGroupingRule = @import("interfaces").CSSGroupingRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const CSSRule = @import("interfaces").CSSRule;
 const DOMString = @import("typedefs").DOMString;
 const CSSRuleList = @import("interfaces").CSSRuleList;
@@ -83,7 +83,7 @@ pub const CSSSupportsConditionRule = struct {
         CSSSupportsConditionRuleImpl.deinit(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_name(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSSupportsConditionRuleImpl.get_name(instance);
     }
 

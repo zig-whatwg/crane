@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-23T14:26:29Z
+//! Generated at: 2025-11-23T16:59:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,7 +9,7 @@ const CSSStyleSheetImpl = @import("impls").CSSStyleSheet;
 const StyleSheet = @import("interfaces").StyleSheet;
 const CSSStyleSheetInit = @import("dictionaries").CSSStyleSheetInit;
 const CSSRule = @import("interfaces").CSSRule;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const Node = @import("interfaces").Node;
 const USVString = @import("interfaces").USVString;
 const MediaList = @import("interfaces").MediaList;
@@ -172,7 +172,7 @@ pub const CSSStyleSheet = struct {
         return try CSSStyleSheetImpl.call_replace(instance, text);
     }
 
-    pub fn call_insertRule(instance: *runtime.Instance, rule: *const anyopaque, index: u32) anyerror!u32 {
+    pub fn call_insertRule(instance: *runtime.Instance, rule: CSSOMString, index: u32) anyerror!u32 {
         
         return try CSSStyleSheetImpl.call_insertRule(instance, rule, index);
     }

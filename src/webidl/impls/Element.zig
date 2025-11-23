@@ -18,6 +18,10 @@ pub const ImplError = error{
     NotImplemented,
 };
 
+/// Internal state for this implementation
+/// Can be used to store browser-specific data structures
+pub const InternalState = struct {};
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -511,7 +515,7 @@ pub fn get_ariaValueText(instance: *runtime.Instance) ImplError!runtime.DOMStrin
 }
 
 /// Getter for regionOverset
-pub fn get_regionOverset(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_regionOverset(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
@@ -1355,7 +1359,7 @@ pub fn call_toggleAttribute(instance: *runtime.Instance, qualifiedName: runtime.
 }
 
 /// Operation: pseudo
-pub fn call_pseudo(instance: *runtime.Instance, @"type": *const anyopaque) ImplError!interfaces.CSSPseudoElement {
+pub fn call_pseudo(instance: *runtime.Instance, @"type": typedefs.CSSOMString) ImplError!interfaces.CSSPseudoElement {
     _ = instance;
     _ = @"type";
     return error.NotImplemented;

@@ -1,5 +1,5 @@
 //! Generated from: css-animations.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:14Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -9,7 +9,7 @@ const CSSKeyframesRuleImpl = @import("impls").CSSKeyframesRule;
 const CSSRule = @import("interfaces").CSSRule;
 const DOMString = @import("typedefs").DOMString;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const CSSKeyframeRule = @import("interfaces").CSSKeyframeRule;
 const CSSRuleList = @import("interfaces").CSSRuleList;
 
@@ -101,11 +101,11 @@ pub const CSSKeyframesRule = struct {
         CSSKeyframesRuleImpl.deinit(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_name(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSKeyframesRuleImpl.get_name(instance);
     }
 
-    pub fn set_name(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_name(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSKeyframesRuleImpl.set_name(instance, value);
     }
 
@@ -117,17 +117,17 @@ pub const CSSKeyframesRule = struct {
         return try CSSKeyframesRuleImpl.get_length(instance);
     }
 
-    pub fn call_deleteRule(instance: *runtime.Instance, select: *const anyopaque) anyerror!void {
+    pub fn call_deleteRule(instance: *runtime.Instance, select: CSSOMString) anyerror!void {
         
         return try CSSKeyframesRuleImpl.call_deleteRule(instance, select);
     }
 
-    pub fn call_findRule(instance: *runtime.Instance, select: *const anyopaque) anyerror!CSSKeyframeRule {
+    pub fn call_findRule(instance: *runtime.Instance, select: CSSOMString) anyerror!CSSKeyframeRule {
         
         return try CSSKeyframesRuleImpl.call_findRule(instance, select);
     }
 
-    pub fn call_appendRule(instance: *runtime.Instance, rule: *const anyopaque) anyerror!void {
+    pub fn call_appendRule(instance: *runtime.Instance, rule: CSSOMString) anyerror!void {
         
         return try CSSKeyframesRuleImpl.call_appendRule(instance, rule);
     }

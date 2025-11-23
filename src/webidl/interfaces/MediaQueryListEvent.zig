@@ -1,5 +1,5 @@
 //! Generated from: cssom-view.idl
-//! Generated at: 2025-11-23T14:26:29Z
+//! Generated at: 2025-11-23T16:59:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -7,7 +7,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const MediaQueryListEventImpl = @import("impls").MediaQueryListEvent;
 const Event = @import("interfaces").Event;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const MediaQueryListEventInit = @import("dictionaries").MediaQueryListEventInit;
 const EventTarget = @import("interfaces").EventTarget;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
@@ -92,12 +92,12 @@ pub const MediaQueryListEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": *const anyopaque, eventInitDict: MediaQueryListEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": CSSOMString, eventInitDict: MediaQueryListEventInit) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try MediaQueryListEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
-    pub fn get_media(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_media(instance: *runtime.Instance) anyerror!CSSOMString {
         return try MediaQueryListEventImpl.get_media(instance);
     }
 

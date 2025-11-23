@@ -1,5 +1,5 @@
 //! Generated from: css-cascade-6.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:14Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,7 @@ const runtime = @import("runtime");
 const CSSScopeRuleImpl = @import("impls").CSSScopeRule;
 const CSSGroupingRule = @import("interfaces").CSSGroupingRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const CSSRule = @import("interfaces").CSSRule;
 const DOMString = @import("typedefs").DOMString;
 const CSSRuleList = @import("interfaces").CSSRuleList;
@@ -87,11 +87,11 @@ pub const CSSScopeRule = struct {
         CSSScopeRuleImpl.deinit(instance);
     }
 
-    pub fn get_start(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_start(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSScopeRuleImpl.get_start(instance);
     }
 
-    pub fn get_end(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_end(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSScopeRuleImpl.get_end(instance);
     }
 

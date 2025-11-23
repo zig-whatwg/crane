@@ -1,5 +1,5 @@
 //! Generated from: css-properties-values-api.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,7 @@ const runtime = @import("runtime");
 const CSSPropertyRuleImpl = @import("impls").CSSPropertyRule;
 const CSSRule = @import("interfaces").CSSRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSPropertyRule = struct {
@@ -91,11 +91,11 @@ pub const CSSPropertyRule = struct {
         CSSPropertyRuleImpl.deinit(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_name(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPropertyRuleImpl.get_name(instance);
     }
 
-    pub fn get_syntax(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_syntax(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPropertyRuleImpl.get_syntax(instance);
     }
 
@@ -103,7 +103,7 @@ pub const CSSPropertyRule = struct {
         return try CSSPropertyRuleImpl.get_inherits(instance);
     }
 
-    pub fn get_initialValue(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_initialValue(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPropertyRuleImpl.get_initialValue(instance);
     }
 

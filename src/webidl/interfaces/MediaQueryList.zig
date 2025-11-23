@@ -1,5 +1,5 @@
 //! Generated from: cssom-view.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -11,7 +11,7 @@ const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const DOMString = @import("typedefs").DOMString;
 const Event = @import("interfaces").Event;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const EventListener = @import("interfaces").EventListener;
 const EventHandler = @import("typedefs").EventHandler;
@@ -106,7 +106,7 @@ pub const MediaQueryList = struct {
         MediaQueryListImpl.deinit(instance);
     }
 
-    pub fn get_media(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_media(instance: *runtime.Instance) anyerror!CSSOMString {
         return try MediaQueryListImpl.get_media(instance);
     }
 

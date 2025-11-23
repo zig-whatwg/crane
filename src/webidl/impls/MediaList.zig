@@ -18,6 +18,10 @@ pub const ImplError = error{
     NotImplemented,
 };
 
+/// Internal state for this implementation
+/// Can be used to store browser-specific data structures
+pub const InternalState = struct {};
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -37,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for mediaText
-pub fn get_mediaText(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_mediaText(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
@@ -49,28 +53,28 @@ pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
 }
 
 /// Setter for mediaText
-pub fn set_mediaText(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_mediaText(instance: *runtime.Instance, value: typedefs.CSSOMString) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: item
-pub fn call_item(instance: *runtime.Instance, index: u32) ImplError!*const anyopaque {
+pub fn call_item(instance: *runtime.Instance, index: u32) ImplError!typedefs.CSSOMString {
     _ = instance;
     _ = index;
     return error.NotImplemented;
 }
 
 /// Operation: deleteMedium
-pub fn call_deleteMedium(instance: *runtime.Instance, medium: *const anyopaque) ImplError!void {
+pub fn call_deleteMedium(instance: *runtime.Instance, medium: typedefs.CSSOMString) ImplError!void {
     _ = instance;
     _ = medium;
     return error.NotImplemented;
 }
 
 /// Operation: appendMedium
-pub fn call_appendMedium(instance: *runtime.Instance, medium: *const anyopaque) ImplError!void {
+pub fn call_appendMedium(instance: *runtime.Instance, medium: typedefs.CSSOMString) ImplError!void {
     _ = instance;
     _ = medium;
     return error.NotImplemented;

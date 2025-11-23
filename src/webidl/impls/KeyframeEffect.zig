@@ -18,6 +18,10 @@ pub const ImplError = error{
     NotImplemented,
 };
 
+/// Internal state for this implementation
+/// Can be used to store browser-specific data structures
+pub const InternalState = struct {};
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -57,7 +61,7 @@ pub fn get_target(instance: *runtime.Instance) ImplError!interfaces.Element {
 }
 
 /// Getter for pseudoElement
-pub fn get_pseudoElement(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_pseudoElement(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
@@ -82,7 +86,7 @@ pub fn set_target(instance: *runtime.Instance, value: interfaces.Element) ImplEr
 }
 
 /// Setter for pseudoElement
-pub fn set_pseudoElement(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_pseudoElement(instance: *runtime.Instance, value: typedefs.CSSOMString) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

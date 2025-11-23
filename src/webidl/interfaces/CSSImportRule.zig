@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-23T14:26:29Z
+//! Generated at: 2025-11-23T16:59:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,7 @@ const runtime = @import("runtime");
 const CSSImportRuleImpl = @import("impls").CSSImportRule;
 const CSSRule = @import("interfaces").CSSRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const USVString = @import("interfaces").USVString;
 const DOMString = @import("typedefs").DOMString;
 const MediaList = @import("interfaces").MediaList;
@@ -133,11 +133,11 @@ pub const CSSImportRule = struct {
         return value;
     }
 
-    pub fn get_layerName(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_layerName(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSImportRuleImpl.get_layerName(instance);
     }
 
-    pub fn get_supportsText(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_supportsText(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSImportRuleImpl.get_supportsText(instance);
     }
 

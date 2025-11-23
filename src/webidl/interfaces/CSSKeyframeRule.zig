@@ -1,5 +1,5 @@
 //! Generated from: css-animations.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -8,7 +8,7 @@ const runtime = @import("runtime");
 const CSSKeyframeRuleImpl = @import("impls").CSSKeyframeRule;
 const CSSRule = @import("interfaces").CSSRule;
 const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
-const CSSOMString = @import("interfaces").CSSOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const DOMString = @import("typedefs").DOMString;
 
@@ -87,11 +87,11 @@ pub const CSSKeyframeRule = struct {
         CSSKeyframeRuleImpl.deinit(instance);
     }
 
-    pub fn get_keyText(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_keyText(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSKeyframeRuleImpl.get_keyText(instance);
     }
 
-    pub fn set_keyText(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_keyText(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSKeyframeRuleImpl.set_keyText(instance, value);
     }
 

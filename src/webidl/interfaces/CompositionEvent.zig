@@ -1,5 +1,5 @@
 //! Generated from: uievents.idl
-//! Generated at: 2025-11-23T14:26:30Z
+//! Generated at: 2025-11-23T16:59:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -11,7 +11,7 @@ const UIEventInit = @import("dictionaries").UIEventInit;
 const Window = @import("interfaces").Window;
 const CompositionEventInit = @import("dictionaries").CompositionEventInit;
 const EventTarget = @import("interfaces").EventTarget;
-const WindowProxy = @import("interfaces").WindowProxy;
+const WindowProxy = @import("typedefs").WindowProxy;
 const InputDeviceCapabilities = @import("interfaces").InputDeviceCapabilities;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
@@ -106,7 +106,7 @@ pub const CompositionEvent = struct {
         return try CompositionEventImpl.get_data(instance);
     }
 
-    pub fn call_initCompositionEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: *const anyopaque, dataArg: DOMString) anyerror!void {
+    pub fn call_initCompositionEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: WindowProxy, dataArg: DOMString) anyerror!void {
         
         return try CompositionEventImpl.call_initCompositionEvent(instance, typeArg, bubblesArg, cancelableArg, viewArg, dataArg);
     }

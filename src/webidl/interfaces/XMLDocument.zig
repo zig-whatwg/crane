@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-23T14:26:29Z
+//! Generated at: 2025-11-23T16:59:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -61,7 +61,7 @@ const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ConvertCoordinateOptions = @import("dictionaries").ConvertCoordinateOptions;
 const HTMLElement = @import("interfaces").HTMLElement;
 const StorageAccessTypes = @import("dictionaries").StorageAccessTypes;
-const WindowProxy = @import("interfaces").WindowProxy;
+const WindowProxy = @import("typedefs").WindowProxy;
 const Attr = @import("interfaces").Attr;
 const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;

@@ -18,6 +18,10 @@ pub const ImplError = error{
     NotImplemented,
 };
 
+/// Internal state for this implementation
+/// Can be used to store browser-specific data structures
+pub const InternalState = struct {};
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -38,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, family: *const anyopaque, source: *const anyopaque, descriptors: dictionaries.FontFaceDescriptors) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, family: typedefs.CSSOMString, source: *const anyopaque, descriptors: dictionaries.FontFaceDescriptors) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &FontFace.vtable, ctx);
     errdefer deinit(instance);
@@ -52,67 +56,67 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, fami
 }
 
 /// Getter for family
-pub fn get_family(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_family(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for style
-pub fn get_style(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_style(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for weight
-pub fn get_weight(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_weight(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for stretch
-pub fn get_stretch(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_stretch(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for unicodeRange
-pub fn get_unicodeRange(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_unicodeRange(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for featureSettings
-pub fn get_featureSettings(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_featureSettings(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for variationSettings
-pub fn get_variationSettings(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_variationSettings(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for display
-pub fn get_display(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_display(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ascentOverride
-pub fn get_ascentOverride(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_ascentOverride(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for descentOverride
-pub fn get_descentOverride(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_descentOverride(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for lineGapOverride
-pub fn get_lineGapOverride(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_lineGapOverride(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
@@ -148,77 +152,77 @@ pub fn get_palettes(instance: *runtime.Instance) ImplError!interfaces.FontFacePa
 }
 
 /// Setter for family
-pub fn set_family(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_family(instance: *runtime.Instance, value: typedefs.CSSOMString) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for style
-pub fn set_style(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_style(instance: *runtime.Instance, value: typedefs.CSSOMString) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for weight
-pub fn set_weight(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_weight(instance: *runtime.Instance, value: typedefs.CSSOMString) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for stretch
-pub fn set_stretch(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_stretch(instance: *runtime.Instance, value: typedefs.CSSOMString) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for unicodeRange
-pub fn set_unicodeRange(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_unicodeRange(instance: *runtime.Instance, value: typedefs.CSSOMString) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for featureSettings
-pub fn set_featureSettings(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_featureSettings(instance: *runtime.Instance, value: typedefs.CSSOMString) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for variationSettings
-pub fn set_variationSettings(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_variationSettings(instance: *runtime.Instance, value: typedefs.CSSOMString) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for display
-pub fn set_display(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_display(instance: *runtime.Instance, value: typedefs.CSSOMString) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ascentOverride
-pub fn set_ascentOverride(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_ascentOverride(instance: *runtime.Instance, value: typedefs.CSSOMString) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for descentOverride
-pub fn set_descentOverride(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_descentOverride(instance: *runtime.Instance, value: typedefs.CSSOMString) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for lineGapOverride
-pub fn set_lineGapOverride(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_lineGapOverride(instance: *runtime.Instance, value: typedefs.CSSOMString) ImplError!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
