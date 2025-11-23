@@ -34,6 +34,59 @@
 const std = @import("std");
 const Logger = @import("logger.zig").Logger;
 const LoggerConfig = @import("logger.zig").LoggerConfig;
+const infra = @import("infra");
+
+/// Console state for console namespace operations
+///
+/// This state is per-context (one instance per ContextData).
+/// Stores count maps, timers, and group stack for console operations.
+pub const ConsoleState = struct {
+    /// Map of labels to counts (for console.count/console.countReset)
+    count_map: std.StringHashMap(u32),
+
+    /// Map of labels to start times (for console.time/console.timeLog/console.timeEnd)
+    timer_table: std.StringHashMap(i64),
+
+    /// Stack of active groups (for console.group/console.groupCollapsed/console.groupEnd)
+    /// Stores indent level as u32
+    group_stack: std.ArrayList(u32),
+
+    allocator: std.mem.Allocator,
+
+    const Self = @This();
+
+    pub fn init(allocator: std.mem.Allocator) Self {
+        return .{
+            .count_map = std.StringHashMap(u32).init(allocator),
+            .timer_table = std.StringHashMap(i64).init(allocator),
+            .group_stack = .{}, // ArrayList has default empty initialization
+            .allocator = allocator,
+        };
+    }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        // Free all keys in count_map
+        var count_iter = self.count_map.keyIterator();
+        while (count_iter.next()) |key| {
+            allocator.free(key.*);
+        }
+        self.count_map.deinit();
+
+        // Free all keys in timer_table
+        var timer_iter = self.timer_table.keyIterator();
+        while (timer_iter.next()) |key| {
+            allocator.free(key.*);
+        }
+        self.timer_table.deinit();
+
+        self.group_stack.deinit(allocator);
+    }
+
+    /// Get current indent level based on group stack depth
+    pub fn getIndentLevel(self: *const Self) u32 {
+        return @intCast(self.group_stack.items.len);
+    }
+};
 
 /// Runtime context data structure
 ///
@@ -43,6 +96,7 @@ pub const ContextData = struct {
     allocator: std.mem.Allocator,
     logger: Logger,
     engine_ctx: ?*anyopaque,
+    console_state: ConsoleState,
 
     const Self = @This();
 
@@ -70,11 +124,13 @@ pub const ContextData = struct {
             .allocator = allocator,
             .logger = logger,
             .engine_ctx = options.engine_ctx,
+            .console_state = ConsoleState.init(allocator),
         };
     }
 
     /// Deinitialize context and cleanup resources
     pub fn deinit(self: *Self) void {
+        self.console_state.deinit(self.allocator);
         self.logger.deinit();
     }
 

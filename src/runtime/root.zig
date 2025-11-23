@@ -31,6 +31,7 @@ pub const Method = @import("instance.zig").Method;
 // Runtime context and logging
 pub const Context = @import("context.zig").Context;
 pub const ContextData = @import("context.zig").ContextData;
+pub const ConsoleState = @import("context.zig").ConsoleState;
 pub const createNullContext = @import("context.zig").createNullContext;
 pub const Logger = @import("logger.zig").Logger;
 pub const LogLevel = @import("logger.zig").LogLevel;

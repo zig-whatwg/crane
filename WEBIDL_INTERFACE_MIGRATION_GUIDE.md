@@ -486,12 +486,182 @@ const related_internal: *RelatedImpl.InternalState =
     @ptrCast(@alignCast(opaque_ptr));
 ```
 
+## Namespace Migration
+
+**Namespaces are different from interfaces** - they have no instance state, only static methods.
+
+### Key Differences
+
+| Aspect | Interface | Namespace |
+|--------|-----------|-----------|
+| Instances | Has instances with state | No instances (static only) |
+| Constructor | `call_constructor` creates instances | No constructor |
+| State | `InternalState` per instance | No instance state |
+| Methods | Operate on instance state | Static functions |
+
+### Namespace State Management
+
+**Problem:** Namespaces don't have instances, but some (like console) need state.
+
+**Solution:** Store namespace state in `runtime.Context`.
+
+### Example: Console Namespace
+
+**1. Add State to ContextData** (`src/runtime/context.zig`):
+```zig
+pub const ConsoleState = struct {
+    count_map: std.StringHashMap(u32),
+    timer_table: std.StringHashMap(i64),
+    group_stack: std.ArrayList(u32),
+    allocator: std.mem.Allocator,
+    
+    pub fn init(allocator: std.mem.Allocator) Self {
+        return .{
+            .count_map = std.StringHashMap(u32).init(allocator),
+            .timer_table = std.StringHashMap(i64).init(allocator),
+            .group_stack = .{}, // ArrayList empty init
+            .allocator = allocator,
+        };
+    }
+    
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        // Free all keys
+        var count_iter = self.count_map.keyIterator();
+        while (count_iter.next()) |key| {
+            allocator.free(key.*);
+        }
+        self.count_map.deinit();
+        
+        var timer_iter = self.timer_table.keyIterator();
+        while (timer_iter.next()) |key| {
+            allocator.free(key.*);
+        }
+        self.timer_table.deinit();
+        
+        self.group_stack.deinit(allocator);
+    }
+    
+    pub fn getIndentLevel(self: *const Self) u32 {
+        return @intCast(self.group_stack.items.len);
+    }
+};
+
+pub const ContextData = struct {
+    allocator: std.mem.Allocator,
+    logger: Logger,
+    engine_ctx: ?*anyopaque,
+    console_state: ConsoleState, // ← Add namespace state here
+    
+    pub fn init(allocator: std.mem.Allocator, options: Options) !Self {
+        return .{
+            .allocator = allocator,
+            .logger = Logger.init(allocator, .{ ... }),
+            .engine_ctx = options.engine_ctx,
+            .console_state = ConsoleState.init(allocator), // ← Initialize
+        };
+    }
+    
+    pub fn deinit(self: *Self) void {
+        self.console_state.deinit(self.allocator); // ← Cleanup
+        self.logger.deinit();
+    }
+};
+```
+
+**2. Export State from Runtime** (`src/runtime/root.zig`):
+```zig
+pub const ConsoleState = @import("context.zig").ConsoleState;
+```
+
+**3. Implement Namespace Methods** (`src/webidl/impls/console.zig`):
+```zig
+/// console.count(label)
+pub fn call_count(ctx: runtime.Context, label: runtime.DOMString) void {
+    const label_str = label.asSlice();
+    
+    const gop = ctx.console_state.count_map.getOrPut(label_str) catch return;
+    if (!gop.found_existing) {
+        const owned_label = ctx.allocator.dupe(u8, label_str) catch return;
+        gop.key_ptr.* = owned_label;
+        gop.value_ptr.* = 1;
+    } else {
+        gop.value_ptr.* += 1;
+    }
+    
+    printIndented(ctx, "{s}: {d}", .{ label_str, gop.value_ptr.* });
+}
+
+/// console.time(label)
+pub fn call_time(ctx: runtime.Context, label: runtime.DOMString) void {
+    const label_str = label.asSlice();
+    
+    const gop = ctx.console_state.timer_table.getOrPut(label_str) catch return;
+    if (!gop.found_existing) {
+        const owned_label = ctx.allocator.dupe(u8, label_str) catch return;
+        gop.key_ptr.* = owned_label;
+        gop.value_ptr.* = std.time.milliTimestamp();
+    }
+}
+
+/// console.group(data...)
+pub fn call_group(ctx: runtime.Context, data: []const *const anyopaque) void {
+    _ = data;
+    printIndented(ctx, "▼ Group", .{});
+    ctx.console_state.group_stack.append(ctx.allocator, 0) catch {};
+}
+```
+
+### Namespace Patterns
+
+**Per-Context State:**
+- Each `runtime.Context` has its own namespace state
+- Multiple contexts = separate state (thread-safe by design)
+- No global variables needed
+
+**State Lifecycle:**
+- Init: `ContextData.init` creates namespace state
+- Use: Namespace methods access `ctx.{namespace}_state`
+- Cleanup: `ContextData.deinit` frees namespace state
+
+**Testing:**
+```zig
+test "console state is per-context" {
+    var ctx1 = try runtime.ContextData.init(allocator, .{});
+    defer ctx1.deinit();
+    
+    var ctx2 = try runtime.ContextData.init(allocator, .{});
+    defer ctx2.deinit();
+    
+    // Operations on ctx1 don't affect ctx2
+    console.call_count(&ctx1, label);
+    console.call_count(&ctx1, label);
+    
+    try testing.expectEqual(@as(u32, 2), ctx1.console_state.count_map.get("label").?);
+    try testing.expect(!ctx2.console_state.count_map.contains("label"));
+}
+```
+
+### When to Use Namespace Pattern
+
+Use namespaces when:
+- ✅ Spec defines it as namespace (not interface)
+- ✅ All methods are static (no `this` binding)
+- ✅ No instances created from constructor
+- ✅ Examples: console, Math, Reflect
+
+Don't use for:
+- ❌ Interfaces with constructors
+- ❌ Objects with instance state
+- ❌ Prototypes with methods
+
 ## Resources
 
 - **WHATWG Specs:** https://spec.whatwg.org/
 - **Codegen:** `src/webidl/codegen/`
 - **Runtime:** `src/runtime/`
-- **URL Example:** `src/webidl/impls/URL.zig` (reference implementation)
+- **Interface Example:** `src/webidl/impls/URL.zig` (reference implementation)
+- **Namespace Example:** `src/webidl/impls/console.zig` (console namespace)
+- **Context State:** `src/runtime/context.zig` (namespace state management)
 - **Migration Summary:** `tmp/summaries/url_migration_complete.md`
 
 ## Getting Help
