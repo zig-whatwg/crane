@@ -1,0 +1,15 @@
+// WindowProxy is an ECMAScript exotic object, not a WebIDL interface
+// See: https://html.spec.whatwg.org/multipage/nav-history-apis.html#the-windowproxy-exotic-object
+//
+// From the spec:
+// "There is no WindowProxy interface object."
+// "A WindowProxy is an exotic object that wraps a Window ordinary object"
+//
+// In WebIDL type positions, WindowProxy is used to represent a reference to
+// a browsing context's window that may change across navigations.
+//
+// For implementation purposes, we treat WindowProxy as an alias to Window.
+// The actual exotic object behavior is implemented by the JavaScript engine,
+// not by WebIDL bindings.
+
+typedef Window WindowProxy;

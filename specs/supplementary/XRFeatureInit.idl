@@ -1,0 +1,3 @@
+dictionary XRFeatureInit {
+  // Base members for feature initialization would go here
+};

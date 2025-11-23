@@ -1,0 +1,4 @@
+// Supplementary typedef definitions for CSS-related types
+// These are missing from the official IDL files but used throughout CSS specs
+
+typedef DOMString CSSOMString;

@@ -1,0 +1,3 @@
+dictionary PostMessageOptions : StructuredSerializeOptions {
+  boolean includeUserActivation = false;
+};
