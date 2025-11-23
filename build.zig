@@ -138,6 +138,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     runtime_mod.addImport("webidl", webidl_mod);
+    runtime_mod.addImport("infra", infra_mod);
 
     // V8 bindings module
     const v8_mod = b.addModule("v8", .{
@@ -592,6 +593,8 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "event_loop", .module = streams_event_loop_mod },
             .{ .name = "common", .module = streams_common_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "infra", .module = infra_mod },
         },
     });
 
@@ -696,6 +699,10 @@ pub fn build(b: *std.Build) void {
     streams_mod.addImport("webidl", webidl_mod);
     streams_mod.addImport("runtime", runtime_mod);
     streams_mod.addImport("dom", dom_mod);
+
+    // Add event loop to runtime for async operations (streams, promises)
+    runtime_mod.addImport("event_loop", streams_event_loop_mod);
+
     // Add internal modules so root.zig can access them
     streams_mod.addImport("common", streams_common_mod);
     streams_mod.addImport("event_loop", streams_event_loop_mod);

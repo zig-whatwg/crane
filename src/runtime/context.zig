@@ -36,6 +36,10 @@ const Logger = @import("logger.zig").Logger;
 const LoggerConfig = @import("logger.zig").LoggerConfig;
 const infra = @import("infra");
 
+// Import event loop for streams and async operations
+// Note: This is an optional dependency - event_loop is only needed for async features
+const event_loop_mod = @import("event_loop");
+
 /// Console state for console namespace operations
 ///
 /// This state is per-context (one instance per ContextData).
@@ -91,12 +95,16 @@ pub const ConsoleState = struct {
 /// Runtime context data structure
 ///
 /// This struct contains all runtime services: logging, memory management,
-/// and JS engine integration.
+/// JS engine integration, and event loop for async operations.
 pub const ContextData = struct {
     allocator: std.mem.Allocator,
     logger: Logger,
     engine_ctx: ?*anyopaque,
     console_state: ConsoleState,
+
+    /// Event loop for async operations (streams, promises, etc.)
+    /// Optional - only needed for async features like ReadableStream
+    event_loop: ?event_loop_mod.EventLoop,
 
     const Self = @This();
 
@@ -110,6 +118,11 @@ pub const ContextData = struct {
         /// JS engine context (V8, JSC, etc.)
         /// This is an opaque pointer to the engine-specific context
         engine_ctx: ?*anyopaque = null,
+
+        /// Event loop for async operations
+        /// Optional - only needed for async features like streams, promises
+        /// If not provided, async operations will fail with error.NoEventLoop
+        event_loop: ?event_loop_mod.EventLoop = null,
     };
 
     /// Initialize a new runtime context
@@ -125,6 +138,7 @@ pub const ContextData = struct {
             .logger = logger,
             .engine_ctx = options.engine_ctx,
             .console_state = ConsoleState.init(allocator),
+            .event_loop = options.event_loop,
         };
     }
 
@@ -147,6 +161,21 @@ pub const ContextData = struct {
     /// Get the allocator for this context
     pub fn getAllocator(self: *const Self) std.mem.Allocator {
         return self.allocator;
+    }
+
+    /// Check if this context has an event loop
+    pub fn hasEventLoop(self: *const Self) bool {
+        return self.event_loop != null;
+    }
+
+    /// Get the event loop (returns error if not available)
+    pub fn getEventLoop(self: *const Self) !event_loop_mod.EventLoop {
+        return self.event_loop orelse error.NoEventLoop;
+    }
+
+    /// Get optional event loop
+    pub fn getOptionalEventLoop(self: *const Self) ?event_loop_mod.EventLoop {
+        return self.event_loop;
     }
 };
 
