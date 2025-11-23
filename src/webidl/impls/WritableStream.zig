@@ -271,8 +271,159 @@ pub fn call_abort(instance: *runtime.Instance, reason: *const anyopaque) ImplErr
         return @ptrCast(promise);
     }
 
-    // Step 2: WritableStreamAbort
+    // Step 2: Return WritableStreamAbort(this, reason)
     return writableStreamAbort(instance, internal, reason);
+}
+
+/// WritableStreamStartErroring - Begin error process
+///
+/// Spec: § 5.3.6 "Start erroring a writable stream"
+/// Arguments:
+///   instance: WritableStream instance
+///   reason: Error reason
+pub fn writableStreamStartErroring(instance: *runtime.Instance, reason: *const anyopaque) void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return;
+
+    // 1. Assert: stream.[[storedError]] is undefined
+    // 2. Assert: stream.[[state]] is "writable"
+    if (internal.state != .writable or internal.stored_error != null) {
+        return; // Graceful handling instead of assert
+    }
+
+    // 3. Let controller be stream.[[controller]]
+    const controller = internal.controller orelse return;
+
+    // 4. Assert: controller is not undefined
+    // (Already checked above)
+
+    // 5. Set stream.[[state]] to "erroring"
+    internal.state = .erroring;
+
+    // 6. Set stream.[[storedError]] to reason
+    internal.stored_error = @constCast(reason);
+
+    // 7. Let writer be stream.[[writer]]
+    // 8. If writer is not undefined, perform WritableStreamDefaultWriterEnsureReadyPromiseRejected
+    if (internal.writer != .none) {
+        const writer = switch (internal.writer) {
+            .default => |w| w,
+            .none => unreachable,
+        };
+
+        const writer_state = writer.getState(interfaces.WritableStreamDefaultWriter.State);
+        if (writer_state.own._internal) |writer_internal| {
+            if (writer_internal.ready_promise) |ready| {
+                // Create exception from reason
+                const exception = webidl.errors.Exception.typeError(internal.allocator, "Stream errored") catch return;
+                ready.reject(exception);
+            }
+        }
+    }
+
+    // 9. If ! WritableStreamHasOperationMarkedInFlight(stream) is false and
+    //    controller.[[started]] is true, perform ! WritableStreamFinishErroring(stream)
+    if (!writableStreamHasOperationMarkedInFlight(internal)) {
+        const controller_state = controller.getState(interfaces.WritableStreamDefaultController.State);
+        const WritableStreamDefaultControllerImpl = @import("WritableStreamDefaultController.zig");
+        if (controller_state.own._internal) |controller_internal_ptr| {
+            const controller_internal: *WritableStreamDefaultControllerImpl.InternalState = @ptrCast(@alignCast(controller_internal_ptr));
+            if (controller_internal.started) {
+                writableStreamFinishErroring(instance, internal);
+            }
+        }
+    }
+}
+
+/// WritableStreamFinishErroring - Complete error process
+///
+/// Spec: § 5.3.5 "Finish erroring a writable stream"
+/// Arguments:
+///   instance: WritableStream instance
+///   internal: Internal state
+pub fn writableStreamFinishErroring(instance: *runtime.Instance, internal: *InternalState) void {
+    // 1. Assert: stream.[[state]] is "erroring"
+    if (internal.state != .erroring) {
+        return; // Graceful handling
+    }
+
+    // 2. Assert: ! WritableStreamHasOperationMarkedInFlight(stream) is false
+    if (writableStreamHasOperationMarkedInFlight(internal)) {
+        return; // Graceful handling
+    }
+
+    // 3. Set stream.[[state]] to "errored"
+    internal.state = .errored;
+
+    // 4. Perform ! stream.[[controller]].[[ErrorSteps]]()
+    if (internal.controller) |controller| {
+        const WritableStreamDefaultControllerImpl = @import("WritableStreamDefaultController.zig");
+        WritableStreamDefaultControllerImpl.errorSteps(controller);
+    }
+
+    // 5. Let storedError be stream.[[storedError]]
+    const stored_error = internal.stored_error;
+
+    // 6. Repeat for each writeRequest in stream.[[writeRequests]]
+    const exception = webidl.errors.Exception.typeError(internal.allocator, "Stream errored") catch return;
+
+    for (internal.write_requests.items) |write_request| {
+        // 6.1. Reject writeRequest's promise with storedError
+        write_request.reject(exception);
+    }
+
+    // 6.2. Set stream.[[writeRequests]] to empty list
+    internal.write_requests.clearRetainingCapacity();
+
+    // 7. If stream.[[pendingAbortRequest]] is undefined
+    if (internal.pending_abort_request == null) {
+        // 7.1. Perform ! WritableStreamRejectCloseAndClosedPromiseIfNeeded(stream)
+        writableStreamRejectCloseAndClosedPromiseIfNeeded(instance, internal);
+        return;
+    }
+
+    // 8. Let abortRequest be stream.[[pendingAbortRequest]]
+    // 9. Set stream.[[pendingAbortRequest]] to undefined
+    // 10. If abortRequest's was already erroring is true, reject/resolve promises
+    // TODO: Implement abort request handling when we have proper abort support
+    _ = stored_error;
+}
+
+/// WritableStreamHasOperationMarkedInFlight - Check for in-flight operations
+///
+/// Spec: § 5.3.7
+fn writableStreamHasOperationMarkedInFlight(internal: *const InternalState) bool {
+    return internal.in_flight_write_request != null or internal.in_flight_close_request != null;
+}
+
+/// WritableStreamRejectCloseAndClosedPromiseIfNeeded - Reject close promises
+///
+/// Spec: § 5.3.8
+fn writableStreamRejectCloseAndClosedPromiseIfNeeded(instance: *runtime.Instance, internal: *InternalState) void {
+    _ = instance;
+
+    const exception = webidl.errors.Exception.typeError(internal.allocator, "Stream errored") catch return;
+
+    // If controller.[[closeRequest]] is not undefined, reject it
+    if (internal.close_request) |close_req| {
+        close_req.reject(exception);
+        internal.close_request = null;
+    }
+
+    // Reject writer's closed promise if writer exists
+    if (internal.writer != .none) {
+        const writer = switch (internal.writer) {
+            .default => |w| w,
+            .none => return,
+        };
+
+        const writer_state = writer.getState(interfaces.WritableStreamDefaultWriter.State);
+        if (writer_state.own._internal) |writer_internal| {
+            if (writer_internal.closed_promise) |closed| {
+                closed.reject(exception);
+            }
+        }
+    }
 }
 
 /// Operation: close

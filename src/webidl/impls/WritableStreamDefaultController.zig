@@ -298,7 +298,8 @@ fn writableStreamDefaultControllerAdvanceQueueIfNeeded(controller: *runtime.Inst
 
     // 7. If erroring, finish erroring
     if (current_state == .erroring) {
-        // Future: Call WritableStreamFinishErroring
+        const WritableStreamImpl = @import("WritableStream.zig");
+        WritableStreamImpl.writableStreamFinishErroring(stream, stream_internal);
         return;
     }
 
@@ -313,9 +314,7 @@ fn writableStreamDefaultControllerAdvanceQueueIfNeeded(controller: *runtime.Inst
     // 10-11. Process close or write
     switch (value) {
         .close_sentinel => {
-            // Future: Call WritableStreamDefaultControllerProcessClose
-            // For now, just advance queue recursively
-            writableStreamDefaultControllerAdvanceQueueIfNeeded(controller);
+            writableStreamDefaultControllerProcessClose(controller);
         },
         .chunk => |chunk| {
             writableStreamDefaultControllerProcessWrite(controller, chunk);
@@ -411,6 +410,79 @@ fn writableStreamDefaultControllerFinishWrite(controller: *runtime.Instance, str
 
     // Advance the queue to process next write
     writableStreamDefaultControllerAdvanceQueueIfNeeded(controller);
+}
+
+/// WritableStreamDefaultControllerProcessClose - Execute underlying sink close
+///
+/// Spec: § 5.7.6 "Process a close request"
+/// Arguments:
+///   controller: WritableStreamDefaultController instance
+fn writableStreamDefaultControllerProcessClose(controller: *runtime.Instance) void {
+    const controller_state = controller.getState(State);
+    const controller_internal = controller_state.own._internal orelse return;
+
+    // Get stream
+    const stream = controller_internal.stream orelse return;
+    const stream_state = stream.getState(interfaces.WritableStream.State);
+    const stream_internal = stream_state.own._internal orelse return;
+
+    // Remove close sentinel from queue
+    if (controller_internal.queue.items.len > 0) {
+        _ = controller_internal.queue.orderedRemove(0);
+    }
+
+    // Set in_flight_close_request from close_request
+    if (stream_internal.close_request) |close_req| {
+        stream_internal.in_flight_close_request = close_req;
+        stream_internal.close_request = null;
+    }
+
+    // Invoke underlying sink close algorithm
+    // TODO: Actually call close_algorithm callback when runtime supports it
+    // For now, immediately succeed
+    //
+    // The real implementation would be:
+    // const result = controller_internal.close_algorithm.?();
+    // result.then(onFulfilled, onRejected)
+
+    // Simulate immediate fulfillment
+    writableStreamDefaultControllerFinishClose(stream);
+}
+
+/// WritableStreamDefaultControllerFinishClose - Complete close operation
+///
+/// Called when underlying sink close succeeds
+/// Arguments:
+///   stream: WritableStream instance
+fn writableStreamDefaultControllerFinishClose(stream: *runtime.Instance) void {
+    const stream_state = stream.getState(interfaces.WritableStream.State);
+    const stream_internal = stream_state.own._internal orelse return;
+
+    // Fulfill the in-flight close request
+    if (stream_internal.in_flight_close_request) |close_req| {
+        close_req.fulfill({});
+    }
+
+    // Clear in-flight close request
+    stream_internal.in_flight_close_request = null;
+
+    // Set stream state to closed
+    stream_internal.state = .closed;
+
+    // Fulfill writer's closed promise if writer exists
+    if (stream_internal.writer != .none) {
+        const writer = switch (stream_internal.writer) {
+            .default => |w| w,
+            .none => return,
+        };
+
+        const writer_state = writer.getState(interfaces.WritableStreamDefaultWriter.State);
+        if (writer_state.own._internal) |writer_internal| {
+            if (writer_internal.closed_promise) |closed| {
+                closed.fulfill({});
+            }
+        }
+    }
 }
 
 /// WritableStreamDefaultControllerUpdateBackpressure - Update backpressure signal
