@@ -568,22 +568,32 @@ fn setUpReadableStreamDefaultController(
     stream_internal.controller = controller_instance;
 
     // Step 9-12: Perform startAlgorithm and handle promise
-    // For now, if no start algorithm, immediately mark as started
-    if (startAlgorithm == null) {
-        // No start algorithm - immediately mark as started
+    if (startAlgorithm) |start_fn| {
+        // Invoke start algorithm with controller as argument
+        const start_callback: callbacks.UnderlyingSourceStartCallback = @ptrCast(@alignCast(start_fn));
+
+        // Call the start function - it returns a promise or undefined
+        const start_result = start_callback(@ptrCast(controller_instance));
+
+        // For now, we treat the result as immediately resolved
+        // TODO: Handle promise chaining when start returns a Promise
+        // If it's a promise, we should wait for fulfillment/rejection
+        _ = start_result;
+
+        // Mark as started (simplified - should wait for promise)
         controller_internal.started = true;
 
         // Call pull if needed
         const ReadableStreamDefaultControllerImpl = @import("ReadableStreamDefaultController.zig");
         ReadableStreamDefaultControllerImpl.readableStreamDefaultControllerCallPullIfNeeded(controller_internal);
     } else {
-        // TODO: Invoke start algorithm and handle promise
-        // For now, just mark as started
+        // No start algorithm - immediately mark as started
         controller_internal.started = true;
 
+        // Call pull if needed
         const ReadableStreamDefaultControllerImpl = @import("ReadableStreamDefaultController.zig");
         ReadableStreamDefaultControllerImpl.readableStreamDefaultControllerCallPullIfNeeded(controller_internal);
     }
 
-    _ = loop; // Will be used for promise handling
+    _ = loop; // Will be used for promise handling when we implement full async
 }

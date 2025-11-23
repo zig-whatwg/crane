@@ -455,24 +455,37 @@ pub fn readableStreamDefaultControllerCallPullIfNeeded(internal: *InternalState)
     internal.pulling = true;
 
     // Step 6: Perform pullAlgorithm
-    // If no pull algorithm, fulfill immediately
-    const pull_algorithm = internal.pull_algorithm orelse {
+    if (internal.pull_algorithm) |pull_fn| {
+        // Get the controller instance from stream
+        const stream_instance = internal.stream orelse {
+            handlePullFulfillment(internal);
+            return;
+        };
+        const stream_state = stream_instance.getState(interfaces.ReadableStream.State);
+        const stream_internal = stream_state.own._internal orelse {
+            handlePullFulfillment(internal);
+            return;
+        };
+        const controller_instance = stream_internal.controller;
+
+        // Invoke pull algorithm with controller as argument
+        const pull_callback: callbacks.UnderlyingSourcePullCallback = @ptrCast(@alignCast(pull_fn));
+
+        // Call the pull function - it returns a promise
+        const pull_promise_result = pull_callback(@ptrCast(controller_instance));
+
+        // For now, we treat the result as immediately fulfilled
+        // TODO: Handle the returned promise properly
+        // - If promise is fulfilled, call handlePullFulfillment
+        // - If promise is rejected, call ReadableStreamDefaultControllerError
+        _ = pull_promise_result;
+
+        // Simulate immediate fulfillment (until we have proper promise handling)
+        handlePullFulfillment(internal);
+    } else {
         // No pull algorithm - fulfill immediately
         handlePullFulfillment(internal);
-        return;
-    };
-
-    // TODO: Call the actual pull algorithm callback
-    // For now, we'll treat it as immediately fulfilled
-    // In a real implementation, this would:
-    // 1. Cast pull_algorithm to the correct function type
-    // 2. Call it with the controller instance
-    // 3. Handle the returned promise
-    // 4. React to fulfillment/rejection
-    _ = pull_algorithm;
-
-    // For now, simulate immediate fulfillment
-    handlePullFulfillment(internal);
+    }
 }
 
 /// Handle pull algorithm fulfillment
