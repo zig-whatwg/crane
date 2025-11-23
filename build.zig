@@ -1058,6 +1058,17 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "whatwg", .module = whatwg_mod },
+                .{ .name = "infra", .module = infra_mod },
+                .{ .name = "webidl", .module = webidl_mod },
+                .{ .name = "runtime", .module = runtime_mod },
+                .{ .name = "dom", .module = dom_mod },
+                .{ .name = "encoding", .module = encoding_mod },
+                .{ .name = "url", .module = url_mod },
+                .{ .name = "console", .module = console_mod },
+                .{ .name = "streams", .module = streams_mod },
+                .{ .name = "mimesniff", .module = mimesniff_mod },
+                .{ .name = "interfaces", .module = interfaces_mod },
+                .{ .name = "impls", .module = impls_mod },
             },
         }),
     });
