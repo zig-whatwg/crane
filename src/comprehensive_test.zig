@@ -34,13 +34,9 @@ comptime {
     _ = webidl.JSValue;
     _ = webidl.Exception;
     _ = webidl.DOMException;
-    _ = webidl.interface;
-    _ = webidl.namespace;
-    _ = webidl.mixin;
-    _ = webidl.BufferSource;
-    _ = webidl.ArrayBuffer;
-    _ = webidl.DataView;
-    _ = webidl.TypedArray;
+    _ = webidl.DOMString;
+    _ = webidl.ByteString;
+    _ = webidl.USVString;
 
     // Encoding - ALL generated interfaces
     // TODO: Re-enable when TextEncoder/TextDecoder are re-implemented with runtime
