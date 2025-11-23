@@ -538,7 +538,7 @@ pub fn build(b: *std.Build) void {
     url_mod.addImport("equivalence", url_equivalence_mod);
     url_mod.addImport("path_serializer", url_path_serializer_mod);
 
-    // URL infrastructure modules for impls (needed by URL.zig impl)
+    // URL infrastructure modules for impls (needed by URL.zig and URLSearchParams.zig impl)
     impls_mod.addImport("url_record", url_internal_url_record_mod);
     impls_mod.addImport("api_parser", url_parser_api_mod);
     impls_mod.addImport("basic_parser", url_basic_parser_mod);
@@ -550,6 +550,10 @@ pub fn build(b: *std.Build) void {
     impls_mod.addImport("encode_sets", url_encode_sets_mod);
     impls_mod.addImport("parser_state", url_parser_state_mod);
     impls_mod.addImport("form_parser", url_form_parser_mod);
+    impls_mod.addImport("form_serializer", url_form_serializer_mod);
+
+    // Infra module for URLSearchParams (List type)
+    impls_mod.addImport("infra", infra_mod);
 
     const console_mod = b.addModule("console", .{
         .root_source_file = b.path("src/console/root.zig"),
