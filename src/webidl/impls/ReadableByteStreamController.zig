@@ -523,7 +523,7 @@ fn defaultPullAlgorithm() PullAlgorithm {
 /// Default cancel algorithm (no-op)
 fn defaultCancelAlgorithm() CancelAlgorithm {
     const vtable = struct {
-        fn call(_: *anyopaque, _: JSValue) Promise(void) {
+        fn call(_: *anyopaque, _: ?JSValue) Promise(void) {
             return Promise(void).fulfilled({});
         }
         fn deinitFn(_: *anyopaque) void {}
@@ -634,7 +634,7 @@ pub fn pullInto(
     );
 
     // Step 17: Append descriptor to pending list
-    try internal.pending_pull_intos.append(pullIntoDescriptor);
+    try internal.pending_pull_intos.append(internal.allocator, pullIntoDescriptor);
 
     // Store the readIntoRequest for later fulfillment
     // TODO: Add to stream's readIntoRequests list when stream API is ready
