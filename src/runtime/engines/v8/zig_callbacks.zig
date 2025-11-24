@@ -44,12 +44,16 @@ pub const CallbackError = error{
 /// User data structure passed to V8 callbacks
 ///
 /// This allows V8 callbacks to call back into Zig code with context.
+/// Also stores the allocator so we can free this struct when V8 GCs the Function.
 const CallbackUserData = struct {
     /// Function pointer (type-erased)
     fn_ptr: *const anyopaque,
 
     /// Optional user data for closure-like behavior
     user_data: ?*anyopaque,
+
+    /// Allocator used to create this struct (needed for cleanup)
+    allocator: std.mem.Allocator,
 };
 
 /// Generic V8 callback that extracts Zig function and calls it
@@ -98,6 +102,21 @@ fn genericZigCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
     info.setReturnValue(undef);
 }
 
+/// Finalizer callback called by V8 when the Function is garbage collected
+///
+/// This cleans up the CallbackUserData that we allocated on the heap.
+fn callbackFinalizer(data: ?*anyopaque, length: usize) callconv(.c) void {
+    _ = length;
+
+    if (data) |ptr| {
+        const callback_data: *CallbackUserData = @ptrCast(@alignCast(ptr));
+        const allocator = callback_data.allocator;
+
+        // Free the CallbackUserData struct
+        allocator.destroy(callback_data);
+    }
+}
+
 /// Create a V8 Function that wraps a Zig function
 ///
 /// This enables Zig functions to be called from JavaScript, particularly
@@ -143,6 +162,7 @@ pub fn createZigCallback(
     callback_data.* = .{
         .fn_ptr = @ptrCast(&zig_fn),
         .user_data = user_data,
+        .allocator = allocator,
     };
 
     // Wrap the callback_data in a V8 External
@@ -177,9 +197,13 @@ pub fn createZigCallback(
         return CallbackError.FunctionFailed;
     };
 
-    // NOTE: callback_data and external are now owned by the V8 Function
-    // They should be freed when the Function is disposed, but we don't have a finalizer yet
-    // TODO: Add V8 finalizer callback to clean up callback_data when Function is GC'd
+    // Register finalizer to clean up callback_data when Function is GC'd
+    // Cast function to anyopaque for v8_Global_SetWeak (it accepts any Global handle)
+    const function_handle: *anyopaque = @ptrCast(function);
+    v8.v8_Global_SetWeak(function_handle, callback_data, callbackFinalizer);
+
+    // NOTE: callback_data is now owned by the V8 Function
+    // It will be freed automatically when the Function is garbage collected
 
     return function;
 }

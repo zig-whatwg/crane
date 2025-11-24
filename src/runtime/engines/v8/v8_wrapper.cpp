@@ -18,6 +18,33 @@ using namespace v8;
 static std::unique_ptr<Platform> g_platform = nullptr;
 static bool v8_initialized = false;
 
+// ============================================================================
+// Weak Callback Support (must be outside extern "C")
+// ============================================================================
+
+/// Weak callback function type (matches Zig WeakCallbackFn)
+typedef void (*ZigWeakCallbackFn)(void* data, size_t length_in_bytes);
+
+/// Weak callback data structure
+struct WeakCallbackData {
+    ZigWeakCallbackFn callback;
+    void* user_data;
+};
+
+/// Internal weak callback wrapper - V8 calls this, which then calls the Zig callback
+template<typename T>
+static void WeakCallbackWrapper(const WeakCallbackInfo<WeakCallbackData>& info) {
+    WeakCallbackData* data = info.GetParameter();
+    
+    if (data && data->callback) {
+        // Call the Zig finalizer with user data
+        data->callback(data->user_data, 0);
+        
+        // Clean up the wrapper data
+        delete data;
+    }
+}
+
 extern "C" {
 
 // ============================================================================
@@ -1448,6 +1475,32 @@ void v8_ArrayBuffer_Dispose(Global<ArrayBuffer>* buffer) {
         buffer->Reset();
         delete buffer;
     }
+}
+
+// ============================================================================
+// Weak Callbacks / Finalizers
+// ============================================================================
+
+/// Make a Global handle weak with a finalizer callback
+void v8_Global_SetWeak(void* handle, void* user_data, ZigWeakCallbackFn callback) {
+    if (!handle || !callback) return;
+    
+    // Cast to Global<Value>* (all Global types are compatible for SetWeak)
+    Global<Value>* global = reinterpret_cast<Global<Value>*>(handle);
+    
+    // Create wrapper data that holds both the callback and user data
+    WeakCallbackData* wrapper = new WeakCallbackData{callback, user_data};
+    
+    // Make the Global handle weak with our wrapper callback
+    global->SetWeak(wrapper, WeakCallbackWrapper<Value>, WeakCallbackType::kParameter);
+}
+
+/// Clear weak reference and restore strong reference
+void v8_Global_ClearWeak(void* handle) {
+    if (!handle) return;
+    
+    Global<Value>* global = reinterpret_cast<Global<Value>*>(handle);
+    global->ClearWeak();
 }
 
 

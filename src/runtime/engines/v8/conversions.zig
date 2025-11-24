@@ -1002,17 +1002,99 @@ pub fn instanceToV8Object(
     return obj;
 }
 
-/// Convert an opaque chunk pointer to a V8 Value
+/// Chunk type tag for type-safe chunk conversion
 ///
-/// Chunks in WHATWG Streams can be any JavaScript value. Since we receive them
-/// as opaque pointers (*const anyopaque), we need to detect the type and convert
-/// appropriately.
+/// When passing chunks through Streams, we wrap them in this tagged union
+/// to preserve type information. This avoids unsafe type punning.
+pub const ChunkType = enum {
+    v8_value, // Already a V8 Value
+    instance, // runtime.Instance
+    string, // []const u8
+    number_f64, // f64
+    number_i32, // i32
+    boolean, // bool
+    undefined_type, // Explicitly undefined
+};
+
+/// Type-safe chunk wrapper
 ///
-/// **Current Implementation**: Simplified - tries to handle common cases:
-/// - If chunk looks like a string pointer, convert to V8 String
-/// - Otherwise, create undefined
+/// Use this when passing chunks through Streams to preserve type information.
+pub const Chunk = union(ChunkType) {
+    v8_value: *v8.Value,
+    instance: *runtime.Instance,
+    string: []const u8,
+    number_f64: f64,
+    number_i32: i32,
+    boolean: bool,
+    undefined_type: void,
+};
+
+/// Convert a type-safe Chunk to V8 Value
 ///
-/// **Future Enhancement**: Full type detection and conversion
+/// This is the preferred way to convert chunks - type-safe and explicit.
+///
+/// Example:
+/// ```zig
+/// const chunk = Chunk{ .string = "hello" };
+/// const chunk_v8 = try chunkToV8ValueSafe(chunk, isolate, context);
+/// defer v8.v8_Value_Dispose(chunk_v8);
+/// ```
+pub fn chunkToV8ValueSafe(
+    chunk: Chunk,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+) ConversionError!*v8.Value {
+    return switch (chunk) {
+        .v8_value => |v| v,
+
+        .instance => |inst| blk: {
+            const obj = try instanceToV8Object(inst, isolate, context);
+            break :blk @ptrCast(obj);
+        },
+
+        .string => |str| blk: {
+            const v8_str = v8.v8_String_NewFromUtf8(
+                isolate,
+                str.ptr,
+                @intCast(str.len),
+            ) orelse return ConversionError.OutOfMemory;
+            break :blk @ptrCast(v8_str);
+        },
+
+        .number_f64 => |num| blk: {
+            const v8_num = v8.v8_Number_New(isolate, num) orelse
+                return ConversionError.OutOfMemory;
+            break :blk @ptrCast(v8_num);
+        },
+
+        .number_i32 => |num| blk: {
+            const v8_num = v8.v8_Number_New(isolate, @floatFromInt(num)) orelse
+                return ConversionError.OutOfMemory;
+            break :blk @ptrCast(v8_num);
+        },
+
+        .boolean => |b| blk: {
+            const v8_bool = if (b) v8.v8_True(isolate) else v8.v8_False(isolate);
+            const v8_bool_val = v8_bool orelse return ConversionError.OutOfMemory;
+            break :blk @ptrCast(v8_bool_val);
+        },
+
+        .undefined_type => blk: {
+            _ = chunk.undefined_type;
+            const undef = v8.v8_Undefined(isolate) orelse
+                return ConversionError.OutOfMemory;
+            break :blk undef;
+        },
+    };
+}
+
+/// Convert an opaque chunk pointer to a V8 Value (legacy/unsafe)
+///
+/// **DEPRECATED**: Use chunkToV8ValueSafe() with Chunk union instead.
+///
+/// This function attempts to guess the chunk type from an opaque pointer,
+/// which is inherently unsafe. It's kept for backward compatibility but
+/// should be replaced with the type-safe Chunk approach.
 ///
 /// Example:
 /// ```zig
@@ -1028,15 +1110,13 @@ pub fn chunkToV8Value(
     isolate: *v8.Isolate,
     context: *v8.Context,
 ) ConversionError!*v8.Value {
-    _ = chunk; // TODO: Detect chunk type and convert appropriately
+    _ = chunk;
     _ = context;
 
-    // For now, just create undefined
-    // In a full implementation:
-    // 1. Check if chunk is a runtime.Instance (object/interface)
-    // 2. Check if chunk is a primitive (string, number, boolean)
-    // 3. Check if chunk is a buffer/arraybuffer
-    // 4. Convert based on detected type
+    // Without type information, we can't safely convert
+    // Return undefined as safe fallback
+    //
+    // TODO: Migrate call sites to use Chunk union + chunkToV8ValueSafe()
 
     const undef = v8.v8_Undefined(isolate) orelse return ConversionError.OutOfMemory;
     return undef;

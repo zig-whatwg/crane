@@ -601,3 +601,40 @@ pub extern fn v8_External_Value(external: *External) ?*anyopaque;
 
 /// Dispose of an External value
 pub extern fn v8_External_Dispose(external: *External) void;
+
+// ============================================================================
+// Weak Callbacks / Finalizers
+// ============================================================================
+
+/// Weak callback type for finalizers
+///
+/// Called when a V8 object is garbage collected. Used to clean up associated
+/// native resources (like CallbackUserData).
+///
+/// Parameters:
+///   data: User data pointer passed to SetWeak
+///   length_in_bytes: Size estimate (unused in our case)
+pub const WeakCallbackFn = *const fn (data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void;
+
+/// Make a Global handle weak and register a finalizer
+///
+/// When the V8 object is garbage collected, the finalizer will be called
+/// with the provided data pointer. This is used to clean up native resources.
+///
+/// Arguments:
+///   handle: The Global handle to make weak (Function, Object, etc.)
+///   data: User data to pass to finalizer (e.g., CallbackUserData*)
+///   callback: Finalizer function to call on GC
+///
+/// Note: The handle can be any Global<T>* since they're all opaque pointers
+pub extern fn v8_Global_SetWeak(
+    handle: *anyopaque,
+    data: ?*anyopaque,
+    callback: WeakCallbackFn,
+) void;
+
+/// Clear weak reference and restore strong reference
+///
+/// Arguments:
+///   handle: The Global handle to make strong again
+pub extern fn v8_Global_ClearWeak(handle: *anyopaque) void;
