@@ -67,6 +67,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Real-world usage examples
   - Extension points and best practices
 
+#### ReadableStream Async Iteration (v0.5.0 - 2025-11-24)
+
+- **ReadableStreamAsyncIterator** (`streams/internal/readable_stream_async_iterator.zig`)
+  - Data structure for iterating over ReadableStream chunks
+  - `create()` - Initialize with reader and preventCancel option
+  - `next()` - Returns Promise<{value, done}>
+  - `returnEarly()` - Early termination with optional stream cancellation
+
+- **Reader Algorithms** (`streams/internal/algorithms/reader_ops.zig`)
+  - `acquireReadableStreamDefaultReader()` - Acquire reader lock
+  - `readableStreamDefaultReaderRelease()` - Release reader lock
+  - `readableStreamReaderGenericCancel()` - Cancel stream through reader
+  - `getReaderEventLoop()` - Extract event loop for promise creation
+
+- **ReadableStream Methods**
+  - `call_values(options)` - Explicit async iteration with preventCancel option
+  - `call_getAsyncIterator(options)` - Default async iterator (for-await-of support)
+
+- **Promise Type Casting Pattern**
+  - ReadResult and IteratorResult have identical structure
+  - Safe zero-copy casting: AsyncPromise<ReadResult> → AsyncPromise<IteratorResult>
+  - No transformation overhead
+
+- **Documentation Updates**
+  - Added "Async Iteration Pattern" section to ALGORITHM_ARCHITECTURE.md
+  - Documented three-layer design (iterator, operations, entry points)
+  - JavaScript usage examples with for-await-of
+  - Spec compliance references (WHATWG Streams lines 602-661)
+
+**Status**: ✅ Async iteration COMPLETE - Enables for-await-of loops over streams
+
+**Testing**: Infrastructure tests complete. Integration tests require V8 runtime.
+
+**Commits**:
+- f24cae92 - feat(streams): add ReadableStreamAsyncIterator infrastructure (Phase 1 Part 1)
+- ed2dfbe8 - feat(streams): document Phase 1 completion with integration TODOs
+- 9b38fb67 - feat(streams): implement ReadableStream async iteration methods (Phase 2)
+- d1bb6ad4 - feat(streams): complete async iteration support - Phases 3 & 4
+
 **Status**: ✅ Algorithm architecture COMPLETE - First native Zig closure with captured context
 
 **Testing**: Build succeeds. Integration tests deferred pending V8 test harness infrastructure.
