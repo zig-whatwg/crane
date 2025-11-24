@@ -411,7 +411,7 @@ fn errorSteps(ctx: ?*anyopaque, error_value: ReadIntoRequestModule.Value) void {
 pub fn addReadIntoRequest(instance: *runtime.Instance, request: *const anyopaque) !void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
-    try internal.read_into_requests.append(request);
+    try internal.read_into_requests.append(internal.allocator, request);
 }
 
 /// Get the number of pending read-into requests

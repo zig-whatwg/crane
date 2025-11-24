@@ -765,3 +765,25 @@ pub fn addReadRequest(
         .byob, .none => error.InvalidState, // No default reader attached
     };
 }
+
+/// ReadableStreamAddReadIntoRequest(stream, readIntoRequest)
+///
+/// Spec: § 4.4.7 "Add read-into request to pending queue"
+///
+/// Adds a read-into request to the stream's BYOB reader.
+pub fn addReadIntoRequest(
+    instance: *runtime.Instance,
+    readIntoRequest: *const anyopaque,
+) ImplError!void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+
+    return switch (internal.reader) {
+        .byob => |reader_instance| {
+            // Import BYOB reader implementation to add request
+            const BYOBReaderImpl = @import("ReadableStreamBYOBReader.zig");
+            return BYOBReaderImpl.addReadIntoRequest(reader_instance, readIntoRequest);
+        },
+        .default, .none => error.InvalidState, // No BYOB reader attached
+    };
+}

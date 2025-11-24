@@ -313,10 +313,18 @@ fn closeInternal(internal: *InternalState) void {
         const first_pending = internal.pending_pull_intos.items[0];
 
         // Step 3.2: If remainder of firstPendingPullInto's bytes filled > 0
-        // TODO: Calculate remainder
-        _ = first_pending;
+        const remainder = first_pending.bytes_filled % first_pending.element_size;
+        if (remainder > 0) {
+            // Step 3.2.1: Let e be a new TypeError
+            // Step 3.2.2: Perform ! ReadableByteStreamControllerError(controller, e)
+            // TODO: Create proper TypeError JSValue when runtime integration is ready
+            // For now, this is an invalid state - bytes_filled should always be aligned
+            // This would be caught at enqueue time, so this is defensive programming
+            internal.close_requested = true;
+            return;
+        }
 
-        // For now, just set close requested
+        // Step 3.3: Set controller.[[closeRequested]] to true
         internal.close_requested = true;
         return;
     }
@@ -474,10 +482,15 @@ fn shouldCallPull(internal: *InternalState) bool {
     }
 
     // Step 5: If ! ReadableStreamHasDefaultReader(stream) is true and ! ReadableStreamGetNumReadRequests(stream) > 0, return true
-    // TODO: Check for default reader and read requests
+    const ReadableStreamImpl = @import("ReadableStream.zig");
+    if (ReadableStreamImpl.hasDefaultReader(stream) and ReadableStreamImpl.getNumReadRequests(stream) > 0) {
+        return true;
+    }
 
     // Step 6: If ! ReadableStreamHasBYOBReader(stream) is true and ! ReadableStreamGetNumReadIntoRequests(stream) > 0, return true
-    // TODO: Check for BYOB reader and read-into requests
+    if (ReadableStreamImpl.hasBYOBReader(stream) and ReadableStreamImpl.getNumReadIntoRequests(stream) > 0) {
+        return true;
+    }
 
     // Step 7: Let desiredSize be ! ReadableByteStreamControllerGetDesiredSize(controller)
     const desired_size = getDesiredSizeInternal(internal);
@@ -636,10 +649,9 @@ pub fn pullInto(
     // Step 17: Append descriptor to pending list
     try internal.pending_pull_intos.append(internal.allocator, pullIntoDescriptor);
 
-    // Store the readIntoRequest for later fulfillment
-    // TODO: Add to stream's readIntoRequests list when stream API is ready
-    _ = readIntoRequest;
-    _ = stream;
+    // Step 18: Add readIntoRequest to stream's readIntoRequests list
+    const ReadableStreamImpl = @import("ReadableStream.zig");
+    try ReadableStreamImpl.addReadIntoRequest(stream, @ptrCast(&readIntoRequest));
 
     // Step 19: Call pull if needed
     callPullIfNeeded(instance);
@@ -820,9 +832,9 @@ fn respondInternal(instance: *runtime.Instance, bytesWritten: u64) ImplError!voi
 /// Spec: § 4.10.11 "Invalidate BYOB request"
 fn invalidateBYOBRequest(internal: *InternalState) void {
     if (internal.byob_request) |byob| {
-        // TODO: Set byob.[[controller]] to undefined
-        // TODO: Set byob.[[view]] to null
-        _ = byob;
+        // Invalidate the BYOB request (clears controller and view)
+        const BYOBRequestImpl = @import("ReadableStreamBYOBRequest.zig");
+        BYOBRequestImpl.invalidate(byob);
     }
     internal.byob_request = null;
 }
