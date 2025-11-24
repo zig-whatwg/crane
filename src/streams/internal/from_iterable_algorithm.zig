@@ -9,9 +9,11 @@ const runtime = @import("runtime");
 const Algorithm = @import("algorithm").Algorithm;
 const IteratorRecord = @import("iterator_record").IteratorRecord;
 const AsyncPromise = @import("async_promise").AsyncPromise;
+const v8 = @import("v8");
+const webidl = @import("webidl");
 
-// V8 FFI placeholder
-const V8Value = opaque {};
+// Import controller functions
+const ReadableStreamDefaultControllerImpl = @import("ReadableStreamDefaultController");
 
 /// Context for from() pull algorithm
 /// Captured state: iterator record + stream reference
@@ -58,11 +60,72 @@ fn pullInvoke(
     controller: *runtime.Instance,
     context_ptr: ?*anyopaque,
 ) !*AsyncPromise(void) {
-    _ = controller;
-    _ = context_ptr;
+    const context: *FromIterableContext = @ptrCast(@alignCast(context_ptr orelse return error.InvalidContext));
+    const iter_record = context.iterator_record;
 
-    // TODO: Implement when V8 FFI and controller operations are available
-    return error.NotImplemented;
+    // Create promise for this pull operation
+    const promise = try AsyncPromise(void).init(
+        controller.allocator,
+        controller.ctx.getEventLoop(),
+    );
+    errdefer promise.deinit();
+
+    // Step 4.1: Let nextResult = IteratorNext(iteratorRecord)
+    const next_result = iter_record.next() catch |err| {
+        // Step 4.2: If nextResult is abrupt, reject promise
+        promise.reject(@ptrFromInt(@intFromError(err)));
+        return promise;
+    };
+    defer v8.v8_Value_Dispose(next_result);
+
+    const result_obj: *v8.Object = @ptrCast(next_result);
+
+    // Step 4.4.1: If iterResult is not Object, throw TypeError
+    if (!v8.v8_Value_IsObject(next_result)) {
+        promise.reject(@ptrFromInt(@intFromError(error.TypeError)));
+        return promise;
+    }
+
+    // Step 4.4.2: Let done = IteratorComplete(iterResult)
+    const done = IteratorRecord.complete(
+        result_obj,
+        iter_record.context,
+        iter_record.isolate,
+    ) catch |err| {
+        promise.reject(@ptrFromInt(@intFromError(err)));
+        return promise;
+    };
+
+    if (done) {
+        // Step 4.4.3: If done is true, close the stream
+        ReadableStreamDefaultControllerImpl.call_close(controller) catch |err| {
+            promise.reject(@ptrFromInt(@intFromError(err)));
+            return promise;
+        };
+        promise.fulfill({});
+        return promise;
+    }
+
+    // Step 4.4.4: Let value = IteratorValue(iterResult)
+    const iter_value = IteratorRecord.value(
+        result_obj,
+        iter_record.context,
+        iter_record.isolate,
+    ) catch |err| {
+        promise.reject(@ptrFromInt(@intFromError(err)));
+        return promise;
+    };
+    // Keep value alive - will be enqueued
+
+    // Step 4.4.4.2: Enqueue value
+    ReadableStreamDefaultControllerImpl.call_enqueue(controller, iter_value) catch |err| {
+        v8.v8_Value_Dispose(iter_value);
+        promise.reject(@ptrFromInt(@intFromError(err)));
+        return promise;
+    };
+
+    promise.fulfill({});
+    return promise;
 }
 
 fn pullInvokeWithArg(
@@ -114,11 +177,12 @@ fn cancelInvoke(
     controller: *runtime.Instance,
     context_ptr: ?*anyopaque,
 ) !*AsyncPromise(void) {
-    _ = controller;
-    _ = context_ptr;
+    // Cancel without reason (use undefined)
+    const isolate = runtime.getIsolate(controller.ctx);
+    const undef = v8.v8_Undefined(isolate) orelse return error.V8Error;
+    defer v8.v8_Value_Dispose(undef);
 
-    // TODO: Implement when V8 FFI is available
-    return error.NotImplemented;
+    return cancelInvokeWithArg(controller, context_ptr, undef);
 }
 
 /// Cancel algorithm implementation
@@ -128,12 +192,25 @@ fn cancelInvokeWithArg(
     context_ptr: ?*anyopaque,
     reason: *const anyopaque,
 ) !*AsyncPromise(void) {
-    _ = controller;
-    _ = context_ptr;
-    _ = reason;
+    const context: *FromIterableContext = @ptrCast(@alignCast(context_ptr orelse return error.InvalidContext));
+    const iter_record = context.iterator_record;
 
-    // TODO: Implement when V8 FFI is available
-    return error.NotImplemented;
+    const promise = try AsyncPromise(void).init(
+        controller.allocator,
+        controller.ctx.getEventLoop(),
+    );
+
+    // Cast reason to V8 Value
+    const reason_value: *v8.Value = @ptrCast(@alignCast(@constCast(reason)));
+
+    // Call iterator.return(reason)
+    iter_record.close(reason_value) catch |err| {
+        promise.reject(@ptrFromInt(@intFromError(err)));
+        return promise;
+    };
+
+    promise.fulfill({});
+    return promise;
 }
 
 fn cancelDestroy(context_ptr: ?*anyopaque, allocator: Allocator) void {
