@@ -574,3 +574,30 @@ pub extern fn v8_Isolate_PerformMicrotaskCheckpoint(isolate: *Isolate) void;
 
 /// Set the microtasks policy for the isolate
 pub extern fn v8_Isolate_SetMicrotasksPolicy(isolate: *Isolate, policy: c_int) void;
+
+// ============================================================================
+// External - Wrap C pointers for storage in V8
+// ============================================================================
+
+/// Create a new External value that wraps a C pointer
+///
+/// External values allow you to store arbitrary C pointers in V8 objects.
+/// This is commonly used for callback user data.
+///
+/// Arguments:
+///   isolate: The V8 isolate
+///   value: Pointer to wrap (can be any C pointer)
+///
+/// Returns: External value, or null on failure
+pub extern fn v8_External_New(isolate: *Isolate, value: ?*anyopaque) ?*External;
+
+/// Extract the wrapped pointer from an External value
+///
+/// Arguments:
+///   external: The External value
+///
+/// Returns: The wrapped pointer
+pub extern fn v8_External_Value(external: *External) ?*anyopaque;
+
+/// Dispose of an External value
+pub extern fn v8_External_Dispose(external: *External) void;

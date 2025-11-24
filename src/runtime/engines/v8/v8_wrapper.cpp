@@ -711,6 +711,41 @@ Global<Object>* v8_FunctionCallbackInfo_This(const FunctionCallbackInfo<Value>* 
     return new Global<Object>(isolate, self);
 }
 
+// FunctionCallbackInfo - get callback data
+Global<Value>* v8_FunctionCallbackInfo_Data(const FunctionCallbackInfo<Value>* info) {
+    Isolate* isolate = info->GetIsolate();
+    HandleScope handle_scope(isolate);
+    Local<Value> data = info->Data();
+    return new Global<Value>(isolate, data);
+}
+
+// ============================================================================
+// External - Wrap C pointers for storage in V8
+// ============================================================================
+
+// Create External value wrapping a C pointer
+Global<External>* v8_External_New(Isolate* isolate, void* value) {
+    HandleScope handle_scope(isolate);
+    Local<External> external = External::New(isolate, value);
+    return new Global<External>(isolate, external);
+}
+
+// Extract wrapped pointer from External
+void* v8_External_Value(Global<External>* external) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<External> local_ext = external->Get(isolate);
+    return local_ext->Value();
+}
+
+// Dispose External
+void v8_External_Dispose(Global<External>* external) {
+    if (external) {
+        external->Reset();
+        delete external;
+    }
+}
+
 // ObjectTemplate - set property (uses current isolate from the template's context)
 void v8_ObjectTemplate_Set(Global<ObjectTemplate>* tpl, Global<String>* name, Global<Value>* value) {
     Isolate* isolate = Isolate::GetCurrent();

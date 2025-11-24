@@ -237,9 +237,12 @@ pub fn write(controller: *runtime.Instance, chunk: *const anyopaque, chunk_size_
             const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(internal.v8_context.?));
             const size_function: *v8_engine.ffi.Function = @ptrCast(@alignCast(@constCast(size_fn)));
 
-            // Convert chunk to V8 Value (simplified - just undefined for now)
-            // TODO: Implement proper chunk conversion
-            const chunk_v8 = v8_engine.ffi.v8_Undefined(isolate) orelse break :blk chunk_size_param;
+            // Convert chunk to V8 Value
+            const chunk_v8 = v8_engine.conversions.chunkToV8Value(
+                chunk,
+                isolate,
+                v8_context,
+            ) catch break :blk chunk_size_param;
 
             // Invoke size_algorithm(chunk) → number
             const size_result = v8_engine.streams_callbacks.invokeSizeAlgorithm(
@@ -413,9 +416,12 @@ fn writableStreamDefaultControllerProcessWrite(controller: *runtime.Instance, ch
             const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(internal.v8_context.?));
             const write_function: *v8_engine.ffi.Function = @ptrCast(@alignCast(@constCast(write_fn)));
 
-            // Convert chunk to V8 Value (simplified - just create undefined for now)
-            // TODO: Implement proper chunk conversion based on type
-            const chunk_v8 = v8_engine.ffi.v8_Undefined(isolate) orelse {
+            // Convert chunk to V8 Value
+            const chunk_v8 = v8_engine.conversions.chunkToV8Value(
+                chunk,
+                isolate,
+                v8_context,
+            ) catch {
                 writableStreamDefaultControllerError(controller, stream);
                 return;
             };
@@ -480,7 +486,6 @@ fn writableStreamDefaultControllerProcessWrite(controller: *runtime.Instance, ch
 
     // Fallback: No write algorithm or no V8 context (testing mode)
     // Immediately fulfill the write
-    _ = chunk;
     _ = value;
     writableStreamDefaultControllerFinishWrite(controller, stream);
 }

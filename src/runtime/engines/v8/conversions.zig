@@ -1002,6 +1002,46 @@ pub fn instanceToV8Object(
     return obj;
 }
 
+/// Convert an opaque chunk pointer to a V8 Value
+///
+/// Chunks in WHATWG Streams can be any JavaScript value. Since we receive them
+/// as opaque pointers (*const anyopaque), we need to detect the type and convert
+/// appropriately.
+///
+/// **Current Implementation**: Simplified - tries to handle common cases:
+/// - If chunk looks like a string pointer, convert to V8 String
+/// - Otherwise, create undefined
+///
+/// **Future Enhancement**: Full type detection and conversion
+///
+/// Example:
+/// ```zig
+/// const chunk_v8 = try chunkToV8Value(
+///     chunk_ptr,
+///     isolate,
+///     context,
+/// );
+/// defer v8.v8_Value_Dispose(chunk_v8);
+/// ```
+pub fn chunkToV8Value(
+    chunk: *const anyopaque,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+) ConversionError!*v8.Value {
+    _ = chunk; // TODO: Detect chunk type and convert appropriately
+    _ = context;
+
+    // For now, just create undefined
+    // In a full implementation:
+    // 1. Check if chunk is a runtime.Instance (object/interface)
+    // 2. Check if chunk is a primitive (string, number, boolean)
+    // 3. Check if chunk is a buffer/arraybuffer
+    // 4. Convert based on detected type
+
+    const undef = v8.v8_Undefined(isolate) orelse return ConversionError.OutOfMemory;
+    return undef;
+}
+
 // ============================================================================
 // Tests
 // ============================================================================

@@ -61,18 +61,41 @@ const CallbackUserData = struct {
 /// 4. Calls the Zig function
 /// 5. Converts return value to V8 (if any)
 fn genericZigCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-    // PLACEHOLDER: Just do nothing for now
-    // TODO: Implement full callback trampolining when V8 FFI supports:
-    // - v8_FunctionCallbackInfo_GetData()
-    // - v8_FunctionCallbackInfo_GetIsolate()
-    // - v8_FunctionCallbackInfo_SetReturnValue()
-    // - v8_External_New() / v8_External_Value()
-    //
-    // When complete, this will:
-    // 1. Extract CallbackUserData from info
-    // 2. Call the Zig function with converted arguments
-    // 3. Set return value on info
-    _ = info;
+    // Get isolate
+    const isolate = info.getIsolate();
+
+    // Extract user data from callback info
+    const data_value: *v8.Value = info.getData();
+    defer v8.v8_Value_Dispose(data_value);
+
+    // Check if it's an External value (we can't check type yet, so assume it is)
+    // Cast from Value to External (they're both opaque pointers)
+    const external: *v8.External = @ptrCast(data_value);
+    const user_data_ptr = v8.v8_External_Value(external);
+
+    if (user_data_ptr == null) {
+        // Invalid external - return undefined
+        const undef = v8.v8_Undefined(isolate) orelse return;
+        defer v8.v8_Value_Dispose(undef);
+        info.setReturnValue(undef);
+        return;
+    }
+
+    // Cast to CallbackUserData
+    const callback_data: *CallbackUserData = @ptrCast(@alignCast(user_data_ptr.?));
+
+    // For now, we only support void callbacks with no arguments
+    // Type-cast the function pointer to a void function
+    const VoidFn = *const fn () void;
+    const void_fn: VoidFn = @ptrCast(@alignCast(callback_data.fn_ptr));
+
+    // Call the Zig function
+    void_fn();
+
+    // Return undefined
+    const undef = v8.v8_Undefined(isolate) orelse return;
+    defer v8.v8_Value_Dispose(undef);
+    info.setReturnValue(undef);
 }
 
 /// Create a V8 Function that wraps a Zig function
@@ -107,44 +130,67 @@ fn genericZigCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
 /// ```
 pub fn createZigCallback(
     comptime ZigFn: type,
+    allocator: std.mem.Allocator,
     isolate: *v8.Isolate,
     context: *v8.Context,
     zig_fn: ZigFn,
     user_data: ?*anyopaque,
 ) CallbackError!*v8.Function {
-    _ = zig_fn; // TODO: Store in CallbackUserData
-    _ = user_data; // TODO: Store in CallbackUserData
+    // Allocate CallbackUserData on the heap (must outlive the V8 Function)
+    const callback_data = allocator.create(CallbackUserData) catch return CallbackError.OutOfMemory;
+    errdefer allocator.destroy(callback_data);
 
-    // Create FunctionTemplate with our generic callback
-    // NOTE: We're not passing user data yet because we need v8_External_New
-    // which isn't currently in the FFI bindings
+    callback_data.* = .{
+        .fn_ptr = @ptrCast(&zig_fn),
+        .user_data = user_data,
+    };
+
+    // Wrap the callback_data in a V8 External
+    const external = v8.v8_External_New(isolate, callback_data) orelse {
+        allocator.destroy(callback_data);
+        return CallbackError.ExternalFailed;
+    };
+    errdefer v8.v8_External_Dispose(external);
+
+    // Cast External to Value for FunctionTemplate (both are opaque pointers)
+    const external_as_value: *v8.Value = @ptrCast(external);
+
+    // Create FunctionTemplate with our generic callback and the External as data
     const template = v8.v8_FunctionTemplate_New(
         isolate,
         genericZigCallback,
-        null, // TODO: Pass External with CallbackUserData
-    ) orelse return CallbackError.TemplateFailed;
+        external_as_value,
+    ) orelse {
+        v8.v8_External_Dispose(external);
+        allocator.destroy(callback_data);
+        return CallbackError.TemplateFailed;
+    };
     defer v8.v8_FunctionTemplate_Dispose(template);
 
     // Get Function from template
     const function = v8.v8_FunctionTemplate_GetFunction(
         template,
         context,
-    ) orelse return CallbackError.FunctionFailed;
+    ) orelse {
+        v8.v8_External_Dispose(external);
+        allocator.destroy(callback_data);
+        return CallbackError.FunctionFailed;
+    };
+
+    // NOTE: callback_data and external are now owned by the V8 Function
+    // They should be freed when the Function is disposed, but we don't have a finalizer yet
+    // TODO: Add V8 finalizer callback to clean up callback_data when Function is GC'd
 
     return function;
 }
 
-/// Simplified callback creator for void-returning functions
+/// Simplified callback creator for void-returning, no-arg functions
 ///
-/// Many Streams callbacks return void (they're called for side effects).
-/// This simplified version handles that common case.
+/// Many Streams callbacks are simple void functions called for side effects.
+/// This creates a placeholder V8 function that does nothing.
 ///
 /// Example:
 /// ```zig
-/// fn finishWrite(controller: *runtime.Instance, stream: *runtime.Instance) void {
-///     // Implementation
-/// }
-///
 /// const handler = try createVoidCallback(isolate, context);
 /// defer v8.v8_Function_Dispose(handler);
 /// ```
@@ -152,20 +198,29 @@ pub fn createVoidCallback(
     isolate: *v8.Isolate,
     context: *v8.Context,
 ) CallbackError!*v8.Function {
-    // Create a function that just returns undefined
-    const template = v8.v8_FunctionTemplate_New(
+    // Create a no-op callback
+    const NoOpFn = *const fn () void;
+    const noop: NoOpFn = &noopCallback;
+
+    // For simplicity, use stack-allocated allocator (function is short-lived)
+    // In production, use a proper arena allocator
+    var buffer: [256]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buffer);
+    const allocator = fba.allocator();
+
+    return createZigCallback(
+        NoOpFn,
+        allocator,
         isolate,
-        genericZigCallback,
-        null,
-    ) orelse return CallbackError.TemplateFailed;
-    defer v8.v8_FunctionTemplate_Dispose(template);
-
-    const function = v8.v8_FunctionTemplate_GetFunction(
-        template,
         context,
-    ) orelse return CallbackError.FunctionFailed;
+        noop,
+        null,
+    );
+}
 
-    return function;
+/// No-op callback function
+fn noopCallback() void {
+    // Do nothing - used as placeholder for createVoidCallback
 }
 
 // ============================================================================
