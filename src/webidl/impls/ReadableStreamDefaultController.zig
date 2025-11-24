@@ -327,7 +327,7 @@ fn readableStreamDefaultControllerEnqueue(internal: *InternalState, chunk: *cons
         // Get reader's read requests
         const reader_instance = switch (stream_internal.reader) {
             .default => |r| r,
-            .byob => return error.NotImplemented, // TODO: BYOB not yet supported
+            .byob => return error.InvalidState, // BYOB readers use ReadableByteStreamController, not DefaultController
             .none => unreachable,
         };
 
@@ -444,7 +444,7 @@ fn readableStreamGetNumReadRequests(stream_internal: *const @import("ReadableStr
     // Get reader
     const reader_instance = switch (stream_internal.reader) {
         .default => |r| r,
-        .byob => return 0, // TODO: BYOB not yet supported
+        .byob => return 0, // BYOB readers use ReadableByteStreamController, not DefaultController
         .none => return 0,
     };
 

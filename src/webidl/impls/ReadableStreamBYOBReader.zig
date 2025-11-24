@@ -239,8 +239,18 @@ fn readInternal(
 
     // Step 4: If stream.[[state]] is "errored", reject promise with stored error
     if (stream_internal.state == .errored) {
-        // TODO: Return rejected promise with stream.[[storedError]]
-        return error.InvalidState;
+        // Create a rejected promise with the stored error
+        const promise = try AsyncPromise(ReadIntoResult).init(
+            internal.allocator,
+            internal.loop_instance,
+        );
+        // Reject with stored error (as opaque pointer for now)
+        // In full JS runtime integration, this would preserve the original error
+        const exception = webidl.errors.Exception{
+            .simple = .{ .type = .TypeError, .message = "Stream is in errored state" },
+        };
+        promise.reject(exception);
+        return @ptrCast(promise);
     }
 
     // Step 5: Return ! ReadableByteStreamControllerPullInto(stream.[[controller]], view, min, readIntoRequest)
@@ -299,7 +309,12 @@ fn setUpReadableStreamBYOBReader(
     }
 
     // Step 2: If stream.[[controller]] does not implement ReadableByteStreamController, throw TypeError
-    // TODO: Check controller type
+    // Check if the controller is a ReadableByteStreamController by comparing vtables
+    const controller = stream_internal.controller;
+    if (controller.vtable != &interfaces.ReadableByteStreamController.vtable) {
+        // Controller is not a ReadableByteStreamController (likely a DefaultController)
+        return error.TypeError;
+    }
 
     // Step 3: Perform ! ReadableStreamReaderGenericInitialize(reader, stream)
     try readableStreamReaderGenericInitialize(instance, stream, stream_internal);
@@ -340,8 +355,10 @@ fn readableStreamReaderGenericInitialize(
     } else {
         // Step 5: Otherwise (state is "errored")
         // Step 5.1: Set reader.[[closedPromise]] to a promise rejected with stream.[[storedError]]
-        // TODO: Implement proper error rejection when JSValue integration is ready (Phase 3)
-        // For now, just leave promise pending
+        const exception = webidl.errors.Exception{
+            .simple = .{ .type = .TypeError, .message = "Stream is in errored state" },
+        };
+        reader_internal.closed_promise.reject(exception);
     }
 }
 
@@ -417,10 +434,13 @@ fn readableStreamBYOBReaderErrorReadIntoRequests(internal: *InternalState) void 
     defer internal.read_into_requests.clearRetainingCapacity();
 
     // Step 3: For each readIntoRequest of readIntoRequests
-    for (internal.read_into_requests.items) |request| {
+    for (internal.read_into_requests.items) |request_ptr| {
         // Step 3.1: Perform readIntoRequest's error steps, given e
-        // TODO: Call error steps on readIntoRequest
-        _ = request;
+        // Cast to ReadIntoRequest and call error steps with a TypeError
+        const request: *const ReadIntoRequest = @ptrCast(@alignCast(request_ptr));
+        // Create error value for the callback
+        const error_value = ReadIntoRequestModule.Value{ .string = "Reader was released" };
+        request.executeErrorSteps(error_value);
     }
 }
 

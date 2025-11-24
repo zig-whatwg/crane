@@ -212,7 +212,6 @@ pub fn call_constructor(
 
     // Step 5: Extract size algorithm
     const size_algorithm = extractSizeAlgorithm(&strategy);
-    _ = size_algorithm; // Will be passed to controller
 
     // Step 6: Extract high water mark (default 1 for writable)
     const high_water_mark = try extractHighWaterMark(&strategy, 1.0);
@@ -224,6 +223,7 @@ pub fn call_constructor(
         underlyingSink,
         underlying_sink_dict,
         high_water_mark,
+        size_algorithm,
     );
 
     return instance;
@@ -569,6 +569,7 @@ fn setUpWritableStreamDefaultControllerFromUnderlyingSink(
     underlyingSink: *const anyopaque,
     underlyingSinkDict: *const dictionaries.UnderlyingSink,
     highWaterMark: f64,
+    sizeAlgorithm: ?*const anyopaque,
 ) !void {
     const allocator = stream_internal.allocator;
     const ctx = stream_instance.ctx;
@@ -612,6 +613,7 @@ fn setUpWritableStreamDefaultControllerFromUnderlyingSink(
         close_algorithm,
         abort_algorithm,
         highWaterMark,
+        sizeAlgorithm,
     );
 
     _ = underlyingSink; // Will be used when we invoke callbacks
@@ -629,6 +631,7 @@ fn setUpWritableStreamDefaultController(
     closeAlgorithm: ?*const anyopaque,
     abortAlgorithm: ?*const anyopaque,
     highWaterMark: f64,
+    sizeAlgorithm: ?*const anyopaque,
 ) !void {
     const allocator = stream_internal.allocator;
 
@@ -651,7 +654,7 @@ fn setUpWritableStreamDefaultController(
         .close_algorithm = closeAlgorithm,
         .abort_algorithm = abortAlgorithm,
         .strategy_hwm = highWaterMark,
-        .strategy_size_algorithm = null, // TODO: Pass size algorithm from strategy
+        .strategy_size_algorithm = sizeAlgorithm,
         .isolate = stream_instance.ctx.engine_ctx, // V8 isolate from runtime context
         .v8_context = stream_instance.ctx.engine_ctx, // V8 context from runtime context
         .started = false,

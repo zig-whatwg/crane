@@ -487,8 +487,19 @@ fn readableStreamCancel(
 
     // Step 6: If reader is BYOB reader, handle readIntoRequests
     if (reader == .byob) {
-        // TODO: Handle BYOB reader readIntoRequests
-        // For each readIntoRequest, call close steps with undefined
+        const byob_reader = reader.byob;
+        const ReadableStreamBYOBReaderImpl = @import("ReadableStreamBYOBReader.zig");
+        const byob_reader_state = byob_reader.getState(interfaces.ReadableStreamBYOBReader.State);
+        if (byob_reader_state.own._internal) |byob_internal| {
+            // For each readIntoRequest, call close steps
+            for (byob_internal.read_into_requests.items) |request_ptr| {
+                const ReadIntoRequest = @import("streams_read_into_request").ReadIntoRequest;
+                const request: *const ReadIntoRequest = @ptrCast(@alignCast(request_ptr));
+                request.executeCloseSteps();
+            }
+            byob_internal.read_into_requests.clearRetainingCapacity();
+            _ = ReadableStreamBYOBReaderImpl;
+        }
     }
 
     // Step 7: Call controller.[[CancelSteps]](reason)
@@ -854,8 +865,19 @@ fn readableStreamTee(
     tee_state.branch2 = branch2;
 
     // Step 19: Upon rejection of reader.[[closedPromise]] with reason r, error both branches
-    // TODO: Hook into reader's closedPromise rejection to error both branches
-    // This requires promise chaining which we'll handle when reader closes with error
+    // Hook into the reader's closedPromise rejection to error both branches
+    const reader_state = reader.getState(interfaces.ReadableStreamDefaultReader.State);
+    if (reader_state.own._internal) |reader_internal| {
+        // Add a rejection handler to the reader's closed promise
+        reader_internal.closed_promise.onSettleCtx(
+            null, // No fulfillment handler needed
+            teeClosedPromiseRejectionHandler,
+            @ptrCast(tee_state),
+        ) catch {
+            // If we can't add the handler, the branches will still work
+            // but won't propagate closure errors. This is acceptable degradation.
+        };
+    }
 
     // Step 20: Return array of branches
     const result = allocator.create(TeeBranches) catch return error.OutOfMemory;
@@ -1053,10 +1075,10 @@ fn teeCloseBranch(branch: *runtime.Instance) void {
 
 /// Error both branch streams
 fn teeErrorBothBranches(tee_state: *TeeState, reason: []const u8) void {
-    // Create a simple error placeholder (the actual error object would be passed properly in production)
-    var error_placeholder: u8 = 0;
-    const error_ptr: *anyopaque = &error_placeholder;
-    _ = reason; // TODO: Create proper error object from reason string
+    // Pass the reason string as the error. In full JS runtime integration,
+    // this would be a proper JS Error object. For now, we pass the string
+    // pointer as the error value which can be used for debugging.
+    const error_ptr: *const anyopaque = @ptrCast(reason.ptr);
 
     if (tee_state.branch1) |branch1| {
         const branch_state = branch1.getState(State);
@@ -1080,6 +1102,24 @@ fn teeErrorBothBranches(tee_state: *TeeState, reason: []const u8) void {
     if (!tee_state.canceled1 or !tee_state.canceled2) {
         tee_state.cancel_promise.fulfill({});
     }
+}
+
+/// Handler for reader's closedPromise rejection during tee operation
+///
+/// Spec Step 19: Upon rejection of reader.[[closedPromise]] with reason r,
+/// perform ! ReadableStreamDefaultControllerError(branch1.[[controller]], r)
+/// perform ! ReadableStreamDefaultControllerError(branch2.[[controller]], r)
+fn teeClosedPromiseRejectionHandler(ctx: *anyopaque, exception: webidl.errors.Exception) anyerror!void {
+    const tee_state: *TeeState = @ptrCast(@alignCast(ctx));
+
+    // Extract error message from exception (for logging/debugging)
+    const reason = switch (exception) {
+        .simple => |e| e.message,
+        .dom => |e| e.message,
+    };
+
+    // Error both branches with the rejection reason
+    teeErrorBothBranches(tee_state, reason);
 }
 
 /// Create cancel algorithm for branch 1

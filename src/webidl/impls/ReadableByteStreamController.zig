@@ -46,7 +46,7 @@ pub const ImplError = error{
     OutOfMemory,
     InvalidState,
     RangeError,
-    NullValue, // TODO: Remove when interface generator handles nullable types correctly
+    NullValue, // Workaround: interface generator doesn't handle nullable return types yet
     BufferDetached, // From ArrayBuffer.transfer()
     NoEventLoop,
 };
@@ -252,7 +252,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 pub fn get_byobRequest(instance: *runtime.Instance) ImplError!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
-    // TODO: Fix interface generator to handle nullable types correctly
+    // Note: Returns NullValue error when byobRequest is null because interface generator
+    // doesn't handle nullable return types yet. Caller should catch and convert to null.
     return internal.byob_request orelse error.NullValue;
 }
 
@@ -266,7 +267,8 @@ pub fn get_desiredSize(instance: *runtime.Instance) ImplError!f64 {
 
     // Spec: § 4.7.3 "The desiredSize getter steps are:"
     // Step 1: Return ! ReadableByteStreamControllerGetDesiredSize(this)
-    // TODO: Fix interface generator to handle nullable types correctly
+    // Note: Returns NullValue error when desiredSize is null because interface generator
+    // doesn't handle nullable return types yet. Caller should catch and convert to null.
     return getDesiredSizeInternal(internal) orelse error.NullValue;
 }
 
