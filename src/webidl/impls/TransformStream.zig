@@ -148,8 +148,13 @@ pub fn errorStream(instance: *runtime.Instance, e: JSValue) void {
 
     // Spec step 1: Perform ! ReadableStreamDefaultControllerError(stream.[[readable]].[[controller]], e)
     if (internal.readableStream) |readable| {
-        const ReadableStreamImpl = @import("ReadableStream.zig");
-        ReadableStreamImpl.errorInternal(readable, e);
+        const readable_state = readable.getState(@import("interfaces").ReadableStream.State);
+        if (readable_state.own._internal) |readable_internal| {
+            const ReadableStreamImpl = @import("ReadableStream.zig");
+            // Convert JSValue to anyopaque for ReadableStream API
+            const error_ptr: *const anyopaque = @ptrCast(&e);
+            ReadableStreamImpl.readableStreamError(readable_internal, error_ptr);
+        }
     }
 
     // Spec step 2: Perform ! TransformStreamErrorWritableAndUnblockWrite(stream, e)

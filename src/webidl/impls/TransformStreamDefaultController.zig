@@ -180,15 +180,23 @@ fn enqueueInternal(internal: *InternalState, chunk: JSValue) !void {
 
     // Spec step 2: Let readableController be stream.[[readable]].[[controller]]
     const readable_instance = transform_internal.readableStream orelse return error.TypeError;
-    const ReadableStreamImpl = @import("ReadableStream.zig");
+    const readable_state = readable_instance.getState(interfaces.ReadableStream.State);
+    const readable_internal = readable_state.own._internal orelse return error.TypeError;
+
+    // Get the controller
+    const controller_instance = readable_internal.controller;
+    const controller_state = controller_instance.getState(interfaces.ReadableStreamDefaultController.State);
+    const controller_internal = controller_state.own._internal orelse return error.TypeError;
+
+    const ReadableStreamDefaultControllerImpl = @import("ReadableStreamDefaultController.zig");
 
     // Spec step 3: If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(readableController) is false, throw TypeError
-    if (!ReadableStreamImpl.canCloseOrEnqueue(readable_instance)) {
+    if (!ReadableStreamDefaultControllerImpl.canCloseOrEnqueue(controller_internal)) {
         return error.TypeError;
     }
 
     // Spec step 4: Let enqueueResult be ReadableStreamDefaultControllerEnqueue(readableController, chunk)
-    ReadableStreamImpl.enqueueInternal(readable_instance, chunk) catch |err| {
+    ReadableStreamDefaultControllerImpl.call_enqueue(controller_instance, chunk) catch |err| {
         // Spec step 5: If enqueueResult is an abrupt completion
         // Spec step 5.1: Perform ! TransformStreamErrorWritableAndUnblockWrite(stream, enqueueResult.[[Value]])
         const error_value = JSValue{ .string = "Enqueue failed" };
@@ -199,7 +207,8 @@ fn enqueueInternal(internal: *InternalState, chunk: JSValue) !void {
     };
 
     // Spec step 6: Let backpressure be ! ReadableStreamDefaultControllerHasBackpressure(readableController)
-    const backpressure = ReadableStreamImpl.hasBackpressure(readable_instance);
+    // TODO: Implement proper backpressure calculation
+    const backpressure = false; // Placeholder
 
     // Spec step 7: If backpressure is not stream.[[backpressure]]
     if (backpressure != transform_internal.backpressure) {
@@ -233,10 +242,15 @@ fn terminateInternal(internal: *InternalState) !void {
 
     // Spec step 2: Let readableController be stream.[[readable]].[[controller]]
     const readable_instance = transform_internal.readableStream orelse return error.TypeError;
-    const ReadableStreamImpl = @import("ReadableStream.zig");
+    const readable_state = readable_instance.getState(interfaces.ReadableStream.State);
+    const readable_internal = readable_state.own._internal orelse return error.TypeError;
+
+    // Get the controller
+    const controller_instance = readable_internal.controller;
+    const ReadableStreamDefaultControllerImpl = @import("ReadableStreamDefaultController.zig");
 
     // Spec step 3: Perform ! ReadableStreamDefaultControllerClose(readableController)
-    ReadableStreamImpl.closeInternal(readable_instance);
+    try ReadableStreamDefaultControllerImpl.call_close(controller_instance);
 
     // Spec step 4: Let error be a TypeError exception indicating that the stream has been terminated
     const error_value = JSValue{ .string = "Stream has been terminated" };
