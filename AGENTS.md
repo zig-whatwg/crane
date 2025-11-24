@@ -185,6 +185,7 @@ This project uses a **dynamic skill loading system** where the LLM should:
 | **oneshot** | User explicitly requests "oneshot [task]" | Complete uninterrupted execution of entire task/epic with final summary only |
 | **pre_commit_checks** | Before committing code | Automated format/build/test checks before every commit |
 | **zig** | Writing/refactoring Zig code | Universal Zig best practices, memory management, testing, documentation |
+| **cpp** | Writing/refactoring C++ code, V8 FFI wrappers | Modern C++ (C++17/C++20), RAII, V8 API patterns, FFI boundaries |
 | **monorepo_navigation** | Finding dependencies across specs | Navigate monorepo structure, locate spec implementations |
 | **dependency_mocking** | Creating temporary mocks for unimplemented specs | Temporary mocks with clear markers for missing dependencies |
 | **webidl_codegen** | Working with WebIDL code generation | WebIDL code generation system, interface/namespace/mixin definitions |
@@ -195,7 +196,8 @@ This project uses a **dynamic skill loading system** where the LLM should:
 
 1. **Identify required skills** based on task type:
    - User says "oneshot [task]" → Load `oneshot` skill (takes over execution)
-   - Code changes → Load `zig` skill
+   - Zig code changes → Load `zig` skill
+   - C++ code changes (V8 wrappers) → Load `cpp` skill
    - Task tracking → Load `beads_workflow` skill
    - Git operations → Load `commit_workflow` skill
    - Ambiguous requirements → `communication_protocol` (always active)
@@ -239,7 +241,11 @@ Analyze task type
 └──────────────────────────────────────┘
     ↓ NO
 ┌──────────────────────────────┐
-│ Is this a code writing task? │ → YES → Load: zig
+│ Is this Zig code?            │ → YES → Load: zig
+└──────────────────────────────┘
+    ↓ ALSO CHECK
+┌──────────────────────────────┐
+│ Is this C++ code (V8 FFI)?  │ → YES → Load: cpp
 └──────────────────────────────┘
     ↓ ALSO CHECK
 ┌──────────────────────────────┐
@@ -279,14 +285,18 @@ Common task scenarios and their skill requirements:
 
 | Task Scenario | Skills to Load |
 |---------------|----------------|
-| **Oneshot execution** | `oneshot` (then loads others as needed: `zig`, `commit_workflow`, etc.) |
+| **Oneshot execution** | `oneshot` (then loads others as needed: `zig`, `cpp`, `commit_workflow`, etc.) |
 | **Implement new WHATWG spec feature** | `zig`, `beads_workflow`, `monorepo_navigation` |
-| **Fix bug** | `zig`, `beads_workflow` |
+| **Implement V8 FFI wrapper** | `cpp`, `beads_workflow` |
+| **Add V8 TypedArray API** | `cpp`, `zig` (for FFI bindings) |
+| **Fix bug in Zig code** | `zig`, `beads_workflow` |
+| **Fix bug in C++ wrapper** | `cpp`, `beads_workflow` |
 | **Commit code** | `commit_workflow`, `pre_commit_checks` |
 | **Create/update issue** | `beads_workflow` |
 | **Clarify requirements** | `communication_protocol` (always active) |
-| **Write tests** | `zig` |
-| **Refactor code** | `zig`, `commit_workflow` |
+| **Write Zig tests** | `zig` |
+| **Refactor Zig code** | `zig`, `commit_workflow` |
+| **Refactor C++ code** | `cpp`, `commit_workflow` |
 | **Mock unimplemented dependency** | `dependency_mocking`, `zig` |
 | **Work with WebIDL codegen** | `webidl_codegen`, `zig` |
 | **Find cross-spec dependencies** | `monorepo_navigation` |
