@@ -11,6 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const ReadableStreamBYOBReader = interfaces.ReadableStreamBYOBReader;
 
 // BYOB-specific imports
@@ -456,14 +457,46 @@ fn promiseCloseSteps(ctx: ?*anyopaque) void {
 
 /// Error steps callback: Reject promise with error
 ///
-/// TODO: Implement when JSValue error integration is ready (Phase 3)
+/// Converts the error value to a webidl.errors.Exception and rejects the promise.
+/// Spec: Promise is rejected with the error value from the stream.
 fn promiseErrorSteps(ctx: ?*anyopaque, error_value: ReadIntoRequestModule.Value) void {
-    _ = error_value;
     const promise_ctx: *PromiseContext = @ptrCast(@alignCast(ctx orelse return));
 
-    // TODO: Reject promise with error_value once AsyncPromise supports rejection
-    // For now, just clean up
+    // Convert error value to Exception
+    const exception = convertValueToException(promise_ctx.allocator, error_value) catch {
+        // Fallback: If conversion fails, create generic TypeError
+        const fallback = webidl.errors.Exception.typeError(promise_ctx.allocator, "Stream read operation failed") catch {
+            // Even fallback failed - just clean up and return
+            promise_ctx.allocator.destroy(promise_ctx);
+            return;
+        };
+        promise_ctx.promise.reject(fallback);
+        promise_ctx.allocator.destroy(promise_ctx);
+        return;
+    };
+
+    // Reject promise with the exception
+    promise_ctx.promise.reject(exception);
+
+    // Clean up context
     promise_ctx.allocator.destroy(promise_ctx);
+}
+
+/// Convert ReadIntoRequestModule.Value to webidl.errors.Exception
+fn convertValueToException(
+    allocator: std.mem.Allocator,
+    value: ReadIntoRequestModule.Value,
+) !webidl.errors.Exception {
+    return switch (value) {
+        .string => |s| try webidl.errors.Exception.fromString(allocator, s),
+        .bytes => |b| {
+            // Convert bytes to string first
+            const str = try allocator.dupe(u8, b);
+            defer allocator.free(str);
+            return try webidl.errors.Exception.fromString(allocator, str);
+        },
+        else => try webidl.errors.Exception.typeError(allocator, "Stream error"),
+    };
 }
 
 // ============================================================================
