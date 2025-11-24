@@ -819,7 +819,7 @@ fn respondInternal(instance: *runtime.Instance, bytesWritten: u64) ImplError!voi
     if (read_state == .closed) {
         // Step 5.1: Assert: bytesWritten is 0
         // Step 5.2: Perform ! ReadableByteStreamControllerRespondInClosedState(controller, firstDescriptor)
-        respondInClosedState(internal, firstDescriptor);
+        try respondInClosedState(internal, firstDescriptor);
     } else {
         // Step 6: Otherwise (state is "readable")
         // Step 6.1: Assert: state is "readable"
@@ -869,7 +869,7 @@ fn respondInClosedState(
         while (ReadableStreamImpl.getNumReadIntoRequests(stream) > 0) {
             // Step 4.1.1: Process pull-into descriptor from queue
             const result = try processPullIntoDescriptorsUsingQueue(internal);
-            defer result.deinit();
+            defer result.deinit(internal.allocator);
 
             // If no more descriptors could be processed, break
             if (result.items.len == 0) {
@@ -1265,7 +1265,11 @@ fn enqueueInternal(instance: *runtime.Instance, chunk: typedefs.ArrayBufferView)
 fn processPullIntoDescriptorsUsingQueue(
     internal: *InternalState,
 ) ImplError!std.ArrayList(*PullIntoDescriptor) {
-    var result = std.ArrayList(*PullIntoDescriptor).init(internal.allocator);
+    var result = std.ArrayList(*PullIntoDescriptor){
+        .items = &[_]*PullIntoDescriptor{},
+        .capacity = 0,
+        .allocator = internal.allocator,
+    };
     errdefer result.deinit(internal.allocator);
 
     // Step 1: While ! ReadableStreamGetNumReadIntoRequests(stream) > 0
