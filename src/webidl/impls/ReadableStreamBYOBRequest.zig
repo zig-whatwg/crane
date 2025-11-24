@@ -164,10 +164,11 @@ pub fn call_respondWithNewView(instance: *runtime.Instance, view: typedefs.Array
 /// Called by ReadableByteStreamController when creating a BYOB request
 pub fn create(
     allocator: std.mem.Allocator,
+    ctx: runtime.Context,
     controller: *runtime.Instance,
     view: typedefs.ArrayBufferView,
 ) !*runtime.Instance {
-    const instance = try init(allocator, State, &ReadableStreamBYOBRequest.vtable, .{});
+    const instance = try init(allocator, State, &ReadableStreamBYOBRequest.vtable, ctx);
     errdefer deinit(instance);
 
     const state = instance.getState(State);

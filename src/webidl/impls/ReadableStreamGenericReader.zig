@@ -1,7 +1,13 @@
-//! Implementation for ReadableStreamGenericReader interface
+//! Implementation for ReadableStreamGenericReader mixin
 //!
-//! This file is AUTO-GENERATED on first creation.
-//! Add your custom implementation here.
+//! Spec: https://streams.spec.whatwg.org/#readablestreamgenericreader
+//!
+//! This mixin provides shared functionality for all reader types:
+//! - ReadableStreamDefaultReader
+//! - ReadableStreamBYOBReader
+//!
+//! The actual implementation is in the concrete reader classes.
+//! This mixin provides the interface contract that both readers implement.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -15,16 +21,23 @@ const ReadableStreamGenericReader = interfaces.ReadableStreamGenericReader;
 pub const State = ReadableStreamGenericReader.State;
 
 pub const ImplError = error{
-    NotImplemented,
+    TypeError,
+    InvalidState,
+    OutOfMemory,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Internal state for mixin
+///
+/// Note: Mixins don't typically have their own instances.
+/// The state is managed by the concrete reader implementations.
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+};
 
-/// Initialize instance (creates the instance)
+/// Initialize instance
+///
+/// Note: This mixin is not typically instantiated directly.
+/// Use ReadableStreamDefaultReader or ReadableStreamBYOBReader instead.
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
@@ -32,26 +45,79 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
     runtime.Instance.deinit(instance);
 }
 
 /// Getter for closed
+///
+/// Spec: § 4.4.2 "The closed getter steps are:"
+/// Returns a promise that fulfills when the stream closes or rejects if it errors.
+///
+/// Note: This delegates to the concrete reader implementation.
+/// Both DefaultReader and BYOBReader implement this via their internal closedPromise.
 pub fn get_closed(instance: *runtime.Instance) ImplError!*const anyopaque {
-    _ = instance;
-    return error.NotImplemented;
+    // Determine which reader type this is and delegate
+    // Try DefaultReader first
+    if (instance.vtable == &interfaces.ReadableStreamDefaultReader.vtable) {
+        const DefaultReaderImpl = @import("ReadableStreamDefaultReader.zig");
+        return DefaultReaderImpl.get_closed(instance) catch |err| {
+            return switch (err) {
+                error.InvalidState => error.InvalidState,
+                else => error.InvalidState,
+            };
+        };
+    }
+
+    // Try BYOBReader
+    if (instance.vtable == &interfaces.ReadableStreamBYOBReader.vtable) {
+        const BYOBReaderImpl = @import("ReadableStreamBYOBReader.zig");
+        return BYOBReaderImpl.get_closed(instance) catch |err| {
+            return switch (err) {
+                error.InvalidState => error.InvalidState,
+                else => error.InvalidState,
+            };
+        };
+    }
+
+    return error.TypeError;
 }
 
 /// Operation: cancel
+///
+/// Spec: § 4.4.3 "The cancel(reason) method steps are:"
+/// Cancels the stream with the given reason.
+///
+/// Note: This delegates to the concrete reader implementation.
 pub fn call_cancel(instance: *runtime.Instance, reason: *const anyopaque) ImplError!*const anyopaque {
-    _ = instance;
-    _ = reason;
-    return error.NotImplemented;
-}
+    // Determine which reader type this is and delegate
+    // Try DefaultReader first
+    if (instance.vtable == &interfaces.ReadableStreamDefaultReader.vtable) {
+        const DefaultReaderImpl = @import("ReadableStreamDefaultReader.zig");
+        return DefaultReaderImpl.call_cancel(instance, reason) catch |err| {
+            return switch (err) {
+                error.TypeError => error.TypeError,
+                error.InvalidState => error.InvalidState,
+                else => error.InvalidState,
+            };
+        };
+    }
 
+    // Try BYOBReader
+    if (instance.vtable == &interfaces.ReadableStreamBYOBReader.vtable) {
+        const BYOBReaderImpl = @import("ReadableStreamBYOBReader.zig");
+        return BYOBReaderImpl.call_cancel(instance, reason) catch |err| {
+            return switch (err) {
+                error.TypeError => error.TypeError,
+                error.InvalidState => error.InvalidState,
+                else => error.InvalidState,
+            };
+        };
+    }
+
+    return error.TypeError;
+}
