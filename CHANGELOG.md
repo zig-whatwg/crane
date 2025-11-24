@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Algorithm Context Architecture (v0.4.0 - 2025-11-24)
+
+#### Core Infrastructure
+- **Algorithm Vtable System** (`streams/internal/algorithm.zig`)
+  - Vtable-based Algorithm abstraction replacing simple function pointers
+  - Supports JavaScript callbacks (backward compatible)
+  - Supports native Zig closures with captured context
+  - Clean lifecycle management with deinit()
+  - Type-safe algorithm invocation
+
+- **V8 Resource Management** (`streams/internal/v8_resources.zig`)
+  - V8 Global<> handle lifecycle management
+  - Attaches V8 resources to stream lifetime
+  - Automatic cleanup on stream close/error/cancel
+  - Type-safe dispose functions
+
+- **Iterator Protocol** (`streams/internal/iterator_record.zig`)
+  - ECMAScript IteratorRecord (ES §27.1.1.2)
+  - Full V8 integration for async iteration protocol
+  - GetIterator, IteratorNext, IteratorComplete, IteratorValue, IteratorClose
+  - Spec-compliant implementation with proper error handling
+
+- **From Iterable Algorithm** (`streams/internal/from_iterable_algorithm.zig`)
+  - Native pull/cancel algorithms for ReadableStream.from()
+  - Captures iterator state in closure context
+  - Promise-based async handling
+  - Error propagation through controller
+
+#### ReadableStream.from() Implementation
+- **ReadableStream.call_from()** entry point
+  - Creates ReadableStream from async iterable
+  - Gets IteratorRecord from async iterable
+  - Creates pull/cancel algorithms with captured state
+  - Sets up ReadableStreamDefaultController with algorithms
+  - Full error handling with proper cleanup
+
+#### Runtime Integration
+- **V8 Context Helpers** (`runtime/root.zig`)
+  - `getIsolate(ctx)` - Extract V8 Isolate from runtime Context
+  - `getV8Context(ctx)` - Extract V8 Context from runtime Context
+  - Enables streams infrastructure to access V8 engine
+
+- **V8 Type Exports** (`runtime/engines/v8/root.zig`)
+  - Export V8 Function type for iterator protocol
+
+#### Error Handling
+- **Standardized Error Sets** across all stream implementations
+  - Added `NoEventLoop` error to all stream ImplError definitions
+  - Consistent error propagation patterns
+  - Error controller + fulfill promise (not reject promise)
+
+#### Documentation
+- **Architecture Documentation** (`ALGORITHM_ARCHITECTURE.md`)
+  - Comprehensive vtable pattern documentation
+  - Memory management lifecycle
+  - Error handling strategy
+  - Performance characteristics
+  - Real-world usage examples
+  - Extension points and best practices
+
+**Status**: ✅ Algorithm architecture COMPLETE - First native Zig closure with captured context
+
+**Testing**: Build succeeds. Integration tests deferred pending V8 test harness infrastructure.
+
+**Commits**:
+- f59f07e3 - feat(streams): complete ReadableStream.from() implementation (Phase 5)
+- 723d506b - fix(streams): add NoEventLoop to ReadableStreamBYOBRequest error set
+
 ### Added - BYOB (Bring Your Own Buffer) Streams
 
 #### Core Functionality
