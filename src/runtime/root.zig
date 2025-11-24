@@ -78,6 +78,9 @@ pub const Float64Array = types.Float64Array;
 pub const BigInt64Array = types.BigInt64Array;
 pub const BigUint64Array = types.BigUint64Array;
 
+// ArrayBufferView introspection for Streams BYOB operations
+pub const arraybuffer_view = @import("arraybuffer_view.zig");
+
 // Memory allocators
 pub const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
 pub const ArenaAllocator = @import("arena_allocator.zig").ArenaAllocator;

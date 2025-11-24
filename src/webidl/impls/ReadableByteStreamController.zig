@@ -33,6 +33,10 @@ const ReaderType = PullIntoDescriptorModule.ReaderType;
 const ReadIntoRequestModule = @import("streams_read_into_request");
 const ReadIntoRequest = ReadIntoRequestModule.ReadIntoRequest;
 
+// ArrayBufferView introspection
+const ArrayBufferViewModule = runtime.arraybuffer_view;
+const ViewType = ArrayBufferViewModule.ViewType;
+
 pub const State = ReadableByteStreamController.State;
 
 pub const ImplError = error{
@@ -1354,37 +1358,43 @@ pub fn pullSteps(
 ///
 /// Returns 1 for Uint8Array/Int8Array, 2 for Uint16Array/Int16Array, etc.
 fn getViewElementSize(view: typedefs.ArrayBufferView) u64 {
-    // TODO: Implement at runtime level
-    _ = view;
-    return 1; // Default to Uint8Array (1 byte elements)
+    return ArrayBufferViewModule.getViewElementSize(view);
 }
 
 /// Get the byte offset of the view into its underlying ArrayBuffer
 fn getViewByteOffset(view: typedefs.ArrayBufferView) u64 {
-    // TODO: Implement at runtime level
-    _ = view;
-    return 0; // Default to start of buffer
+    return ArrayBufferViewModule.getViewByteOffset(view);
 }
 
 /// Get the byte length of the view
 fn getViewByteLength(view: typedefs.ArrayBufferView) u64 {
-    // TODO: Implement at runtime level
-    _ = view;
-    return 1024; // Placeholder
+    return ArrayBufferViewModule.getViewByteLength(view);
 }
 
 /// Check if the view's underlying ArrayBuffer is detached
 fn isViewDetached(view: typedefs.ArrayBufferView) bool {
-    // TODO: Implement at runtime level
-    _ = view;
-    return false; // Assume not detached
+    return ArrayBufferViewModule.isViewDetached(view);
 }
 
 /// Get the ViewConstructor type for a TypedArray view
 fn getViewConstructor(view: typedefs.ArrayBufferView) ViewConstructor {
-    // TODO: Implement at runtime level - check actual TypedArray type
-    _ = view;
-    return ViewConstructor.uint8_array; // Default to Uint8Array
+    const view_type = ArrayBufferViewModule.getViewConstructor(view);
+
+    // Convert ViewType to ViewConstructor
+    return switch (view_type) {
+        .int8_array => ViewConstructor.int8_array,
+        .uint8_array => ViewConstructor.uint8_array,
+        .uint8_clamped_array => ViewConstructor.uint8_clamped_array,
+        .int16_array => ViewConstructor.int16_array,
+        .uint16_array => ViewConstructor.uint16_array,
+        .int32_array => ViewConstructor.int32_array,
+        .uint32_array => ViewConstructor.uint32_array,
+        .float32_array => ViewConstructor.float32_array,
+        .float64_array => ViewConstructor.float64_array,
+        .bigint64_array => ViewConstructor.bigint64_array,
+        .biguint64_array => ViewConstructor.biguint64_array,
+        .data_view => ViewConstructor.data_view,
+    };
 }
 
 /// Extract the underlying ArrayBuffer from a view
@@ -1394,15 +1404,10 @@ fn extractViewBuffer(
     allocator: std.mem.Allocator,
     view: typedefs.ArrayBufferView,
 ) !*ArrayBuffer {
-    // TODO: Implement at runtime level
-    _ = view;
+    // Get the metadata from the runtime module
+    const runtime_buffer = try ArrayBufferViewModule.extractViewBuffer(allocator, view);
 
-    // Placeholder: Create empty buffer
-    const buffer = try allocator.create(ArrayBuffer);
-    buffer.* = .{
-        .data = &[_]u8{},
-        .byte_length = 0,
-        .detached = false,
-    };
-    return buffer;
+    // Convert to pull_into_descriptor.ArrayBuffer
+    // Both types have the same memory layout, so we can cast the pointer
+    return @ptrCast(runtime_buffer);
 }
