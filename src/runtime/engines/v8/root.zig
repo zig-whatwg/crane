@@ -87,6 +87,9 @@ pub const invokeCallback = promise_mod.invokeCallback;
 /// Streams API Callback Helpers (Phase 3: Runtime Infrastructure)
 pub const streams_callbacks = @import("streams_callbacks.zig");
 
+/// Zig to V8 Callback Wrappers (Phase 5: Streams Integration)
+pub const zig_callbacks = @import("zig_callbacks.zig");
+
 // Re-export commonly used types for convenience
 pub const Isolate = ffi.Isolate;
 pub const Context = ffi.Context;

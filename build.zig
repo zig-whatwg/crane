@@ -234,6 +234,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     impls_mod.addImport("runtime", runtime_mod);
+    impls_mod.addImport("v8", v8_mod);
 
     // Cross-imports for WebIDL modules
     interfaces_mod.addImport("interfaces", interfaces_mod); // Self-import for cross-interface refs

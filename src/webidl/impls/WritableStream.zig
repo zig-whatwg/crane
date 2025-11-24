@@ -580,6 +580,8 @@ fn setUpWritableStreamDefaultController(
         .abort_algorithm = abortAlgorithm,
         .strategy_hwm = highWaterMark,
         .strategy_size_algorithm = null, // TODO: Pass size algorithm from strategy
+        .isolate = stream_instance.ctx.engine_ctx, // V8 isolate from runtime context
+        .v8_context = stream_instance.ctx.engine_ctx, // V8 context from runtime context
         .started = false,
         .queue = .{},
         .queue_total_size = 0.0,

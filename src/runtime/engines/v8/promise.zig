@@ -204,7 +204,7 @@ pub fn invokeCallback(
         context,
         this_val,
         @intCast(args.len),
-        args.ptr,
+        @constCast(args.ptr),
     ) orelse return error.CallbackInvocationFailed;
     defer v8.v8_Value_Dispose(result);
 

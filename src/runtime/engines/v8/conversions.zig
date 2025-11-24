@@ -959,6 +959,50 @@ pub fn toConsoleValue(
 }
 
 // ============================================================================
+// Instance to V8 Object Conversion (Phase 5: Streams Integration)
+// ============================================================================
+
+/// Convert runtime.Instance to V8 Object
+///
+/// This creates or retrieves a V8 wrapper object for a Zig runtime instance.
+/// Used when passing controller instances to JavaScript callbacks.
+///
+/// Currently simplified: creates a plain V8 Object.
+/// TODO: Use full V8Interface infrastructure for proper prototype chain.
+///
+/// Example:
+/// ```zig
+/// const controller_v8 = try instanceToV8Object(
+///     controller_instance,
+///     isolate,
+///     context,
+/// );
+/// defer v8.v8_Object_Dispose(controller_v8);
+/// ```
+pub fn instanceToV8Object(
+    instance: *runtime.Instance,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+) ConversionError!*v8.Object {
+    _ = instance; // TODO: Use instance state to populate V8 object
+
+    // For now, create a plain V8 Object
+    // In a full implementation, this would:
+    // 1. Check if instance already has a V8 wrapper (stored in internal field)
+    // 2. If not, create V8 Object with correct prototype
+    // 3. Store instance pointer in V8 Object internal field
+    // 4. Store V8 Object reference in instance for future lookups
+
+    const obj = v8.v8_Object_New(isolate) orelse return ConversionError.OutOfMemory;
+    _ = context; // Will be needed for property setup
+
+    // TODO: Set up properties and methods using V8Interface infrastructure
+    // For now, return plain object (sufficient for callbacks that don't access controller)
+
+    return obj;
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 

@@ -6,6 +6,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8_engine = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -54,6 +55,12 @@ pub const InternalState = struct {
 
     /// [[strategySizeAlgorithm]]: Function to compute chunk size
     strategy_size_algorithm: ?*const anyopaque,
+
+    /// V8 isolate (if running in V8 context) - for invoking callbacks
+    isolate: ?*anyopaque,
+
+    /// V8 context (if running in V8 context) - for invoking callbacks
+    v8_context: ?*anyopaque,
 
     /// [[started]]: Whether start algorithm has completed
     started: bool,
@@ -222,10 +229,31 @@ pub fn write(controller: *runtime.Instance, chunk: *const anyopaque, chunk_size_
     const stream_internal = stream_state.own._internal orelse return error.InvalidState;
 
     // 2. Calculate actual chunk size using strategy size algorithm
-    const chunk_size = if (internal.strategy_size_algorithm != null)
-        chunk_size_param // TODO: Actually call sizeAlgorithm(chunk) when runtime supports it
-    else
-        chunk_size_param;
+    const chunk_size = if (internal.strategy_size_algorithm) |size_fn| blk: {
+        // Check if we have V8 context (runtime mode)
+        if (internal.isolate != null and internal.v8_context != null) {
+            // V8 runtime mode: invoke real JavaScript callback
+            const isolate: *v8_engine.ffi.Isolate = @ptrCast(@alignCast(internal.isolate.?));
+            const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(internal.v8_context.?));
+            const size_function: *v8_engine.ffi.Function = @ptrCast(@alignCast(@constCast(size_fn)));
+
+            // Convert chunk to V8 Value (simplified - just undefined for now)
+            // TODO: Implement proper chunk conversion
+            const chunk_v8 = v8_engine.ffi.v8_Undefined(isolate) orelse break :blk chunk_size_param;
+
+            // Invoke size_algorithm(chunk) → number
+            const size_result = v8_engine.streams_callbacks.invokeSizeAlgorithm(
+                isolate,
+                v8_context,
+                size_function,
+                chunk_v8,
+            ) catch break :blk chunk_size_param; // Fallback on error
+
+            break :blk size_result;
+        } else {
+            break :blk chunk_size_param; // No V8 context - use provided size
+        }
+    } else chunk_size_param; // No size algorithm - use provided size
 
     // 3. Wrap chunk in JSValue (simplified - treat as opaque object for now)
     const js_chunk = common.JSValue{ .object = {} };
@@ -377,19 +405,83 @@ fn writableStreamDefaultControllerProcessWrite(controller: *runtime.Instance, ch
     stream_internal.in_flight_write_request = write_request;
 
     // 5. Invoke underlying sink write algorithm
-    // TODO: Actually call write_algorithm callback when runtime supports it
-    // For now, we'll immediately fulfill the write promise
-    //
-    // The real implementation would be:
-    // const result = internal.write_algorithm.?(chunk, controller);
-    // result.then(onFulfilled, onRejected)
-    //
-    // Where onFulfilled = writableStreamDefaultControllerFinishWrite
-    // And onRejected = writableStreamDefaultControllerError
+    if (internal.write_algorithm) |write_fn| {
+        // Check if we have V8 context (runtime mode)
+        if (internal.isolate != null and internal.v8_context != null) {
+            // V8 runtime mode: invoke real JavaScript callback
+            const isolate: *v8_engine.ffi.Isolate = @ptrCast(@alignCast(internal.isolate.?));
+            const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(internal.v8_context.?));
+            const write_function: *v8_engine.ffi.Function = @ptrCast(@alignCast(@constCast(write_fn)));
+
+            // Convert chunk to V8 Value (simplified - just create undefined for now)
+            // TODO: Implement proper chunk conversion based on type
+            const chunk_v8 = v8_engine.ffi.v8_Undefined(isolate) orelse {
+                writableStreamDefaultControllerError(controller, stream);
+                return;
+            };
+
+            // Convert controller to V8 Object
+            const controller_v8 = v8_engine.conversions.instanceToV8Object(
+                controller,
+                isolate,
+                v8_context,
+            ) catch {
+                writableStreamDefaultControllerError(controller, stream);
+                return;
+            };
+            defer v8_engine.ffi.v8_Object_Dispose(controller_v8);
+
+            // Invoke write_algorithm(chunk, controller) → Promise<void>
+            var write_promise = v8_engine.streams_callbacks.invokeWriteAlgorithm(
+                isolate,
+                v8_context,
+                write_function,
+                chunk_v8,
+                controller_v8,
+            ) catch {
+                writableStreamDefaultControllerError(controller, stream);
+                return;
+            };
+            defer write_promise.deinit();
+
+            // Create V8 callbacks for Promise handlers
+            // These wrap the Zig functions so Promise.then() can call them
+            const onFulfilled = v8_engine.zig_callbacks.createVoidCallback(
+                isolate,
+                v8_context,
+            ) catch {
+                writableStreamDefaultControllerError(controller, stream);
+                return;
+            };
+            defer v8_engine.ffi.v8_Function_Dispose(onFulfilled);
+
+            const onRejected = v8_engine.zig_callbacks.createVoidCallback(
+                isolate,
+                v8_context,
+            ) catch {
+                writableStreamDefaultControllerError(controller, stream);
+                return;
+            };
+            defer v8_engine.ffi.v8_Function_Dispose(onRejected);
+
+            // Chain Promise handlers
+            // When write Promise settles, onFulfilled/onRejected will be called
+            _ = write_promise.then(onFulfilled, onRejected) catch {
+                writableStreamDefaultControllerError(controller, stream);
+                return;
+            };
+
+            // Promise will settle asynchronously
+            // TODO: In the callbacks, call writableStreamDefaultControllerFinishWrite
+            // or writableStreamDefaultControllerError appropriately
+            return;
+        }
+    }
+
+    // Fallback: No write algorithm or no V8 context (testing mode)
+    // Immediately fulfill the write
     _ = chunk;
     _ = value;
-
-    // 6. Simulate immediate fulfillment (placeholder)
     writableStreamDefaultControllerFinishWrite(controller, stream);
 }
 
@@ -444,14 +536,59 @@ fn writableStreamDefaultControllerProcessClose(controller: *runtime.Instance) vo
     }
 
     // Invoke underlying sink close algorithm
-    // TODO: Actually call close_algorithm callback when runtime supports it
-    // For now, immediately succeed
-    //
-    // The real implementation would be:
-    // const result = controller_internal.close_algorithm.?();
-    // result.then(onFulfilled, onRejected)
+    if (controller_internal.close_algorithm) |close_fn| {
+        // Check if we have V8 context (runtime mode)
+        if (controller_internal.isolate != null and controller_internal.v8_context != null) {
+            // V8 runtime mode: invoke real JavaScript callback
+            const isolate: *v8_engine.ffi.Isolate = @ptrCast(@alignCast(controller_internal.isolate.?));
+            const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(controller_internal.v8_context.?));
+            const close_function: *v8_engine.ffi.Function = @ptrCast(@alignCast(@constCast(close_fn)));
 
-    // Simulate immediate fulfillment
+            // Invoke close_algorithm() → Promise<void>
+            var close_promise = v8_engine.streams_callbacks.invokeCloseAlgorithm(
+                isolate,
+                v8_context,
+                close_function,
+            ) catch {
+                // Invocation failed - just finish close anyway
+                writableStreamDefaultControllerFinishClose(stream);
+                return;
+            };
+            defer close_promise.deinit();
+
+            // Create V8 callbacks for Promise handlers
+            const onFulfilled = v8_engine.zig_callbacks.createVoidCallback(
+                isolate,
+                v8_context,
+            ) catch {
+                writableStreamDefaultControllerFinishClose(stream);
+                return;
+            };
+            defer v8_engine.ffi.v8_Function_Dispose(onFulfilled);
+
+            const onRejected = v8_engine.zig_callbacks.createVoidCallback(
+                isolate,
+                v8_context,
+            ) catch {
+                writableStreamDefaultControllerFinishClose(stream);
+                return;
+            };
+            defer v8_engine.ffi.v8_Function_Dispose(onRejected);
+
+            // Chain Promise handlers
+            _ = close_promise.then(onFulfilled, onRejected) catch {
+                writableStreamDefaultControllerFinishClose(stream);
+                return;
+            };
+
+            // Promise will settle asynchronously
+            // TODO: In onFulfilled, call writableStreamDefaultControllerFinishClose
+            return;
+        }
+    }
+
+    // Fallback: No close algorithm or no V8 context (testing mode)
+    // Immediately succeed
     writableStreamDefaultControllerFinishClose(stream);
 }
 
