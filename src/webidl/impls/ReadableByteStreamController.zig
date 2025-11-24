@@ -323,7 +323,7 @@ fn closeInternal(internal: *InternalState) void {
 
     // Step 5: Perform ! ReadableStreamClose(controller.[[stream]])
     const ReadableStreamImpl = @import("ReadableStream.zig");
-    ReadableStreamImpl.closeInternal(stream);
+    ReadableStreamImpl.readableStreamClose(stream_internal);
 }
 
 /// ReadableByteStreamControllerError(controller, e)
@@ -352,7 +352,7 @@ fn errorInternal(internal: *InternalState, e: JSValue) void {
 
     // Step 6: Perform ! ReadableStreamError(stream, e)
     const ReadableStreamImpl = @import("ReadableStream.zig");
-    ReadableStreamImpl.errorInternal(stream, e);
+    ReadableStreamImpl.readableStreamError(stream_internal, @ptrCast(&e));
 }
 
 /// ReadableByteStreamControllerClearAlgorithms(controller)
@@ -1012,8 +1012,10 @@ fn handleQueueDrain(internal: *InternalState) void {
         clearAlgorithms(internal);
 
         const stream = internal.stream orelse return;
+        const stream_state = stream.getState(interfaces.ReadableStream.State);
+        const stream_internal = stream_state.own._internal orelse return;
         const ReadableStreamImpl = @import("ReadableStream.zig");
-        ReadableStreamImpl.closeInternal(stream);
+        ReadableStreamImpl.readableStreamClose(stream_internal);
     } else {
         // Step 3: Otherwise, call pull if needed
         // Need instance to call callPullIfNeeded - skip for now
@@ -1251,4 +1253,68 @@ fn processPullIntoDescriptorsUsingQueue(
     // For now, return empty list
 
     return result;
+}
+
+/// ReadableByteStreamControllerPullSteps(controller, readRequest)
+///
+/// Spec: § 4.7.4 "Pull steps for default reader"
+///
+/// This is called when a default reader's read() is invoked.
+pub fn pullSteps(
+    instance: *runtime.Instance,
+    readRequest: *const anyopaque,
+) ImplError!void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+
+    // Step 1: Let stream be this.[[stream]]
+    const stream = internal.stream orelse return error.InvalidState;
+    _ = stream;
+
+    // Step 2: Assert: ! ReadableStreamHasDefaultReader(stream) is true
+    // (Caller ensures this)
+
+    // Step 3: If this.[[queueTotalSize]] > 0
+    if (internal.queue_total_size > 0) {
+        // Step 3.1: Assert: ! ReadableStreamGetNumReadRequests(stream) is 0
+        // (Implicit - if queue has data, no pending requests)
+
+        // Step 3.2: Perform ! ReadableByteStreamControllerFillReadRequestFromQueue(this, readRequest)
+        try fillReadRequestFromQueue(internal);
+        return;
+    }
+
+    // Step 4: Let autoAllocateChunkSize be this.[[autoAllocateChunkSize]]
+    const auto_allocate_chunk_size = internal.auto_allocate_chunk_size;
+
+    // Step 5: If autoAllocateChunkSize is not undefined
+    if (auto_allocate_chunk_size) |chunk_size| {
+        // Step 5.1: Let buffer be Construct(%ArrayBuffer%, « autoAllocateChunkSize »)
+        const buffer = try ArrayBuffer.init(internal.allocator, chunk_size);
+        const buffer_ptr = try internal.allocator.create(ArrayBuffer);
+        buffer_ptr.* = buffer;
+
+        // Step 5.3: Let pullIntoDescriptor be a new pull-into descriptor
+        const pull_into_descriptor = try internal.allocator.create(PullIntoDescriptor);
+        pull_into_descriptor.* = PullIntoDescriptor.init(
+            buffer_ptr,
+            chunk_size,
+            0, // byte offset
+            chunk_size, // byte length
+            1, // minimum fill (at least 1 byte)
+            1, // element size (Uint8Array)
+            ViewConstructor.uint8_array,
+            .default, // reader type = "default"
+        );
+
+        // Step 5.4: Append pullIntoDescriptor to this.[[pendingPullIntos]]
+        try internal.pending_pull_intos.append(pull_into_descriptor);
+    }
+
+    // Step 6: Perform ! ReadableStreamAddReadRequest(stream, readRequest)
+    // TODO: Implement when ReadableStream API is ready
+    _ = readRequest;
+
+    // Step 7: Perform ! ReadableByteStreamControllerCallPullIfNeeded(this)
+    callPullIfNeeded(instance);
 }
