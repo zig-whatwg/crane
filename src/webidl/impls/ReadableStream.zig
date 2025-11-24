@@ -211,9 +211,21 @@ pub fn get_locked(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Operation: from
-pub fn call_from(instance: *runtime.Instance, asyncIterable: *const anyopaque) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = asyncIterable;
+/// Spec: https://streams.spec.whatwg.org/#rs-from
+/// static ReadableStream from(any asyncIterable)
+///
+/// Returns a ReadableStream wrapping the provided iterable or async iterable.
+/// Spec algorithm: ReadableStreamFromIterable
+///
+/// TODO: This is a complex implementation requiring:
+/// 1. V8 closure mechanism to capture iterator state in pull/cancel algorithms
+/// 2. Promise-based async iteration protocol
+/// 3. Proper cleanup of V8 handles on stream close/error
+///
+/// For Phase 5 Part 2, we're focusing on the infrastructure. Full implementation
+/// requires additional runtime bridge work beyond the scope of V8 FFI additions.
+pub fn call_from(_: *runtime.Instance, _: *const anyopaque) ImplError!*runtime.Instance {
+    // Requires closure mechanism not yet implemented
     return error.NotImplemented;
 }
 
