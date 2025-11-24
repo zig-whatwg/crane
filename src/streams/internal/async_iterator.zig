@@ -3,15 +3,23 @@
 //! Implements the ES async iterator protocol for use with ReadableStream.from()
 //! Spec: ECMAScript Language Specification §27.1 (Iteration)
 //! Spec: WHATWG Streams §4.2.1 ReadableStreamFromIterable
+//!
+//! This module provides the public interface for async iteration.
+//! The actual V8 FFI implementation is in iterator_record.zig.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const runtime = @import("runtime");
 const common = @import("common");
 const JSValue = common.JSValue;
 const Promise = common.Promise;
 
-/// IteratorRecord
-/// Spec: ES §27.1.1.2 The Iterator Record Specification Type
+// Import the V8-backed IteratorRecord implementation
+const iterator_record = @import("iterator_record");
+pub const V8IteratorRecord = iterator_record.IteratorRecord;
+
+/// IteratorRecord - lightweight wrapper for internal use
+/// For V8-backed iteration, use V8IteratorRecord directly
 pub const IteratorRecord = struct {
     /// [[Iterator]] - The iterator object
     iterator: JSValue,
@@ -35,145 +43,116 @@ pub const IteratorRecord = struct {
     }
 };
 
-/// GetIterator(obj, hint)
-/// Spec: ES §7.4.1 GetIterator
+/// GetIterator(obj, hint) - Create iterator from object
 ///
-/// Gets an iterator from an object using either @@iterator or @@asyncIterator
-/// NOTE: Simplified implementation - full iterator protocol requires JS runtime
+/// For real V8 integration, use V8IteratorRecord.fromAsyncIterable instead.
+/// This function is for internal Zig-only iteration (testing/mocks).
+///
+/// Spec: ES §7.4.1 GetIterator
 pub fn getIterator(allocator: Allocator, obj: JSValue, hint: enum { sync, async_hint }) !IteratorRecord {
-    _ = hint; // Hint determines Symbol.asyncIterator vs Symbol.iterator
-
-    // Simplified implementation assumes obj is already an iterator-like object
-    // Full implementation requires:
-    // 1. Get @@asyncIterator or @@iterator method from obj
-    // 2. Call the method to get iterator
-    // 3. Get the "next" method from iterator
-    // 4. Return IteratorRecord
+    _ = hint;
 
     switch (obj) {
         .object => {
-            // Return a dummy iterator record that will be filled in by calling code
             return IteratorRecord.init(
                 allocator,
                 obj,
-                JSValue.undefined_value(), // next method placeholder
+                JSValue.undefined_value(),
             );
         },
         else => return error.TypeError,
     }
 }
 
-/// IteratorNext(iteratorRecord)
-/// Spec: ES §7.4.2 IteratorNext
+/// IteratorNext(iteratorRecord) - Call next() on iterator
 ///
-/// Calls the next() method on an iterator and returns the result
+/// For real V8 integration, use V8IteratorRecord.next() instead.
+///
+/// Spec: ES §7.4.2 IteratorNext
 pub fn iteratorNext(record: *IteratorRecord) !Promise(JSValue) {
     if (record.done) {
-        // Iterator already closed
         return Promise(JSValue).fulfilled(JSValue.undefined_value());
     }
 
-    // Call iteratorRecord.[[NextMethod]].call(iteratorRecord.[[Iterator]])
-    // This would be: result = record.next_method.call(record.iterator)
-
-    // For now, return a placeholder promise
-    // In production, this needs proper method invocation
+    // For Zig-only iteration, return pending promise
+    // Real iteration uses V8IteratorRecord.next()
     return Promise(JSValue).pending();
 }
 
-/// IteratorComplete(iterResult)
-/// Spec: ES §7.4.3 IteratorComplete
+/// IteratorComplete(iterResult) - Get "done" property
 ///
-/// Returns the value of the "done" property of an iterator result object
+/// For real V8 integration, use V8IteratorRecord.complete() instead.
+///
+/// Spec: ES §7.4.3 IteratorComplete
 pub fn iteratorComplete(iter_result: JSValue) !bool {
-    // iterResult must be an Object
     if (iter_result != .object) {
         return error.TypeError;
     }
 
-    // Return ToBoolean(? Get(iterResult, "done"))
-    // For now, this is a placeholder
-    // In production, this needs proper property access
-
-    // Placeholder: return false to continue iteration
+    // Placeholder - real implementation uses V8 property access
     return false;
 }
 
-/// IteratorValue(iterResult)
-/// Spec: ES §7.4.4 IteratorValue
+/// IteratorValue(iterResult) - Get "value" property
 ///
-/// Returns the value of the "value" property of an iterator result object
+/// For real V8 integration, use V8IteratorRecord.value() instead.
+///
+/// Spec: ES §7.4.4 IteratorValue
 pub fn iteratorValue(iter_result: JSValue) !JSValue {
-    // iterResult must be an Object
     if (iter_result != .object) {
         return error.TypeError;
     }
 
-    // Return ? Get(iterResult, "value")
-    // For now, this is a placeholder
-    // In production, this needs proper property access
-
-    // Placeholder: return undefined
+    // Placeholder - real implementation uses V8 property access
     return JSValue.undefined_value();
 }
 
-/// GetMethod(V, P)
-/// Spec: ES §7.3.9 GetMethod
+/// GetMethod(V, P) - Get method from object by property key
 ///
-/// Gets a method from an object by property key
+/// For real V8 integration, use v8_Object_Get FFI directly.
+///
+/// Spec: ES §7.3.9 GetMethod
 pub fn getMethod(v: JSValue, property: []const u8) !?JSValue {
     _ = property;
 
-    // Get the property from V
-    // If it's undefined or null, return null
-    // If it's callable, return it
-    // Otherwise, throw TypeError
-
     switch (v) {
-        .object => {
-            // NOTE: Proper property lookup requires JS runtime
-            return null;
-        },
+        .object => return null, // V8 implementation uses property access
         .undefined, .null => return null,
         else => return error.TypeError,
     }
 }
 
-/// Call(F, V, argumentsList)
-/// Spec: ES §7.3.12 Call
+/// Call(F, V, argumentsList) - Call function with this binding
 ///
-/// Calls a function with a given this value and arguments
+/// For real V8 integration, use v8_Function_CallWithReceiver FFI directly.
+///
+/// Spec: ES §7.3.12 Call
 pub fn call(f: JSValue, v: JSValue, args: []const JSValue) !JSValue {
     _ = f;
     _ = v;
     _ = args;
 
-    // Call F with this=V and arguments=argumentsList
-    // For now, return undefined placeholder
-    // In production, this needs proper function invocation
-
+    // Placeholder - real implementation uses V8 Function::Call
     return JSValue.undefined_value();
 }
 
-/// IteratorClose(iteratorRecord, completion)
-/// Spec: ES §7.4.6 IteratorClose
+/// IteratorClose(iteratorRecord, completion) - Close iterator
 ///
-/// Closes an iterator by calling its return() method
+/// For real V8 integration, use V8IteratorRecord.close() instead.
+///
+/// Spec: ES §7.4.6 IteratorClose
 pub fn iteratorClose(record: *IteratorRecord, reason: JSValue) !void {
     if (record.done) {
-        return; // Already closed
+        return;
     }
 
-    // Get return method
     const return_method = try getMethod(record.iterator, "return");
 
     if (return_method == null) {
-        // No return method, just mark as done
         record.done = true;
         return;
     }
 
-    // Call return method
     _ = try call(return_method.?, record.iterator, &[_]JSValue{reason});
 
     record.done = true;
@@ -216,7 +195,7 @@ pub const MockAsyncIterator = struct {
 
     pub fn returnMethod(self: *MockAsyncIterator, reason: JSValue) IteratorResult {
         _ = reason;
-        self.index = self.values.len; // Mark as done
+        self.index = self.values.len;
         return .{ .done = true, .value = JSValue.undefined_value() };
     }
 };
@@ -226,15 +205,3 @@ pub const IteratorResult = struct {
     done: bool,
     value: JSValue,
 };
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-
-
-
-
-
-
-

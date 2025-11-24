@@ -5,10 +5,13 @@
 //! CompressionStream compresses data using the specified format.
 //! Supported formats: deflate, deflate-raw, gzip
 //!
-//! NOTE: This is a stub implementation. Actual compression using
-//! zlib/deflate requires integration with a compression library.
-//! The structure is complete per spec, but compress operations
-//! currently pass data through unchanged.
+//! Implementation Status:
+//! - Structure: COMPLETE (per spec)
+//! - Compression: STUB (uses pass-through until streaming compression API available)
+//!
+//! The Zig 0.15 std.compress.flate API requires a writer-based streaming interface
+//! which doesn't directly fit the chunk-by-chunk transform stream model.
+//! A full implementation would buffer input and use flate.Compress.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -26,6 +29,7 @@ pub const ImplError = error{
     TypeError,
     InvalidState,
     OutOfMemory,
+    CompressionError,
 };
 
 /// Compression format enumeration
@@ -47,12 +51,15 @@ pub const InternalState = struct {
     /// The compression format
     format: Format,
 
-    /// Output buffer for compression results
-    output_buffer: infra.List(u8),
+    /// Accumulated input data
+    input_buffer: infra.List(u8),
+
+    /// Whether compression has been finalized
+    finalized: bool,
 
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
         _ = allocator;
-        self.output_buffer.deinit();
+        self.input_buffer.deinit();
     }
 };
 
@@ -73,7 +80,8 @@ pub fn init(
     const internal = state.own._internal.?;
     internal.allocator = allocator;
     internal.format = .deflate;
-    internal.output_buffer = infra.List(u8).init(allocator);
+    internal.input_buffer = infra.List(u8).init(allocator);
+    internal.finalized = false;
 
     return instance;
 }
@@ -112,7 +120,6 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, form
     };
 
     // Step 3-5: Create transform stream
-    // Use empty transformer and default strategies
     var empty_transformer: u8 = 0;
     const writable_strategy = dictionaries.QueuingStrategy{};
     const readable_strategy = dictionaries.QueuingStrategy{};
@@ -160,11 +167,15 @@ pub fn get_writable(instance: *runtime.Instance) ImplError!*runtime.Instance {
 ///
 /// This is the transform algorithm used by the underlying TransformStream.
 ///
-/// NOTE: This is a stub implementation that passes data through unchanged.
-/// Real compression requires integration with zlib or another compression library.
+/// STUB: Currently passes data through unchanged. Full implementation would use
+/// std.compress.flate.Compress with writer-based API.
 pub fn compressChunk(internal: *InternalState, input: []const u8) ![]u8 {
-    // TODO: Implement actual compression using zlib/deflate
-    // For now, pass through unchanged (stub implementation)
+    if (internal.finalized) {
+        return error.InvalidState;
+    }
+
+    // STUB: Pass through unchanged
+    // Full implementation would compress using flate
     return try internal.allocator.dupe(u8, input);
 }
 
@@ -172,8 +183,15 @@ pub fn compressChunk(internal: *InternalState, input: []const u8) ![]u8 {
 ///
 /// This is the flush algorithm used by the underlying TransformStream.
 ///
-/// NOTE: Stub implementation - returns null (no pending data).
-pub fn flush(_: *InternalState) !?[]u8 {
-    // TODO: Implement actual compression finalization
+/// STUB: Returns null (no pending data). Full implementation would finalize
+/// the compression stream and return any remaining compressed data.
+pub fn flush(internal: *InternalState) !?[]u8 {
+    if (internal.finalized) {
+        return null;
+    }
+
+    internal.finalized = true;
+
+    // STUB: No pending data
     return null;
 }
