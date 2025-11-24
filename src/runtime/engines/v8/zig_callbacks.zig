@@ -41,6 +41,15 @@ pub const CallbackError = error{
     OutOfMemory,
 };
 
+/// Callback type tag for different callback signatures
+const CallbackType = enum {
+    void_no_args, // fn() void
+    one_arg_void, // fn(arg1) void
+    two_args_void, // fn(arg1, arg2) void
+    one_arg_returns_value, // fn(arg1) T
+    two_args_returns_value, // fn(arg1, arg2) T
+};
+
 /// User data structure passed to V8 callbacks
 ///
 /// This allows V8 callbacks to call back into Zig code with context.
@@ -54,6 +63,9 @@ const CallbackUserData = struct {
 
     /// Allocator used to create this struct (needed for cleanup)
     allocator: std.mem.Allocator,
+
+    /// Callback type (determines how to invoke)
+    callback_type: CallbackType,
 };
 
 /// Generic V8 callback that extracts Zig function and calls it
@@ -61,7 +73,7 @@ const CallbackUserData = struct {
 /// This is the actual C callback that V8 invokes. It:
 /// 1. Extracts CallbackUserData from info.getData()
 /// 2. Type-casts the function pointer
-/// 3. Converts V8 arguments to Zig types (simplified for now)
+/// 3. Converts V8 arguments to Zig types
 /// 4. Calls the Zig function
 /// 5. Converts return value to V8 (if any)
 fn genericZigCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
@@ -72,8 +84,7 @@ fn genericZigCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
     const data_value: *v8.Value = info.getData();
     defer v8.v8_Value_Dispose(data_value);
 
-    // Check if it's an External value (we can't check type yet, so assume it is)
-    // Cast from Value to External (they're both opaque pointers)
+    // Cast from Value to External
     const external: *v8.External = @ptrCast(data_value);
     const user_data_ptr = v8.v8_External_Value(external);
 
@@ -88,8 +99,18 @@ fn genericZigCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
     // Cast to CallbackUserData
     const callback_data: *CallbackUserData = @ptrCast(@alignCast(user_data_ptr.?));
 
-    // For now, we only support void callbacks with no arguments
-    // Type-cast the function pointer to a void function
+    // Dispatch based on callback type
+    switch (callback_data.callback_type) {
+        .void_no_args => invokeVoidNoArgs(info, callback_data, isolate),
+        .one_arg_void => invokeOneArgVoid(info, callback_data, isolate),
+        .two_args_void => invokeTwoArgsVoid(info, callback_data, isolate),
+        .one_arg_returns_value => invokeOneArgReturnsValue(info, callback_data, isolate),
+        .two_args_returns_value => invokeTwoArgsReturnsValue(info, callback_data, isolate),
+    }
+}
+
+/// Invoke void callback with no arguments: fn() void
+fn invokeVoidNoArgs(info: *const v8.FunctionCallbackInfo, callback_data: *CallbackUserData, isolate: *v8.Isolate) void {
     const VoidFn = *const fn () void;
     const void_fn: VoidFn = @ptrCast(@alignCast(callback_data.fn_ptr));
 
@@ -100,6 +121,141 @@ fn genericZigCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
     const undef = v8.v8_Undefined(isolate) orelse return;
     defer v8.v8_Value_Dispose(undef);
     info.setReturnValue(undef);
+}
+
+/// Invoke void callback with one argument: fn(arg1: *v8.Value) void
+fn invokeOneArgVoid(info: *const v8.FunctionCallbackInfo, callback_data: *CallbackUserData, isolate: *v8.Isolate) void {
+    const OneArgFn = *const fn (arg1: *v8.Value) void;
+    const one_arg_fn: OneArgFn = @ptrCast(@alignCast(callback_data.fn_ptr));
+
+    // Get first argument (or undefined if not provided)
+    const arg1 = if (info.length() > 0)
+        info.get(0)
+    else
+        v8.v8_Undefined(isolate) orelse return;
+    defer v8.v8_Value_Dispose(arg1);
+
+    // Call the Zig function
+    one_arg_fn(arg1);
+
+    // Return undefined
+    const undef = v8.v8_Undefined(isolate) orelse return;
+    defer v8.v8_Value_Dispose(undef);
+    info.setReturnValue(undef);
+}
+
+/// Invoke void callback with two arguments: fn(arg1: *v8.Value, arg2: *v8.Value) void
+fn invokeTwoArgsVoid(info: *const v8.FunctionCallbackInfo, callback_data: *CallbackUserData, isolate: *v8.Isolate) void {
+    const TwoArgsFn = *const fn (arg1: *v8.Value, arg2: *v8.Value) void;
+    const two_args_fn: TwoArgsFn = @ptrCast(@alignCast(callback_data.fn_ptr));
+
+    // Get arguments (or undefined if not provided)
+    const arg1 = if (info.length() > 0)
+        info.get(0)
+    else
+        v8.v8_Undefined(isolate) orelse return;
+    defer v8.v8_Value_Dispose(arg1);
+
+    const arg2 = if (info.length() > 1)
+        info.get(1)
+    else
+        v8.v8_Undefined(isolate) orelse return;
+    defer v8.v8_Value_Dispose(arg2);
+
+    // Call the Zig function
+    two_args_fn(arg1, arg2);
+
+    // Return undefined
+    const undef = v8.v8_Undefined(isolate) orelse return;
+    defer v8.v8_Value_Dispose(undef);
+    info.setReturnValue(undef);
+}
+
+/// Invoke callback with one argument returning value: fn(arg1: *v8.Value) *v8.Value
+fn invokeOneArgReturnsValue(info: *const v8.FunctionCallbackInfo, callback_data: *CallbackUserData, isolate: *v8.Isolate) void {
+    const OneArgReturnsFn = *const fn (arg1: *v8.Value) *v8.Value;
+    const one_arg_fn: OneArgReturnsFn = @ptrCast(@alignCast(callback_data.fn_ptr));
+
+    // Get first argument
+    const arg1 = if (info.length() > 0)
+        info.get(0)
+    else
+        v8.v8_Undefined(isolate) orelse return;
+    defer v8.v8_Value_Dispose(arg1);
+
+    // Call the Zig function and get return value
+    const result = one_arg_fn(arg1);
+
+    // Return the result (don't dispose - caller owns it)
+    info.setReturnValue(result);
+}
+
+/// Invoke callback with two arguments returning value: fn(arg1: *v8.Value, arg2: *v8.Value) *v8.Value
+fn invokeTwoArgsReturnsValue(info: *const v8.FunctionCallbackInfo, callback_data: *CallbackUserData, isolate: *v8.Isolate) void {
+    const TwoArgsReturnsFn = *const fn (arg1: *v8.Value, arg2: *v8.Value) *v8.Value;
+    const two_args_fn: TwoArgsReturnsFn = @ptrCast(@alignCast(callback_data.fn_ptr));
+
+    // Get arguments
+    const arg1 = if (info.length() > 0)
+        info.get(0)
+    else
+        v8.v8_Undefined(isolate) orelse return;
+    defer v8.v8_Value_Dispose(arg1);
+
+    const arg2 = if (info.length() > 1)
+        info.get(1)
+    else
+        v8.v8_Undefined(isolate) orelse return;
+    defer v8.v8_Value_Dispose(arg2);
+
+    // Call the Zig function and get return value
+    const result = two_args_fn(arg1, arg2);
+
+    // Return the result (don't dispose - caller owns it)
+    info.setReturnValue(result);
+}
+
+/// Detect callback type from function signature at compile time
+fn detectCallbackType(comptime ZigFn: type) CallbackType {
+    const type_info = @typeInfo(ZigFn);
+
+    // Handle both function pointers and function types
+    const fn_info = switch (type_info) {
+        .pointer => |ptr_info| @typeInfo(ptr_info.child),
+        .@"fn" => type_info,
+        else => @compileError("Expected function or function pointer type"),
+    };
+
+    // Extract function data
+    const fn_data = switch (fn_info) {
+        .@"fn" => |f| f,
+        else => @compileError("Expected function type"),
+    };
+
+    const params = fn_data.params;
+    const return_type = fn_data.return_type;
+
+    // Determine if it returns void
+    const returns_void = if (return_type) |ret| ret == void else true;
+
+    // Determine argument count
+    const arg_count = params.len;
+
+    // Map to CallbackType
+    if (returns_void) {
+        return switch (arg_count) {
+            0 => .void_no_args,
+            1 => .one_arg_void,
+            2 => .two_args_void,
+            else => @compileError("Unsupported argument count for void callback"),
+        };
+    } else {
+        return switch (arg_count) {
+            1 => .one_arg_returns_value,
+            2 => .two_args_returns_value,
+            else => @compileError("Unsupported argument count for returning callback"),
+        };
+    }
 }
 
 /// Finalizer callback called by V8 when the Function is garbage collected
@@ -155,6 +311,9 @@ pub fn createZigCallback(
     zig_fn: ZigFn,
     user_data: ?*anyopaque,
 ) CallbackError!*v8.Function {
+    // Detect callback type at compile time
+    const callback_type = detectCallbackType(ZigFn);
+
     // Allocate CallbackUserData on the heap (must outlive the V8 Function)
     const callback_data = allocator.create(CallbackUserData) catch return CallbackError.OutOfMemory;
     errdefer allocator.destroy(callback_data);
@@ -163,6 +322,7 @@ pub fn createZigCallback(
         .fn_ptr = @ptrCast(&zig_fn),
         .user_data = user_data,
         .allocator = allocator,
+        .callback_type = callback_type,
     };
 
     // Wrap the callback_data in a V8 External
