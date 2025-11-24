@@ -654,3 +654,350 @@ pub fn pullInto(
     // Step 19: Call pull if needed
     callPullIfNeeded(instance);
 }
+
+/// ReadableByteStreamControllerRespond(controller, bytesWritten)
+///
+/// Spec: § 4.10.11 "Respond with bytes written to BYOB buffer"
+pub fn respond(instance: *runtime.Instance, bytesWritten: u64) ImplError!void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+
+    // Step 1: Assert controller.[[pendingPullIntos]] is not empty
+    if (internal.pending_pull_intos.items.len == 0) {
+        return error.InvalidState;
+    }
+
+    // Step 2: Let firstDescriptor be controller.[[pendingPullIntos]][0]
+    const firstDescriptor = internal.pending_pull_intos.items[0];
+
+    // Step 3: Let state be controller.[[stream]].[[state]]
+    const stream = internal.stream orelse return error.InvalidState;
+    const stream_state = stream.getState(interfaces.ReadableStream.State);
+    const stream_internal = stream_state.own._internal orelse return error.InvalidState;
+    const read_state = stream_internal.state;
+
+    // Step 4: If state is "closed"
+    if (read_state == .closed) {
+        // Step 4.1: If bytesWritten is not 0, throw TypeError
+        if (bytesWritten != 0) {
+            return error.TypeError;
+        }
+    } else {
+        // Step 5: Otherwise (state is "readable")
+        // Step 5.1: Assert state is "readable"
+        if (read_state != .readable) {
+            return error.InvalidState;
+        }
+
+        // Step 5.2: If bytesWritten is 0, throw TypeError
+        if (bytesWritten == 0) {
+            return error.TypeError;
+        }
+
+        // Step 5.3: If firstDescriptor's bytes filled + bytesWritten > firstDescriptor's byte length, throw RangeError
+        if (firstDescriptor.bytes_filled + bytesWritten > firstDescriptor.byte_length) {
+            return error.RangeError;
+        }
+    }
+
+    // Step 6: Set firstDescriptor's buffer to ! TransferArrayBuffer(firstDescriptor's buffer)
+    const old_buffer = firstDescriptor.buffer;
+    const transferred = try old_buffer.transfer();
+    const transferred_ptr = try internal.allocator.create(ArrayBuffer);
+    transferred_ptr.* = transferred;
+    firstDescriptor.buffer = transferred_ptr;
+    internal.allocator.destroy(old_buffer);
+
+    // Step 7: Perform ? ReadableByteStreamControllerRespondInternal(controller, bytesWritten)
+    try respondInternal(instance, bytesWritten);
+}
+
+/// ReadableByteStreamControllerRespondWithNewView(controller, view)
+///
+/// Spec: § 4.10.11 "Respond with a new view (replacement buffer)"
+pub fn respondWithNewView(instance: *runtime.Instance, view: typedefs.ArrayBufferView) ImplError!void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+
+    // Step 1: Assert: controller.[[pendingPullIntos]] is not empty
+    if (internal.pending_pull_intos.items.len == 0) {
+        return error.InvalidState;
+    }
+
+    // Step 2: Assert: ! IsDetachedBuffer(view.[[ViewedArrayBuffer]]) is false
+    // TODO: Check if view is detached when ArrayBufferView API is ready
+    _ = view;
+
+    // Step 3: Let firstDescriptor be controller.[[pendingPullIntos]][0]
+    const firstDescriptor = internal.pending_pull_intos.items[0];
+
+    // Step 4: Let state be controller.[[stream]].[[state]]
+    const stream = internal.stream orelse return error.InvalidState;
+    const stream_state = stream.getState(interfaces.ReadableStream.State);
+    const stream_internal = stream_state.own._internal orelse return error.InvalidState;
+    const read_state = stream_internal.state;
+
+    // Step 5: If state is "closed"
+    if (read_state == .closed) {
+        // Step 5.1: If view.[[ByteLength]] is not 0, throw TypeError
+        // TODO: Get actual byte length when ArrayBufferView API is ready
+        const view_byte_length: u64 = 0; // Placeholder
+        if (view_byte_length != 0) {
+            return error.TypeError;
+        }
+    } else {
+        // Step 6: Otherwise (state is "readable")
+        // Step 6.1: Assert: state is "readable"
+        if (read_state != .readable) {
+            return error.InvalidState;
+        }
+
+        // Step 6.2: If view.[[ByteLength]] is 0, throw TypeError
+        // TODO: Get actual byte length when ArrayBufferView API is ready
+        const view_byte_length: u64 = 0; // Placeholder
+        if (view_byte_length == 0) {
+            return error.TypeError;
+        }
+    }
+
+    // Extract view properties (placeholders)
+    // TODO: Implement proper ArrayBufferView introspection
+    const view_byteOffset: u64 = 0;
+    const view_byteLength: u64 = 1024;
+
+    // Step 7: If firstDescriptor's byte offset + firstDescriptor's bytes filled is not view.[[ByteOffset]], throw RangeError
+    if (firstDescriptor.byte_offset + firstDescriptor.bytes_filled != view_byteOffset) {
+        return error.RangeError;
+    }
+
+    // Step 8: If firstDescriptor's buffer byte length is not view.[[ViewedArrayBuffer]].[[ByteLength]], throw RangeError
+    // TODO: Check buffer byte length when ArrayBuffer API is ready
+
+    // Step 9: If firstDescriptor's bytes filled + view.[[ByteLength]] > firstDescriptor's byte length, throw RangeError
+    if (firstDescriptor.bytes_filled + view_byteLength > firstDescriptor.byte_length) {
+        return error.RangeError;
+    }
+
+    // Step 11: Set firstDescriptor's buffer to ? TransferArrayBuffer(view.[[ViewedArrayBuffer]])
+    // TODO: Transfer actual buffer from view
+    const transferred_ptr = try internal.allocator.create(ArrayBuffer);
+    transferred_ptr.* = .{
+        .data = &[_]u8{},
+        .byte_length = view_byteLength,
+        .detached = false,
+    };
+
+    // Free old buffer before replacing
+    firstDescriptor.buffer.deinit(internal.allocator);
+    internal.allocator.destroy(firstDescriptor.buffer);
+    firstDescriptor.buffer = transferred_ptr;
+
+    // Step 12: Perform ? ReadableByteStreamControllerRespondInternal(controller, viewByteLength)
+    try respondInternal(instance, view_byteLength);
+}
+
+/// ReadableByteStreamControllerRespondInternal(controller, bytesWritten)
+///
+/// Spec: § 4.10.11 "Internal respond implementation"
+fn respondInternal(instance: *runtime.Instance, bytesWritten: u64) ImplError!void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+
+    // Step 1: Let firstDescriptor be controller.[[pendingPullIntos]][0]
+    const firstDescriptor = internal.pending_pull_intos.items[0];
+
+    // Step 2: Assert: ! CanTransferArrayBuffer(firstDescriptor's buffer) is true
+    // (Already transferred in respond())
+
+    // Step 3: Perform ! ReadableByteStreamControllerInvalidateBYOBRequest(controller)
+    invalidateBYOBRequest(internal);
+
+    // Step 4: Let state be controller.[[stream]].[[state]]
+    const stream = internal.stream orelse return error.InvalidState;
+    const stream_state = stream.getState(interfaces.ReadableStream.State);
+    const stream_internal = stream_state.own._internal orelse return error.InvalidState;
+    const read_state = stream_internal.state;
+
+    // Step 5: If state is "closed"
+    if (read_state == .closed) {
+        // Step 5.1: Assert: bytesWritten is 0
+        // Step 5.2: Perform ! ReadableByteStreamControllerRespondInClosedState(controller, firstDescriptor)
+        respondInClosedState(internal, firstDescriptor);
+    } else {
+        // Step 6: Otherwise (state is "readable")
+        // Step 6.1: Assert: state is "readable"
+        // Step 6.2: Assert: bytesWritten > 0
+        // Step 6.3: Perform ? ReadableByteStreamControllerRespondInReadableState(controller, bytesWritten, firstDescriptor)
+        try respondInReadableState(internal, bytesWritten, firstDescriptor);
+    }
+
+    // Step 7: Perform ! ReadableByteStreamControllerCallPullIfNeeded(controller)
+    callPullIfNeeded(instance);
+}
+
+/// ReadableByteStreamControllerInvalidateBYOBRequest(controller)
+///
+/// Spec: § 4.10.11 "Invalidate BYOB request"
+fn invalidateBYOBRequest(internal: *InternalState) void {
+    if (internal.byob_request) |byob| {
+        // TODO: Set byob.[[controller]] to undefined
+        // TODO: Set byob.[[view]] to null
+        _ = byob;
+    }
+    internal.byob_request = null;
+}
+
+/// ReadableByteStreamControllerRespondInClosedState(controller, firstDescriptor)
+///
+/// Spec: § 4.10.11 "Respond when stream is in closed state"
+fn respondInClosedState(
+    internal: *InternalState,
+    firstDescriptor: *PullIntoDescriptor,
+) void {
+    // Step 1: Assert: the remainder after dividing firstDescriptor's bytes filled by firstDescriptor's element size is 0
+    // (Assertion - caller ensures this)
+
+    // Step 2: If firstDescriptor's reader type is "none", perform ! ReadableByteStreamControllerShiftPendingPullInto(controller)
+    if (firstDescriptor.reader_type == .none) {
+        _ = shiftPendingPullInto(internal);
+    }
+
+    // Step 3: Let stream be controller.[[stream]]
+    const stream = internal.stream orelse return;
+
+    // Step 4: If ! ReadableStreamHasBYOBReader(stream) is true
+    // TODO: Implement ReadableStreamHasBYOBReader check
+    _ = stream;
+
+    // TODO: Complete implementation when stream BYOB reader APIs are ready
+}
+
+/// ReadableByteStreamControllerRespondInReadableState(controller, bytesWritten, pullIntoDescriptor)
+///
+/// Spec: § 4.10.11 "Respond when stream is in readable state"
+fn respondInReadableState(
+    internal: *InternalState,
+    bytesWritten: u64,
+    pullIntoDescriptor: *PullIntoDescriptor,
+) ImplError!void {
+    // Step 2: Fill the descriptor
+    fillHeadPullIntoDescriptor(pullIntoDescriptor, bytesWritten);
+
+    // Step 3: Handle reader type "none"
+    if (pullIntoDescriptor.reader_type == .none) {
+        try enqueueDetachedPullIntoToQueue(internal, pullIntoDescriptor);
+        // TODO: Process pull-into descriptors using queue
+        return;
+    }
+
+    // Step 4: Check if minimum fill is met
+    if (pullIntoDescriptor.bytes_filled < pullIntoDescriptor.minimum_fill) {
+        return;
+    }
+
+    // Step 5: Remove descriptor from pending list
+    _ = shiftPendingPullInto(internal);
+
+    // Step 6: Process remaining descriptors
+    // TODO: Handle remaining descriptors when queue processing is ready
+
+    // Step 7: Commit the pull-into descriptor
+    try commitPullIntoDescriptor(internal, pullIntoDescriptor);
+}
+
+/// ReadableByteStreamControllerShiftPendingPullInto(controller)
+///
+/// Spec: § 4.10.11 "Remove and return first pending pull-into descriptor"
+fn shiftPendingPullInto(internal: *InternalState) *PullIntoDescriptor {
+    return internal.pending_pull_intos.orderedRemove(0);
+}
+
+/// Fill the head pull-into descriptor with bytes written
+///
+/// Spec: § 4.10.11 "FillHeadPullIntoDescriptor"
+fn fillHeadPullIntoDescriptor(descriptor: *PullIntoDescriptor, bytesWritten: u64) void {
+    descriptor.bytes_filled += bytesWritten;
+}
+
+/// ReadableByteStreamControllerEnqueueDetachedPullIntoToQueue(controller, pullIntoDescriptor)
+///
+/// Spec: § 4.10.11 "Enqueue detached pull-into to byte queue"
+fn enqueueDetachedPullIntoToQueue(
+    internal: *InternalState,
+    pullIntoDescriptor: *PullIntoDescriptor,
+) ImplError!void {
+    // Step 1: Assert: pullIntoDescriptor's reader type is "none"
+    // (Caller ensures this)
+
+    // Step 2: If pullIntoDescriptor's bytes filled > 0, perform ! ReadableByteStreamControllerEnqueueChunkToQueue
+    if (pullIntoDescriptor.bytes_filled > 0) {
+        try enqueueChunkToQueue(
+            internal,
+            pullIntoDescriptor.buffer,
+            pullIntoDescriptor.byte_offset,
+            pullIntoDescriptor.bytes_filled,
+        );
+    }
+
+    // Step 3: Perform ! ReadableByteStreamControllerShiftPendingPullInto(controller)
+    _ = shiftPendingPullInto(internal);
+}
+
+/// ReadableByteStreamControllerEnqueueChunkToQueue(controller, buffer, byteOffset, byteLength)
+///
+/// Spec: § 4.10.11 "Enqueue chunk to byte queue"
+fn enqueueChunkToQueue(
+    internal: *InternalState,
+    buffer: *ArrayBuffer,
+    byteOffset: u64,
+    byteLength: u64,
+) ImplError!void {
+    // Create queue entry
+    const entry = ByteStreamQueueEntry{
+        .buffer = buffer,
+        .byte_offset = byteOffset,
+        .byte_length = byteLength,
+    };
+
+    // Add to queue
+    try internal.byte_queue.append(entry);
+
+    // Update total size
+    internal.queue_total_size += @as(f64, @floatFromInt(byteLength));
+}
+
+/// ReadableByteStreamControllerCommitPullIntoDescriptor(stream, pullIntoDescriptor)
+///
+/// Spec: § 4.10.11 "Commit pull-into descriptor"
+fn commitPullIntoDescriptor(
+    internal: *InternalState,
+    pullIntoDescriptor: *PullIntoDescriptor,
+) ImplError!void {
+    // Step 1: Assert: stream.[[state]] is not "errored"
+    const stream = internal.stream orelse return error.InvalidState;
+    const stream_state = stream.getState(interfaces.ReadableStream.State);
+    const stream_internal = stream_state.own._internal orelse return error.InvalidState;
+
+    if (stream_internal.state == .errored) {
+        return error.InvalidState;
+    }
+
+    // Step 2: Assert: pullIntoDescriptor's reader type is not "none"
+    if (pullIntoDescriptor.reader_type == .none) {
+        return error.InvalidState;
+    }
+
+    // Step 3: Let done be false
+    // Step 4: If stream.[[state]] is "closed"
+    // Step 4.1: Assert: pullIntoDescriptor's bytes filled is 0
+    // Step 4.2: Set done to true
+    // (Done flag tracked for request fulfillment)
+
+    // Step 5-9: Create view and fulfill read request
+    // TODO: Implement view construction and request fulfillment when ReadIntoRequest API is ready
+
+    // Placeholder: Clean up the descriptor
+    pullIntoDescriptor.buffer.deinit(internal.allocator);
+    internal.allocator.destroy(pullIntoDescriptor.buffer);
+    internal.allocator.destroy(pullIntoDescriptor);
+}
