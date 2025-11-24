@@ -753,6 +753,9 @@ pub fn build(b: *std.Build) void {
     impls_mod.addImport("streams_read_into_request_promise", streams_read_into_request_promise_mod);
     impls_mod.addImport("streams_pull_into_descriptor", streams_pull_into_descriptor_mod);
 
+    // ArrayBufferView is part of runtime module, no separate module needed
+    // (ReadableStreamBYOBReader accesses it via runtime.arraybuffer_view)
+
     const mimesniff_mod = b.addModule("mimesniff", .{
         .root_source_file = b.path("src/mimesniff/root.zig"),
         .target = target,

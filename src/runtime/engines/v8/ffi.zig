@@ -542,6 +542,83 @@ pub extern fn v8_ArrayBuffer_Detach(buffer: *ArrayBuffer) void;
 pub extern fn v8_ArrayBuffer_Dispose(buffer: *ArrayBuffer) void;
 
 // ============================================================================
+// TypedArray API (Phase 4: ArrayBufferView Introspection)
+// ============================================================================
+
+/// TypedArray - Base type for all typed arrays
+pub const TypedArray = opaque {};
+
+/// Check if a Value is a Uint8Array
+pub extern fn v8_Value_IsUint8Array(value: *Value) bool;
+
+/// Check if a Value is an Int8Array
+pub extern fn v8_Value_IsInt8Array(value: *Value) bool;
+
+/// Check if a Value is a Uint16Array
+pub extern fn v8_Value_IsUint16Array(value: *Value) bool;
+
+/// Check if a Value is an Int16Array
+pub extern fn v8_Value_IsInt16Array(value: *Value) bool;
+
+/// Check if a Value is a Uint32Array
+pub extern fn v8_Value_IsUint32Array(value: *Value) bool;
+
+/// Check if a Value is an Int32Array
+pub extern fn v8_Value_IsInt32Array(value: *Value) bool;
+
+/// Check if a Value is a Float32Array
+pub extern fn v8_Value_IsFloat32Array(value: *Value) bool;
+
+/// Check if a Value is a Float64Array
+pub extern fn v8_Value_IsFloat64Array(value: *Value) bool;
+
+/// Check if a Value is a Uint8ClampedArray
+pub extern fn v8_Value_IsUint8ClampedArray(value: *Value) bool;
+
+/// Check if a Value is a BigInt64Array
+pub extern fn v8_Value_IsBigInt64Array(value: *Value) bool;
+
+/// Check if a Value is a BigUint64Array
+pub extern fn v8_Value_IsBigUint64Array(value: *Value) bool;
+
+/// Check if a Value is any TypedArray
+pub extern fn v8_Value_IsTypedArray(value: *Value) bool;
+
+/// Check if a Value is a DataView
+pub extern fn v8_Value_IsDataView(value: *Value) bool;
+
+/// Get the underlying ArrayBuffer from a TypedArray
+///
+/// Returns a new Global<ArrayBuffer>* that must be disposed with v8_ArrayBuffer_Dispose.
+///
+/// @param typed_array - The TypedArray Value
+/// @return ArrayBuffer handle, or null if not a TypedArray
+pub extern fn v8_TypedArray_Buffer(typed_array: *Value) ?*ArrayBuffer;
+
+/// Get the byte length of a TypedArray view
+///
+/// @param typed_array - The TypedArray Value
+/// @return Byte length of the view, or 0 if invalid/detached
+pub extern fn v8_TypedArray_ByteLength(typed_array: *Value) usize;
+
+/// Get the byte offset of a TypedArray view
+///
+/// Returns the offset from the start of the underlying ArrayBuffer.
+///
+/// @param typed_array - The TypedArray Value
+/// @return Byte offset, or 0 if invalid
+pub extern fn v8_TypedArray_ByteOffset(typed_array: *Value) usize;
+
+/// Get the element count of a TypedArray
+///
+/// Returns the number of elements (not bytes).
+/// ByteLength = Length * ElementSize.
+///
+/// @param typed_array - The TypedArray Value
+/// @return Element count, or 0 if invalid
+pub extern fn v8_TypedArray_Length(typed_array: *Value) usize;
+
+// ============================================================================
 // Microtask Functions (Event Loop Integration)
 // ============================================================================
 

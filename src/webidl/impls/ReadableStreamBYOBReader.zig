@@ -12,6 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const arraybuffer_view = runtime.arraybuffer_view;
 const ReadableStreamBYOBReader = interfaces.ReadableStreamBYOBReader;
 
 // BYOB-specific imports
@@ -152,13 +153,16 @@ pub fn call_read(
     const internal = state.own._internal orelse return error.InvalidState;
 
     // Step 1: If view.[[ByteLength]] is 0, reject with TypeError
-    // TODO: Check byte length when ArrayBufferView API is ready
+    const view_byte_length = arraybuffer_view.getViewByteLength(view);
+    if (view_byte_length == 0) {
+        return error.TypeError;
+    }
 
     // Step 2: If buffer byte length is 0, reject with TypeError
-    // TODO: Check buffer byte length
-
     // Step 3: If buffer is detached, reject with TypeError
-    // TODO: Check buffer detachment
+    if (arraybuffer_view.isViewDetached(view)) {
+        return error.TypeError;
+    }
 
     // Step 4: If stream is undefined, reject with TypeError
     if (internal.stream == null) {

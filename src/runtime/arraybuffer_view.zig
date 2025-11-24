@@ -7,6 +7,8 @@
 //!       ECMAScript § 25.3 DataView Objects
 
 const std = @import("std");
+const v8_mod = @import("v8");
+const ffi = v8_mod.ffi;
 
 /// Simple ArrayBuffer representation for Streams BYOB operations
 ///
@@ -86,32 +88,72 @@ pub const ViewMetadata = struct {
     detached: bool,
 };
 
+// ============================================================================
+// V8 Integration Helpers
+// ============================================================================
+
+/// Determine ViewType from V8 Value
+fn getViewTypeFromV8(value: *ffi.Value) ?ViewType {
+    if (ffi.v8_Value_IsInt8Array(value)) return .int8_array;
+    if (ffi.v8_Value_IsUint8Array(value)) return .uint8_array;
+    if (ffi.v8_Value_IsUint8ClampedArray(value)) return .uint8_clamped_array;
+    if (ffi.v8_Value_IsInt16Array(value)) return .int16_array;
+    if (ffi.v8_Value_IsUint16Array(value)) return .uint16_array;
+    if (ffi.v8_Value_IsInt32Array(value)) return .int32_array;
+    if (ffi.v8_Value_IsUint32Array(value)) return .uint32_array;
+    if (ffi.v8_Value_IsFloat32Array(value)) return .float32_array;
+    if (ffi.v8_Value_IsFloat64Array(value)) return .float64_array;
+    if (ffi.v8_Value_IsBigInt64Array(value)) return .bigint64_array;
+    if (ffi.v8_Value_IsBigUint64Array(value)) return .biguint64_array;
+    if (ffi.v8_Value_IsDataView(value)) return .data_view;
+    return null;
+}
+
 /// Extract metadata from an ArrayBufferView
 ///
-/// This function introspects the view and extracts all relevant information.
-/// In a V8 runtime, this would use V8 API calls to query the TypedArray/DataView.
-///
-/// For now, this is a stub that should be implemented at the V8 binding layer.
+/// This function introspects the view using V8 APIs.
 pub fn getViewMetadata(view: *const anyopaque) !ViewMetadata {
-    _ = view;
-    // TODO: Implement V8 introspection
-    // In V8, this would:
-    // 1. Check if it's a TypedArray or DataView using v8::Value::IsTypedArray(), etc.
-    // 2. Cast to appropriate type
-    // 3. Call GetBuffer(), ByteOffset(), ByteLength()
-    // 4. Determine element size from specific typed array type
-    return error.NotImplemented;
+    const v8_value: *ffi.Value = @ptrCast(@alignCast(@constCast(view)));
+
+    // Determine view type
+    const view_type = getViewTypeFromV8(v8_value) orelse return error.TypeError;
+
+    // Get buffer
+    const buffer = ffi.v8_TypedArray_Buffer(v8_value) orelse return error.InvalidState;
+
+    // Check if detached
+    const detached = ffi.v8_ArrayBuffer_IsDetached(buffer);
+
+    // Get view properties
+    const byte_offset = ffi.v8_TypedArray_ByteOffset(v8_value);
+    const byte_length = ffi.v8_TypedArray_ByteLength(v8_value);
+
+    // Create a simple ArrayBuffer wrapper (just for metadata, doesn't own the buffer)
+    var array_buffer = ArrayBuffer{
+        .data = &[_]u8{}, // We don't actually need the data pointer
+        .byte_length = ffi.v8_ArrayBuffer_ByteLength(buffer),
+        .detached = detached,
+    };
+
+    // Dispose the buffer handle (we got our info)
+    ffi.v8_ArrayBuffer_Dispose(buffer);
+
+    return ViewMetadata{
+        .buffer = &array_buffer,
+        .byte_offset = @intCast(byte_offset),
+        .byte_length = @intCast(byte_length),
+        .view_type = view_type,
+        .detached = detached,
+    };
 }
 
 /// Get the element size of an ArrayBufferView in bytes
 ///
 /// Spec: Used in ReadableByteStreamController algorithms
 pub fn getViewElementSize(view: *const anyopaque) u64 {
-    const metadata = getViewMetadata(view) catch {
-        // Default to 1 byte (Uint8Array) if introspection fails
-        return 1;
-    };
-    return metadata.view_type.elementSize();
+    const v8_value: *ffi.Value = @ptrCast(@alignCast(@constCast(view)));
+    const view_type = getViewTypeFromV8(v8_value) orelse return 1;
+    return view_type.elementSize();
 }
 
 /// Get the byte offset into the underlying ArrayBuffer
@@ -119,10 +161,9 @@ pub fn getViewElementSize(view: *const anyopaque) u64 {
 /// Spec: TypedArray.prototype.byteOffset
 ///       DataView.prototype.byteOffset
 pub fn getViewByteOffset(view: *const anyopaque) u64 {
-    const metadata = getViewMetadata(view) catch {
-        return 0;
-    };
-    return metadata.byte_offset;
+    const v8_value: *ffi.Value = @ptrCast(@alignCast(@constCast(view)));
+    const offset = ffi.v8_TypedArray_ByteOffset(v8_value);
+    return @intCast(offset);
 }
 
 /// Get the byte length of the view
@@ -130,31 +171,30 @@ pub fn getViewByteOffset(view: *const anyopaque) u64 {
 /// Spec: TypedArray.prototype.byteLength
 ///       DataView.prototype.byteLength
 pub fn getViewByteLength(view: *const anyopaque) u64 {
-    const metadata = getViewMetadata(view) catch {
-        return 0;
-    };
-    return metadata.byte_length;
+    const v8_value: *ffi.Value = @ptrCast(@alignCast(@constCast(view)));
+    const length = ffi.v8_TypedArray_ByteLength(v8_value);
+    return @intCast(length);
 }
 
 /// Check if the view's buffer is detached
 ///
 /// Spec: IsDetachedBuffer abstract operation
 pub fn isViewDetached(view: *const anyopaque) bool {
-    const metadata = getViewMetadata(view) catch {
-        return true; // Assume detached if we can't introspect
-    };
-    return metadata.detached or metadata.buffer.isDetached();
+    const v8_value: *ffi.Value = @ptrCast(@alignCast(@constCast(view)));
+
+    // Get buffer and check if detached
+    const buffer = ffi.v8_TypedArray_Buffer(v8_value) orelse return true;
+    defer ffi.v8_ArrayBuffer_Dispose(buffer);
+
+    return ffi.v8_ArrayBuffer_IsDetached(buffer);
 }
 
 /// Get the view constructor type
 ///
 /// Returns the ViewType enum identifying which TypedArray or DataView this is.
 pub fn getViewConstructor(view: *const anyopaque) ViewType {
-    const metadata = getViewMetadata(view) catch {
-        // Default to Uint8Array if introspection fails
-        return .uint8_array;
-    };
-    return metadata.view_type;
+    const v8_value: *ffi.Value = @ptrCast(@alignCast(@constCast(view)));
+    return getViewTypeFromV8(v8_value) orelse .uint8_array;
 }
 
 /// Extract the underlying ArrayBuffer from a view

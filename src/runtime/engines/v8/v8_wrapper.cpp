@@ -1478,6 +1478,203 @@ void v8_ArrayBuffer_Dispose(Global<ArrayBuffer>* buffer) {
 }
 
 // ============================================================================
+// TypedArray API (Phase 4: ArrayBufferView Introspection)
+// ============================================================================
+
+/// Check if Value is a Uint8Array
+bool v8_Value_IsUint8Array(Global<Value>* value) {
+    if (!value) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    return val->IsUint8Array();
+}
+
+/// Check if Value is an Int8Array
+bool v8_Value_IsInt8Array(Global<Value>* value) {
+    if (!value) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    return val->IsInt8Array();
+}
+
+/// Check if Value is a Uint16Array
+bool v8_Value_IsUint16Array(Global<Value>* value) {
+    if (!value) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    return val->IsUint16Array();
+}
+
+/// Check if Value is an Int16Array
+bool v8_Value_IsInt16Array(Global<Value>* value) {
+    if (!value) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    return val->IsInt16Array();
+}
+
+/// Check if Value is a Uint32Array
+bool v8_Value_IsUint32Array(Global<Value>* value) {
+    if (!value) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    return val->IsUint32Array();
+}
+
+/// Check if Value is an Int32Array
+bool v8_Value_IsInt32Array(Global<Value>* value) {
+    if (!value) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    return val->IsInt32Array();
+}
+
+/// Check if Value is a Float32Array
+bool v8_Value_IsFloat32Array(Global<Value>* value) {
+    if (!value) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    return val->IsFloat32Array();
+}
+
+/// Check if Value is a Float64Array
+bool v8_Value_IsFloat64Array(Global<Value>* value) {
+    if (!value) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    return val->IsFloat64Array();
+}
+
+/// Check if Value is a Uint8ClampedArray
+bool v8_Value_IsUint8ClampedArray(Global<Value>* value) {
+    if (!value) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    return val->IsUint8ClampedArray();
+}
+
+/// Check if Value is a BigInt64Array
+bool v8_Value_IsBigInt64Array(Global<Value>* value) {
+    if (!value) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    return val->IsBigInt64Array();
+}
+
+/// Check if Value is a BigUint64Array
+bool v8_Value_IsBigUint64Array(Global<Value>* value) {
+    if (!value) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    return val->IsBigUint64Array();
+}
+
+/// Check if Value is any TypedArray
+bool v8_Value_IsTypedArray(Global<Value>* value) {
+    if (!value) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    return val->IsTypedArray();
+}
+
+/// Check if Value is a DataView
+bool v8_Value_IsDataView(Global<Value>* value) {
+    if (!value) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    return val->IsDataView();
+}
+
+/// Get the ArrayBuffer from a TypedArray
+///
+/// Returns the underlying ArrayBuffer that the TypedArray is viewing.
+/// Caller must call v8_ArrayBuffer_Dispose when done.
+Global<ArrayBuffer>* v8_TypedArray_Buffer(Global<Value>* typed_array) {
+    if (!typed_array) return nullptr;
+    
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = typed_array->Get(isolate);
+    
+    if (!val->IsTypedArray()) {
+        return nullptr;
+    }
+    
+    Local<TypedArray> ta = val.As<TypedArray>();
+    Local<ArrayBuffer> buffer = ta->Buffer();
+    return new Global<ArrayBuffer>(isolate, buffer);
+}
+
+/// Get TypedArray byte length
+///
+/// Returns the number of bytes in the TypedArray view.
+/// Returns 0 if the view is detached or invalid.
+size_t v8_TypedArray_ByteLength(Global<Value>* typed_array) {
+    if (!typed_array) return 0;
+    
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = typed_array->Get(isolate);
+    
+    if (!val->IsTypedArray()) {
+        return 0;
+    }
+    
+    Local<TypedArray> ta = val.As<TypedArray>();
+    return ta->ByteLength();
+}
+
+/// Get TypedArray byte offset
+///
+/// Returns the offset in bytes from the start of the ArrayBuffer.
+size_t v8_TypedArray_ByteOffset(Global<Value>* typed_array) {
+    if (!typed_array) return 0;
+    
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = typed_array->Get(isolate);
+    
+    if (!val->IsTypedArray()) {
+        return 0;
+    }
+    
+    Local<TypedArray> ta = val.As<TypedArray>();
+    return ta->ByteOffset();
+}
+
+/// Get TypedArray length (element count)
+///
+/// Returns the number of elements in the TypedArray.
+/// Not the same as ByteLength (ByteLength = Length * ElementSize).
+size_t v8_TypedArray_Length(Global<Value>* typed_array) {
+    if (!typed_array) return 0;
+    
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = typed_array->Get(isolate);
+    
+    if (!val->IsTypedArray()) {
+        return 0;
+    }
+    
+    Local<TypedArray> ta = val.As<TypedArray>();
+    return ta->Length();
+}
+
+// ============================================================================
 // Weak Callbacks / Finalizers
 // ============================================================================
 
