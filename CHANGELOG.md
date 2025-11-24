@@ -102,16 +102,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Integration Documentation** (`streams/PROMISE_INTEGRATION.md`)
   - Complete promise integration roadmap
   - Phase 1 (infrastructure): ✅ COMPLETE
-  - Phase 2 (promise integration): 🟡 READY
-  - Phase 3 (error handling): 🔴 BLOCKED (JSValue)
-  - Phase 4 (V8 integration): 🔴 BLOCKED (V8 expertise)
+  - Phase 2 (promise integration): ✅ COMPLETE
+  - Phase 3 (error handling): ✅ COMPLETE  
+  - Phase 4 (V8 integration): 🔴 DEFERRED to v0.3.0
   - API examples and testing strategy
   - Clear V8 integration requirements
 
-**Status**: BYOB infrastructure 99% complete. Remaining work:
-- Promise returns in ReadableStreamBYOBReader.read() (2-3 hours, unblocked)
-- Error handling with JSValue (1-2 hours, blocked on JSValue definition)
-- V8 ArrayBufferView introspection (3-5 hours, requires V8 knowledge)
+- **ReadableStreamBYOBReader Promise Integration** (Phase 2 & 3 - 2025-11-24)
+  - Added event_loop integration to InternalState
+  - Created promise-aware callback functions (promiseChunkSteps, promiseCloseSteps, promiseErrorSteps)
+  - Updated call_read() to return AsyncPromise<ReadIntoResult>
+  - Updated get_closed() to return closed_promise
+  - Full error propagation with webidl.errors.Exception conversion
+  - Promise fulfillment with ReadIntoResult { view, done }
+  - Promise rejection with proper Exception types
+  - Graceful error handling with fallback to TypeError
+
+**Status**: BYOB infrastructure complete for v0.2.0. Deferred to v0.3.0:
+- V8 ArrayBufferView introspection (6-8 hours, requires V8 TypedArray C++ wrappers)
+- ArrayBufferView validation in call_read() (view byte length, buffer detachment checks)
 
 ### Added - WritableStream
 
