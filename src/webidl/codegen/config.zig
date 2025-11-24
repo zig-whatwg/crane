@@ -14,10 +14,6 @@ pub const CodegenConfig = struct {
     /// All subdirectories will be created under this root
     dest_root: ?[]const u8 = null,
 
-    /// Whether to generate implementation stub files
-    /// When true and dest_root is set, generates to {dest_root}/impls
-    generate_impls: bool = false,
-
     // Cached computed paths (allocated from dest_root)
     cached_interfaces_path: ?[]const u8 = null,
     cached_typedefs_path: ?[]const u8 = null,
@@ -57,13 +53,16 @@ pub const CodegenConfig = struct {
         return null;
     }
 
-    /// Get the impls path, using dest_root if generate_impls is enabled
+    /// Get the impls_tmp path for generated implementation stubs
     /// Caches the result to avoid repeated allocations
+    ///
+    /// NOTE: Always generates to impls_tmp/ (gitignored) - these are REFERENCE ONLY.
+    /// Developers must manually migrate stubs to impls/ to preserve custom code.
+    /// The impls_tmp/ directory is NOT compiled - it exists purely for reference.
     pub fn getImplsPath(self: *CodegenConfig) !?[]const u8 {
-        if (!self.generate_impls) return null;
         if (self.cached_impls_path) |path| return path;
         if (self.dest_root) |root| {
-            const path = try std.fs.path.join(self.allocator, &.{ root, "impls" });
+            const path = try std.fs.path.join(self.allocator, &.{ root, "impls_tmp" });
             self.cached_impls_path = path;
             return path;
         }
@@ -135,8 +134,8 @@ pub const CodegenConfig = struct {
         return self.dest_root != null;
     }
 
-    /// Check if impls should be generated
+    /// Check if impls_tmp should be generated (always true when dest_root is set)
     pub fn shouldGenerateImpls(self: CodegenConfig) bool {
-        return self.generate_impls and self.dest_root != null;
+        return self.dest_root != null;
     }
 };

@@ -2694,7 +2694,7 @@ test "writeMetadata generates Meta struct" {
 
     const writer = buffer.writer(testing.allocator);
 
-    try writeMetadata(writer.any(), "Node", "https://dom.spec.whatwg.org/#interface-node", "EventTarget", &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, null, &.{});
+    try writeMetadata(writer.any(), "Node", "https://dom.spec.whatwg.org/#interface-node", "EventTarget", &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, null, &.{}, null);
 
     const output = buffer.items;
     try testing.expect(std.mem.indexOf(u8, output, "pub const Meta = struct {") != null);
@@ -2708,7 +2708,7 @@ test "writeMetadata handles no base type" {
 
     const writer = buffer.writer(testing.allocator);
 
-    try writeMetadata(writer.any(), "EventTarget", null, null, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, null, &.{});
+    try writeMetadata(writer.any(), "EventTarget", null, null, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, null, &.{}, null);
 
     const output = buffer.items;
     try testing.expect(std.mem.indexOf(u8, output, "pub const BaseType = ?*anyopaque;") != null);
@@ -2721,7 +2721,7 @@ test "writeMetadata includes mixins" {
     const writer = buffer.writer(testing.allocator);
 
     const mixins = [_][]const u8{"ParentNode"};
-    try writeMetadata(writer.any(), "Node", null, null, &mixins, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, null, &.{});
+    try writeMetadata(writer.any(), "Node", null, null, &mixins, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, null, &.{}, null);
 
     const output = buffer.items;
     try testing.expect(std.mem.indexOf(u8, output, "pub const MixinTypes = &.{") != null);
@@ -2738,7 +2738,7 @@ test "writeMetadata includes extended attributes" {
         .{ .name = "Exposed", .rhs = .{ .identifier = "Window" } },
         .{ .name = "LegacyUnforgeable", .rhs = null },
     };
-    try writeMetadata(writer.any(), "Event", null, null, &.{}, &ext_attrs, &.{}, &.{}, &.{}, &.{}, false, false, null, &.{});
+    try writeMetadata(writer.any(), "Event", null, null, &.{}, &ext_attrs, &.{}, &.{}, &.{}, &.{}, false, false, null, &.{}, null);
 
     const output = buffer.items;
     try testing.expect(std.mem.indexOf(u8, output, "pub const extended_attributes = .{") != null);
@@ -2770,7 +2770,7 @@ test "writeMetadata includes legacy unforgeable properties" {
         },
     };
 
-    try writeMetadata(writer.any(), "Event", null, null, &.{}, &.{}, &attrs, &.{}, &.{}, &.{}, false, false, null, &attrs);
+    try writeMetadata(writer.any(), "Event", null, null, &.{}, &.{}, &attrs, &.{}, &.{}, &.{}, false, false, null, &attrs, null);
 
     const output = buffer.items;
 

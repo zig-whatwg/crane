@@ -551,13 +551,15 @@ fn writeTypeSimple(w: anytype, webidl_type: types.IDLType, type_registry: ?*cons
 }
 
 /// Generate implementation stub file with full method stubs
+/// NOTE: Always generates to impls_tmp/ directory (gitignored).
+/// Developers must manually migrate stubs to impls/ to preserve custom code.
 fn generateImplFile(
     allocator: std.mem.Allocator,
     interface: types.Interface,
     impls_path: []const u8,
     ir: ?*ir_mod.IR,
 ) !void {
-    // Create impls directory
+    // Create impls_tmp directory
     try std.fs.cwd().makePath(impls_path);
 
     // Create implementation stub file
@@ -567,269 +569,279 @@ fn generateImplFile(
     const output_path = try std.fs.path.join(allocator, &.{ impls_path, output_filename });
     defer allocator.free(output_path);
 
-    // Don't overwrite existing implementation files
-    std.fs.cwd().access(output_path, .{}) catch {
-        // File doesn't exist - create full stub with all methods
-        const output_file = try std.fs.cwd().createFile(output_path, .{});
-        defer output_file.close();
+    // Always generate to impls_tmp/ (overwrite existing stubs)
+    // Custom implementations live in impls/ and are never overwritten
+    const output_file = try std.fs.cwd().createFile(output_path, .{});
+    defer output_file.close();
 
-        var buffer: [4096]u8 = undefined;
-        var file_writer = output_file.writer(&buffer);
-        const w = &file_writer.interface;
+    var buffer: [4096]u8 = undefined;
+    var file_writer = output_file.writer(&buffer);
+    const w = &file_writer.interface;
 
-        // Get type registry for proper type mapping
-        const type_reg = if (ir) |ir_ptr| &ir_ptr.type_registry else null;
+    // Get type registry for proper type mapping
+    const type_reg = if (ir) |ir_ptr| &ir_ptr.type_registry else null;
 
-        // Write header
-        try w.print("//! Implementation for {s} interface\n", .{interface.name});
-        try w.writeAll("//!\n");
-        try w.writeAll("//! This file is AUTO-GENERATED on first creation.\n");
-        try w.writeAll("//! Add your custom implementation here.\n");
-        try w.writeAll("\n");
+    // Write header with strict DO NOT COMPILE notices
+    try w.writeAll("//! ============================================================================\n");
+    try w.writeAll("//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY\n");
+    try w.writeAll("//! ============================================================================\n");
+    try w.writeAll("//!\n");
+    try w.print("//! Implementation stub for {s} interface\n", .{interface.name});
+    try w.writeAll("//!\n");
+    try w.writeAll("//! This file is AUTO-GENERATED into impls_tmp/ directory.\n");
+    try w.writeAll("//! The impls_tmp/ directory is gitignored and NOT part of the build.\n");
+    try w.writeAll("//!\n");
+    try w.writeAll("//! TO USE THIS STUB:\n");
+    try w.writeAll("//!   1. Copy this file to src/webidl/impls/\n");
+    try w.writeAll("//!   2. Add your implementation logic\n");
+    try w.writeAll("//!   3. The impls/ directory is the canonical location for implementations\n");
+    try w.writeAll("//!\n");
+    try w.writeAll("//! If updating an existing implementation:\n");
+    try w.writeAll("//!   1. Diff this stub against the existing file in impls/\n");
+    try w.writeAll("//!   2. Manually merge new signatures while preserving custom code\n");
+    try w.writeAll("//!\n");
+    try w.writeAll("//! ============================================================================\n");
+    try w.writeAll("\n");
 
-        // Write imports
-        try w.writeAll("const std = @import(\"std\");\n");
-        try w.writeAll("const runtime = @import(\"runtime\");\n");
-        try w.writeAll("const interfaces = @import(\"interfaces\");\n");
-        try w.writeAll("const typedefs = @import(\"typedefs\");\n");
-        try w.writeAll("const enums = @import(\"enums\");\n");
-        try w.writeAll("const dictionaries = @import(\"dictionaries\");\n");
-        try w.writeAll("const callbacks = @import(\"callbacks\");\n");
-        try w.print("const {s} = interfaces.{s};\n\n", .{ interface.name, interface.name });
+    // Write imports
+    try w.writeAll("const std = @import(\"std\");\n");
+    try w.writeAll("const runtime = @import(\"runtime\");\n");
+    try w.writeAll("const interfaces = @import(\"interfaces\");\n");
+    try w.writeAll("const typedefs = @import(\"typedefs\");\n");
+    try w.writeAll("const enums = @import(\"enums\");\n");
+    try w.writeAll("const dictionaries = @import(\"dictionaries\");\n");
+    try w.writeAll("const callbacks = @import(\"callbacks\");\n");
+    try w.print("const {s} = interfaces.{s};\n\n", .{ interface.name, interface.name });
 
-        // State type alias
-        try w.print("pub const State = {s}.State;\n\n", .{interface.name});
+    // State type alias
+    try w.print("pub const State = {s}.State;\n\n", .{interface.name});
 
-        // Error set for unimplemented methods
-        try w.writeAll("pub const ImplError = error{\n");
-        try w.writeAll("    NotImplemented,\n");
-        try w.writeAll("};\n\n");
+    // Error set for unimplemented methods
+    try w.writeAll("pub const ImplError = error{\n");
+    try w.writeAll("    NotImplemented,\n");
+    try w.writeAll("};\n\n");
 
-        // Internal state struct (empty by default, implementations can add fields)
-        try w.writeAll("/// Internal state for implementation-specific data\n");
-        try w.writeAll("/// Implementations can replace this with a real struct containing:\n");
-        try w.writeAll("/// - Private data not exposed via WebIDL attributes\n");
-        try w.writeAll("/// - Cached computations, buffers, etc.\n");
-        try w.writeAll("pub const InternalState = struct {};\n\n");
+    // Internal state struct (empty by default, implementations can add fields)
+    try w.writeAll("/// Internal state for implementation-specific data\n");
+    try w.writeAll("/// Implementations can replace this with a real struct containing:\n");
+    try w.writeAll("/// - Private data not exposed via WebIDL attributes\n");
+    try w.writeAll("/// - Cached computations, buffers, etc.\n");
+    try w.writeAll("pub const InternalState = struct {};\n\n");
 
-        // Init and deinit functions - delegate to runtime.Instance
-        try w.writeAll("/// Initialize instance (creates the instance)\n");
-        try w.writeAll("pub fn init(\n");
-        try w.writeAll("    allocator: std.mem.Allocator,\n");
-        try w.writeAll("    comptime StateType: type,\n");
-        try w.writeAll("    vtable: *const runtime.VTable,\n");
-        try w.writeAll("    ctx: runtime.Context,\n");
-        try w.writeAll(") !*runtime.Instance {\n");
-        try w.writeAll("    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);\n");
-        try w.writeAll("    // TODO: Initialize your instance state here if needed\n");
-        try w.writeAll("    return instance;\n");
-        try w.writeAll("}\n\n");
+    // Init and deinit functions - delegate to runtime.Instance
+    try w.writeAll("/// Initialize instance (creates the instance)\n");
+    try w.writeAll("pub fn init(\n");
+    try w.writeAll("    allocator: std.mem.Allocator,\n");
+    try w.writeAll("    comptime StateType: type,\n");
+    try w.writeAll("    vtable: *const runtime.VTable,\n");
+    try w.writeAll("    ctx: runtime.Context,\n");
+    try w.writeAll(") !*runtime.Instance {\n");
+    try w.writeAll("    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);\n");
+    try w.writeAll("    // TODO: Initialize your instance state here if needed\n");
+    try w.writeAll("    return instance;\n");
+    try w.writeAll("}\n\n");
 
-        try w.writeAll("/// Deinitialize instance\n");
-        try w.writeAll("pub fn deinit(instance: *runtime.Instance) void {\n");
-        try w.writeAll("    // TODO: Clean up your instance resources here\n");
-        try w.writeAll("    runtime.Instance.deinit(instance);\n");
-        try w.writeAll("}\n\n");
+    try w.writeAll("/// Deinitialize instance\n");
+    try w.writeAll("pub fn deinit(instance: *runtime.Instance) void {\n");
+    try w.writeAll("    // TODO: Clean up your instance resources here\n");
+    try w.writeAll("    runtime.Instance.deinit(instance);\n");
+    try w.writeAll("}\n\n");
 
-        // Collect ONLY own members (not inherited)
-        // Impl files should only implement their interface's own operations
-        // Inherited operations are implemented in parent impl files
-        var all_attrs = std.ArrayList(types.Attribute).empty;
-        defer all_attrs.deinit(allocator);
+    // Collect ONLY own members (not inherited)
+    // Impl files should only implement their interface's own operations
+    // Inherited operations are implemented in parent impl files
+    var all_attrs = std.ArrayList(types.Attribute).empty;
+    defer all_attrs.deinit(allocator);
 
-        var all_ops = std.ArrayList(types.Operation).empty;
-        defer all_ops.deinit(allocator);
+    var all_ops = std.ArrayList(types.Operation).empty;
+    defer all_ops.deinit(allocator);
 
-        // Only collect constructors from THIS interface (not inherited)
-        var own_constructors = std.ArrayList(types.Constructor).empty;
-        defer own_constructors.deinit(allocator);
+    // Only collect constructors from THIS interface (not inherited)
+    var own_constructors = std.ArrayList(types.Constructor).empty;
+    defer own_constructors.deinit(allocator);
 
-        // Collect own members only (regardless of IR availability)
-        for (interface.members) |member| {
-            switch (member.type) {
-                .attribute => if (member.attribute) |attr| try all_attrs.append(allocator, attr),
-                .operation => if (member.operation) |op| try all_ops.append(allocator, op),
-                .constructor => if (member.constructor) |ctor| try own_constructors.append(allocator, ctor),
-                else => {},
-            }
+    // Collect own members only (regardless of IR availability)
+    for (interface.members) |member| {
+        switch (member.type) {
+            .attribute => if (member.attribute) |attr| try all_attrs.append(allocator, attr),
+            .operation => if (member.operation) |op| try all_ops.append(allocator, op),
+            .constructor => if (member.constructor) |ctor| try own_constructors.append(allocator, ctor),
+            else => {},
         }
+    }
 
-        // Deduplicate attributes, operations, and constructors before generating impl stubs
-        // This prevents duplicate function declarations from multiple partial interfaces
-        const before_attrs = all_attrs.items.len;
-        try deduplicateAttributes(allocator, &all_attrs);
-        const after_attrs = all_attrs.items.len;
+    // Deduplicate attributes, operations, and constructors before generating impl stubs
+    // This prevents duplicate function declarations from multiple partial interfaces
+    const before_attrs = all_attrs.items.len;
+    try deduplicateAttributes(allocator, &all_attrs);
+    const after_attrs = all_attrs.items.len;
 
-        const before_ops = all_ops.items.len;
-        try deduplicateOperations(allocator, &all_ops);
-        const after_ops = all_ops.items.len;
+    const before_ops = all_ops.items.len;
+    try deduplicateOperations(allocator, &all_ops);
+    const after_ops = all_ops.items.len;
 
-        try deduplicateConstructors(allocator, &own_constructors);
+    try deduplicateConstructors(allocator, &own_constructors);
 
-        // Deduplication done silently - debug output removed for performance
-        _ = before_attrs;
-        _ = after_attrs;
-        _ = before_ops;
-        _ = after_ops;
+    // Deduplication done silently - debug output removed for performance
+    _ = before_attrs;
+    _ = after_attrs;
+    _ = before_ops;
+    _ = after_ops;
 
-        // Generate call_constructor if interface has WebIDL constructor
-        if (own_constructors.items.len > 0) {
-            try w.writeAll("/// Constructor implementation\n");
-            try w.writeAll("/// This is called when the interface is constructed from JavaScript\n");
+    // Generate call_constructor if interface has WebIDL constructor
+    if (own_constructors.items.len > 0) {
+        try w.writeAll("/// Constructor implementation\n");
+        try w.writeAll("/// This is called when the interface is constructed from JavaScript\n");
 
-            // If multiple constructors (overloaded), accept ConstructorArgs union
-            if (own_constructors.items.len > 1) {
-                try w.print("pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, args: interfaces.{s}.ConstructorArgs) !*runtime.Instance {{\n", .{interface.name});
-                try w.writeAll("    // Create instance through init()\n");
-                try w.print("    const instance = try init(allocator, State, &{s}.vtable, ctx);\n", .{interface.name});
-                try w.writeAll("    errdefer deinit(instance);\n");
-                try w.writeAll("\n");
-                try w.writeAll("    _ = args;\n");
-                try w.writeAll("    // TODO: Implement constructor logic for each overload\n");
-                try w.writeAll("    // Use: switch (args) { .VariantName => |variant_args| { ... } }\n");
-                try w.writeAll("\n");
-                try w.writeAll("    return instance;\n");
-                try w.writeAll("}\n\n");
-            } else {
-                // Single constructor - use direct parameters
-                const ctor = own_constructors.items[0];
-                try w.print("pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context", .{});
-                for (ctor.arguments) |arg| {
-                    try w.writeAll(", ");
-                    try writeEscapedImplParamName(w, arg.name);
-                    try w.writeAll(": ");
-                    try writeTypeSimple(w, arg.idlType, type_reg);
-                }
-                try w.writeAll(") !*runtime.Instance {\n");
-                try w.writeAll("    // Create instance through init()\n");
-                try w.print("    const instance = try init(allocator, State, &{s}.vtable, ctx);\n", .{interface.name});
-                try w.writeAll("    errdefer deinit(instance);\n");
-                try w.writeAll("\n");
-                for (ctor.arguments) |arg| {
-                    try w.writeAll("    _ = ");
-                    try writeEscapedImplParamName(w, arg.name);
-                    try w.writeAll(";\n");
-                }
-                try w.writeAll("    // TODO: Implement constructor logic with parameters\n");
-                try w.writeAll("\n");
-                try w.writeAll("    return instance;\n");
-                try w.writeAll("}\n\n");
+        // If multiple constructors (overloaded), accept ConstructorArgs union
+        if (own_constructors.items.len > 1) {
+            try w.print("pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, args: interfaces.{s}.ConstructorArgs) !*runtime.Instance {{\n", .{interface.name});
+            try w.writeAll("    // Create instance through init()\n");
+            try w.print("    const instance = try init(allocator, State, &{s}.vtable, ctx);\n", .{interface.name});
+            try w.writeAll("    errdefer deinit(instance);\n");
+            try w.writeAll("\n");
+            try w.writeAll("    _ = args;\n");
+            try w.writeAll("    // TODO: Implement constructor logic for each overload\n");
+            try w.writeAll("    // Use: switch (args) { .VariantName => |variant_args| { ... } }\n");
+            try w.writeAll("\n");
+            try w.writeAll("    return instance;\n");
+            try w.writeAll("}\n\n");
+        } else {
+            // Single constructor - use direct parameters
+            const ctor = own_constructors.items[0];
+            try w.print("pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context", .{});
+            for (ctor.arguments) |arg| {
+                try w.writeAll(", ");
+                try writeEscapedImplParamName(w, arg.name);
+                try w.writeAll(": ");
+                try writeTypeSimple(w, arg.idlType, type_reg);
             }
+            try w.writeAll(") !*runtime.Instance {\n");
+            try w.writeAll("    // Create instance through init()\n");
+            try w.print("    const instance = try init(allocator, State, &{s}.vtable, ctx);\n", .{interface.name});
+            try w.writeAll("    errdefer deinit(instance);\n");
+            try w.writeAll("\n");
+            for (ctor.arguments) |arg| {
+                try w.writeAll("    _ = ");
+                try writeEscapedImplParamName(w, arg.name);
+                try w.writeAll(";\n");
+            }
+            try w.writeAll("    // TODO: Implement constructor logic with parameters\n");
+            try w.writeAll("\n");
+            try w.writeAll("    return instance;\n");
+            try w.writeAll("}\n\n");
         }
+    }
 
-        // Generate getter stubs
-        for (all_attrs.items) |attr| {
+    // Generate getter stubs
+    for (all_attrs.items) |attr| {
+        // Sanitize attribute name for function names (convert hyphens to underscores)
+        const sanitized_name = try sanitizeFunctionName(allocator, attr.name);
+        const name_was_sanitized = !std.mem.eql(u8, sanitized_name, attr.name);
+        defer if (name_was_sanitized) allocator.free(sanitized_name);
+
+        try w.print("/// Getter for {s}\n", .{attr.name});
+        try w.print("pub fn get_{s}(instance: *runtime.Instance) ImplError!", .{sanitized_name});
+        try writeTypeSimple(w, attr.idlType, type_reg);
+        try w.writeAll(" {\n");
+        try w.writeAll("    _ = instance;\n");
+        try w.print("    return error.NotImplemented;\n", .{});
+        try w.writeAll("}\n\n");
+    }
+
+    // Generate setter stubs
+    for (all_attrs.items) |attr| {
+        if (!attr.readonly) {
             // Sanitize attribute name for function names (convert hyphens to underscores)
             const sanitized_name = try sanitizeFunctionName(allocator, attr.name);
             const name_was_sanitized = !std.mem.eql(u8, sanitized_name, attr.name);
             defer if (name_was_sanitized) allocator.free(sanitized_name);
 
-            try w.print("/// Getter for {s}\n", .{attr.name});
-            try w.print("pub fn get_{s}(instance: *runtime.Instance) ImplError!", .{sanitized_name});
+            try w.print("/// Setter for {s}\n", .{attr.name});
+            try w.print("pub fn set_{s}(instance: *runtime.Instance, value: ", .{sanitized_name});
             try writeTypeSimple(w, attr.idlType, type_reg);
-            try w.writeAll(" {\n");
+            try w.writeAll(") ImplError!void {\n");
             try w.writeAll("    _ = instance;\n");
-            try w.print("    return error.NotImplemented;\n", .{});
-            try w.writeAll("}\n\n");
-        }
-
-        // Generate setter stubs
-        for (all_attrs.items) |attr| {
-            if (!attr.readonly) {
-                // Sanitize attribute name for function names (convert hyphens to underscores)
-                const sanitized_name = try sanitizeFunctionName(allocator, attr.name);
-                const name_was_sanitized = !std.mem.eql(u8, sanitized_name, attr.name);
-                defer if (name_was_sanitized) allocator.free(sanitized_name);
-
-                try w.print("/// Setter for {s}\n", .{attr.name});
-                try w.print("pub fn set_{s}(instance: *runtime.Instance, value: ", .{sanitized_name});
-                try writeTypeSimple(w, attr.idlType, type_reg);
-                try w.writeAll(") ImplError!void {\n");
-                try w.writeAll("    _ = instance;\n");
-                try w.writeAll("    _ = value;\n");
-                try w.writeAll("    return error.NotImplemented;\n");
-                try w.writeAll("}\n\n");
-            }
-        }
-
-        // Generate operation stubs using overload-aware logic
-        // This must match the interface generation to ensure signatures are identical
-        const overload_mod = @import("overload.zig");
-        const overload_sets = try overload_mod.groupOperationsByName(allocator, all_ops.items);
-        defer overload_mod.freeOverloadSets(allocator, overload_sets);
-
-        for (overload_sets) |set| {
-            if (set.isOverloaded()) {
-                // Multiple overloads - generate ONE impl stub that accepts the Args union
-                const first_op = set.operations[0];
-                const op_name = first_op.name orelse "unnamed";
-
-                try w.print("/// Operation: {s} (overloaded - {d} variants)\n", .{ op_name, set.operations.len });
-                try w.print("pub fn call_{s}(instance: *runtime.Instance, args: interfaces.{s}.", .{ op_name, interface.name });
-
-                // Generate Args union type name: "StartArgs", "ItemArgs", etc.
-                var capitalized_name = std.ArrayList(u8).empty;
-                defer capitalized_name.deinit(allocator);
-                try capitalized_name.append(allocator, std.ascii.toUpper(op_name[0]));
-                try capitalized_name.appendSlice(allocator, op_name[1..]);
-                try capitalized_name.appendSlice(allocator, "Args");
-
-                try w.print("{s}) ImplError!", .{capitalized_name.items});
-                try writeTypeSimple(w, first_op.idlType, type_reg);
-                try w.writeAll(" {\n");
-                try w.writeAll("    _ = instance;\n");
-                try w.writeAll("    _ = args;\n");
-                try w.writeAll("    return error.NotImplemented;\n");
-                try w.writeAll("}\n\n");
-            } else {
-                // Single operation - generate normal function (same as before)
-                const op = set.operations[0];
-                const op_name = op.name orelse "unnamed";
-                try w.print("/// Operation: {s}\n", .{op_name});
-                try w.print("pub fn call_{s}(instance: *runtime.Instance", .{op_name});
-                for (op.arguments) |arg| {
-                    try w.writeAll(", ");
-                    try writeEscapedImplParamName(w, arg.name);
-                    try w.writeAll(": ");
-                    try writeTypeSimple(w, arg.idlType, type_reg);
-                }
-                try w.writeAll(") ImplError!");
-                try writeTypeSimple(w, op.idlType, type_reg);
-                try w.writeAll(" {\n");
-                try w.writeAll("    _ = instance;\n");
-                for (op.arguments) |arg| {
-                    try w.writeAll("    _ = ");
-                    try writeEscapedImplParamName(w, arg.name);
-                    try w.writeAll(";\n");
-                }
-                try w.writeAll("    return error.NotImplemented;\n");
-                try w.writeAll("}\n\n");
-            }
-        }
-
-        // Add forEach stub for iterable interfaces
-        var has_iterable = false;
-        for (interface.members) |member| {
-            if (member.type == .iterable) {
-                has_iterable = true;
-                break;
-            }
-        }
-
-        if (has_iterable) {
-            try w.writeAll("/// Operation: forEach\n");
-            try w.writeAll("pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) ImplError!void {\n");
-            try w.writeAll("    _ = instance;\n");
-            try w.writeAll("    _ = callback;\n");
+            try w.writeAll("    _ = value;\n");
             try w.writeAll("    return error.NotImplemented;\n");
             try w.writeAll("}\n\n");
         }
+    }
 
-        try w.flush();
-        return;
-    };
+    // Generate operation stubs using overload-aware logic
+    // This must match the interface generation to ensure signatures are identical
+    const overload_mod = @import("overload.zig");
+    const overload_sets = try overload_mod.groupOperationsByName(allocator, all_ops.items);
+    defer overload_mod.freeOverloadSets(allocator, overload_sets);
 
-    // File already exists - don't overwrite
+    for (overload_sets) |set| {
+        if (set.isOverloaded()) {
+            // Multiple overloads - generate ONE impl stub that accepts the Args union
+            const first_op = set.operations[0];
+            const op_name = first_op.name orelse "unnamed";
+
+            try w.print("/// Operation: {s} (overloaded - {d} variants)\n", .{ op_name, set.operations.len });
+            try w.print("pub fn call_{s}(instance: *runtime.Instance, args: interfaces.{s}.", .{ op_name, interface.name });
+
+            // Generate Args union type name: "StartArgs", "ItemArgs", etc.
+            var capitalized_name = std.ArrayList(u8).empty;
+            defer capitalized_name.deinit(allocator);
+            try capitalized_name.append(allocator, std.ascii.toUpper(op_name[0]));
+            try capitalized_name.appendSlice(allocator, op_name[1..]);
+            try capitalized_name.appendSlice(allocator, "Args");
+
+            try w.print("{s}) ImplError!", .{capitalized_name.items});
+            try writeTypeSimple(w, first_op.idlType, type_reg);
+            try w.writeAll(" {\n");
+            try w.writeAll("    _ = instance;\n");
+            try w.writeAll("    _ = args;\n");
+            try w.writeAll("    return error.NotImplemented;\n");
+            try w.writeAll("}\n\n");
+        } else {
+            // Single operation - generate normal function (same as before)
+            const op = set.operations[0];
+            const op_name = op.name orelse "unnamed";
+            try w.print("/// Operation: {s}\n", .{op_name});
+            try w.print("pub fn call_{s}(instance: *runtime.Instance", .{op_name});
+            for (op.arguments) |arg| {
+                try w.writeAll(", ");
+                try writeEscapedImplParamName(w, arg.name);
+                try w.writeAll(": ");
+                try writeTypeSimple(w, arg.idlType, type_reg);
+            }
+            try w.writeAll(") ImplError!");
+            try writeTypeSimple(w, op.idlType, type_reg);
+            try w.writeAll(" {\n");
+            try w.writeAll("    _ = instance;\n");
+            for (op.arguments) |arg| {
+                try w.writeAll("    _ = ");
+                try writeEscapedImplParamName(w, arg.name);
+                try w.writeAll(";\n");
+            }
+            try w.writeAll("    return error.NotImplemented;\n");
+            try w.writeAll("}\n\n");
+        }
+    }
+
+    // Add forEach stub for iterable interfaces
+    var has_iterable = false;
+    for (interface.members) |member| {
+        if (member.type == .iterable) {
+            has_iterable = true;
+            break;
+        }
+    }
+
+    if (has_iterable) {
+        try w.writeAll("/// Operation: forEach\n");
+        try w.writeAll("pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) ImplError!void {\n");
+        try w.writeAll("    _ = instance;\n");
+        try w.writeAll("    _ = callback;\n");
+        try w.writeAll("    return error.NotImplemented;\n");
+        try w.writeAll("}\n\n");
+    }
+
+    try w.flush();
 }
 
 /// Generate Zig code for a single WebIDL interface

@@ -1,12 +1,14 @@
 //! WebIDL Code Generator CLI
 //!
-//! Simplified usage:
-//!   webidl-codegen <source> --dest-root <path> [--impls]
+//! Usage:
+//!   webidl-codegen <source> --dest-root <path> [--force]
 //!
 //! Where:
 //!   <source> is either a .idl file or directory of .idl files
 //!   --dest-root <path> is the root directory for organized output
-//!   --impls is an optional flag to generate implementation stubs
+//!
+//! Implementation stubs are always generated to impls_tmp/ (gitignored).
+//! These stubs are for REFERENCE ONLY and must be manually migrated to impls/.
 
 const std = @import("std");
 const codegen = @import("codegen");
@@ -26,7 +28,6 @@ pub fn main() !void {
     // Parse arguments
     var source_path: ?[]const u8 = null;
     var dest_root: ?[]const u8 = null;
-    var generate_impls: bool = false;
     var force_clean: bool = false;
 
     while (args.next()) |arg| {
@@ -35,8 +36,6 @@ pub fn main() !void {
                 try printUsage();
                 return error.MissingDestRoot;
             };
-        } else if (std.mem.eql(u8, arg, "--impls")) {
-            generate_impls = true;
         } else if (std.mem.eql(u8, arg, "--force")) {
             force_clean = true;
         } else if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
@@ -106,16 +105,13 @@ pub fn main() !void {
     std.debug.print("  - enums/\n", .{});
     std.debug.print("  - callbacks/\n", .{});
     std.debug.print("  - namespaces/\n", .{});
-    if (generate_impls) {
-        std.debug.print("  - impls/\n", .{});
-    }
+    std.debug.print("  - impls_tmp/ (reference stubs - NOT compiled)\n", .{});
     std.debug.print("\n", .{});
 
     // Create configuration
     var config = CodegenConfig{
         .allocator = allocator,
         .dest_root = dest_root,
-        .generate_impls = generate_impls,
     };
     defer config.deinit();
 
@@ -139,7 +135,7 @@ fn printUsage() !void {
 
     try stdout.print("WebIDL-to-Zig Code Generator\n\n", .{});
     try stdout.print("Usage:\n", .{});
-    try stdout.print("  webidl-codegen <source> --dest-root <path> [--impls] [--force]\n\n", .{});
+    try stdout.print("  webidl-codegen <source> --dest-root <path> [--force]\n\n", .{});
 
     try stdout.print("Arguments:\n", .{});
     try stdout.print("  <source>              Path to .idl file or directory of .idl files\n\n", .{});
@@ -147,9 +143,7 @@ fn printUsage() !void {
     try stdout.print("Options:\n", .{});
     try stdout.print("  --dest-root <path>    Root directory for organized output\n", .{});
     try stdout.print("                        Creates: interfaces/, typedefs/, dictionaries/,\n", .{});
-    try stdout.print("                        enums/, callbacks/, namespaces/\n", .{});
-    try stdout.print("  --impls               Generate implementation stub files\n", .{});
-    try stdout.print("                        Creates impls/ subdirectory under dest-root\n", .{});
+    try stdout.print("                        enums/, callbacks/, namespaces/, impls_tmp/\n", .{});
     try stdout.print("  --force               Delete entire dest-root directory before generating\n", .{});
     try stdout.print("                        Use this to ensure clean regeneration of all files\n", .{});
     try stdout.print("  --help, -h            Show this help message\n\n", .{});
@@ -160,15 +154,20 @@ fn printUsage() !void {
     try stdout.print("    - Merges partial interfaces and mixins\n", .{});
     try stdout.print("    - Resolves cross-file dependencies\n", .{});
     try stdout.print("  - Creates organized directory structure under dest-root\n", .{});
-    try stdout.print("  - Without --force, existing impl files are preserved\n", .{});
     try stdout.print("  - With --force, everything is regenerated fresh\n\n", .{});
+
+    try stdout.print("Implementation Stubs (impls_tmp/):\n", .{});
+    try stdout.print("  - Always generated to impls_tmp/ directory (gitignored)\n", .{});
+    try stdout.print("  - These are REFERENCE ONLY - DO NOT COMPILE\n", .{});
+    try stdout.print("  - Manually migrate stubs to impls/ for actual implementations\n", .{});
+    try stdout.print("  - The impls/ directory contains canonical implementations\n\n", .{});
 
     try stdout.print("Examples:\n", .{});
     try stdout.print("  # Generate organized directory structure\n", .{});
     try stdout.print("  webidl-codegen /path/to/webref/ed/idl --dest-root ./generated\n\n", .{});
 
-    try stdout.print("  # Generate with implementation stubs\n", .{});
-    try stdout.print("  webidl-codegen /path/to/webref/ed/idl --dest-root ./generated --impls\n\n", .{});
+    try stdout.print("  # Force clean regeneration\n", .{});
+    try stdout.print("  webidl-codegen /path/to/webref/ed/idl --dest-root ./generated --force\n\n", .{});
 
     try stdout.print("  # Generate from a single file\n", .{});
     try stdout.print("  webidl-codegen dom.idl --dest-root ./generated\n", .{});

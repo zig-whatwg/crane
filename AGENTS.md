@@ -756,7 +756,6 @@ When a spec depends on another spec, check `src/` for implementation. If not imp
 - ❌ **DO NOT commit manual edits** to generated files
 - Generated files in `src/webidl/` subdirectories should be committed to version control
 - Generated files change when codegen logic changes or IDL files are updated
-- **Note**: Implementation stubs (files in `src/webidl/impls/`) are only regenerated on explicit request, not by default
 
 **Codegen Command:**
 ```bash
@@ -776,6 +775,47 @@ zig build codegen -- specs/idl/ specs/supplementary/ --dest-root src/webidl/
 4. Run: `zig build codegen -- specs/idl/ specs/supplementary/ --dest-root src/webidl/`
 5. Verify tests pass
 6. Commit codegen changes AND regenerated files together
+
+### 12. **Implementation Files (impls/) Workflow** ⭐⭐⭐
+
+**Implementation files in `src/webidl/impls/` contain CUSTOM CODE and are NOT overwritten by codegen.**
+
+**Directory Structure:**
+- `src/webidl/impls/` - **Canonical implementations** (committed, compiled, contains custom code)
+- `src/webidl/impls_tmp/` - **Generated stubs** (gitignored, NOT compiled, reference only)
+
+**How It Works:**
+1. Codegen ALWAYS generates impl stubs to `impls_tmp/` (never to `impls/`)
+2. `impls_tmp/` is gitignored and NOT part of the build
+3. `impls/` contains the real implementations with custom logic
+4. Developers manually migrate stubs from `impls_tmp/` to `impls/`
+
+**Workflow for NEW Interfaces:**
+1. Run codegen: `zig build codegen -- specs/idl/ specs/supplementary/ --dest-root src/webidl/`
+2. Find the new stub in `src/webidl/impls_tmp/NewInterface.zig`
+3. Copy the stub to `src/webidl/impls/NewInterface.zig`
+4. Implement the actual logic in the copied file
+5. Commit the implementation in `impls/`
+
+**Workflow for EXISTING Interfaces (when signatures change):**
+1. Run codegen to regenerate stubs in `impls_tmp/`
+2. Diff `impls_tmp/ExistingInterface.zig` against `impls/ExistingInterface.zig`
+3. Manually merge new/changed signatures into `impls/` while preserving custom code
+4. Test and commit
+
+**Critical Rules:**
+- ✅ **DO** copy stubs from `impls_tmp/` to `impls/` for new interfaces
+- ✅ **DO** manually merge signature changes while preserving implementations
+- ✅ **DO** commit files in `impls/` (they contain custom code)
+- ❌ **NEVER** compile or import from `impls_tmp/` - it's reference only
+- ❌ **NEVER** commit files in `impls_tmp/` - it's gitignored
+- ❌ **NEVER** expect codegen to preserve custom code in `impls/`
+
+**Why This Design:**
+- Protects custom implementation code from being overwritten
+- Provides updated stubs for reference when IDL changes
+- Allows diffing to see what changed in interface signatures
+- Keeps generated stubs separate from canonical implementations
 
 ---
 
