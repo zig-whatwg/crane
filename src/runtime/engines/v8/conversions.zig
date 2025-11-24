@@ -1219,6 +1219,107 @@ pub fn toV8(
 }
 
 // ============================================================================
+// V8 Value Type Detection (for external JSValue conversion)
+// ============================================================================
+
+/// V8 value type tag (used by callers to build their own JSValue)
+///
+/// This allows modules with JSValue access to convert V8 values without
+/// this module needing to import streams_common (avoiding circular deps).
+pub const V8ValueType = enum {
+    undefined,
+    null_type,
+    boolean,
+    number,
+    string,
+    object,
+    typed_array,
+    other,
+};
+
+/// Detect the type of a V8 Value
+///
+/// Returns a type tag that callers can use to build JSValue or other types.
+pub fn detectV8ValueType(value: *v8.Value) V8ValueType {
+    if (v8.v8_Value_IsUndefined(value)) return .undefined;
+    if (v8.v8_Value_IsNull(value)) return .null_type;
+    if (v8.v8_Value_IsBoolean(value)) return .boolean;
+    if (v8.v8_Value_IsNumber(value)) return .number;
+    if (v8.v8_Value_IsString(value)) return .string;
+    if (v8.v8_Value_IsTypedArray(value)) return .typed_array;
+    if (v8.v8_Value_IsObject(value)) return .object;
+    return .other;
+}
+
+/// Extract boolean value from V8 Value
+pub fn extractV8Boolean(isolate: *v8.Isolate, value: *v8.Value) bool {
+    return v8.v8_Value_BooleanValue(value, isolate);
+}
+
+/// Extract number value from V8 Value
+pub fn extractV8Number(context: *v8.Context, value: *v8.Value) f64 {
+    return v8.v8_Value_NumberValue(value, context);
+}
+
+/// Extract string from V8 Value (allocates)
+pub fn extractV8StringAlloc(
+    allocator: std.mem.Allocator,
+    context: *v8.Context,
+    value: *v8.Value,
+) ConversionError![]u8 {
+    const str = v8.v8_Value_ToString(value, context) orelse return ConversionError.StringError;
+    defer v8.v8_String_Dispose(str);
+
+    const length = v8.v8_String_Utf8Length(str);
+    if (length < 0) return ConversionError.StringError;
+
+    if (length == 0) {
+        return &[_]u8{};
+    }
+
+    const buffer = try allocator.alloc(u8, @intCast(length));
+    errdefer allocator.free(buffer);
+
+    const written = v8.v8_String_WriteUtf8(str, buffer.ptr, @intCast(length));
+    if (written != length) {
+        return ConversionError.StringError;
+    }
+
+    return buffer;
+}
+
+/// Create V8 undefined value
+pub fn createV8Undefined(isolate: *v8.Isolate) ConversionError!*v8.Value {
+    return v8.v8_Undefined(isolate) orelse return ConversionError.OutOfMemory;
+}
+
+/// Create V8 null value
+pub fn createV8Null(isolate: *v8.Isolate) ConversionError!*v8.Value {
+    return v8.v8_Null(isolate) orelse return ConversionError.OutOfMemory;
+}
+
+/// Create V8 boolean value
+///
+/// Note: V8 FFI doesn't have v8_Boolean_New - booleans are created via
+/// v8::Boolean::New which isn't exposed. For now, convert to number (0/1).
+pub fn createV8Boolean(isolate: *v8.Isolate, value: bool) ConversionError!*v8.Value {
+    // Use number representation: true = 1.0, false = 0.0
+    return @ptrCast(v8.v8_Number_New(isolate, if (value) 1.0 else 0.0));
+}
+
+/// Create V8 number value
+pub fn createV8Number(isolate: *v8.Isolate, value: f64) ConversionError!*v8.Value {
+    return @ptrCast(v8.v8_Number_New(isolate, value));
+}
+
+/// Create V8 string value from slice
+pub fn createV8String(isolate: *v8.Isolate, value: []const u8) ConversionError!*v8.Value {
+    const str = v8.v8_String_NewFromUtf8(isolate, value.ptr, @intCast(value.len)) orelse
+        return ConversionError.OutOfMemory;
+    return @ptrCast(str);
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 

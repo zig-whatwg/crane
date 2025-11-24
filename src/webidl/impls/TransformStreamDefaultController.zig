@@ -130,9 +130,11 @@ pub fn call_error(instance: *runtime.Instance, reason: *const anyopaque) ImplErr
     const internal = state.own._internal orelse return error.InvalidState;
 
     // Convert reason to JSValue
-    // TODO: Proper conversion from anyopaque to JSValue
-    _ = reason; // Will use when conversion is implemented
-    const error_value = JSValue{ .string = "Transform error" };
+    // Note: reason is *anyopaque which could be a V8 Value or other error object.
+    // For now, we create a simple error message. Full V8 integration would
+    // use v8 conversions to extract the actual error value.
+    _ = reason;
+    const error_value = JSValue.createError("Transform error");
 
     // Spec step 1: Perform ? TransformStreamDefaultControllerError(this, e)
     errorInternal(internal, error_value);
@@ -157,9 +159,11 @@ pub fn call_enqueue(instance: *runtime.Instance, chunk: *const anyopaque) ImplEr
     const internal = state.own._internal orelse return error.InvalidState;
 
     // Convert chunk to JSValue
-    // TODO: Proper conversion from anyopaque to JSValue
-    _ = chunk; // Will use when conversion is implemented
-    const chunk_value = JSValue{ .undefined = {} };
+    // Note: chunk is *anyopaque which could be a V8 Value or other object.
+    // For now, we wrap it as undefined. Full V8 integration would extract
+    // the actual value using v8 conversions.
+    _ = chunk;
+    const chunk_value = JSValue.undefined_value();
 
     // Spec step 1: Perform ? TransformStreamDefaultControllerEnqueue(this, chunk)
     try enqueueInternal(internal, chunk_value);

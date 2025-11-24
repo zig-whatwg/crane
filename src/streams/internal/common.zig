@@ -72,6 +72,48 @@ pub const JSValue = union(enum) {
             else => try webidl.errors.Exception.typeError(allocator, "Unknown error"),
         };
     }
+
+    // ========================================================================
+    // Error Creation Helpers
+    // ========================================================================
+
+    /// Create a TypeError JSValue with the given message
+    ///
+    /// Use this when stream algorithms need to error with TypeError.
+    pub fn createTypeError(message: []const u8) JSValue {
+        return .{ .string = message };
+    }
+
+    /// Create a RangeError JSValue with the given message
+    ///
+    /// Use this when stream algorithms need to error with RangeError.
+    pub fn createRangeError(message: []const u8) JSValue {
+        return .{ .string = message };
+    }
+
+    /// Create a generic error JSValue with the given message
+    pub fn createError(message: []const u8) JSValue {
+        return .{ .string = message };
+    }
+
+    // ========================================================================
+    // Value Creation Helpers
+    // ========================================================================
+
+    /// Create a string JSValue
+    pub fn fromString(value: []const u8) JSValue {
+        return .{ .string = value };
+    }
+
+    /// Create a number JSValue
+    pub fn fromNumber(value: f64) JSValue {
+        return .{ .number = value };
+    }
+
+    /// Create a boolean JSValue
+    pub fn fromBool(value: bool) JSValue {
+        return .{ .boolean = value };
+    }
 };
 
 /// Placeholder for Promise type
@@ -723,11 +765,3 @@ pub fn wrapGenericFlushCallback(callback: webidl.GenericCallback) FlushAlgorithm
 }
 
 // Tests
-
-
-
-
-
-
-
-

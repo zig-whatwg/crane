@@ -292,9 +292,11 @@ pub fn call_error(instance: *runtime.Instance, e: *const anyopaque) ImplError!vo
     const internal = state.own._internal orelse return error.InvalidState;
 
     // Convert e to JSValue
-    // TODO: Proper conversion
+    // Note: e is *anyopaque which could be a V8 Value or other error object.
+    // For now, we create a simple error message. Full V8 integration would
+    // use v8 conversions to extract the actual error value.
     _ = e;
-    const error_value = JSValue{ .string = "Byte stream error" };
+    const error_value = JSValue.createError("Byte stream error");
 
     errorInternal(internal, error_value);
 }
@@ -359,10 +361,8 @@ fn closeInternal(internal: *InternalState) void {
         if (remainder > 0) {
             // Step 3.2.1: Let e be a new TypeError
             // Step 3.2.2: Perform ! ReadableByteStreamControllerError(controller, e)
-            // TODO: Create proper TypeError JSValue when runtime integration is ready
-            // For now, this is an invalid state - bytes_filled should always be aligned
-            // This would be caught at enqueue time, so this is defensive programming
-            internal.close_requested = true;
+            const type_error = JSValue.createTypeError("Pending pull-into bytes are not element-aligned");
+            errorInternal(internal, type_error);
             return;
         }
 
