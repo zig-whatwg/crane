@@ -583,3 +583,74 @@ pub fn raiseError(instance: *runtime.Instance, e: JSValue) void {
     const internal = state.own._internal orelse return;
     errorInternal(internal, e);
 }
+
+// ============================================================================
+// BYOB Request Fulfillment
+// ============================================================================
+
+/// ReadableByteStreamControllerPullInto(controller, view, min, readIntoRequest)
+///
+/// Spec: § 4.10.11 "Pull data into a provided buffer"
+///
+/// This is the main entry point for BYOB (bring-your-own-buffer) reads.
+pub fn pullInto(
+    instance: *runtime.Instance,
+    view: typedefs.ArrayBufferView,
+    min: u64,
+    readIntoRequest: ReadIntoRequest,
+) ImplError!void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+
+    // Step 1: Let stream be controller.[[stream]]
+    const stream = internal.stream orelse return error.InvalidState;
+
+    // Steps 2-4: Determine element size and constructor from view
+    // TODO: Proper ArrayBufferView element size extraction
+    _ = view; // TODO: Extract actual element size and constructor
+    const element_size: u64 = 1; // Placeholder - need proper view introspection
+
+    // Map to ViewConstructor (simplified - need proper type detection)
+    const ctor = ViewConstructor.uint8_array; // Placeholder
+
+    // Step 5: Calculate minimum fill
+    const minimum_fill = min * element_size;
+
+    // Steps 8-9: Extract byteOffset and byteLength
+    // TODO: Proper ArrayBufferView introspection
+    const byteOffset: u64 = 0; // Placeholder
+    const byteLength: u64 = 1024; // Placeholder
+
+    // Step 10: Transfer the ArrayBuffer
+    // TODO: Implement buffer transfer when view API is ready
+    const buffer_ptr = try internal.allocator.create(ArrayBuffer);
+    buffer_ptr.* = .{
+        .data = &[_]u8{},
+        .byte_length = byteLength,
+        .detached = false,
+    };
+
+    // Step 13: Create pull-into descriptor
+    const pullIntoDescriptor = try internal.allocator.create(PullIntoDescriptor);
+    pullIntoDescriptor.* = PullIntoDescriptor.init(
+        buffer_ptr,
+        buffer_ptr.byte_length,
+        byteOffset,
+        byteLength,
+        minimum_fill,
+        element_size,
+        ctor,
+        .byob,
+    );
+
+    // Step 17: Append descriptor to pending list
+    try internal.pending_pull_intos.append(pullIntoDescriptor);
+
+    // Store the readIntoRequest for later fulfillment
+    // TODO: Add to stream's readIntoRequests list when stream API is ready
+    _ = readIntoRequest;
+    _ = stream;
+
+    // Step 19: Call pull if needed
+    callPullIfNeeded(instance);
+}
