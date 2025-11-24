@@ -850,7 +850,7 @@ fn invalidateBYOBRequest(internal: *InternalState) void {
 fn respondInClosedState(
     internal: *InternalState,
     firstDescriptor: *PullIntoDescriptor,
-) void {
+) ImplError!void {
     // Step 1: Assert: the remainder after dividing firstDescriptor's bytes filled by firstDescriptor's element size is 0
     // (Assertion - caller ensures this)
 
@@ -967,7 +967,7 @@ fn enqueueChunkToQueue(
     };
 
     // Add to queue
-    try internal.byte_queue.append(entry);
+    try internal.byte_queue.append(internal.allocator, entry);
 
     // Update total size
     internal.queue_total_size += @as(f64, @floatFromInt(byteLength));
@@ -1266,7 +1266,7 @@ fn processPullIntoDescriptorsUsingQueue(
     internal: *InternalState,
 ) ImplError!std.ArrayList(*PullIntoDescriptor) {
     var result = std.ArrayList(*PullIntoDescriptor).init(internal.allocator);
-    errdefer result.deinit();
+    errdefer result.deinit(internal.allocator);
 
     // Step 1: While ! ReadableStreamGetNumReadIntoRequests(stream) > 0
     // TODO: Implement when ReadableStream API is ready

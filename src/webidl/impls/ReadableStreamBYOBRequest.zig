@@ -19,6 +19,10 @@ pub const ImplError = error{
     TypeError,
     InvalidState,
     OutOfMemory,
+    BufferDetached, // From ReadableByteStreamController
+    NotImplemented, // From ReadableByteStreamController
+    RangeError, // From ReadableByteStreamController
+    NullValue, // From ReadableByteStreamController
 };
 
 /// Internal state for ReadableStreamBYOBRequest
