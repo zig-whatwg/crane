@@ -648,3 +648,120 @@ fn extractSizeAlgorithm(strategy: *const dictionaries.QueuingStrategy) ?*const a
     // Step 2: Return the size function to be invoked later with chunks
     return size_fn;
 }
+
+// ============================================================================
+// Reader Helper Functions (for BYOB integration)
+// ============================================================================
+
+/// ReadableStreamHasDefaultReader(stream)
+///
+/// Spec: § 4.4.1 "Check if stream has a default reader"
+///
+/// Returns true if stream has a default reader attached.
+pub fn hasDefaultReader(instance: *runtime.Instance) bool {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return false;
+
+    return switch (internal.reader) {
+        .default => true,
+        .byob, .none => false,
+    };
+}
+
+/// ReadableStreamHasBYOBReader(stream)
+///
+/// Spec: § 4.4.2 "Check if stream has a BYOB reader"
+///
+/// Returns true if stream has a BYOB reader attached.
+pub fn hasBYOBReader(instance: *runtime.Instance) bool {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return false;
+
+    return switch (internal.reader) {
+        .byob => true,
+        .default, .none => false,
+    };
+}
+
+/// ReadableStreamGetNumReadRequests(stream)
+///
+/// Spec: § 4.4.3 "Get number of pending read requests"
+///
+/// Returns the number of pending read requests from the default reader.
+pub fn getNumReadRequests(instance: *runtime.Instance) u64 {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return 0;
+
+    return switch (internal.reader) {
+        .default => |reader_instance| {
+            // Import reader implementation to get request count
+            const ReaderImpl = @import("ReadableStreamDefaultReader.zig");
+            return ReaderImpl.getNumReadRequests(reader_instance);
+        },
+        .byob, .none => 0,
+    };
+}
+
+/// ReadableStreamGetNumReadIntoRequests(stream)
+///
+/// Spec: § 4.4.4 "Get number of pending read-into requests"
+///
+/// Returns the number of pending read-into requests from the BYOB reader.
+pub fn getNumReadIntoRequests(instance: *runtime.Instance) u64 {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return 0;
+
+    return switch (internal.reader) {
+        .byob => |reader_instance| {
+            // Import BYOB reader implementation to get request count
+            const BYOBReaderImpl = @import("ReadableStreamBYOBReader.zig");
+            return BYOBReaderImpl.getNumReadIntoRequests(reader_instance);
+        },
+        .default, .none => 0,
+    };
+}
+
+/// ReadableStreamFulfillReadRequest(stream, chunk, done)
+///
+/// Spec: § 4.4.5 "Fulfill read request with chunk"
+///
+/// Fulfills the first pending read request with the given chunk.
+pub fn fulfillReadRequest(
+    instance: *runtime.Instance,
+    chunk: *anyopaque,
+    done: bool,
+) ImplError!void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+
+    return switch (internal.reader) {
+        .default => |reader_instance| {
+            // Import reader implementation to fulfill request
+            const ReaderImpl = @import("ReadableStreamDefaultReader.zig");
+            return ReaderImpl.fulfillReadRequest(reader_instance, chunk, done);
+        },
+        .byob, .none => error.InvalidState, // No default reader attached
+    };
+}
+
+/// ReadableStreamAddReadRequest(stream, readRequest)
+///
+/// Spec: § 4.4.6 "Add read request to pending queue"
+///
+/// Adds a read request to the stream's default reader.
+pub fn addReadRequest(
+    instance: *runtime.Instance,
+    readRequest: *const anyopaque,
+) ImplError!void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+
+    return switch (internal.reader) {
+        .default => |reader_instance| {
+            // Import reader implementation to add request
+            const ReaderImpl = @import("ReadableStreamDefaultReader.zig");
+            return ReaderImpl.addReadRequest(reader_instance, readRequest);
+        },
+        .byob, .none => error.InvalidState, // No default reader attached
+    };
+}

@@ -846,10 +846,20 @@ fn respondInClosedState(
     const stream = internal.stream orelse return;
 
     // Step 4: If ! ReadableStreamHasBYOBReader(stream) is true
-    // TODO: Implement ReadableStreamHasBYOBReader check
-    _ = stream;
+    const ReadableStreamImpl = @import("ReadableStream.zig");
+    if (ReadableStreamImpl.hasBYOBReader(stream)) {
+        // Step 4.1: While there are pending read-into requests
+        while (ReadableStreamImpl.getNumReadIntoRequests(stream) > 0) {
+            // Step 4.1.1: Process pull-into descriptor from queue
+            const result = try processPullIntoDescriptorsUsingQueue(internal);
+            defer result.deinit();
 
-    // TODO: Complete implementation when stream BYOB reader APIs are ready
+            // If no more descriptors could be processed, break
+            if (result.items.len == 0) {
+                break;
+            }
+        }
+    }
 }
 
 /// ReadableByteStreamControllerRespondInReadableState(controller, bytesWritten, pullIntoDescriptor)
@@ -1014,24 +1024,20 @@ pub fn processReadRequestsUsingQueue(instance: *runtime.Instance) ImplError!void
 
     // Step 1: Get stream
     const stream = internal.stream orelse return error.InvalidState;
-    const stream_state = stream.getState(interfaces.ReadableStream.State);
-    const stream_internal = stream_state.own._internal orelse return error.InvalidState;
 
-    // Step 3: Process all read requests
-    // TODO: Implement getNumReadRequests() on ReadableStream
-    // For now, check if there are any requests (placeholder)
-    _ = stream_internal;
+    // Step 2: Assert: ReadableStreamHasDefaultReader(stream) is true
+    const ReadableStreamImpl = @import("ReadableStream.zig");
 
-    // Step 3: Loop while read requests exist
-    // while (stream has read requests) {
-    //     // Step 3.1: If queue is empty, return
-    //     if (internal.queue_total_size == 0) {
-    //         return;
-    //     }
-    //
-    //     // Step 3.4: Fill read request from queue
-    //     try fillReadRequestFromQueue(internal);
-    // }
+    // Step 3: Loop while read requests exist and queue has data
+    while (ReadableStreamImpl.getNumReadRequests(stream) > 0) {
+        // Step 3.1: If queue is empty, return
+        if (internal.queue_total_size == 0) {
+            return;
+        }
+
+        // Step 3.2: Fill read request from queue
+        try fillReadRequestFromQueue(internal, stream);
+    }
 
     // Placeholder until ReadableStream API is complete
 }
@@ -1039,7 +1045,7 @@ pub fn processReadRequestsUsingQueue(instance: *runtime.Instance) ImplError!void
 /// ReadableByteStreamControllerFillReadRequestFromQueue(controller)
 ///
 /// Spec: § 4.10.11 "Fill a read request from the queue (for default readers)"
-fn fillReadRequestFromQueue(internal: *InternalState) ImplError!void {
+fn fillReadRequestFromQueue(internal: *InternalState, stream: *runtime.Instance) ImplError!void {
     // Step 1: Assert: queue is not empty
     if (internal.byte_queue.items.len == 0) {
         return error.InvalidState;
@@ -1054,15 +1060,16 @@ fn fillReadRequestFromQueue(internal: *InternalState) ImplError!void {
     // Step 5: Handle queue drain
     handleQueueDrain(internal);
 
-    // Step 6: Create Uint8Array view
-    // TODO: Implement view construction when view API is ready
+    // Step 6: Create Uint8Array view from buffer slice
+    // TODO: Implement proper view construction when ArrayBufferView runtime API is ready
+    // For now, create a simple chunk pointer from the buffer data
+    const chunk: *anyopaque = @ptrCast(entry.buffer);
 
-    // Step 7: Fulfill the read request
-    // TODO: Implement when ReadableStream fulfillReadRequest is ready
+    // Step 7: Fulfill the read request with chunk, done=false
+    const ReadableStreamImpl = @import("ReadableStream.zig");
+    try ReadableStreamImpl.fulfillReadRequest(stream, chunk, false);
 
-    // Cleanup the buffer
-    entry.buffer.deinit(internal.allocator);
-    internal.allocator.destroy(entry.buffer);
+    // Note: Don't cleanup buffer here - ownership transferred to fulfilled request
 }
 
 /// ReadableByteStreamControllerFillPullIntoDescriptorFromQueue(controller, pullIntoDescriptor)
@@ -1246,7 +1253,6 @@ pub fn pullSteps(
 
     // Step 1: Let stream be this.[[stream]]
     const stream = internal.stream orelse return error.InvalidState;
-    _ = stream;
 
     // Step 2: Assert: ! ReadableStreamHasDefaultReader(stream) is true
     // (Caller ensures this)
@@ -1257,7 +1263,7 @@ pub fn pullSteps(
         // (Implicit - if queue has data, no pending requests)
 
         // Step 3.2: Perform ! ReadableByteStreamControllerFillReadRequestFromQueue(this, readRequest)
-        try fillReadRequestFromQueue(internal);
+        try fillReadRequestFromQueue(internal, stream);
         return;
     }
 
@@ -1289,8 +1295,8 @@ pub fn pullSteps(
     }
 
     // Step 6: Perform ! ReadableStreamAddReadRequest(stream, readRequest)
-    // TODO: Implement when ReadableStream API is ready
-    _ = readRequest;
+    const ReadableStreamImpl = @import("ReadableStream.zig");
+    try ReadableStreamImpl.addReadRequest(stream, readRequest);
 
     // Step 7: Perform ! ReadableByteStreamControllerCallPullIfNeeded(this)
     callPullIfNeeded(instance);

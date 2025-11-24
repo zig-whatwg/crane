@@ -407,3 +407,66 @@ pub fn call_cancel(instance: *runtime.Instance, reason: *const anyopaque) !*cons
 
     return cancel_promise;
 }
+
+// ============================================================================
+// Helper Functions (for ReadableStream integration)
+// ============================================================================
+
+/// Get number of pending read requests
+///
+/// Used by ReadableStream.getNumReadRequests()
+pub fn getNumReadRequests(instance: *runtime.Instance) u64 {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return 0;
+    return @intCast(internal.read_requests.items.len);
+}
+
+/// Fulfill the first pending read request with chunk
+///
+/// Spec: § 4.3.9 "Fulfill read request"
+///
+/// Used by ReadableStream.fulfillReadRequest()
+pub fn fulfillReadRequest(
+    instance: *runtime.Instance,
+    chunk: *anyopaque,
+    done: bool,
+) ImplError!void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+
+    // There must be at least one pending request
+    if (internal.read_requests.items.len == 0) {
+        return error.InvalidState;
+    }
+
+    // Remove first request from queue
+    const read_promise = internal.read_requests.orderedRemove(0);
+
+    // Create result
+    const result = ReadResult{
+        .value = chunk,
+        .done = done,
+    };
+
+    // Fulfill the promise
+    read_promise.*.fulfill(result);
+}
+
+/// Add a read request to the pending queue
+///
+/// Spec: § 4.3.10 "Add read request"
+///
+/// Used by ReadableStream.addReadRequest()
+pub fn addReadRequest(
+    instance: *runtime.Instance,
+    readRequest: *const anyopaque,
+) ImplError!void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+
+    // Cast to promise type
+    const promise: *AsyncPromise(ReadResult) = @ptrCast(@alignCast(@constCast(readRequest)));
+
+    // Add to end of queue
+    try internal.read_requests.append(internal.allocator, promise);
+}
