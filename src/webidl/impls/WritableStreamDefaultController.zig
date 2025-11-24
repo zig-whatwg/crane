@@ -29,8 +29,14 @@ pub const ImplError = error{
 };
 
 /// Queue value type - can be a chunk or the close sentinel
+///
+/// Spec: § 9.2.1 "Value container" - stores value with its calculated size
 pub const QueueValue = union(enum) {
-    chunk: *anyopaque,
+    /// A chunk with its calculated size (from strategy.size algorithm)
+    chunk: struct {
+        value: *anyopaque,
+        size: f64,
+    },
     close_sentinel: void,
 };
 
@@ -278,7 +284,11 @@ pub fn write(controller: *runtime.Instance, chunk: *const anyopaque, chunk_size_
     errdefer request.deinit();
 
     // 5. Enqueue to controller's queue (using QueueValue wrapper from this module)
-    const value = QueueValue{ .chunk = @constCast(chunk) };
+    // Store both the chunk and its calculated size per spec § 9.2.1
+    const value = QueueValue{ .chunk = .{
+        .value = @constCast(chunk),
+        .size = chunk_size,
+    } };
     try internal.queue.append(allocator, value);
     internal.queue_total_size += chunk_size;
 
@@ -361,8 +371,9 @@ fn writableStreamDefaultControllerAdvanceQueueIfNeeded(controller: *runtime.Inst
         .close_sentinel => {
             writableStreamDefaultControllerProcessClose(controller);
         },
-        .chunk => |chunk| {
-            writableStreamDefaultControllerProcessWrite(controller, chunk);
+        .chunk => |chunk_container| {
+            // Extract the actual chunk value from the container
+            writableStreamDefaultControllerProcessWrite(controller, chunk_container.value);
         },
     }
 }
@@ -407,9 +418,11 @@ fn writableStreamDefaultControllerProcessWrite(controller: *runtime.Instance, ch
     // Also dequeue from controller's internal queue
     const value = internal.queue.orderedRemove(0);
 
-    // Get size and update total
-    // TODO: Use actual chunk size from strategy (currently hardcoded to 1.0)
-    const chunk_size = 1.0;
+    // Get size from the stored value container (per spec § 9.2.1)
+    const chunk_size = switch (value) {
+        .chunk => |c| c.size,
+        .close_sentinel => 0.0,
+    };
     internal.queue_total_size -= chunk_size;
 
     // 4. Mark as in-flight
@@ -494,7 +507,6 @@ fn writableStreamDefaultControllerProcessWrite(controller: *runtime.Instance, ch
 
     // Fallback: No write algorithm or no V8 context (testing mode)
     // Immediately fulfill the write
-    _ = value;
     writableStreamDefaultControllerFinishWrite(controller, stream);
 }
 
