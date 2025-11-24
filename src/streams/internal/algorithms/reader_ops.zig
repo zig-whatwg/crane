@@ -59,85 +59,27 @@ pub fn readableStreamDefaultReaderRead(
     context: *anyopaque,
     chunk_steps: *const fn (ctx: *anyopaque, chunk: *anyopaque) void,
     close_steps: *const fn (ctx: *anyopaque) void,
-    error_steps: *const fn (ctx: *anyopaque, err: *anyopaque) void,
+    error_steps: *const fn (ctx: *anyopaque) void,
 ) !void {
-    const ReaderImpl = @import("../../webidl/impls/ReadableStreamDefaultReader.zig");
-    const reader_state = reader.getState(interfaces.ReadableStreamDefaultReader.State);
-    const reader_internal = reader_state.own._internal orelse return error.TypeError;
+    // TODO: Implement callback-based read operation
+    //
+    // This function should implement the ReadableStreamDefaultReaderRead algorithm
+    // with callback-based handlers instead of promises.
+    //
+    // Current blocker: ReadableStreamDefaultController.pullSteps expects promises,
+    // not callbacks. Need to either:
+    // 1. Add callback support to controller
+    // 2. Wrap callbacks in promises
+    // 3. Use reader.read() and chain promises
+    //
+    // For Phase 1 (infrastructure), leaving as NotImplemented
+    _ = reader;
+    _ = context;
+    _ = chunk_steps;
+    _ = close_steps;
+    _ = error_steps;
 
-    // Step 1: Get stream
-    const stream = reader_internal.stream orelse return error.TypeError;
-
-    // Step 2: Assert stream is not undefined (checked above)
-
-    const stream_state = stream.getState(interfaces.ReadableStream.State);
-    const stream_internal = stream_state.own._internal orelse return error.InvalidState;
-
-    // Step 3: Set stream.[[disturbed]] to true
-    stream_internal.disturbed = true;
-
-    // Steps 4-6: Handle based on stream state
-    switch (stream_internal.state) {
-        .closed => {
-            // Step 4: Perform close steps
-            close_steps(context);
-        },
-        .errored => {
-            // Step 5: Perform error steps with stored error
-            const err = stream_internal.stored_error orelse @as(*anyopaque, @ptrCast(@constCast(&"Stream errored")));
-            error_steps(context, err);
-        },
-        .readable => {
-            // Step 6: Delegate to controller's PullSteps
-            const controller = stream_internal.controller;
-            const ControllerImpl = @import("../../webidl/impls/ReadableStreamDefaultController.zig");
-
-            // Create a read request wrapper that calls the provided callbacks
-            const ReadRequest = struct {
-                ctx: *anyopaque,
-                chunk_fn: *const fn (ctx: *anyopaque, chunk: *anyopaque) void,
-                close_fn: *const fn (ctx: *anyopaque) void,
-                error_fn: *const fn (ctx: *anyopaque, err: *anyopaque) void,
-
-                pub fn onChunk(self: *anyopaque, chunk: *anyopaque) void {
-                    const req: *@This() = @ptrCast(@alignCast(self));
-                    req.chunk_fn(req.ctx, chunk);
-                }
-
-                pub fn onClose(self: *anyopaque) void {
-                    const req: *@This() = @ptrCast(@alignCast(self));
-                    req.close_fn(req.ctx);
-                }
-
-                pub fn onError(self: *anyopaque, err: *anyopaque) void {
-                    const req: *@This() = @ptrCast(@alignCast(self));
-                    req.error_fn(req.ctx, err);
-                }
-            };
-
-            const request = try reader_internal.allocator.create(ReadRequest);
-            request.* = .{
-                .ctx = context,
-                .chunk_fn = chunk_steps,
-                .close_fn = close_steps,
-                .error_fn = error_steps,
-            };
-
-            // Add to read requests queue
-            // Note: We're using promises in the current implementation
-            // For async iterator, we'll need to adapt the controller
-            // to support callback-based read requests
-
-            // TODO: This is a simplified implementation
-            // The full implementation requires adapting the controller
-            // to accept callback-based read requests
-            _ = ControllerImpl;
-            _ = request;
-
-            // For now, return not implemented
-            return error.NotImplemented;
-        },
-    }
+    return error.NotImplemented;
 }
 
 /// ReadableStreamDefaultReaderRelease
@@ -178,7 +120,6 @@ pub fn readableStreamReaderGenericCancel(
     reader: *runtime.Instance,
     reason: ?*anyopaque,
 ) !*AsyncPromise(void) {
-    const ReaderImpl = @import("../../webidl/impls/ReadableStreamDefaultReader.zig");
     const reader_state = reader.getState(interfaces.ReadableStreamDefaultReader.State);
     const reader_internal = reader_state.own._internal orelse return error.TypeError;
 
@@ -200,7 +141,6 @@ pub fn readableStreamReaderGenericCancel(
 ///
 /// Helper to extract event loop for promise creation
 pub fn getReaderEventLoop(reader: *runtime.Instance) event_loop_mod.EventLoop {
-    const ReaderImpl = @import("../../webidl/impls/ReadableStreamDefaultReader.zig");
     const reader_state = reader.getState(interfaces.ReadableStreamDefaultReader.State);
     const reader_internal = reader_state.own._internal orelse unreachable; // Should never happen
     return reader_internal.event_loop;

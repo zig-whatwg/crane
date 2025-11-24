@@ -101,75 +101,22 @@ pub fn create(
 ///    - error steps: Release reader, reject promise with error
 /// 5. Perform ! ReadableStreamDefaultReaderRead(this, readRequest)
 /// 6. Return promise
+///
+/// **Status**: Infrastructure complete, integration pending
+/// **TODO**: Implement promise chaining or callback-based read support
 pub fn next(
     iterator: *ReadableStreamAsyncIterator,
 ) !*AsyncPromise(IteratorResult) {
-    // Step 1: Get reader
-    const reader = iterator.reader;
+    _ = iterator;
 
-    // Step 2: Assert reader.[[stream]] is not undefined
-    // (ensured by type system - reader always has stream reference)
+    // Phase 1: Infrastructure is in place
+    // Phase 2: Will implement actual integration with reader.read()
+    // Options:
+    // 1. Add promise chaining to AsyncPromise
+    // 2. Add callback support to controller's read operations
+    // 3. Use reader.read() and transform ReadResult -> IteratorResult
 
-    // Step 3: Create promise for the result
-    const promise = try AsyncPromise(IteratorResult).init(
-        iterator.allocator,
-        // Get event loop from reader
-        reader_ops.getReaderEventLoop(reader),
-    );
-    errdefer promise.deinit();
-
-    // Step 4: Create read request with chunk/close/error steps
-    // Step 5: Perform ReadableStreamDefaultReaderRead
-    const ReadRequest = struct {
-        promise_ref: *AsyncPromise(IteratorResult),
-        reader_ref: *runtime.Instance,
-
-        pub fn chunkSteps(ctx: *anyopaque, chunk: *anyopaque) void {
-            const req: *@This() = @ptrCast(@alignCast(ctx));
-            // Resolve promise with { value: chunk, done: false }
-            req.promise_ref.fulfill(.{
-                .value = chunk,
-                .done = false,
-            });
-        }
-
-        pub fn closeSteps(ctx: *anyopaque) void {
-            const req: *@This() = @ptrCast(@alignCast(ctx));
-            // Release reader
-            reader_ops.readableStreamDefaultReaderRelease(req.reader_ref) catch {};
-            // Resolve promise with { value: undefined, done: true }
-            req.promise_ref.fulfill(.{
-                .value = null,
-                .done = true,
-            });
-        }
-
-        pub fn errorSteps(ctx: *anyopaque, err: *anyopaque) void {
-            const req: *@This() = @ptrCast(@alignCast(ctx));
-            // Release reader
-            reader_ops.readableStreamDefaultReaderRelease(req.reader_ref) catch {};
-            // Reject promise with error
-            req.promise_ref.reject(err);
-        }
-    };
-
-    const request = try iterator.allocator.create(ReadRequest);
-    request.* = .{
-        .promise_ref = promise,
-        .reader_ref = reader,
-    };
-
-    // Perform the read operation
-    try reader_ops.readableStreamDefaultReaderRead(
-        reader,
-        request,
-        ReadRequest.chunkSteps,
-        ReadRequest.closeSteps,
-        ReadRequest.errorSteps,
-    );
-
-    // Step 6: Return promise
-    return promise;
+    return error.NotImplemented;
 }
 
 /// Async iterator return (early termination)
