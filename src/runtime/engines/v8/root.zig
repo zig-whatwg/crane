@@ -95,6 +95,7 @@ pub const Isolate = ffi.Isolate;
 pub const Context = ffi.Context;
 pub const Value = ffi.Value;
 pub const Object = ffi.Object;
+pub const Function = ffi.Function;
 pub const String = ffi.String;
 pub const Symbol = ffi.Symbol;
 pub const FunctionCallbackInfo = ffi.FunctionCallbackInfo;

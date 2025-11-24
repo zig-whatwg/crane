@@ -22,6 +22,8 @@ const AsyncPromise = @import("streams_async_promise").AsyncPromise;
 const QueueWithSizes = @import("streams_queue").QueueWithSizes;
 const algorithm_mod = @import("streams_algorithm");
 const Algorithm = algorithm_mod.Algorithm;
+const IteratorRecord = @import("streams_iterator_record").IteratorRecord;
+const from_iterable = @import("streams_from_iterable_algorithm");
 
 pub const State = ReadableStream.State;
 
@@ -31,6 +33,7 @@ pub const ImplError = error{
     RangeError,
     InvalidState,
     OutOfMemory,
+    NoEventLoop,
 };
 
 /// Stream state enumeration per WHATWG spec
@@ -219,16 +222,116 @@ pub fn get_locked(instance: *runtime.Instance) ImplError!bool {
 /// Returns a ReadableStream wrapping the provided iterable or async iterable.
 /// Spec algorithm: ReadableStreamFromIterable
 ///
-/// TODO: This is a complex implementation requiring:
-/// 1. V8 closure mechanism to capture iterator state in pull/cancel algorithms
-/// 2. Promise-based async iteration protocol
-/// 3. Proper cleanup of V8 handles on stream close/error
+/// Operation: from (static)
 ///
-/// For Phase 5 Part 2, we're focusing on the infrastructure. Full implementation
-/// requires additional runtime bridge work beyond the scope of V8 FFI additions.
-pub fn call_from(_: *runtime.Instance, _: *const anyopaque) ImplError!*runtime.Instance {
-    // Requires closure mechanism not yet implemented
-    return error.NotImplemented;
+/// Spec: https://streams.spec.whatwg.org/#rs-from
+/// static ReadableStream from(any asyncIterable)
+///
+/// Steps:
+/// 1. Let stream = a new ReadableStream
+/// 2. Let iteratorRecord = GetIterator(asyncIterable, async)
+/// 3. Let pullAlgorithm = steps that call IteratorNext
+/// 4. Let cancelAlgorithm = steps that call IteratorReturn
+/// 5. SetUpReadableStreamDefaultController with pullAlgorithm and cancelAlgorithm
+/// 6. Return stream
+pub fn call_from(instance: *runtime.Instance, async_iterable: *const anyopaque) ImplError!*runtime.Instance {
+    const allocator = instance.ctx.getAllocator();
+
+    // Step 1: Create new ReadableStream instance
+    const stream_instance = try init(
+        allocator,
+        State,
+        &ReadableStream.vtable,
+        instance.ctx,
+    );
+    errdefer deinit(stream_instance);
+
+    const stream_state = stream_instance.getState(State);
+
+    // Create internal state
+    const stream_internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(stream_internal);
+
+    // Step 2: Get iterator from async iterable
+    const iterator_record = IteratorRecord.fromAsyncIterable(
+        allocator,
+        instance.ctx,
+        async_iterable,
+    ) catch |err| {
+        allocator.destroy(stream_internal);
+        deinit(stream_instance);
+        return switch (err) {
+            error.TypeError => error.TypeError,
+            else => error.InvalidState,
+        };
+    };
+    errdefer iterator_record.deinit();
+
+    // Step 3-4: Create pull and cancel algorithms
+    const pull_algorithm = from_iterable.createPullAlgorithm(
+        allocator,
+        iterator_record,
+    ) catch |err| {
+        iterator_record.deinit();
+        allocator.destroy(stream_internal);
+        deinit(stream_instance);
+        return err;
+    };
+    errdefer {
+        pull_algorithm.deinit();
+        allocator.destroy(pull_algorithm);
+    }
+
+    const cancel_algorithm = from_iterable.createCancelAlgorithm(
+        allocator,
+        iterator_record,
+    ) catch |err| {
+        pull_algorithm.deinit();
+        allocator.destroy(pull_algorithm);
+        iterator_record.deinit();
+        allocator.destroy(stream_internal);
+        deinit(stream_instance);
+        return err;
+    };
+    errdefer {
+        cancel_algorithm.deinit();
+        allocator.destroy(cancel_algorithm);
+    }
+
+    // Create controller instance
+    const controller_instance = try interfaces.ReadableStreamDefaultController.init(
+        allocator,
+        instance.ctx,
+    );
+    errdefer runtime.Instance.deinit(controller_instance);
+
+    // Initialize stream internal state
+    const ev_loop = try instance.ctx.getEventLoop();
+    stream_internal.* = .{
+        .controller = controller_instance,
+        .reader = .none,
+        .state = .readable,
+        .stored_error = null,
+        .detached = false,
+        .disturbed = false,
+        .event_loop = ev_loop,
+        .allocator = allocator,
+    };
+
+    stream_state.own._internal = stream_internal;
+
+    // Step 5: Set up controller with algorithms
+    const ReadableStreamDefaultControllerImpl = @import("ReadableStreamDefaultController.zig");
+    try ReadableStreamDefaultControllerImpl.setUpReadableStreamDefaultController(
+        stream_instance,
+        controller_instance,
+        pull_algorithm,
+        cancel_algorithm,
+        1.0, // Default high water mark
+    );
+
+    // Step 6: Return stream
+    return stream_instance;
 }
 
 /// Operation: pipeThrough

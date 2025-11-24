@@ -10,13 +10,15 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const runtime = @import("runtime");
+const v8_mod = @import("v8");
+const v8 = v8_mod.ffi; // Use FFI functions directly
 const infra = @import("infra");
-const v8 = @import("v8");
 
 // V8 FFI types from v8 module
-const V8Object = v8.Object;
-const V8Function = v8.Function;
-const V8Value = v8.Value;
+const V8Object = v8_mod.Object;
+const V8Function = v8_mod.Function;
+const V8Value = v8_mod.Value;
 
 /// V8 Resource Container
 /// Stores V8 Global<> handles and ensures proper disposal

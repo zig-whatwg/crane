@@ -102,6 +102,23 @@ pub const jsengine = @import("jsengine.zig");
 // It is NOT part of the runtime module to avoid circular dependencies.
 // Use @import("v8") to access V8 bindings.
 
+// V8 context helpers (for streams and other V8-dependent code)
+const v8 = @import("v8");
+
+/// Get the V8 Isolate from a runtime Context
+/// Returns error if no engine context is set
+pub fn getIsolate(ctx: Context) *v8.Isolate {
+    const engine_ctx = ctx.getEngineContext() orelse @panic("No V8 isolate in context");
+    return @ptrCast(@alignCast(engine_ctx));
+}
+
+/// Get the V8 Context from a runtime Context
+/// Returns error if no engine context is set or if V8 context cannot be obtained
+pub fn getV8Context(ctx: Context) *v8.Context {
+    const isolate = getIsolate(ctx);
+    return v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse @panic("No V8 context available");
+}
+
 // Convenience re-exports
 pub const initRuntime = initializeRuntime;
 pub const deinitRuntime = deinitializeRuntime;

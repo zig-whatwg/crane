@@ -9,16 +9,17 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
 const V8Resources = @import("v8_resources").V8Resources;
-const v8 = @import("v8");
+const v8_mod = @import("v8");
+const v8 = v8_mod.ffi; // Use FFI functions directly
 
 // V8 FFI types from v8 module
-const V8Object = v8.Object;
-const V8Function = v8.Function;
-const V8Value = v8.Value;
-const V8Isolate = v8.Isolate;
-const V8Context = v8.Context;
-const V8Symbol = v8.Symbol;
-const V8String = v8.String;
+const V8Object = v8_mod.Object;
+const V8Function = v8_mod.Function;
+const V8Value = v8_mod.Value;
+const V8Isolate = v8_mod.Isolate;
+const V8Context = v8_mod.Context;
+const V8Symbol = v8_mod.Symbol;
+const V8String = v8_mod.String;
 
 /// Iterator Record - ECMAScript iterator state
 ///

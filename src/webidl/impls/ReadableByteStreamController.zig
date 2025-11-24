@@ -47,6 +47,7 @@ pub const ImplError = error{
     RangeError,
     NullValue, // TODO: Remove when interface generator handles nullable types correctly
     BufferDetached, // From ArrayBuffer.transfer()
+    NoEventLoop,
 };
 
 /// Byte stream queue entry per WHATWG Streams Standard § 4.7.2

@@ -616,11 +616,11 @@ pub fn setUpReadableStreamDefaultController(
     const controller_state = controller_instance.getState(State);
 
     // Create internal state
-    const allocator = controller_instance.allocator;
+    const allocator = controller_instance.ctx.getAllocator();
     const internal = try allocator.create(InternalState);
     internal.* = .{
         .stream = stream_instance,
-        .queue = try QueueWithSizes.init(allocator),
+        .queue = QueueWithSizes.init(allocator),
         .queue_total_size = 0.0,
         .started = false,
         .close_requested = false,
