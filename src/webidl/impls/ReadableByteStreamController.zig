@@ -46,6 +46,7 @@ pub const ImplError = error{
     InvalidState,
     RangeError,
     NullValue, // TODO: Remove when interface generator handles nullable types correctly
+    BufferDetached, // From ArrayBuffer.transfer()
 };
 
 /// Byte stream queue entry per WHATWG Streams Standard § 4.7.2
@@ -119,7 +120,7 @@ pub const InternalState = struct {
             entry.buffer.deinit(self.allocator);
             self.allocator.destroy(entry.buffer);
         }
-        self.byte_queue.deinit();
+        self.byte_queue.deinit(self.allocator);
 
         // Clean up pending pull-intos
         for (self.pending_pull_intos.items) |descriptor| {
@@ -127,7 +128,7 @@ pub const InternalState = struct {
             self.allocator.destroy(descriptor.buffer);
             self.allocator.destroy(descriptor);
         }
-        self.pending_pull_intos.deinit();
+        self.pending_pull_intos.deinit(self.allocator);
 
         // Clean up algorithms
         self.cancel_algorithm.deinit();
@@ -961,8 +962,8 @@ fn enqueueChunkToQueue(
     // Create queue entry
     const entry = ByteStreamQueueEntry{
         .buffer = buffer,
-        .byte_offset = byteOffset,
-        .byte_length = byteLength,
+        .byteOffset = byteOffset,
+        .byteLength = byteLength,
     };
 
     // Add to queue
@@ -1131,18 +1132,18 @@ fn fillPullIntoDescriptorFromQueue(
         const head = &internal.byte_queue.items[0];
 
         // Step 9.2: Let bytesToCopy = min(totalBytesToCopyRemaining, headOfQueue.byteLength)
-        const bytes_to_copy = @min(total_bytes_to_copy_remaining, head.byte_length);
+        const bytes_to_copy = @min(total_bytes_to_copy_remaining, head.byteLength);
 
         // Step 9.3: Let destStart = pullIntoDescriptor.byteOffset + pullIntoDescriptor.bytesFilled
         const dest_start = pullIntoDescriptor.byte_offset + pullIntoDescriptor.bytes_filled;
 
         // Step 9.4: Perform ! CopyDataBlockBytes(pullIntoDescriptor.buffer, destStart, headOfQueue.buffer, headOfQueue.byteOffset, bytesToCopy)
-        const src_slice = head.buffer.data[head.byte_offset..][0..bytes_to_copy];
+        const src_slice = head.buffer.data[head.byteOffset..][0..bytes_to_copy];
         const dest_slice = pullIntoDescriptor.buffer.data[dest_start..][0..bytes_to_copy];
         @memcpy(dest_slice, src_slice);
 
         // Step 9.5: If headOfQueue.byteLength is bytesToCopy
-        if (head.byte_length == bytes_to_copy) {
+        if (head.byteLength == bytes_to_copy) {
             // Step 9.5.1: Remove queue[0]
             const removed = internal.byte_queue.orderedRemove(0);
             removed.buffer.deinit(internal.allocator);
@@ -1150,9 +1151,9 @@ fn fillPullIntoDescriptorFromQueue(
         } else {
             // Step 9.6: Otherwise
             // Step 9.6.1: headOfQueue.byteOffset += bytesToCopy
-            head.byte_offset += bytes_to_copy;
+            head.byteOffset += bytes_to_copy;
             // Step 9.6.2: headOfQueue.byteLength -= bytesToCopy
-            head.byte_length -= bytes_to_copy;
+            head.byteLength -= bytes_to_copy;
         }
 
         // Step 9.7: controller.[[queueTotalSize]] -= bytesToCopy

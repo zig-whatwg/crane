@@ -34,6 +34,7 @@ pub const ImplError = error{
     NotImplemented,
     RangeError,
     NullValue,
+    BufferDetached, // From ReadableByteStreamController.pullInto
 };
 
 /// Type alias for read-into requests list
