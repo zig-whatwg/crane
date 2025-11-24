@@ -562,6 +562,17 @@ pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) Imp
 ///
 /// Steps (from spec):
 /// 1. Return ! AcquireReadableStreamAsyncIterator(this, options["preventCancel"])
+///
+/// ## V8 Integration
+///
+/// When called from V8, the returned Zig iterator needs to be wrapped in a V8 object
+/// with next() and return() methods. This wrapping should happen in the V8 binding layer,
+/// not here. See src/runtime/engines/v8/async_iterator.zig for the wrapper implementation.
+///
+/// The wrapper uses:
+/// - v8_AsyncIterator_New() - Creates V8 object with next()/return() methods
+/// - nextShim() - Bridges Zig iterator.next() to V8 Promise
+/// - returnShim() - Bridges Zig iterator.returnEarly() to V8 Promise
 pub fn call_values(
     instance: *runtime.Instance,
     options: dictionaries.ReadableStreamIteratorOptions,
@@ -572,9 +583,9 @@ pub fn call_values(
     // Extract preventCancel from options (defaults to false per WebIDL)
     const prevent_cancel = options.preventCancel orelse false;
 
-    // Create async iterator
+    // Create Zig async iterator
     const async_iterator_mod = @import("streams_readable_stream_async_iterator");
-    const iterator = try async_iterator_mod.create(
+    const zig_iterator = try async_iterator_mod.create(
         allocator,
         ctx,
         instance,
@@ -582,8 +593,9 @@ pub fn call_values(
     );
 
     // Return iterator as opaque pointer
-    // V8 will handle wrapping this with next() and return() methods
-    return @ptrCast(iterator);
+    // TODO: V8 binding layer should detect this is an async iterator and wrap it
+    // using src/runtime/engines/v8/async_iterator.zig:wrapAsyncIterator()
+    return @ptrCast(zig_iterator);
 }
 
 /// Operation: [Symbol.asyncIterator]

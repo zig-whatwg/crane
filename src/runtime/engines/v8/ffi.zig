@@ -739,3 +739,77 @@ pub extern fn v8_Global_SetWeak(
 /// Arguments:
 ///   handle: The Global handle to make strong again
 pub extern fn v8_Global_ClearWeak(handle: *anyopaque) void;
+
+// ============================================================================
+// Async Iterator Support
+// ============================================================================
+
+/// Zig async iterator next callback type
+///
+/// Called when JavaScript code calls iterator.next().
+/// Should return a V8 Promise that resolves to { value, done }.
+///
+/// Parameters:
+///   isolate: V8 isolate for creating promises
+///   context: V8 context for promise creation
+///   iterator_ptr: Opaque Zig iterator pointer
+///
+/// Returns:
+///   V8 Promise that resolves to { value: any, done: boolean }
+pub const ZigAsyncIteratorNextFn = *const fn (
+    isolate: *Isolate,
+    context: *Context,
+    iterator_ptr: ?*anyopaque,
+) callconv(.c) ?*Promise;
+
+/// Zig async iterator return callback type (cleanup)
+///
+/// Called when JavaScript code calls iterator.return().
+/// Should return a V8 Promise that resolves to { value: undefined, done: true }.
+///
+/// Parameters:
+///   isolate: V8 isolate for creating promises
+///   context: V8 context for promise creation
+///   iterator_ptr: Opaque Zig iterator pointer
+///
+/// Returns:
+///   V8 Promise that resolves to { value: undefined, done: true }
+pub const ZigAsyncIteratorReturnFn = *const fn (
+    isolate: *Isolate,
+    context: *Context,
+    iterator_ptr: ?*anyopaque,
+) callconv(.c) ?*Promise;
+
+/// Create a V8 async iterator object wrapping a Zig async iterator
+///
+/// Creates a JavaScript object with next() and return() methods that conform
+/// to the ES async iterator protocol. The methods return Promises.
+///
+/// JavaScript Usage:
+///   const result = await iterator.next(); // { value: ..., done: false }
+///   await iterator.return(); // { value: undefined, done: true }
+///
+/// Arguments:
+///   isolate: V8 isolate
+///   context: V8 context for creating the object
+///   iterator_ptr: Opaque Zig iterator pointer (stored in object)
+///   next_fn: Zig callback for next() -> Promise<{ value, done }>
+///   return_fn: Zig callback for return() -> Promise<{ value, done }>
+///
+/// Returns:
+///   V8 Object with next() and return() methods (Global handle)
+pub extern fn v8_AsyncIterator_New(
+    isolate: *Isolate,
+    context: *Context,
+    iterator_ptr: ?*anyopaque,
+    next_fn: ZigAsyncIteratorNextFn,
+    return_fn: ZigAsyncIteratorReturnFn,
+) ?*Object;
+
+/// Dispose an async iterator object and free its internal data
+///
+/// Cleans up the AsyncIteratorData stored in the object's internal field.
+///
+/// Arguments:
+///   iterator: The async iterator object to dispose (Global handle)
+pub extern fn v8_AsyncIterator_Dispose(iterator: *Object) void;

@@ -1071,10 +1071,12 @@ pub fn chunkToV8ValueSafe(
             break :blk @ptrCast(v8_num);
         },
 
-        .boolean => |b| {
+        .boolean => |b| blk: {
             // TODO: Implement v8_Boolean_New in v8_wrapper.cpp
-            _ = b;
-            return ConversionError.NotImplemented;
+            // For now, use number conversion (0/1) cast to boolean
+            const num_val: f64 = if (b) 1.0 else 0.0;
+            const v8_num = v8.v8_Number_New(isolate, num_val);
+            break :blk @ptrCast(v8_num);
         },
 
         .undefined_type => blk: {

@@ -1781,5 +1781,208 @@ void v8_Global_ClearWeak(void* handle) {
     global->ClearWeak();
 }
 
+// ============================================================================
+// Async Iterator Support
+// ============================================================================
+
+/// Zig async iterator next callback type
+/// Returns a V8 Promise that resolves to { value, done }
+typedef Global<Promise>* (*ZigAsyncIteratorNextFn)(
+    Isolate* isolate,
+    Global<Context>* context,
+    void* iterator_ptr
+);
+
+/// Zig async iterator return callback type
+/// Returns a V8 Promise that resolves to { value: undefined, done: true }
+typedef Global<Promise>* (*ZigAsyncIteratorReturnFn)(
+    Isolate* isolate,
+    Global<Context>* context,
+    void* iterator_ptr
+);
+
+/// Internal storage for async iterator callbacks
+struct AsyncIteratorData {
+    void* iterator_ptr;              // Zig iterator pointer
+    ZigAsyncIteratorNextFn next_fn;  // Callback for next()
+    ZigAsyncIteratorReturnFn return_fn; // Callback for return()
+};
+
+/// Callback wrapper for async iterator next() method
+static void AsyncIteratorNextCallback(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    HandleScope handle_scope(isolate);
+    
+    // Extract iterator data from 'this' object's internal field
+    Local<Object> this_obj = info.This();
+    if (this_obj->InternalFieldCount() < 1) {
+        isolate->ThrowException(Exception::TypeError(
+            String::NewFromUtf8Literal(isolate, "Invalid async iterator object")
+        ));
+        return;
+    }
+    
+    AsyncIteratorData* data = static_cast<AsyncIteratorData*>(
+        this_obj->GetAlignedPointerFromInternalField(0)
+    );
+    
+    if (!data || !data->next_fn) {
+        isolate->ThrowException(Exception::TypeError(
+            String::NewFromUtf8Literal(isolate, "Async iterator not properly initialized")
+        ));
+        return;
+    }
+    
+    // Get current context as Global handle
+    Local<Context> local_context = isolate->GetCurrentContext();
+    Global<Context>* context = new Global<Context>(isolate, local_context);
+    
+    // Call Zig next function - it returns a V8 Promise
+    Global<Promise>* promise_global = data->next_fn(isolate, context, data->iterator_ptr);
+    
+    // Clean up context handle
+    delete context;
+    
+    if (!promise_global) {
+        isolate->ThrowException(Exception::Error(
+            String::NewFromUtf8Literal(isolate, "Iterator next() failed")
+        ));
+        return;
+    }
+    
+    // Convert Global promise to Local
+    Local<Promise> promise = promise_global->Get(isolate);
+    
+    // Return the promise directly (it already resolves to { value, done })
+    info.GetReturnValue().Set(promise);
+}
+
+/// Callback wrapper for async iterator return() method
+static void AsyncIteratorReturnCallback(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    HandleScope handle_scope(isolate);
+    
+    // Extract iterator data from 'this' object's internal field
+    Local<Object> this_obj = info.This();
+    if (this_obj->InternalFieldCount() < 1) {
+        isolate->ThrowException(Exception::TypeError(
+            String::NewFromUtf8Literal(isolate, "Invalid async iterator object")
+        ));
+        return;
+    }
+    
+    AsyncIteratorData* data = static_cast<AsyncIteratorData*>(
+        this_obj->GetAlignedPointerFromInternalField(0)
+    );
+    
+    if (!data || !data->return_fn) {
+        isolate->ThrowException(Exception::TypeError(
+            String::NewFromUtf8Literal(isolate, "Async iterator not properly initialized")
+        ));
+        return;
+    }
+    
+    // Get current context as Global handle
+    Local<Context> local_context = isolate->GetCurrentContext();
+    Global<Context>* context = new Global<Context>(isolate, local_context);
+    
+    // Call Zig return function - it returns a V8 Promise
+    Global<Promise>* promise_global = data->return_fn(isolate, context, data->iterator_ptr);
+    
+    // Clean up context handle
+    delete context;
+    
+    if (!promise_global) {
+        isolate->ThrowException(Exception::Error(
+            String::NewFromUtf8Literal(isolate, "Iterator return() failed")
+        ));
+        return;
+    }
+    
+    // Convert Global promise to Local
+    Local<Promise> promise = promise_global->Get(isolate);
+    
+    // Return the promise directly (it already resolves to { value: undefined, done: true })
+    info.GetReturnValue().Set(promise);
+}
+
+/// Create a V8 async iterator object wrapping a Zig async iterator
+///
+/// Creates a JavaScript object with next() and return() methods that conform
+/// to the ES async iterator protocol.
+///
+/// The object has an internal field storing AsyncIteratorData with:
+/// - iterator_ptr: Opaque Zig iterator pointer
+/// - next_fn: Zig callback for next() -> { value, done }
+/// - return_fn: Zig callback for cleanup
+///
+/// JavaScript Usage:
+///   const result = await iterator.next(); // { value: ..., done: false }
+///   await iterator.return(); // Cleanup
+Global<Object>* v8_AsyncIterator_New(
+    Isolate* isolate,
+    Global<Context>* context,
+    void* iterator_ptr,
+    ZigAsyncIteratorNextFn next_fn,
+    ZigAsyncIteratorReturnFn return_fn
+) {
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    
+    // Create object template with 1 internal field for AsyncIteratorData
+    Local<ObjectTemplate> tpl = ObjectTemplate::New(isolate);
+    tpl->SetInternalFieldCount(1);
+    
+    // Create object instance from template
+    Local<Object> obj = tpl->NewInstance(ctx).ToLocalChecked();
+    
+    // Allocate and store iterator data in internal field
+    AsyncIteratorData* data = new AsyncIteratorData{
+        iterator_ptr,
+        next_fn,
+        return_fn
+    };
+    obj->SetAlignedPointerInInternalField(0, data);
+    
+    // Create 'next' method
+    Local<String> next_name = String::NewFromUtf8Literal(isolate, "next");
+    Local<FunctionTemplate> next_tpl = FunctionTemplate::New(isolate, AsyncIteratorNextCallback);
+    Local<Function> next_fn_obj = next_tpl->GetFunction(ctx).ToLocalChecked();
+    obj->Set(ctx, next_name, next_fn_obj).Check();
+    
+    // Create 'return' method
+    Local<String> return_name = String::NewFromUtf8Literal(isolate, "return");
+    Local<FunctionTemplate> return_tpl = FunctionTemplate::New(isolate, AsyncIteratorReturnCallback);
+    Local<Function> return_fn_obj = return_tpl->GetFunction(ctx).ToLocalChecked();
+    obj->Set(ctx, return_name, return_fn_obj).Check();
+    
+    // Return as Global handle
+    return new Global<Object>(isolate, obj);
+}
+
+/// Dispose an async iterator object and free its internal data
+void v8_AsyncIterator_Dispose(Global<Object>* iterator) {
+    if (!iterator) return;
+    
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Object> obj = iterator->Get(isolate);
+    
+    // Free internal AsyncIteratorData
+    if (obj->InternalFieldCount() >= 1) {
+        AsyncIteratorData* data = static_cast<AsyncIteratorData*>(
+            obj->GetAlignedPointerFromInternalField(0)
+        );
+        if (data) {
+            delete data;
+            obj->SetAlignedPointerInInternalField(0, nullptr);
+        }
+    }
+    
+    // Dispose Global handle
+    iterator->Reset();
+    delete iterator;
+}
+
 
 } // extern "C"
