@@ -1226,10 +1226,29 @@ fn enqueueInternal(instance: *runtime.Instance, chunk: typedefs.ArrayBufferView)
         }
     }
 
-    // Step 9: If has default reader, process read requests
-    // TODO: Implement stream.hasDefaultReader() check
-    // For now, just enqueue to queue
-    try enqueueChunkToQueue(internal, buffer_ptr, byteOffset, byteLength);
+    // Step 9: If ! ReadableStreamHasDefaultReader(stream) is true
+    const ReadableStreamImpl = @import("ReadableStream.zig");
+    if (ReadableStreamImpl.hasDefaultReader(stream)) {
+        // Step 9.1: If ! ReadableStreamGetNumReadRequests(stream) is 0
+        if (ReadableStreamImpl.getNumReadRequests(stream) == 0) {
+            // Step 9.1.1: Enqueue chunk to queue
+            try enqueueChunkToQueue(internal, buffer_ptr, byteOffset, byteLength);
+        } else {
+            // Step 9.2: Otherwise, read requests exist
+            // Step 9.2.1: Assert: controller.[[queue]] is empty
+            // (Queue should be empty if there are pending read requests)
+
+            // Step 9.2.2: Transfer buffer and fulfill first read request
+            // Create view from buffer
+            const chunk_for_read: *anyopaque = @ptrCast(buffer_ptr);
+
+            // Step 9.2.3: Fulfill read request
+            try ReadableStreamImpl.fulfillReadRequest(stream, chunk_for_read, false);
+        }
+    } else {
+        // Step 10: Otherwise (no default reader), enqueue to queue
+        try enqueueChunkToQueue(internal, buffer_ptr, byteOffset, byteLength);
+    }
 
     // Step 12: Call pull if needed
     callPullIfNeeded(instance);
