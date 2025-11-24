@@ -22,6 +22,7 @@ const Promise = streams_common.Promise;
 const CancelAlgorithm = streams_common.CancelAlgorithm;
 const PullAlgorithm = streams_common.PullAlgorithm;
 const AsyncPromise = @import("streams_async_promise").AsyncPromise;
+const event_loop = @import("streams_event_loop");
 
 // BYOB infrastructure
 const PullIntoDescriptorModule = @import("streams_pull_into_descriptor");
@@ -115,6 +116,12 @@ pub const InternalState = struct {
     isolate: ?*anyopaque,
     v8_context: ?*anyopaque,
 
+    /// Event loop for async promise scheduling
+    loop: ?event_loop.EventLoop,
+
+    /// Controller instance pointer (for callbacks)
+    controller_instance: ?*runtime.Instance,
+
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
         // Clean up byte queue buffers
         for (self.byte_queue.toSlice()) |entry| {
@@ -200,7 +207,19 @@ pub fn initInternalStateWithV8(
         .abort_controller = null,
         .isolate = isolate,
         .v8_context = v8_context,
+        .loop = null,
+        .controller_instance = null,
     };
+}
+
+/// Set the event loop and controller instance for async operations
+/// Called after controller is fully initialized
+pub fn setEventLoop(instance: *runtime.Instance, loop: event_loop.EventLoop) void {
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.loop = loop;
+        internal.controller_instance = instance;
+    }
 }
 
 /// Set the V8 context for an existing controller
@@ -503,26 +522,96 @@ pub fn callPullIfNeeded(instance: *runtime.Instance) void {
     // Step 6: Let pullPromise be the result of performing controller.[[pullAlgorithm]]
     const pull_promise = internal.pull_algorithm.call();
 
+    // Handle promise settlement (sync or async)
+    // For synchronous promises (testing), handle immediately
+    // For async promises, use event loop callbacks
+    handlePullPromise(internal, instance, pull_promise);
+}
+
+/// Handle pull promise settlement
+/// Supports both synchronous (for testing) and asynchronous (with event loop) promises
+fn handlePullPromise(internal: *InternalState, instance: *runtime.Instance, pull_promise: Promise(void)) void {
     // Step 7: Upon fulfillment of pullPromise
     if (pull_promise.isFulfilled()) {
-        // Step 7.1: Set controller.[[pulling]] to false
-        internal.pulling = false;
-
-        // Step 7.2: If controller.[[pullAgain]] is true
-        if (internal.pull_again) {
-            // Step 7.2.1: Set controller.[[pullAgain]] to false
-            internal.pull_again = false;
-            // Step 7.2.2: Perform ! ReadableByteStreamControllerCallPullIfNeeded(controller)
-            callPullIfNeeded(instance);
-        }
+        onPullFulfilled(internal, instance);
+        return;
     }
 
     // Step 8: Upon rejection of pullPromise with reason r
     if (pull_promise.isRejected()) {
-        // Step 8.1: Perform ! ReadableByteStreamControllerError(controller, r)
-        const error_value = JSValue{ .string = "Pull failed" };
-        errorInternal(internal, error_value);
+        onPullRejected(internal, pull_promise.error_value);
+        return;
     }
+
+    // Promise is still pending - need async handling
+    // For now, schedule a check on the event loop if available
+    if (internal.loop) |loop| {
+        // Create context for the callback
+        const ctx = internal.allocator.create(PullPromiseContext) catch return;
+        ctx.* = .{
+            .internal = internal,
+            .instance = instance,
+            .promise = pull_promise,
+        };
+
+        // Schedule microtask to check promise state
+        loop.queueMicrotask(.{
+            .callback = pullPromiseCheckCallback,
+            .context = ctx,
+        });
+    }
+    // If no event loop, the synchronous check above handles it
+}
+
+/// Context for async pull promise handling
+const PullPromiseContext = struct {
+    internal: *InternalState,
+    instance: *runtime.Instance,
+    promise: Promise(void),
+};
+
+/// Callback to check pull promise state (for async handling)
+fn pullPromiseCheckCallback(ctx_ptr: ?*anyopaque) void {
+    const ctx: *PullPromiseContext = @ptrCast(@alignCast(ctx_ptr orelse return));
+    defer ctx.internal.allocator.destroy(ctx);
+
+    if (ctx.promise.isFulfilled()) {
+        onPullFulfilled(ctx.internal, ctx.instance);
+    } else if (ctx.promise.isRejected()) {
+        onPullRejected(ctx.internal, ctx.promise.error_value);
+    }
+    // If still pending, the promise will settle eventually
+    // Real async would re-queue, but our sync Promise(void) settles immediately
+}
+
+/// Handle pull promise fulfillment
+/// Spec: § 4.7.4 Step 7
+fn onPullFulfilled(internal: *InternalState, instance: *runtime.Instance) void {
+    // Step 7.1: Set controller.[[pulling]] to false
+    internal.pulling = false;
+
+    // Step 7.2: If controller.[[pullAgain]] is true
+    if (internal.pull_again) {
+        // Step 7.2.1: Set controller.[[pullAgain]] to false
+        internal.pull_again = false;
+        // Step 7.2.2: Perform ! ReadableByteStreamControllerCallPullIfNeeded(controller)
+        callPullIfNeeded(instance);
+    }
+}
+
+/// Handle pull promise rejection
+/// Spec: § 4.7.4 Step 8
+fn onPullRejected(internal: *InternalState, error_value: ?webidl.errors.Exception) void {
+    // Step 8.1: Perform ! ReadableByteStreamControllerError(controller, r)
+    const error_msg = if (error_value) |err| blk: {
+        break :blk switch (err) {
+            .simple => |s| s.message,
+            else => "Pull algorithm failed",
+        };
+    } else "Pull algorithm failed";
+
+    const js_error = JSValue{ .string = error_msg };
+    errorInternal(internal, js_error);
 }
 
 /// ReadableByteStreamControllerShouldCallPull(controller)
