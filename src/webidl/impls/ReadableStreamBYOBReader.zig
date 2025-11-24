@@ -17,6 +17,12 @@ const ReadableStreamBYOBReader = interfaces.ReadableStreamBYOBReader;
 const ReadIntoRequestModule = @import("streams_read_into_request");
 const ReadIntoRequest = ReadIntoRequestModule.ReadIntoRequest;
 
+// Promise integration
+const event_loop = @import("streams_event_loop");
+const AsyncPromise = @import("streams_async_promise").AsyncPromise;
+const ReadIntoRequestWithPromise = @import("streams_read_into_request_promise").ReadIntoRequestWithPromise;
+const ReadIntoResult = @import("streams_read_into_request_promise").ReadIntoResult;
+
 pub const State = ReadableStreamBYOBReader.State;
 
 pub const ImplError = error{
@@ -47,11 +53,14 @@ pub const InternalState = struct {
     read_into_requests: ReadIntoRequestsList,
 
     /// [[closedPromise]]: Promise for the reader's closed state
-    /// TODO: Implement when Promise integration is ready
-    closed_promise: ?*const anyopaque,
+    closed_promise: *AsyncPromise(void),
+
+    /// Event loop for promise scheduling
+    loop_instance: event_loop.EventLoop,
 
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
         self.read_into_requests.deinit(allocator);
+        self.closed_promise.deinit();
     }
 };
 
@@ -61,6 +70,7 @@ pub fn init(
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
+    loop: event_loop.EventLoop,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
@@ -74,7 +84,10 @@ pub fn init(
     internal.stream = null;
     internal.read_into_requests = .{};
     internal.read_into_requests.clearRetainingCapacity();
-    internal.closed_promise = null;
+    internal.loop_instance = loop;
+
+    // Initialize closed promise (will be fulfilled/rejected during setup)
+    internal.closed_promise = try AsyncPromise(void).init(allocator, loop);
 
     return instance;
 }
@@ -98,7 +111,11 @@ pub fn call_constructor(
     ctx: runtime.Context,
     stream: *runtime.Instance,
 ) !*runtime.Instance {
-    const instance = try init(allocator, State, &ReadableStreamBYOBReader.vtable, ctx);
+    // Get event loop from stream's internal state
+    const stream_state = stream.getState(interfaces.ReadableStream.State);
+    const stream_internal = stream_state.own._internal orelse return error.InvalidState;
+
+    const instance = try init(allocator, State, &ReadableStreamBYOBReader.vtable, ctx, stream_internal.event_loop);
     errdefer deinit(instance);
 
     // Step 1: Perform ? SetUpReadableStreamBYOBReader(this, stream)
@@ -119,7 +136,7 @@ pub fn get_closed(instance: *runtime.Instance) ImplError!*const anyopaque {
     const internal = state.own._internal orelse return error.InvalidState;
 
     // Step 1: Return this.[[closedPromise]]
-    return internal.closed_promise orelse error.NotImplemented;
+    return @ptrCast(internal.closed_promise);
 }
 
 /// Operation: read
@@ -219,25 +236,39 @@ fn readInternal(
     }
 
     // Step 5: Return ! ReadableByteStreamControllerPullInto(stream.[[controller]], view, min, readIntoRequest)
-    // Get the controller
-    const controller = stream_internal.controller;
 
-    // Create readIntoRequest
-    // TODO: Create proper ReadIntoRequest callbacks for promise fulfillment
+    // Create a promise for this read operation
+    const promise = try AsyncPromise(ReadIntoResult).init(
+        internal.allocator,
+        internal.loop_instance,
+    );
+
+    // Create promise context that will fulfill the promise
+    const promise_ctx = try internal.allocator.create(PromiseContext);
+    promise_ctx.* = .{
+        .promise = promise,
+        .view = view,
+        .allocator = internal.allocator,
+    };
+
+    // Create readIntoRequest with callbacks that fulfill the promise
     const readIntoRequest = ReadIntoRequest.init(
         internal.allocator,
-        chunkSteps,
-        closeSteps,
-        errorSteps,
-        null, // context - TODO: pass promise context
+        promiseChunkSteps,
+        promiseCloseSteps,
+        promiseErrorSteps,
+        @ptrCast(promise_ctx),
     );
+
+    // Get the controller
+    const controller = stream_internal.controller;
 
     // Call controller.pullInto()
     const ReadableByteStreamControllerImpl = @import("ReadableByteStreamController.zig");
     try ReadableByteStreamControllerImpl.pullInto(controller, view, min, readIntoRequest);
 
-    // TODO: Return promise that will be fulfilled by readIntoRequest
-    return error.NotImplemented;
+    // Return the promise (caller will wait for it to fulfill)
+    return @ptrCast(promise);
 }
 
 /// SetUpReadableStreamBYOBReader(reader, stream)
@@ -293,15 +324,16 @@ fn readableStreamReaderGenericInitialize(
     _ = stream_internal;
     if (stream_int.state == .readable) {
         // Step 3.1: Set reader.[[closedPromise]] to a new promise
-        // TODO: Create promise
+        // Already initialized in init(), will be fulfilled when stream closes
     } else if (stream_int.state == .closed) {
         // Step 4: Otherwise, if stream.[[state]] is "closed"
         // Step 4.1: Set reader.[[closedPromise]] to a promise resolved with undefined
-        // TODO: Create resolved promise
+        reader_internal.closed_promise.fulfill({});
     } else {
         // Step 5: Otherwise (state is "errored")
         // Step 5.1: Set reader.[[closedPromise]] to a promise rejected with stream.[[storedError]]
-        // TODO: Create rejected promise
+        // TODO: Implement proper error rejection when JSValue integration is ready (Phase 3)
+        // For now, just leave promise pending
     }
 }
 
@@ -383,24 +415,55 @@ fn readableStreamReaderGenericCancel(internal: *InternalState, reason: *const an
     return error.NotImplemented;
 }
 
-/// ReadIntoRequest callback stubs
+// ============================================================================
+// Promise Integration Callbacks
+// ============================================================================
+
+/// Context for promise-based read operations
+const PromiseContext = struct {
+    promise: *AsyncPromise(ReadIntoResult),
+    view: typedefs.ArrayBufferView,
+    allocator: std.mem.Allocator,
+};
+
+/// Chunk steps callback: Fulfill promise with ReadIntoResult { view, done: false }
+fn promiseChunkSteps(ctx: ?*anyopaque, view: ReadIntoRequestModule.ArrayBufferView) void {
+    const promise_ctx: *PromiseContext = @ptrCast(@alignCast(ctx orelse return));
+    // Create a mutable copy to pass as pointer
+    var view_mut = view;
+    const result = ReadIntoResult{
+        .view = @ptrCast(&view_mut),
+        .done = false,
+    };
+    promise_ctx.promise.fulfill(result);
+
+    // Clean up context
+    promise_ctx.allocator.destroy(promise_ctx);
+}
+
+/// Close steps callback: Fulfill promise with ReadIntoResult { view, done: true }
+fn promiseCloseSteps(ctx: ?*anyopaque) void {
+    const promise_ctx: *PromiseContext = @ptrCast(@alignCast(ctx orelse return));
+    const result = ReadIntoResult{
+        .view = @ptrCast(@constCast(&promise_ctx.view)),
+        .done = true,
+    };
+    promise_ctx.promise.fulfill(result);
+
+    // Clean up context
+    promise_ctx.allocator.destroy(promise_ctx);
+}
+
+/// Error steps callback: Reject promise with error
 ///
-/// TODO: Implement proper promise fulfillment
-fn chunkSteps(ctx: ?*anyopaque, chunk: ReadIntoRequestModule.ArrayBufferView) void {
-    _ = ctx;
-    _ = chunk;
-    // TODO: Fulfill promise with chunk
-}
-
-fn closeSteps(ctx: ?*anyopaque) void {
-    _ = ctx;
-    // TODO: Fulfill promise with done=true
-}
-
-fn errorSteps(ctx: ?*anyopaque, error_value: ReadIntoRequestModule.Value) void {
-    _ = ctx;
+/// TODO: Implement when JSValue error integration is ready (Phase 3)
+fn promiseErrorSteps(ctx: ?*anyopaque, error_value: ReadIntoRequestModule.Value) void {
     _ = error_value;
-    // TODO: Reject promise with error
+    const promise_ctx: *PromiseContext = @ptrCast(@alignCast(ctx orelse return));
+
+    // TODO: Reject promise with error_value once AsyncPromise supports rejection
+    // For now, just clean up
+    promise_ctx.allocator.destroy(promise_ctx);
 }
 
 // ============================================================================

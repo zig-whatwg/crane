@@ -642,6 +642,16 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
+    const streams_read_into_request_promise_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/read_into_request_promise.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "event_loop", .module = streams_event_loop_mod },
+            .{ .name = "async_promise", .module = streams_async_promise_mod },
+            .{ .name = "read_into_request", .module = streams_read_into_request_mod },
+        },
+    });
+
     const streams_pull_into_descriptor_mod = b.createModule(.{
         .root_source_file = b.path("src/streams/internal/pull_into_descriptor.zig"),
         .target = target,
@@ -740,6 +750,7 @@ pub fn build(b: *std.Build) void {
     impls_mod.addImport("streams_read_request", streams_read_request_mod);
     impls_mod.addImport("streams_write_request", streams_write_request_mod);
     impls_mod.addImport("streams_read_into_request", streams_read_into_request_mod);
+    impls_mod.addImport("streams_read_into_request_promise", streams_read_into_request_promise_mod);
     impls_mod.addImport("streams_pull_into_descriptor", streams_pull_into_descriptor_mod);
 
     const mimesniff_mod = b.addModule("mimesniff", .{
