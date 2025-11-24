@@ -610,6 +610,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .imports = &.{
             .{ .name = "event_loop", .module = streams_event_loop_mod },
+            .{ .name = "infra", .module = infra_mod },
         },
     });
 
@@ -1016,6 +1017,8 @@ pub fn build(b: *std.Build) void {
             .{ .name = "streams_write_request", .module = streams_write_request_mod },
             .{ .name = "streams_read_into_request", .module = streams_read_into_request_mod },
             .{ .name = "streams_pull_into_descriptor", .module = streams_pull_into_descriptor_mod },
+            .{ .name = "streams_event_loop", .module = streams_event_loop_mod },
+            .{ .name = "streams_test_event_loop", .module = streams_test_event_loop_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/streams", target, &streams_imports, false) catch |err| {
             std.debug.print("Warning: Failed to add streams test files: {}\n", .{err});
