@@ -1,5 +1,5 @@
 //! Generated from: fs.idl
-//! Generated at: 2025-11-23T20:06:13Z
+//! Generated at: 2025-11-24T18:47:07Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -45,8 +45,8 @@ pub const FileSystemDirectoryHandle = struct {
             .{ "getDirectoryHandle", "call_getDirectoryHandle", 1 },
             .{ "removeEntry", "call_removeEntry", 1 },
             .{ "resolve", "call_resolve", 1 },
-            .{ "forEach", "call_forEach", 1 },
-            .{ "forEach", "call_forEach", 1 },
+            .{ "values", "call_values", 0 },
+            .{ "getAsyncIterator", "call_getAsyncIterator", 0 },
         };
         
         /// Methods defined/overridden by this interface
@@ -55,7 +55,8 @@ pub const FileSystemDirectoryHandle = struct {
             "getDirectoryHandle",
             "removeEntry",
             "resolve",
-            "forEach",
+            "values",
+            "getAsyncIterator",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -75,10 +76,11 @@ pub const FileSystemDirectoryHandle = struct {
         
         pub const has_constructor = false;
         
-        /// Iterable declaration (for Symbol.iterator support)
-        pub const iterable = .{
+        /// Async iterable declaration (for Symbol.asyncIterator support)
+        pub const async_iterable = .{
             .value_type = "runtime.USVString",
             .key_type = "FileSystemHandle",
+            .options_type = null,
         };
     };
 
@@ -90,11 +92,12 @@ pub const FileSystemDirectoryHandle = struct {
 
     const delegates = .{
 
-        .call_forEach = &call_forEach,
+        .call_getAsyncIterator = &call_getAsyncIterator,
         .call_getDirectoryHandle = &call_getDirectoryHandle,
         .call_getFileHandle = &call_getFileHandle,
         .call_removeEntry = &call_removeEntry,
         .call_resolve = &call_resolve,
+        .call_values = &call_values,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -118,14 +121,17 @@ pub const FileSystemDirectoryHandle = struct {
         return try FileSystemDirectoryHandleImpl.call_resolve(instance, possibleDescendant);
     }
 
-    pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {
-        
-        return try FileSystemDirectoryHandleImpl.call_forEach(instance, callback);
+    pub fn call_values(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try FileSystemDirectoryHandleImpl.call_values(instance);
     }
 
     pub fn call_getDirectoryHandle(instance: *runtime.Instance, name: runtime.USVString, options: FileSystemGetDirectoryOptions) anyerror!*const anyopaque {
         
         return try FileSystemDirectoryHandleImpl.call_getDirectoryHandle(instance, name, options);
+    }
+
+    pub fn call_getAsyncIterator(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try FileSystemDirectoryHandleImpl.call_getAsyncIterator(instance);
     }
 
     pub fn call_removeEntry(instance: *runtime.Instance, name: runtime.USVString, options: FileSystemRemoveOptions) anyerror!*const anyopaque {

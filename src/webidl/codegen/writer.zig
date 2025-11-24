@@ -241,6 +241,7 @@ pub fn writeMetadata(
     is_mixin: bool,
     iterable: ?types.Iterable,
     own_attributes: []const types.Attribute,
+    async_iterable: ?types.AsyncIterable,
 ) !void {
     _ = attributes; // Unused - we now use own_attributes for properties/lazy_properties
 
@@ -508,6 +509,41 @@ pub fn writeMetadata(
             try writer.writeAll("\",\n");
         } else {
             try writer.writeAll("            .key_type = null,\n");
+        }
+
+        try writer.writeAll("        };\n");
+    }
+
+    // Generate async_iterable metadata if present
+    if (async_iterable) |async_iter| {
+        try writer.writeAll("        \n");
+        try writer.writeAll("        /// Async iterable declaration (for Symbol.asyncIterator support)\n");
+        try writer.writeAll("        pub const async_iterable = .{\n");
+
+        // Value type (always present)
+        try writer.writeAll("            .value_type = \"");
+        try writeIDLType(writer, async_iter.keyType);
+        try writer.writeAll("\",\n");
+
+        // Key type (only for pair async iterables)
+        if (async_iter.valueType) |val_type| {
+            try writer.writeAll("            .key_type = \"");
+            try writeIDLType(writer, val_type);
+            try writer.writeAll("\",\n");
+        } else {
+            try writer.writeAll("            .key_type = null,\n");
+        }
+
+        // Options type (if arguments present)
+        if (async_iter.arguments.len > 0) {
+            // For ReadableStream: async_iterable<any>(optional ReadableStreamIteratorOptions options = {});
+            // Extract the type from the first argument
+            const first_arg = async_iter.arguments[0];
+            try writer.writeAll("            .options_type = \"");
+            try writeIDLType(writer, first_arg.idlType);
+            try writer.writeAll("\",\n");
+        } else {
+            try writer.writeAll("            .options_type = null,\n");
         }
 
         try writer.writeAll("        };\n");

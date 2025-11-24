@@ -59,6 +59,15 @@ pub fn collectInterfaceReferences(
                     try collectTypeReferences(&refs, vtype);
                 }
             },
+            .async_iterable => if (member.async_iterable) |async_iter| {
+                try collectTypeReferences(&refs, async_iter.keyType);
+                if (async_iter.valueType) |vtype| {
+                    try collectTypeReferences(&refs, vtype);
+                }
+                for (async_iter.arguments) |arg| {
+                    try collectTypeReferences(&refs, arg.idlType);
+                }
+            },
         }
     }
 
@@ -679,6 +688,15 @@ pub fn collectMemberReferences(
                 try collectTypeReferences(&refs, iter.keyType);
                 if (iter.valueType) |vtype| {
                     try collectTypeReferences(&refs, vtype);
+                }
+            },
+            .async_iterable => if (member.async_iterable) |async_iter| {
+                try collectTypeReferences(&refs, async_iter.keyType);
+                if (async_iter.valueType) |vtype| {
+                    try collectTypeReferences(&refs, vtype);
+                }
+                for (async_iter.arguments) |arg| {
+                    try collectTypeReferences(&refs, arg.idlType);
                 }
             },
         }

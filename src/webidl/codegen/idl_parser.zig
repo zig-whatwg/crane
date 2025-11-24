@@ -732,12 +732,12 @@ pub const Parser = struct {
         }
         try self.expect(.left_angle);
 
-        // Parse first type (key for pair iterable, value for value iterable)
+        // Parse first type (key for pair async iterable, value for value async iterable)
         const first_type = try self.parseType();
 
         var value_type: ?types.IDLType = null;
 
-        // Check if this is a pair iterable (has comma and second type)
+        // Check if this is a pair async iterable (has comma and second type)
         if (self.current_token.type == .comma) {
             try self.advance(); // consume comma
             value_type = try self.parseType();
@@ -745,13 +745,29 @@ pub const Parser = struct {
 
         try self.expect(.right_angle);
 
-        // Check for optional iteration parameters: async_iterable<T>(args);
+        // Parse optional iteration parameters: async_iterable<T>(args);
+        var args = std.ArrayList(types.Argument).empty;
+        errdefer {
+            for (args.items) |*arg| {
+                self.freeArgument(arg);
+            }
+            args.deinit(self.allocator);
+        }
+
         if (self.current_token.type == .left_paren) {
             try self.advance(); // consume '('
 
-            // Skip arguments for now (we don't store them in the Iterable type)
+            // Parse arguments (e.g., optional ReadableStreamIteratorOptions options = {})
             while (self.current_token.type != .right_paren and self.current_token.type != .eof) {
-                try self.advance();
+                const arg = try self.parseArgument();
+                try args.append(self.allocator, arg);
+
+                // Check for comma (more arguments)
+                if (self.current_token.type == .comma) {
+                    try self.advance();
+                } else {
+                    break;
+                }
             }
 
             try self.expect(.right_paren);
@@ -759,13 +775,12 @@ pub const Parser = struct {
 
         try self.expect(.semicolon);
 
-        // For now, treat async_iterable the same as iterable in the IR
-        // (code generator can distinguish if needed via extAttrs or other means)
         return types.Member{
-            .type = .iterable,
-            .iterable = types.Iterable{
+            .type = .async_iterable,
+            .async_iterable = types.AsyncIterable{
                 .keyType = first_type,
                 .valueType = value_type,
+                .arguments = try args.toOwnedSlice(self.allocator),
                 .extAttrs = try self.allocator.dupe(types.ExtendedAttribute, ext_attrs),
             },
         };
@@ -1557,6 +1572,20 @@ pub const Parser = struct {
                     self.freeExtendedAttribute(ext_attr);
                 }
                 self.allocator.free(iter.extAttrs);
+            },
+            .async_iterable => if (member.async_iterable) |*async_iter| {
+                self.freeIDLType(&async_iter.keyType);
+                if (async_iter.valueType) |*vtype| {
+                    self.freeIDLType(vtype);
+                }
+                for (async_iter.arguments) |*arg| {
+                    self.freeArgument(arg);
+                }
+                self.allocator.free(async_iter.arguments);
+                for (async_iter.extAttrs) |*ext_attr| {
+                    self.freeExtendedAttribute(ext_attr);
+                }
+                self.allocator.free(async_iter.extAttrs);
             },
         }
     }

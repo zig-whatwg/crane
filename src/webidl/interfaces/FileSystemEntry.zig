@@ -1,5 +1,5 @@
 //! Generated from: entries-api.idl
-//! Generated at: 2025-11-23T20:06:15Z
+//! Generated at: 2025-11-24T18:47:07Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 

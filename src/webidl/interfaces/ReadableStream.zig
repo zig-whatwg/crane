@@ -1,5 +1,5 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-23T20:06:14Z
+//! Generated at: 2025-11-24T18:47:07Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -10,6 +10,7 @@ const ReadableWritablePair = @import("dictionaries").ReadableWritablePair;
 const ReadableStreamGetReaderOptions = @import("dictionaries").ReadableStreamGetReaderOptions;
 const StreamPipeOptions = @import("dictionaries").StreamPipeOptions;
 const QueuingStrategy = @import("dictionaries").QueuingStrategy;
+const ReadableStreamIteratorOptions = @import("dictionaries").ReadableStreamIteratorOptions;
 const ReadableStreamReader = @import("typedefs").ReadableStreamReader;
 const WritableStream = @import("interfaces").WritableStream;
 
@@ -41,8 +42,8 @@ pub const ReadableStream = struct {
             .{ "pipeThrough", "call_pipeThrough", 1 },
             .{ "pipeTo", "call_pipeTo", 1 },
             .{ "tee", "call_tee", 0 },
-            .{ "forEach", "call_forEach", 1 },
-            .{ "forEach", "call_forEach", 1 },
+            .{ "values", "call_values", 0 },
+            .{ "getAsyncIterator", "call_getAsyncIterator", 0 },
         };
         
         /// Methods defined/overridden by this interface
@@ -53,7 +54,8 @@ pub const ReadableStream = struct {
             "pipeThrough",
             "pipeTo",
             "tee",
-            "forEach",
+            "values",
+            "getAsyncIterator",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -71,10 +73,11 @@ pub const ReadableStream = struct {
         
         pub const has_constructor = true;
         
-        /// Iterable declaration (for Symbol.iterator support)
-        pub const iterable = .{
+        /// Async iterable declaration (for Symbol.asyncIterator support)
+        pub const async_iterable = .{
             .value_type = "*const anyopaque",
             .key_type = null,
+            .options_type = "ReadableStreamIteratorOptions",
         };
     };
 
@@ -92,12 +95,13 @@ pub const ReadableStream = struct {
         .get_locked = &get_locked,
 
         .call_cancel = &call_cancel,
-        .call_forEach = &call_forEach,
         .call_from = &call_from,
+        .call_getAsyncIterator = &call_getAsyncIterator,
         .call_getReader = &call_getReader,
         .call_pipeThrough = &call_pipeThrough,
         .call_pipeTo = &call_pipeTo,
         .call_tee = &call_tee,
+        .call_values = &call_values,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -131,11 +135,6 @@ pub const ReadableStream = struct {
         return try ReadableStreamImpl.call_pipeThrough(instance, transform, options);
     }
 
-    pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {
-        
-        return try ReadableStreamImpl.call_forEach(instance, callback);
-    }
-
     pub fn call_from(instance: *runtime.Instance, asyncIterable: *const anyopaque) anyerror!*runtime.Instance {
         
         return try ReadableStreamImpl.call_from(instance, asyncIterable);
@@ -153,6 +152,16 @@ pub const ReadableStream = struct {
     pub fn call_getReader(instance: *runtime.Instance, options: ReadableStreamGetReaderOptions) anyerror!ReadableStreamReader {
         
         return try ReadableStreamImpl.call_getReader(instance, options);
+    }
+
+    pub fn call_values(instance: *runtime.Instance, options: ReadableStreamIteratorOptions) anyerror!*const anyopaque {
+        
+        return try ReadableStreamImpl.call_values(instance, options);
+    }
+
+    pub fn call_getAsyncIterator(instance: *runtime.Instance, options: ReadableStreamIteratorOptions) anyerror!*const anyopaque {
+        
+        return try ReadableStreamImpl.call_getAsyncIterator(instance, options);
     }
 
 };

@@ -957,6 +957,7 @@ fn generateInterfaceFile(
     defer own_constants.deinit(allocator);
 
     var iterable_member: ?types.Iterable = null;
+    var async_iterable_member: ?types.AsyncIterable = null;
 
     for (interface.members) |member| {
         switch (member.type) {
@@ -974,6 +975,9 @@ fn generateInterfaceFile(
             },
             .iterable => if (member.iterable) |iterable_def| {
                 iterable_member = iterable_def;
+            },
+            .async_iterable => if (member.async_iterable) |async_iterable_def| {
+                async_iterable_member = async_iterable_def;
             },
         }
     }
@@ -1048,6 +1052,52 @@ fn generateInterfaceFile(
         try own_ops.append(allocator, forEach_op_own);
     }
 
+    // Track allocated async iterator method arrays for cleanup
+    var values_args_alloc: ?[]types.Argument = null;
+    var values_extAttrs_alloc: ?[]types.ExtendedAttribute = null;
+    var getAsyncIterator_args_alloc: ?[]types.Argument = null;
+    var getAsyncIterator_extAttrs_alloc: ?[]types.ExtendedAttribute = null;
+    defer if (values_args_alloc) |arr| allocator.free(arr);
+    defer if (values_extAttrs_alloc) |arr| allocator.free(arr);
+    defer if (getAsyncIterator_args_alloc) |arr| allocator.free(arr);
+    defer if (getAsyncIterator_extAttrs_alloc) |arr| allocator.free(arr);
+
+    // Add values() and [Symbol.asyncIterator]() for async_iterable interfaces (per WebIDL spec)
+    // This ensures they appear in own_methods and get registered in V8
+    if (async_iterable_member) |async_iter| {
+        // Create values() operation with same arguments as async_iterable declaration
+        const values_args = try allocator.dupe(types.Argument, async_iter.arguments);
+        values_args_alloc = values_args;
+
+        const values_extAttrs = try allocator.alloc(types.ExtendedAttribute, 0);
+        values_extAttrs_alloc = values_extAttrs;
+
+        const values_op = types.Operation{
+            .name = "values",
+            .idlType = types.IDLType{ .type = "ReadableStreamAsyncIterator" },
+            .arguments = values_args,
+            .special = null,
+            .extAttrs = values_extAttrs,
+        };
+        try own_ops.append(allocator, values_op);
+
+        // Create [Symbol.asyncIterator]() operation (mapped to getAsyncIterator in impl)
+        const getAsyncIterator_args = try allocator.dupe(types.Argument, async_iter.arguments);
+        getAsyncIterator_args_alloc = getAsyncIterator_args;
+
+        const getAsyncIterator_extAttrs = try allocator.alloc(types.ExtendedAttribute, 0);
+        getAsyncIterator_extAttrs_alloc = getAsyncIterator_extAttrs;
+
+        const getAsyncIterator_op = types.Operation{
+            .name = "getAsyncIterator",
+            .idlType = types.IDLType{ .type = "ReadableStreamAsyncIterator" },
+            .arguments = getAsyncIterator_args,
+            .special = null,
+            .extAttrs = getAsyncIterator_extAttrs,
+        };
+        try own_ops.append(allocator, getAsyncIterator_op);
+    }
+
     // Generate metadata with property/method hints for V8 bindings
     try writer.writeMetadata(
         w,
@@ -1064,6 +1114,7 @@ fn generateInterfaceFile(
         interface.mixin, // Whether this is a mixin interface
         iterable_member, // Iterable declaration if present
         own_attrs.items, // Own attributes (for V8 property registration)
+        async_iterable_member, // Async iterable declaration if present
     );
 
     // Deduplicate own attributes before generating State struct

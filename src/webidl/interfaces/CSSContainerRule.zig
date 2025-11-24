@@ -1,5 +1,5 @@
 //! Generated from: css-conditional-5.idl
-//! Generated at: 2025-11-23T20:06:13Z
+//! Generated at: 2025-11-24T18:47:06Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 

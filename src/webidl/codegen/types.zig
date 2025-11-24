@@ -211,6 +211,21 @@ pub const Iterable = struct {
     extAttrs: []ExtendedAttribute = &.{},
 };
 
+/// WebIDL async iterable declaration (async_iterable<T>)
+pub const AsyncIterable = struct {
+    /// Key type (for pair async iterables) or value type (for value async iterables)
+    keyType: IDLType,
+
+    /// Value type (null for value async iterables)
+    valueType: ?IDLType = null,
+
+    /// Arguments for the async iterator (e.g., ReadableStreamIteratorOptions)
+    arguments: []Argument = &.{},
+
+    /// Extended attributes
+    extAttrs: []ExtendedAttribute = &.{},
+};
+
 /// Interface/namespace member (attribute, operation, constant)
 pub const Member = struct {
     /// Member type discriminator
@@ -222,6 +237,7 @@ pub const Member = struct {
     constant: ?Constant = null,
     constructor: ?Constructor = null,
     iterable: ?Iterable = null,
+    async_iterable: ?AsyncIterable = null,
 
     /// Get as attribute (returns null if not an attribute)
     pub fn asAttribute(self: Member) ?Attribute {
@@ -247,6 +263,11 @@ pub const Member = struct {
     pub fn asIterable(self: Member) ?Iterable {
         return if (self.type == .iterable) self.iterable else null;
     }
+
+    /// Get as async iterable (returns null if not an async iterable)
+    pub fn asAsyncIterable(self: Member) ?AsyncIterable {
+        return if (self.type == .async_iterable) self.async_iterable else null;
+    }
 };
 
 /// Member type discriminator
@@ -256,6 +277,7 @@ pub const MemberType = enum {
     constant,
     constructor,
     iterable,
+    async_iterable,
 };
 
 /// WebIDL attribute definition

@@ -570,7 +570,7 @@ pub fn call_values(
     const ctx = instance.ctx;
 
     // Extract preventCancel from options (defaults to false per WebIDL)
-    const prevent_cancel = options.preventCancel;
+    const prevent_cancel = options.preventCancel orelse false;
 
     // Create async iterator
     const async_iterator_mod = @import("streams_readable_stream_async_iterator");

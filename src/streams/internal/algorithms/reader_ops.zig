@@ -34,8 +34,8 @@ pub fn acquireReadableStreamDefaultReader(
 ) !*runtime.Instance {
     // This delegates to ReadableStreamDefaultReader constructor
     // which performs all the acquisition steps
-    const ReaderImpl = @import("../../webidl/impls/ReadableStreamDefaultReader.zig");
-    return ReaderImpl.call_constructor(allocator, ctx, stream);
+    const impls = @import("impls");
+    return impls.ReadableStreamDefaultReader.call_constructor(allocator, ctx, stream);
 }
 
 /// ReadableStreamDefaultReaderRead
@@ -100,8 +100,8 @@ pub fn readableStreamDefaultReaderRead(
 /// 9. Sets reader.[[stream]] to undefined
 pub fn readableStreamDefaultReaderRelease(reader: *runtime.Instance) !void {
     // This delegates to the releaseLock() method
-    const ReaderImpl = @import("../../webidl/impls/ReadableStreamDefaultReader.zig");
-    try ReaderImpl.call_releaseLock(reader);
+    const impls = @import("impls");
+    try impls.ReadableStreamDefaultReader.call_releaseLock(reader);
 }
 
 /// ReadableStreamReaderGenericCancel

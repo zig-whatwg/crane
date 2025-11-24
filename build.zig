@@ -741,6 +741,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "interfaces", .module = interfaces_mod },
             .{ .name = "webidl", .module = webidl_mod },
             .{ .name = "async_promise", .module = streams_async_promise_mod },
+            .{ .name = "impls", .module = impls_mod },
         },
     });
 
@@ -755,6 +756,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "dictionaries", .module = dictionaries_mod },
             .{ .name = "webidl", .module = webidl_mod },
             .{ .name = "reader_ops", .module = streams_reader_ops_mod },
+            .{ .name = "impls", .module = impls_mod },
         },
     });
 
@@ -836,6 +838,7 @@ pub fn build(b: *std.Build) void {
     impls_mod.addImport("streams_v8_resources", streams_v8_resources_mod);
     impls_mod.addImport("streams_iterator_record", streams_iterator_record_mod);
     impls_mod.addImport("streams_from_iterable_algorithm", streams_from_iterable_algorithm_mod);
+    impls_mod.addImport("streams_readable_stream_async_iterator", streams_readable_stream_async_iterator_mod);
 
     // ArrayBufferView is part of runtime module, no separate module needed
     // (ReadableStreamBYOBReader accesses it via runtime.arraybuffer_view)

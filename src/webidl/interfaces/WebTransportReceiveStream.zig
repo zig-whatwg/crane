@@ -1,5 +1,5 @@
 //! Generated from: webtransport.idl
-//! Generated at: 2025-11-23T20:06:14Z
+//! Generated at: 2025-11-24T18:47:07Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -11,6 +11,7 @@ const ReadableWritablePair = @import("dictionaries").ReadableWritablePair;
 const ReadableStreamGetReaderOptions = @import("dictionaries").ReadableStreamGetReaderOptions;
 const StreamPipeOptions = @import("dictionaries").StreamPipeOptions;
 const QueuingStrategy = @import("dictionaries").QueuingStrategy;
+const ReadableStreamIteratorOptions = @import("dictionaries").ReadableStreamIteratorOptions;
 const ReadableStreamReader = @import("typedefs").ReadableStreamReader;
 const WebTransportReceiveStreamStats = @import("dictionaries").WebTransportReceiveStreamStats;
 const WritableStream = @import("interfaces").WritableStream;
