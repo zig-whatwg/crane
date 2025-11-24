@@ -7,6 +7,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - BYOB (Bring Your Own Buffer) Streams
+
+#### Core Functionality
+- **ReadableByteStreamController** implementation with full WHATWG Streams spec compliance
+  - `get_byobRequest` getter for accessing current BYOB request
+  - `get_desiredSize` getter for calculating backpressure  
+  - `call_close()` method to close the byte stream
+  - `call_enqueue(chunk)` method to enqueue typed array chunks
+  - `call_error(e)` method to error the stream
+  - Zero-copy buffer operations via pull-into descriptors
+
+- **ReadableStreamBYOBRequest** implementation
+  - `get_view()` getter for accessing the buffer view being filled
+  - `call_respond(bytesWritten)` method to signal bytes written
+  - `call_respondWithNewView(view)` method to respond with different buffer
+  - Automatic invalidation after response
+
+- **ReadableStreamBYOBReader** implementation
+  - `get_closed()` getter returning promise that fulfills when stream closes
+  - `call_read(view, options)` method for reading into user-supplied buffers
+  - `call_releaseLock()` method to release reader lock
+  - `call_cancel(reason)` method to cancel stream
+  - Read-into request queue management
+
+#### Integration
+- **ReadableStream** extended with BYOB support
+  - `hasDefaultReader()` / `hasBYOBReader()` reader type checks
+  - `getNumReadRequests()` / `getNumReadIntoRequests()` pending request counts
+  - `fulfillReadRequest()` / `addReadRequest()` default reader operations
+  - `addReadIntoRequest()` BYOB reader operations
+
+- **ReadableStreamDefaultReader** extended for BYOB coordination
+  - Helper functions for cross-component integration
+  - Request queue management for controller access
+
+#### Algorithms Implemented
+
+- **Queue Management**
+  - Byte stream queue with buffer/offset/length entries
+  - Pull-into descriptor queue for zero-copy operations
+  - Queue draining and backpressure calculation
+  - Chunk enqueuing with buffer transfer
+
+- **BYOB Operations**
+  - `pullInto` - Initiate BYOB read into user buffer
+  - `respond` - Signal bytes written to buffer
+  - `respondWithNewView` - Replace buffer and respond
+  - Pull-into descriptor management with reader type tracking
+
+- **Integration Points**
+  - Default reader request fulfillment from byte queue
+  - BYOB reader request fulfillment from pull-into descriptors
+  - Cross-reader request processing and queue management
+  - Stream state coordination (readable/closed/errored)
+
+#### Architecture
+
+- **Zero-Copy Design**
+  - Pull-into descriptors track buffer ownership
+  - ArrayBuffer transfer for detached buffer handling
+  - View construction placeholders for runtime integration
+
+- **Reader Type Management**
+  - Union type for default vs BYOB readers
+  - Reader-specific request queues
+  - Proper lock/release semantics
+
+- **Spec Compliance**
+  - All WHATWG Streams algorithms implemented precisely
+  - Step-by-step spec comments throughout
+  - Proper error handling and edge cases
+
 ### Added - WritableStream
 
 #### Core Functionality
