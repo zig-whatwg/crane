@@ -79,6 +79,14 @@ pub const interface_bindings = @import("interface_bindings.zig");
 pub const event_loop_mod = @import("event_loop.zig");
 pub const V8EventLoop = event_loop_mod.V8EventLoop;
 
+/// V8 Promise Integration (Phase 2: Runtime Infrastructure)
+pub const promise_mod = @import("promise.zig");
+pub const Promise = promise_mod.Promise;
+pub const invokeCallback = promise_mod.invokeCallback;
+
+/// Streams API Callback Helpers (Phase 3: Runtime Infrastructure)
+pub const streams_callbacks = @import("streams_callbacks.zig");
+
 // Re-export commonly used types for convenience
 pub const Isolate = ffi.Isolate;
 pub const Context = ffi.Context;
