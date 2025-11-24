@@ -173,7 +173,7 @@ pub fn call_error(instance: *runtime.Instance, e: *const anyopaque) ImplError!vo
 /// 3. Perform ! ResetQueue(controller)
 /// 4. Perform ! ReadableStreamDefaultControllerClearAlgorithms(controller)
 /// 5. Perform ! ReadableStreamError(stream, e)
-fn readableStreamDefaultControllerError(internal: *InternalState, e: *const anyopaque) void {
+pub fn readableStreamDefaultControllerError(internal: *InternalState, e: *const anyopaque) void {
     // Step 1: Get stream
     const stream_instance = internal.stream orelse return;
     const stream_state = stream_instance.getState(interfaces.ReadableStream.State);

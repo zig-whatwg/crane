@@ -1548,30 +1548,71 @@ fn setUpReadableStreamDefaultController(
         // Invoke start algorithm with controller as argument
         const start_callback: callbacks.UnderlyingSourceStartCallback = @ptrCast(@alignCast(start_fn));
 
+        // Step 9: Let startResult be the result of performing startAlgorithm
         // Call the start function - it returns a promise or undefined
         const start_result = start_callback(@ptrCast(controller_instance));
 
-        // Treat as immediately resolved (simplified)
-        // Future: Chain promise when start returns Promise
-        // Should: await fulfillment before marking started, or reject on error
+        // Step 10-12: Handle startPromise
+        // Create an AsyncPromise to track start completion
+        const start_promise = try AsyncPromise(void).init(allocator, loop);
+
+        // For now, treat JS result as immediately resolved
+        // Full V8 integration would check if start_result is a JS Promise
+        // and wire up proper settlement. The infrastructure for async
+        // handling is in place via onSettleCtx.
         _ = start_result;
 
-        // Mark as started (simplified - should wait for promise)
-        controller_internal.started = true;
+        // Attach handlers for start promise completion
+        try start_promise.onSettleCtx(
+            onStartFulfilled,
+            onStartRejected,
+            @ptrCast(controller_internal),
+        );
 
-        // Call pull if needed
-        const ReadableStreamDefaultControllerImpl = @import("ReadableStreamDefaultController.zig");
-        ReadableStreamDefaultControllerImpl.readableStreamDefaultControllerCallPullIfNeeded(controller_internal);
+        // Fulfill immediately (simulate sync start for now)
+        // V8 integration will settle this based on actual JS Promise state
+        start_promise.fulfill({});
     } else {
-        // No start algorithm - immediately mark as started
-        controller_internal.started = true;
-
-        // Call pull if needed
-        const ReadableStreamDefaultControllerImpl = @import("ReadableStreamDefaultController.zig");
-        ReadableStreamDefaultControllerImpl.readableStreamDefaultControllerCallPullIfNeeded(controller_internal);
+        // No start algorithm - immediately mark as started and call pull
+        onStartFulfilledImmediate(controller_internal);
     }
+}
 
-    _ = loop; // Will be used for promise handling when we implement full async
+/// Handle start algorithm fulfillment
+/// Spec: § 4.9.3 SetUpReadableStreamDefaultController Step 11
+fn onStartFulfilled(ctx_ptr: *anyopaque, _: void) anyerror!void {
+    const controller_internal: *@import("ReadableStreamDefaultController.zig").InternalState = @ptrCast(@alignCast(ctx_ptr));
+    onStartFulfilledImmediate(controller_internal);
+}
+
+/// Immediate start fulfillment (no async)
+fn onStartFulfilledImmediate(controller_internal: *@import("ReadableStreamDefaultController.zig").InternalState) void {
+    // Step 11.1: Set controller.[[started]] to true
+    controller_internal.started = true;
+
+    // Step 11.2-3: Assertions (pulling and pullAgain should be false)
+    std.debug.assert(!controller_internal.pulling);
+    std.debug.assert(!controller_internal.pull_again);
+
+    // Step 11.4: Perform ! ReadableStreamDefaultControllerCallPullIfNeeded(controller)
+    const ReadableStreamDefaultControllerImpl = @import("ReadableStreamDefaultController.zig");
+    ReadableStreamDefaultControllerImpl.readableStreamDefaultControllerCallPullIfNeeded(controller_internal);
+}
+
+/// Handle start algorithm rejection
+/// Spec: § 4.9.3 SetUpReadableStreamDefaultController Step 12
+fn onStartRejected(ctx_ptr: *anyopaque, exception: webidl.errors.Exception) anyerror!void {
+    const controller_internal: *@import("ReadableStreamDefaultController.zig").InternalState = @ptrCast(@alignCast(ctx_ptr));
+
+    // Step 12.1: Perform ! ReadableStreamDefaultControllerError(controller, r)
+    const error_msg = switch (exception) {
+        .simple => |s| s.message,
+        else => "Start algorithm failed",
+    };
+
+    const js_error = streams_common.JSValue{ .string = error_msg };
+    const ReadableStreamDefaultControllerImpl = @import("ReadableStreamDefaultController.zig");
+    ReadableStreamDefaultControllerImpl.readableStreamDefaultControllerError(controller_internal, @ptrCast(&js_error));
 }
 
 /// SetUpReadableByteStreamControllerFromUnderlyingSource
@@ -1735,24 +1776,88 @@ fn setUpReadableByteStreamController(
         // Invoke start algorithm with controller as argument
         const start_callback: callbacks.UnderlyingSourceStartCallback = @ptrCast(@alignCast(start_fn));
 
-        // Call the start function
+        // Step 14: Let startResult be the result of performing startAlgorithm
         const start_result = start_callback(@ptrCast(controller_instance));
+
+        // Step 15-17: Handle startPromise
+        // Create an AsyncPromise to track start completion
+        const start_promise = try AsyncPromise(void).init(allocator, loop);
+
+        // For now, treat JS result as immediately resolved
+        // Full V8 integration would check if start_result is a JS Promise
         _ = start_result;
 
-        // Mark as started (simplified - should wait for promise)
-        controller_internal.started = true;
+        // Create context for byte stream controller start handlers
+        const ByteStartCtx = struct {
+            controller_internal: *ReadableByteStreamControllerImpl.InternalState,
+            controller_instance: *runtime.Instance,
+        };
+        const ctx = try allocator.create(ByteStartCtx);
+        ctx.* = .{
+            .controller_internal = controller_internal,
+            .controller_instance = controller_instance,
+        };
 
-        // Call pull if needed
-        ReadableByteStreamControllerImpl.callPullIfNeeded(controller_instance);
+        // Attach handlers for start promise completion
+        try start_promise.onSettleCtx(
+            onByteStartFulfilled,
+            onByteStartRejected,
+            @ptrCast(ctx),
+        );
+
+        // Fulfill immediately (simulate sync start for now)
+        start_promise.fulfill({});
     } else {
-        // No start algorithm - immediately mark as started
-        controller_internal.started = true;
-
-        // Call pull if needed
-        ReadableByteStreamControllerImpl.callPullIfNeeded(controller_instance);
+        // No start algorithm - immediately mark as started and call pull
+        onByteStartFulfilledImmediate(controller_internal, controller_instance);
     }
+}
 
-    _ = loop; // Will be used for promise handling when we implement full async
+/// Context for byte stream start handlers
+const ByteStartContext = struct {
+    controller_internal: *@import("ReadableByteStreamController.zig").InternalState,
+    controller_instance: *runtime.Instance,
+};
+
+/// Handle byte stream start algorithm fulfillment
+/// Spec: § 4.7.3 SetUpReadableByteStreamController Step 16
+fn onByteStartFulfilled(ctx_ptr: *anyopaque, _: void) anyerror!void {
+    const ctx: *ByteStartContext = @ptrCast(@alignCast(ctx_ptr));
+    onByteStartFulfilledImmediate(ctx.controller_internal, ctx.controller_instance);
+}
+
+/// Immediate byte stream start fulfillment (no async)
+fn onByteStartFulfilledImmediate(
+    controller_internal: *@import("ReadableByteStreamController.zig").InternalState,
+    controller_instance: *runtime.Instance,
+) void {
+    const ReadableByteStreamControllerImpl = @import("ReadableByteStreamController.zig");
+
+    // Step 16.1: Set controller.[[started]] to true
+    controller_internal.started = true;
+
+    // Step 16.2-3: Assertions (pulling and pullAgain should be false)
+    std.debug.assert(!controller_internal.pulling);
+    std.debug.assert(!controller_internal.pull_again);
+
+    // Step 16.4: Perform ! ReadableByteStreamControllerCallPullIfNeeded(controller)
+    ReadableByteStreamControllerImpl.callPullIfNeeded(controller_instance);
+}
+
+/// Handle byte stream start algorithm rejection
+/// Spec: § 4.7.3 SetUpReadableByteStreamController Step 17
+fn onByteStartRejected(ctx_ptr: *anyopaque, exception: webidl.errors.Exception) anyerror!void {
+    const ctx: *ByteStartContext = @ptrCast(@alignCast(ctx_ptr));
+    const ReadableByteStreamControllerImpl = @import("ReadableByteStreamController.zig");
+
+    // Step 17.1: Perform ! ReadableByteStreamControllerError(controller, r)
+    const error_msg = switch (exception) {
+        .simple => |s| s.message,
+        else => "Start algorithm failed",
+    };
+
+    const js_error = streams_common.JSValue{ .string = error_msg };
+    ReadableByteStreamControllerImpl.errorInternal(ctx.controller_internal, js_error);
 }
 
 /// Create a PullAlgorithm that invokes a JS callback for byte streams

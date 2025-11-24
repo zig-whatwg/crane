@@ -427,7 +427,7 @@ fn closeInternal(internal: *InternalState) void {
 /// ReadableByteStreamControllerError(controller, e)
 ///
 /// Spec: § 4.7.4 "Error the controller"
-fn errorInternal(internal: *InternalState, e: JSValue) void {
+pub fn errorInternal(internal: *InternalState, e: JSValue) void {
     const stream = internal.stream orelse return;
 
     // Step 1: Let stream be controller.[[stream]]
