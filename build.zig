@@ -741,6 +741,9 @@ pub fn build(b: *std.Build) void {
     // Add unified interfaces module
     streams_mod.addImport("interfaces", interfaces_mod);
 
+    // Add streams event loop to interfaces for ReadableStreamBYOBReader init
+    interfaces_mod.addImport("streams_event_loop", streams_event_loop_mod);
+
     // Add streams modules to impls for ReadableStream, WritableStream, TransformStream implementations
     impls_mod.addImport("streams_common", streams_common_mod);
     impls_mod.addImport("streams_event_loop", streams_event_loop_mod);
