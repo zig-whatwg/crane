@@ -337,6 +337,8 @@ pub extern fn v8_Value_IsBigInt(value: *Value) bool;
 // Symbol operations
 pub extern fn v8_Symbol_GetToStringTag(isolate: *Isolate) ?*Symbol;
 pub extern fn v8_Symbol_GetIterator(isolate: *Isolate) ?*Symbol;
+pub extern fn v8_Symbol_GetAsyncIterator(isolate: *Isolate) ?*Symbol;
+pub extern fn v8_Symbol_Dispose(symbol: *Symbol) void;
 pub extern fn v8_Value_IsObject(value: *Value) bool;
 pub extern fn v8_Value_IsArray(value: *Value) bool;
 pub extern fn v8_Value_BooleanValue(value: *Value, isolate: *Isolate) bool;
@@ -366,6 +368,8 @@ pub extern fn v8_Object_Dispose(obj: *Object) void;
 pub extern fn v8_Object_DefineProperty(object: *Object, context: *Context, key: *Value, value: *Value, writable: bool, enumerable: bool, configurable: bool) bool;
 pub extern fn v8_Object_SetPrototype(object: *Object, context: *Context, prototype: *Value) bool;
 pub extern fn v8_Object_PreventExtensions(object: *Object, context: *Context) bool;
+pub extern fn v8_Object_Has(context: *Context, obj: *Object, key: [*:0]const u8) bool;
+pub extern fn v8_Object_GetPropertyWithSymbol(context: *Context, obj: *Object, symbol: *Symbol) ?*Value;
 
 // Array operations
 pub extern fn v8_Array_New(isolate: *Isolate, length: c_int) *Array;
@@ -422,6 +426,25 @@ pub extern fn v8_Function_Call(
     recv: *Value,
     argc: c_int,
     argv: [*]*Value,
+) ?*Value;
+
+/// Call a JavaScript function with custom receiver ('this' binding)
+///
+/// Similar to v8_Function_Call but allows specifying custom 'this' value.
+/// Used for calling iterator.next() with iterator as 'this'.
+///
+/// @param context - The V8 context
+/// @param function - The function to call
+/// @param receiver - The 'this' value (null = undefined)
+/// @param argc - Number of arguments
+/// @param argv - Array of argument values
+/// @return Return value, or null if exception occurred
+pub extern fn v8_Function_CallWithReceiver(
+    context: *Context,
+    function: *Function,
+    receiver: ?*Value,
+    argc: c_int,
+    argv: ?[*]*Value,
 ) ?*Value;
 
 // ============================================================================

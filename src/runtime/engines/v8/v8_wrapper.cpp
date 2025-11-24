@@ -1079,6 +1079,80 @@ Global<Symbol>* v8_Symbol_GetIterator(Isolate* isolate) {
     return new Global<Symbol>(isolate, symbol);
 }
 
+Global<Symbol>* v8_Symbol_GetAsyncIterator(Isolate* isolate) {
+    HandleScope handle_scope(isolate);
+    Local<Symbol> symbol = Symbol::GetAsyncIterator(isolate);
+    return new Global<Symbol>(isolate, symbol);
+}
+
+void v8_Symbol_Dispose(Global<Symbol>* symbol) {
+    delete symbol;
+}
+
+Global<Value>* v8_Object_GetPropertyWithSymbol(
+    Global<Context>* context,
+    Global<Object>* obj,
+    Global<Symbol>* symbol
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Context> ctx = context->Get(isolate);
+    Local<Object> object = obj->Get(isolate);
+    Local<Symbol> sym = symbol->Get(isolate);
+    
+    MaybeLocal<Value> result = object->Get(ctx, sym);
+    if (result.IsEmpty()) {
+        return nullptr;
+    }
+    
+    return new Global<Value>(isolate, result.ToLocalChecked());
+}
+
+bool v8_Object_Has(
+    Global<Context>* context,
+    Global<Object>* obj,
+    const char* key
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Context> ctx = context->Get(isolate);
+    Local<Object> object = obj->Get(isolate);
+    Local<String> key_str = String::NewFromUtf8(isolate, key).ToLocalChecked();
+    
+    Maybe<bool> result = object->Has(ctx, key_str);
+    return result.FromMaybe(false);
+}
+
+Global<Value>* v8_Function_CallWithReceiver(
+    Global<Context>* context,
+    Global<Function>* function,
+    Global<Value>* receiver,
+    int argc,
+    Global<Value>** argv
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Context> ctx = context->Get(isolate);
+    Local<Function> fn = function->Get(isolate);
+    Local<Value> recv = receiver ? receiver->Get(isolate) : Undefined(isolate).As<Value>();
+    
+    std::vector<Local<Value>> args;
+    args.reserve(argc);
+    for (int i = 0; i < argc; i++) {
+        args.push_back(argv[i]->Get(isolate));
+    }
+    
+    MaybeLocal<Value> result = fn->Call(ctx, recv, argc, args.data());
+    if (result.IsEmpty()) {
+        return nullptr;
+    }
+    
+    return new Global<Value>(isolate, result.ToLocalChecked());
+}
+
 // ============================================================================
 // Microtask Functions (Event Loop Integration)
 // ============================================================================
