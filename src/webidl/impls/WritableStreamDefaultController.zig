@@ -91,6 +91,76 @@ pub const InternalState = struct {
     }
 };
 
+// ============================================================================
+// Promise Callback Context and Handlers
+// ============================================================================
+
+/// Context for write promise callbacks
+///
+/// Stores references needed by the V8 callback to complete the write operation.
+const WriteCallbackContext = struct {
+    controller: *runtime.Instance,
+    stream: *runtime.Instance,
+    allocator: std.mem.Allocator,
+};
+
+/// Context for close promise callbacks
+const CloseCallbackContext = struct {
+    stream: *runtime.Instance,
+    allocator: std.mem.Allocator,
+};
+
+/// Callback invoked when write promise is fulfilled
+///
+/// V8 calls this when the underlying sink's write() promise resolves.
+fn onWriteFulfilled(ctx_ptr: *anyopaque) void {
+    const ctx: *WriteCallbackContext = @ptrCast(@alignCast(ctx_ptr));
+    writableStreamDefaultControllerFinishWrite(ctx.controller, ctx.stream);
+    // Clean up context
+    ctx.allocator.destroy(ctx);
+}
+
+/// Callback invoked when write promise is rejected
+///
+/// V8 calls this when the underlying sink's write() promise rejects.
+fn onWriteRejected(ctx_ptr: *anyopaque, _: *v8_engine.ffi.Value) void {
+    const ctx: *WriteCallbackContext = @ptrCast(@alignCast(ctx_ptr));
+    writableStreamDefaultControllerError(ctx.controller, ctx.stream);
+    // Clean up context
+    ctx.allocator.destroy(ctx);
+}
+
+/// Callback invoked when close promise is fulfilled
+fn onCloseFulfilled(ctx_ptr: *anyopaque) void {
+    const ctx: *CloseCallbackContext = @ptrCast(@alignCast(ctx_ptr));
+    writableStreamDefaultControllerFinishClose(ctx.stream);
+    // Clean up context
+    ctx.allocator.destroy(ctx);
+}
+
+/// Callback invoked when close promise is rejected
+fn onCloseRejected(ctx_ptr: *anyopaque, _: *v8_engine.ffi.Value) void {
+    const ctx: *CloseCallbackContext = @ptrCast(@alignCast(ctx_ptr));
+    // On close rejection, error the stream
+    const stream_state = ctx.stream.getState(interfaces.WritableStream.State);
+    if (stream_state.own._internal) |stream_internal| {
+        // Mark close request as rejected
+        if (stream_internal.in_flight_close_request) |close_req| {
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = "Close algorithm rejected",
+                },
+            };
+            close_req.reject(exception);
+        }
+        stream_internal.in_flight_close_request = null;
+        stream_internal.state = .errored;
+    }
+    // Clean up context
+    ctx.allocator.destroy(ctx);
+}
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -471,21 +541,40 @@ fn writableStreamDefaultControllerProcessWrite(controller: *runtime.Instance, ch
             };
             defer write_promise.deinit();
 
+            // Create callback context for promise handlers
+            const write_ctx = internal.allocator.create(WriteCallbackContext) catch {
+                writableStreamDefaultControllerError(controller, stream);
+                return;
+            };
+            write_ctx.* = .{
+                .controller = controller,
+                .stream = stream,
+                .allocator = internal.allocator,
+            };
+
             // Create V8 callbacks for Promise handlers
-            // These wrap the Zig functions so Promise.then() can call them
-            const onFulfilled = v8_engine.zig_callbacks.createVoidCallback(
+            // These wrap the Zig functions and pass context so Promise.then() can call them
+            const onFulfilled = v8_engine.zig_callbacks.createContextCallback(
+                internal.allocator,
                 isolate,
                 v8_context,
+                onWriteFulfilled,
+                write_ctx,
             ) catch {
+                internal.allocator.destroy(write_ctx);
                 writableStreamDefaultControllerError(controller, stream);
                 return;
             };
             defer v8_engine.ffi.v8_Function_Dispose(onFulfilled);
 
-            const onRejected = v8_engine.zig_callbacks.createVoidCallback(
+            const onRejected = v8_engine.zig_callbacks.createContextCallbackWithArg(
+                internal.allocator,
                 isolate,
                 v8_context,
+                onWriteRejected,
+                write_ctx,
             ) catch {
+                internal.allocator.destroy(write_ctx);
                 writableStreamDefaultControllerError(controller, stream);
                 return;
             };
@@ -494,13 +583,12 @@ fn writableStreamDefaultControllerProcessWrite(controller: *runtime.Instance, ch
             // Chain Promise handlers
             // When write Promise settles, onFulfilled/onRejected will be called
             _ = write_promise.then(onFulfilled, onRejected) catch {
+                internal.allocator.destroy(write_ctx);
                 writableStreamDefaultControllerError(controller, stream);
                 return;
             };
 
-            // Promise will settle asynchronously
-            // TODO: In the callbacks, call writableStreamDefaultControllerFinishWrite
-            // or writableStreamDefaultControllerError appropriately
+            // Promise will settle asynchronously - callbacks will handle completion
             return;
         }
     }
@@ -581,20 +669,38 @@ fn writableStreamDefaultControllerProcessClose(controller: *runtime.Instance) vo
             };
             defer close_promise.deinit();
 
-            // Create V8 callbacks for Promise handlers
-            const onFulfilled = v8_engine.zig_callbacks.createVoidCallback(
+            // Create callback context for promise handlers
+            const close_ctx = controller_internal.allocator.create(CloseCallbackContext) catch {
+                writableStreamDefaultControllerFinishClose(stream);
+                return;
+            };
+            close_ctx.* = .{
+                .stream = stream,
+                .allocator = controller_internal.allocator,
+            };
+
+            // Create V8 callbacks for Promise handlers with context
+            const onFulfilled = v8_engine.zig_callbacks.createContextCallback(
+                controller_internal.allocator,
                 isolate,
                 v8_context,
+                onCloseFulfilled,
+                close_ctx,
             ) catch {
+                controller_internal.allocator.destroy(close_ctx);
                 writableStreamDefaultControllerFinishClose(stream);
                 return;
             };
             defer v8_engine.ffi.v8_Function_Dispose(onFulfilled);
 
-            const onRejected = v8_engine.zig_callbacks.createVoidCallback(
+            const onRejected = v8_engine.zig_callbacks.createContextCallbackWithArg(
+                controller_internal.allocator,
                 isolate,
                 v8_context,
+                onCloseRejected,
+                close_ctx,
             ) catch {
+                controller_internal.allocator.destroy(close_ctx);
                 writableStreamDefaultControllerFinishClose(stream);
                 return;
             };
@@ -602,12 +708,12 @@ fn writableStreamDefaultControllerProcessClose(controller: *runtime.Instance) vo
 
             // Chain Promise handlers
             _ = close_promise.then(onFulfilled, onRejected) catch {
+                controller_internal.allocator.destroy(close_ctx);
                 writableStreamDefaultControllerFinishClose(stream);
                 return;
             };
 
-            // Promise will settle asynchronously
-            // TODO: In onFulfilled, call writableStreamDefaultControllerFinishClose
+            // Promise will settle asynchronously - callbacks will handle completion
             return;
         }
     }

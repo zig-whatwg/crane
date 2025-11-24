@@ -48,6 +48,8 @@ const CallbackType = enum {
     two_args_void, // fn(arg1, arg2) void
     one_arg_returns_value, // fn(arg1) T
     two_args_returns_value, // fn(arg1, arg2) T
+    context_void, // fn(ctx: *anyopaque) void - context-aware callback
+    context_one_arg_void, // fn(ctx: *anyopaque, arg1: *v8.Value) void
 };
 
 /// User data structure passed to V8 callbacks
@@ -106,6 +108,8 @@ fn genericZigCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
         .two_args_void => invokeTwoArgsVoid(info, callback_data, isolate),
         .one_arg_returns_value => invokeOneArgReturnsValue(info, callback_data, isolate),
         .two_args_returns_value => invokeTwoArgsReturnsValue(info, callback_data, isolate),
+        .context_void => invokeContextVoid(info, callback_data, isolate),
+        .context_one_arg_void => invokeContextOneArgVoid(info, callback_data, isolate),
     }
 }
 
@@ -213,6 +217,51 @@ fn invokeTwoArgsReturnsValue(info: *const v8.FunctionCallbackInfo, callback_data
 
     // Return the result (don't dispose - caller owns it)
     info.setReturnValue(result);
+}
+
+/// Invoke context-aware void callback: fn(ctx: *anyopaque) void
+///
+/// This passes the user_data (context) to the Zig function, enabling
+/// callbacks to access captured state like controller/stream instances.
+fn invokeContextVoid(info: *const v8.FunctionCallbackInfo, callback_data: *CallbackUserData, isolate: *v8.Isolate) void {
+    const ContextFn = *const fn (ctx: *anyopaque) void;
+    const ctx_fn: ContextFn = @ptrCast(@alignCast(callback_data.fn_ptr));
+
+    // Pass user_data as context
+    if (callback_data.user_data) |ctx| {
+        ctx_fn(ctx);
+    }
+
+    // Return undefined
+    const undef = v8.v8_Undefined(isolate) orelse return;
+    defer v8.v8_Value_Dispose(undef);
+    info.setReturnValue(undef);
+}
+
+/// Invoke context-aware callback with one V8 argument: fn(ctx: *anyopaque, arg1: *v8.Value) void
+///
+/// This passes both user_data (context) and the first V8 argument to the Zig function.
+/// Useful for rejection handlers that need both context and the error value.
+fn invokeContextOneArgVoid(info: *const v8.FunctionCallbackInfo, callback_data: *CallbackUserData, isolate: *v8.Isolate) void {
+    const ContextOneArgFn = *const fn (ctx: *anyopaque, arg1: *v8.Value) void;
+    const ctx_fn: ContextOneArgFn = @ptrCast(@alignCast(callback_data.fn_ptr));
+
+    // Get first argument (or undefined if not provided)
+    const arg1 = if (info.length() > 0)
+        info.get(0)
+    else
+        v8.v8_Undefined(isolate) orelse return;
+    defer v8.v8_Value_Dispose(arg1);
+
+    // Pass user_data as context and V8 argument
+    if (callback_data.user_data) |ctx| {
+        ctx_fn(ctx, arg1);
+    }
+
+    // Return undefined
+    const undef = v8.v8_Undefined(isolate) orelse return;
+    defer v8.v8_Value_Dispose(undef);
+    info.setReturnValue(undef);
 }
 
 /// Detect callback type from function signature at compile time
@@ -364,6 +413,145 @@ pub fn createZigCallback(
 
     // NOTE: callback_data is now owned by the V8 Function
     // It will be freed automatically when the Function is garbage collected
+
+    return function;
+}
+
+/// Create a context-aware V8 callback that passes user_data to the Zig function
+///
+/// This is useful for Promise.then() handlers that need access to captured state
+/// like controller/stream instances.
+///
+/// Example:
+/// ```zig
+/// const WriteContext = struct {
+///     controller: *runtime.Instance,
+///     stream: *runtime.Instance,
+/// };
+///
+/// fn onWriteFulfilled(ctx_ptr: *anyopaque) void {
+///     const ctx: *WriteContext = @ptrCast(@alignCast(ctx_ptr));
+///     writableStreamDefaultControllerFinishWrite(ctx.controller, ctx.stream);
+/// }
+///
+/// var write_ctx = WriteContext{ .controller = controller, .stream = stream };
+/// const onFulfilled = try createContextCallback(
+///     allocator, isolate, v8_context, onWriteFulfilled, &write_ctx
+/// );
+/// ```
+pub fn createContextCallback(
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    callback_fn: *const fn (ctx: *anyopaque) void,
+    user_ctx: *anyopaque,
+) CallbackError!*v8.Function {
+    // Allocate CallbackUserData on the heap
+    const callback_data = allocator.create(CallbackUserData) catch return CallbackError.OutOfMemory;
+    errdefer allocator.destroy(callback_data);
+
+    callback_data.* = .{
+        .fn_ptr = @ptrCast(callback_fn),
+        .user_data = user_ctx,
+        .allocator = allocator,
+        .callback_type = .context_void,
+    };
+
+    // Wrap the callback_data in a V8 External
+    const external = v8.v8_External_New(isolate, callback_data) orelse {
+        allocator.destroy(callback_data);
+        return CallbackError.ExternalFailed;
+    };
+    errdefer v8.v8_External_Dispose(external);
+
+    // Cast External to Value for FunctionTemplate
+    const external_as_value: *v8.Value = @ptrCast(external);
+
+    // Create FunctionTemplate with our generic callback and the External as data
+    const template = v8.v8_FunctionTemplate_New(
+        isolate,
+        genericZigCallback,
+        external_as_value,
+    ) orelse {
+        v8.v8_External_Dispose(external);
+        allocator.destroy(callback_data);
+        return CallbackError.TemplateFailed;
+    };
+    defer v8.v8_FunctionTemplate_Dispose(template);
+
+    // Get Function from template
+    const function = v8.v8_FunctionTemplate_GetFunction(
+        template,
+        context,
+    ) orelse {
+        v8.v8_External_Dispose(external);
+        allocator.destroy(callback_data);
+        return CallbackError.FunctionFailed;
+    };
+
+    // Register finalizer to clean up callback_data when Function is GC'd
+    const function_handle: *anyopaque = @ptrCast(function);
+    v8.v8_Global_SetWeak(function_handle, callback_data, callbackFinalizer);
+
+    return function;
+}
+
+/// Create a context-aware V8 callback that receives both context and a V8 Value argument
+///
+/// Useful for rejection handlers that need context and the error value.
+pub fn createContextCallbackWithArg(
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    callback_fn: *const fn (ctx: *anyopaque, arg: *v8.Value) void,
+    user_ctx: *anyopaque,
+) CallbackError!*v8.Function {
+    // Allocate CallbackUserData on the heap
+    const callback_data = allocator.create(CallbackUserData) catch return CallbackError.OutOfMemory;
+    errdefer allocator.destroy(callback_data);
+
+    callback_data.* = .{
+        .fn_ptr = @ptrCast(callback_fn),
+        .user_data = user_ctx,
+        .allocator = allocator,
+        .callback_type = .context_one_arg_void,
+    };
+
+    // Wrap the callback_data in a V8 External
+    const external = v8.v8_External_New(isolate, callback_data) orelse {
+        allocator.destroy(callback_data);
+        return CallbackError.ExternalFailed;
+    };
+    errdefer v8.v8_External_Dispose(external);
+
+    // Cast External to Value for FunctionTemplate
+    const external_as_value: *v8.Value = @ptrCast(external);
+
+    // Create FunctionTemplate with our generic callback and the External as data
+    const template = v8.v8_FunctionTemplate_New(
+        isolate,
+        genericZigCallback,
+        external_as_value,
+    ) orelse {
+        v8.v8_External_Dispose(external);
+        allocator.destroy(callback_data);
+        return CallbackError.TemplateFailed;
+    };
+    defer v8.v8_FunctionTemplate_Dispose(template);
+
+    // Get Function from template
+    const function = v8.v8_FunctionTemplate_GetFunction(
+        template,
+        context,
+    ) orelse {
+        v8.v8_External_Dispose(external);
+        allocator.destroy(callback_data);
+        return CallbackError.FunctionFailed;
+    };
+
+    // Register finalizer to clean up callback_data when Function is GC'd
+    const function_handle: *anyopaque = @ptrCast(function);
+    v8.v8_Global_SetWeak(function_handle, callback_data, callbackFinalizer);
 
     return function;
 }
