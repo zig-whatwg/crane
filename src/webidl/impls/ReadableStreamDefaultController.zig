@@ -19,6 +19,7 @@ const ReadableStreamDefaultController = interfaces.ReadableStreamDefaultControll
 const streams_common = @import("streams_common");
 const QueueWithSizes = @import("streams_queue").QueueWithSizes;
 const AsyncPromise = @import("streams_async_promise").AsyncPromise;
+const Algorithm = @import("streams_algorithm").Algorithm;
 
 pub const State = ReadableStreamDefaultController.State;
 
@@ -66,15 +67,25 @@ pub const InternalState = struct {
     strategy_hwm: f64,
 
     /// [[pullAlgorithm]]: Underlying source pull callback
-    pull_algorithm: ?*const anyopaque,
+    pull_algorithm: ?*Algorithm,
 
     /// [[cancelAlgorithm]]: Underlying source cancel callback
-    cancel_algorithm: ?*const anyopaque,
+    cancel_algorithm: ?*Algorithm,
 
     /// Resource management
     allocator: std.mem.Allocator,
 
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
+        // Clean up algorithms
+        if (self.pull_algorithm) |algo| {
+            algo.deinit();
+            allocator.destroy(algo);
+        }
+        if (self.cancel_algorithm) |algo| {
+            algo.deinit();
+            allocator.destroy(algo);
+        }
+
         // Clean up queue
         self.queue.deinit();
 
@@ -242,6 +253,16 @@ fn readableStreamDefaultControllerClose(internal: *InternalState) void {
 
 /// ReadableStreamDefaultControllerClearAlgorithms(controller)
 fn readableStreamDefaultControllerClearAlgorithms(internal: *InternalState) void {
+    // Deinit and free algorithms
+    if (internal.pull_algorithm) |algo| {
+        algo.deinit();
+        internal.allocator.destroy(algo);
+    }
+    if (internal.cancel_algorithm) |algo| {
+        algo.deinit();
+        internal.allocator.destroy(algo);
+    }
+
     internal.pull_algorithm = null;
     internal.cancel_algorithm = null;
     internal.strategy_size_algorithm = null;
@@ -458,7 +479,7 @@ pub fn readableStreamDefaultControllerCallPullIfNeeded(internal: *InternalState)
     internal.pulling = true;
 
     // Step 6: Perform pullAlgorithm
-    if (internal.pull_algorithm) |pull_fn| {
+    if (internal.pull_algorithm) |algo| {
         // Get the controller instance from stream
         const stream_instance = internal.stream orelse {
             handlePullFulfillment(internal);
@@ -472,16 +493,17 @@ pub fn readableStreamDefaultControllerCallPullIfNeeded(internal: *InternalState)
         const controller_instance = stream_internal.controller;
 
         // Invoke pull algorithm with controller as argument
-        const pull_callback: callbacks.UnderlyingSourcePullCallback = @ptrCast(@alignCast(pull_fn));
+        const pull_promise = algo.invoke(controller_instance) catch |err| {
+            // On error, error the controller
+            const err_value: *const anyopaque = @ptrCast(&err);
+            readableStreamDefaultControllerError(internal, err_value);
+            return;
+        };
 
-        // Call the pull function - it returns a promise
-        const pull_promise_result = pull_callback(@ptrCast(controller_instance));
-
-        // Treat as immediately fulfilled (simplified)
-        // Future: Chain the returned promise properly:
+        // TODO: Chain the returned promise properly:
         // - On fulfillment: call handlePullFulfillment
         // - On rejection: call ReadableStreamDefaultControllerError with reason
-        _ = pull_promise_result;
+        _ = pull_promise;
 
         // Simulate immediate fulfillment (until we have proper promise handling)
         handlePullFulfillment(internal);
@@ -572,4 +594,50 @@ pub fn pullSteps(
         // Step 3.2: Call pull if needed
         readableStreamDefaultControllerCallPullIfNeeded(internal);
     }
+}
+
+/// SetUpReadableStreamDefaultController
+///
+/// Helper function to initialize a ReadableStreamDefaultController with algorithms
+///
+/// Parameters:
+/// - stream: The ReadableStream instance to control
+/// - controller: The ReadableStreamDefaultController instance
+/// - pull_algorithm: The pull algorithm (optional)
+/// - cancel_algorithm: The cancel algorithm (optional)
+/// - strategy_hwm: High water mark for backpressure
+pub fn setUpReadableStreamDefaultController(
+    stream_instance: *runtime.Instance,
+    controller_instance: *runtime.Instance,
+    pull_algorithm: ?*Algorithm,
+    cancel_algorithm: ?*Algorithm,
+    strategy_hwm: f64,
+) !void {
+    const controller_state = controller_instance.getState(State);
+
+    // Create internal state
+    const allocator = controller_instance.allocator;
+    const internal = try allocator.create(InternalState);
+    internal.* = .{
+        .stream = stream_instance,
+        .queue = try QueueWithSizes.init(allocator),
+        .queue_total_size = 0.0,
+        .started = false,
+        .close_requested = false,
+        .pull_again = false,
+        .pulling = false,
+        .strategy_size_algorithm = null,
+        .strategy_hwm = strategy_hwm,
+        .pull_algorithm = pull_algorithm,
+        .cancel_algorithm = cancel_algorithm,
+        .allocator = allocator,
+    };
+
+    controller_state.own._internal = internal;
+
+    // Mark as started
+    internal.started = true;
+
+    // Call pull if needed
+    readableStreamDefaultControllerCallPullIfNeeded(internal);
 }

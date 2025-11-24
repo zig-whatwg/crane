@@ -20,6 +20,8 @@ const streams_common = @import("streams_common");
 const event_loop = @import("streams_event_loop");
 const AsyncPromise = @import("streams_async_promise").AsyncPromise;
 const QueueWithSizes = @import("streams_queue").QueueWithSizes;
+const algorithm_mod = @import("streams_algorithm");
+const Algorithm = algorithm_mod.Algorithm;
 
 pub const State = ReadableStream.State;
 
@@ -557,6 +559,25 @@ fn setUpReadableStreamDefaultController(
     // Get controller state
     const controller_state = controller_instance.getState(interfaces.ReadableStreamDefaultController.State);
 
+    // Convert callbacks to Algorithms
+    const pull_algo: ?*Algorithm = if (pullAlgorithm) |cb|
+        try algorithm_mod.jsCallbackAlgorithm(allocator, cb)
+    else
+        null;
+    errdefer if (pull_algo) |algo| {
+        algo.deinit();
+        allocator.destroy(algo);
+    };
+
+    const cancel_algo: ?*Algorithm = if (cancelAlgorithm) |cb|
+        try algorithm_mod.jsCallbackAlgorithm(allocator, cb)
+    else
+        null;
+    errdefer if (cancel_algo) |algo| {
+        algo.deinit();
+        allocator.destroy(algo);
+    };
+
     // Create controller internal state
     const controller_internal = try allocator.create(@import("ReadableStreamDefaultController.zig").InternalState);
     errdefer allocator.destroy(controller_internal);
@@ -576,8 +597,8 @@ fn setUpReadableStreamDefaultController(
         .pulling = false,
         .strategy_size_algorithm = null, // Future: Pass extracted size algorithm for chunk sizing
         .strategy_hwm = highWaterMark,
-        .pull_algorithm = pullAlgorithm,
-        .cancel_algorithm = cancelAlgorithm,
+        .pull_algorithm = pull_algo,
+        .cancel_algorithm = cancel_algo,
         .allocator = allocator,
     };
 

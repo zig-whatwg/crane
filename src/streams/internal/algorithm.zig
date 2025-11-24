@@ -109,10 +109,9 @@ fn jsCallbackInvoke(
 
     // Wrap result in promise (callback returns *const anyopaque which is a promise)
     // For now, create resolved promise
-    const promise = try AsyncPromise(void).init(
-        controller.allocator,
-        controller.ctx.getEventLoop(),
-    );
+    const allocator = controller.ctx.getAllocator();
+    const event_loop = try controller.ctx.getEventLoop();
+    const promise = try AsyncPromise(void).init(allocator, event_loop);
     promise.fulfill({});
     return promise;
 }
@@ -156,10 +155,9 @@ fn noopInvoke(
     controller: *runtime.Instance,
     _: ?*anyopaque,
 ) !*AsyncPromise(void) {
-    const promise = try AsyncPromise(void).init(
-        controller.allocator,
-        controller.ctx.getEventLoop(),
-    );
+    const allocator = controller.ctx.getAllocator();
+    const event_loop = try controller.ctx.getEventLoop();
+    const promise = try AsyncPromise(void).init(allocator, event_loop);
     promise.fulfill({});
     return promise;
 }
