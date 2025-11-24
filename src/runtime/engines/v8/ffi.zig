@@ -40,6 +40,12 @@ pub const Array = opaque {};
 /// V8 Function - JavaScript function
 pub const Function = opaque {};
 
+/// V8 Promise - JavaScript Promise object
+pub const Promise = opaque {};
+
+/// V8 PromiseResolver - Creates and resolves/rejects Promises
+pub const PromiseResolver = opaque {};
+
 /// V8 FunctionTemplate - Template for creating JavaScript functions
 pub const FunctionTemplate = opaque {};
 
@@ -414,6 +420,51 @@ pub extern fn v8_Function_Call(
     argc: c_int,
     argv: [*]*Value,
 ) ?*Value;
+
+// ============================================================================
+// Promise API (Phase 2: Runtime Callback Infrastructure)
+// ============================================================================
+
+/// Create a new Promise resolver
+pub extern fn v8_PromiseResolver_New(context: *Context) ?*PromiseResolver;
+
+/// Get Promise from resolver
+pub extern fn v8_PromiseResolver_GetPromise(resolver: *PromiseResolver) ?*Promise;
+
+/// Resolve a Promise with a value
+pub extern fn v8_PromiseResolver_Resolve(
+    resolver: *PromiseResolver,
+    context: *Context,
+    value: *Value,
+) bool;
+
+/// Reject a Promise with a reason
+pub extern fn v8_PromiseResolver_Reject(
+    resolver: *PromiseResolver,
+    context: *Context,
+    reason: *Value,
+) bool;
+
+/// Chain a .then() handler to a Promise
+pub extern fn v8_Promise_Then(
+    promise: *Promise,
+    context: *Context,
+    on_fulfilled: ?*Function,
+    on_rejected: ?*Function,
+) ?*Promise;
+
+/// Chain a .catch() handler to a Promise
+pub extern fn v8_Promise_Catch(
+    promise: *Promise,
+    context: *Context,
+    on_rejected: *Function,
+) ?*Promise;
+
+/// Dispose a Promise
+pub extern fn v8_Promise_Dispose(promise: *Promise) void;
+
+/// Dispose a PromiseResolver
+pub extern fn v8_PromiseResolver_Dispose(resolver: *PromiseResolver) void;
 
 // ============================================================================
 // Microtask Functions (Event Loop Integration)

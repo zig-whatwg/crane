@@ -1119,4 +1119,128 @@ Global<Value>* v8_Function_Call(
     return new Global<Value>(isolate, result);
 }
 
+// ============================================================================
+// Promise API (Phase 2: Runtime Callback Infrastructure  
+// ============================================================================
+
+/// Create a new Promise resolver
+Global<Promise::Resolver>* v8_PromiseResolver_New(Global<Context>* context) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    
+    MaybeLocal<Promise::Resolver> maybe_resolver = Promise::Resolver::New(ctx);
+    if (maybe_resolver.IsEmpty()) {
+        return nullptr;
+    }
+    
+    Local<Promise::Resolver> resolver = maybe_resolver.ToLocalChecked();
+    return new Global<Promise::Resolver>(isolate, resolver);
+}
+
+/// Get Promise from resolver
+Global<Promise>* v8_PromiseResolver_GetPromise(Global<Promise::Resolver>* resolver) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Promise::Resolver> res = resolver->Get(isolate);
+    Local<Promise> promise = res->GetPromise();
+    return new Global<Promise>(isolate, promise);
+}
+
+/// Resolve a Promise with a value
+bool v8_PromiseResolver_Resolve(
+    Global<Promise::Resolver>* resolver,
+    Global<Context>* context,
+    Global<Value>* value
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Promise::Resolver> res = resolver->Get(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Local<Value> val = value->Get(isolate);
+    
+    Maybe<bool> result = res->Resolve(ctx, val);
+    return result.FromMaybe(false);
+}
+
+/// Reject a Promise with a reason
+bool v8_PromiseResolver_Reject(
+    Global<Promise::Resolver>* resolver,
+    Global<Context>* context,
+    Global<Value>* reason
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Promise::Resolver> res = resolver->Get(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Local<Value> val = reason->Get(isolate);
+    
+    Maybe<bool> result = res->Reject(ctx, val);
+    return result.FromMaybe(false);
+}
+
+/// Chain a .then() handler to a Promise
+Global<Promise>* v8_Promise_Then(
+    Global<Promise>* promise,
+    Global<Context>* context,
+    Global<Function>* on_fulfilled,
+    Global<Function>* on_rejected
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Promise> prom = promise->Get(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Local<Function> fulfilled = on_fulfilled ? on_fulfilled->Get(isolate) : Local<Function>();
+    Local<Function> rejected = on_rejected ? on_rejected->Get(isolate) : Local<Function>();
+    
+    MaybeLocal<Promise> maybe_result = prom->Then(ctx, fulfilled, rejected);
+    if (maybe_result.IsEmpty()) {
+        return nullptr;
+    }
+    
+    Local<Promise> result = maybe_result.ToLocalChecked();
+    return new Global<Promise>(isolate, result);
+}
+
+/// Chain a .catch() handler to a Promise
+Global<Promise>* v8_Promise_Catch(
+    Global<Promise>* promise,
+    Global<Context>* context,
+    Global<Function>* on_rejected
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Promise> prom = promise->Get(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Local<Function> rejected = on_rejected->Get(isolate);
+    
+    MaybeLocal<Promise> maybe_result = prom->Catch(ctx, rejected);
+    if (maybe_result.IsEmpty()) {
+        return nullptr;
+    }
+    
+    Local<Promise> result = maybe_result.ToLocalChecked();
+    return new Global<Promise>(isolate, result);
+}
+
+/// Dispose a Promise
+void v8_Promise_Dispose(Global<Promise>* promise) {
+    if (promise) {
+        promise->Reset();
+        delete promise;
+    }
+}
+
+/// Dispose a PromiseResolver
+void v8_PromiseResolver_Dispose(Global<Promise::Resolver>* resolver) {
+    if (resolver) {
+        resolver->Reset();
+        delete resolver;
+    }
+}
+
 } // extern "C"
