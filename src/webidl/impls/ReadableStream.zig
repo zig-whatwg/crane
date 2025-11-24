@@ -174,28 +174,45 @@ pub fn call_constructor(
 
     // Step 4: Check if this is a byte stream
     if (underlying_source_dict.type != null) {
-        // TODO: Byte streams not yet implemented
-        return error.NotImplemented;
+        // Step 4.1: If strategy["size"] exists, throw a RangeError
+        if (strategy.size != null) {
+            allocator.destroy(internal);
+            deinit(instance);
+            return error.RangeError;
+        }
+
+        // Step 4.2: Let highWaterMark be ? ExtractHighWaterMark(strategy, 0)
+        // Byte streams default to 0 high water mark
+        const high_water_mark = try extractHighWaterMark(&strategy, 0.0);
+
+        // Step 4.3: Perform ? SetUpReadableByteStreamControllerFromUnderlyingSource
+        try setUpReadableByteStreamControllerFromUnderlyingSource(
+            instance,
+            internal,
+            underlyingSource,
+            underlying_source_dict,
+            high_water_mark,
+        );
+    } else {
+        // Step 5: Default stream (not byte stream)
+        // Step 5.1: Assert type does not exist (checked above)
+
+        // Step 5.2: Extract size algorithm
+        const size_algorithm = extractSizeAlgorithm(&strategy);
+        _ = size_algorithm; // Will be passed to controller when size calculation is implemented
+
+        // Step 5.3: Extract high water mark (default 1 for count-based queuing)
+        const high_water_mark = try extractHighWaterMark(&strategy, 1.0);
+
+        // Step 5.4: Perform SetUpReadableStreamDefaultControllerFromUnderlyingSource
+        try setUpReadableStreamDefaultControllerFromUnderlyingSource(
+            instance,
+            internal,
+            underlyingSource,
+            underlying_source_dict,
+            high_water_mark,
+        );
     }
-
-    // Step 5: Default stream (not byte stream)
-    // Step 5.1: Assert type does not exist (checked above)
-
-    // Step 5.2: Extract size algorithm
-    const size_algorithm = extractSizeAlgorithm(&strategy);
-    _ = size_algorithm; // Will be passed to controller when size calculation is implemented
-
-    // Step 5.3: Extract high water mark (default 1 for count-based queuing)
-    const high_water_mark = try extractHighWaterMark(&strategy, 1.0);
-
-    // Step 5.4: Perform SetUpReadableStreamDefaultControllerFromUnderlyingSource
-    try setUpReadableStreamDefaultControllerFromUnderlyingSource(
-        instance,
-        internal,
-        underlyingSource,
-        underlying_source_dict,
-        high_water_mark,
-    );
 
     return instance;
 }
@@ -490,6 +507,15 @@ fn readableStreamCancel(
     promise.*.fulfill({});
 
     return @ptrCast(promise);
+}
+
+/// ReadableStreamCancel called from a reader
+/// This is used by ReadableStreamDefaultReader and ReadableStreamBYOBReader
+/// to cancel the stream while bypassing the lock check (since they hold the lock)
+pub fn readableStreamCancelFromReader(stream: *runtime.Instance, reason: *const anyopaque) ImplError!*const anyopaque {
+    const state = stream.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    return readableStreamCancel(stream, internal, reason);
 }
 
 /// ReadableStreamClose algorithm
@@ -1279,14 +1305,6 @@ fn createTeeBranchStream(
 
     return stream_instance;
 }
-
-/// Operation: forEach
-pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) ImplError!void {
-    _ = instance;
-    _ = callback;
-    return error.NotImplemented;
-}
-
 /// Operation: values
 ///
 /// Spec: https://streams.spec.whatwg.org/#rs-asynciterator
@@ -1554,6 +1572,294 @@ fn setUpReadableStreamDefaultController(
     }
 
     _ = loop; // Will be used for promise handling when we implement full async
+}
+
+/// SetUpReadableByteStreamControllerFromUnderlyingSource
+///
+/// Spec: https://streams.spec.whatwg.org/#set-up-readable-byte-stream-controller-from-underlying-source
+///
+/// Steps:
+/// 1. Let controller be a new ReadableByteStreamController
+/// 2. Let startAlgorithm be an algorithm that returns undefined
+/// 3. Let pullAlgorithm be an algorithm that returns a promise resolved with undefined
+/// 4. Let cancelAlgorithm be an algorithm that returns a promise resolved with undefined
+/// 5. If underlyingSourceDict["start"] exists, set startAlgorithm to invoke it
+/// 6. If underlyingSourceDict["pull"] exists, set pullAlgorithm to invoke it
+/// 7. If underlyingSourceDict["cancel"] exists, set cancelAlgorithm to invoke it
+/// 8. Let autoAllocateChunkSize be underlyingSourceDict["autoAllocateChunkSize"]
+/// 9. If autoAllocateChunkSize is 0, throw TypeError
+/// 10. Perform ? SetUpReadableByteStreamController(...)
+fn setUpReadableByteStreamControllerFromUnderlyingSource(
+    stream_instance: *runtime.Instance,
+    stream_internal: *InternalState,
+    underlyingSource: *const anyopaque,
+    underlyingSourceDict: *const dictionaries.UnderlyingSource,
+    highWaterMark: f64,
+) !void {
+    const allocator = stream_internal.allocator;
+    const ctx = stream_instance.ctx;
+
+    // Step 1: Create new ReadableByteStreamController
+    const controller_instance = try interfaces.ReadableByteStreamController.init(
+        allocator,
+        ctx,
+    );
+    errdefer interfaces.ReadableByteStreamController.deinit(controller_instance);
+
+    // Step 2-4: Default algorithms (no-ops that return undefined/resolved promise)
+    var start_algorithm: ?*const anyopaque = null;
+    var pull_algorithm: ?*const anyopaque = null;
+    var cancel_algorithm: ?*const anyopaque = null;
+
+    // Step 5: If start callback exists, use it
+    if (underlyingSourceDict.start) |_| {
+        start_algorithm = underlyingSourceDict.start;
+    }
+
+    // Step 6: If pull callback exists, use it
+    if (underlyingSourceDict.pull) |_| {
+        pull_algorithm = underlyingSourceDict.pull;
+    }
+
+    // Step 7: If cancel callback exists, use it
+    if (underlyingSourceDict.cancel) |_| {
+        cancel_algorithm = underlyingSourceDict.cancel;
+    }
+
+    // Step 8: Get autoAllocateChunkSize
+    const auto_allocate_chunk_size = underlyingSourceDict.autoAllocateChunkSize;
+
+    // Step 9: If autoAllocateChunkSize is 0, throw TypeError
+    if (auto_allocate_chunk_size) |size| {
+        if (size == 0) {
+            return error.TypeError;
+        }
+    }
+
+    // Step 10: SetUpReadableByteStreamController
+    try setUpReadableByteStreamController(
+        stream_instance,
+        stream_internal,
+        controller_instance,
+        start_algorithm,
+        pull_algorithm,
+        cancel_algorithm,
+        highWaterMark,
+        auto_allocate_chunk_size,
+    );
+
+    _ = underlyingSource; // Will be used when we invoke callbacks
+}
+
+/// SetUpReadableByteStreamController
+///
+/// Spec: https://streams.spec.whatwg.org/#set-up-readable-byte-stream-controller
+///
+/// Steps:
+/// 1. Assert: stream.[[controller]] is undefined
+/// 2. If autoAllocateChunkSize is not undefined, assert it's a positive integer
+/// 3. Set controller.[[stream]] to stream
+/// 4. Set controller.[[pullAgain]] and [[pulling]] to false
+/// 5. Set controller.[[byobRequest]] to null
+/// 6. Perform ! ResetQueue(controller)
+/// 7. Set controller.[[closeRequested]] and [[started]] to false
+/// 8. Set controller.[[strategyHWM]] to highWaterMark
+/// 9. Set controller.[[pullAlgorithm]] to pullAlgorithm
+/// 10. Set controller.[[cancelAlgorithm]] to cancelAlgorithm
+/// 11. Set controller.[[autoAllocateChunkSize]] to autoAllocateChunkSize
+/// 12. Set controller.[[pendingPullIntos]] to empty list
+/// 13. Set stream.[[controller]] to controller
+/// 14. Let startResult be the result of performing startAlgorithm
+/// 15. Let startPromise be a promise resolved with startResult
+/// 16. Upon fulfillment of startPromise: set started to true, call pull if needed
+/// 17. Upon rejection of startPromise: error the controller
+fn setUpReadableByteStreamController(
+    stream_instance: *runtime.Instance,
+    stream_internal: *InternalState,
+    controller_instance: *runtime.Instance,
+    startAlgorithm: ?*const anyopaque,
+    pullAlgorithm: ?*const anyopaque,
+    cancelAlgorithm: ?*const anyopaque,
+    highWaterMark: f64,
+    autoAllocateChunkSize: ?u64,
+) !void {
+    const allocator = stream_internal.allocator;
+    const loop = stream_internal.event_loop;
+
+    // Step 1: Assert controller is undefined (guaranteed by constructor)
+    // Step 2: If autoAllocateChunkSize provided, it must be positive (checked in FromUnderlyingSource)
+
+    // Get controller state
+    const controller_state = controller_instance.getState(interfaces.ReadableByteStreamController.State);
+
+    // Import ReadableByteStreamController implementation
+    const ReadableByteStreamControllerImpl = @import("ReadableByteStreamController.zig");
+
+    // Convert callbacks to streams_common algorithm types
+    const pull_algo: streams_common.PullAlgorithm = if (pullAlgorithm) |cb| blk: {
+        // Create pull algorithm that invokes JS callback
+        const algo = try createByteStreamPullAlgorithm(allocator, cb);
+        break :blk algo;
+    } else defaultByteStreamPullAlgorithm();
+
+    const cancel_algo: streams_common.CancelAlgorithm = if (cancelAlgorithm) |cb| blk: {
+        // Create cancel algorithm that invokes JS callback
+        const algo = try createByteStreamCancelAlgorithm(allocator, cb);
+        break :blk algo;
+    } else defaultByteStreamCancelAlgorithm();
+
+    // Create controller internal state
+    const controller_internal = try allocator.create(ReadableByteStreamControllerImpl.InternalState);
+    errdefer allocator.destroy(controller_internal);
+
+    // Initialize internal state per spec steps 3-12
+    // Note: We initialize the byte_queue and pending_pull_intos through the init function
+    // to get the correct types
+    try ReadableByteStreamControllerImpl.initInternalState(
+        controller_internal,
+        allocator,
+        stream_instance,
+        highWaterMark,
+        autoAllocateChunkSize,
+        pull_algo,
+        cancel_algo,
+    );
+
+    controller_state.own._internal = controller_internal;
+
+    // Step 13: Set stream.[[controller]] to controller
+    stream_internal.controller = controller_instance;
+
+    // Step 14-17: Perform startAlgorithm and handle promise
+    if (startAlgorithm) |start_fn| {
+        // Invoke start algorithm with controller as argument
+        const start_callback: callbacks.UnderlyingSourceStartCallback = @ptrCast(@alignCast(start_fn));
+
+        // Call the start function
+        const start_result = start_callback(@ptrCast(controller_instance));
+        _ = start_result;
+
+        // Mark as started (simplified - should wait for promise)
+        controller_internal.started = true;
+
+        // Call pull if needed
+        ReadableByteStreamControllerImpl.callPullIfNeeded(controller_instance);
+    } else {
+        // No start algorithm - immediately mark as started
+        controller_internal.started = true;
+
+        // Call pull if needed
+        ReadableByteStreamControllerImpl.callPullIfNeeded(controller_instance);
+    }
+
+    _ = loop; // Will be used for promise handling when we implement full async
+}
+
+/// Create a PullAlgorithm that invokes a JS callback for byte streams
+fn createByteStreamPullAlgorithm(allocator: std.mem.Allocator, callback: *const anyopaque) !streams_common.PullAlgorithm {
+    // Allocate context to hold callback pointer
+    const Context = struct {
+        callback: *const anyopaque,
+    };
+    const ctx = try allocator.create(Context);
+    ctx.* = .{ .callback = callback };
+
+    const vtable = struct {
+        fn call(ptr: *anyopaque) streams_common.Promise(void) {
+            const context: *Context = @ptrCast(@alignCast(ptr));
+            // In full implementation, this would invoke the JS callback
+            // For now, return resolved promise
+            _ = context;
+            return streams_common.Promise(void).fulfilled({});
+        }
+        fn deinitFn(ptr: *anyopaque) void {
+            const context: *Context = @ptrCast(@alignCast(ptr));
+            // Get allocator from somewhere to free - for now leak
+            _ = context;
+        }
+    };
+
+    return streams_common.PullAlgorithm{
+        .ptr = ctx,
+        .vtable = &.{
+            .call = vtable.call,
+            .deinit = vtable.deinitFn,
+        },
+    };
+}
+
+/// Create a CancelAlgorithm that invokes a JS callback for byte streams
+fn createByteStreamCancelAlgorithm(allocator: std.mem.Allocator, callback: *const anyopaque) !streams_common.CancelAlgorithm {
+    const Context = struct {
+        callback: *const anyopaque,
+    };
+    const ctx = try allocator.create(Context);
+    ctx.* = .{ .callback = callback };
+
+    const vtable = struct {
+        fn call(ptr: *anyopaque, reason: ?streams_common.JSValue) streams_common.Promise(void) {
+            const context: *Context = @ptrCast(@alignCast(ptr));
+            _ = context;
+            _ = reason;
+            return streams_common.Promise(void).fulfilled({});
+        }
+        fn deinitFn(ptr: *anyopaque) void {
+            const context: *Context = @ptrCast(@alignCast(ptr));
+            _ = context;
+        }
+    };
+
+    return streams_common.CancelAlgorithm{
+        .ptr = ctx,
+        .vtable = &.{
+            .call = vtable.call,
+            .deinit = vtable.deinitFn,
+        },
+    };
+}
+
+/// Default pull algorithm for byte streams (no-op, returns resolved promise)
+fn defaultByteStreamPullAlgorithm() streams_common.PullAlgorithm {
+    const vtable = struct {
+        fn call(_: *anyopaque) streams_common.Promise(void) {
+            return streams_common.Promise(void).fulfilled({});
+        }
+        fn deinitFn(_: *anyopaque) void {}
+    };
+
+    const static = struct {
+        var dummy: u8 = 0;
+    };
+
+    return streams_common.PullAlgorithm{
+        .ptr = &static.dummy,
+        .vtable = &.{
+            .call = vtable.call,
+            .deinit = vtable.deinitFn,
+        },
+    };
+}
+
+/// Default cancel algorithm for byte streams (no-op, returns resolved promise)
+fn defaultByteStreamCancelAlgorithm() streams_common.CancelAlgorithm {
+    const vtable = struct {
+        fn call(_: *anyopaque, _: ?streams_common.JSValue) streams_common.Promise(void) {
+            return streams_common.Promise(void).fulfilled({});
+        }
+        fn deinitFn(_: *anyopaque) void {}
+    };
+
+    const static = struct {
+        var dummy: u8 = 0;
+    };
+
+    return streams_common.CancelAlgorithm{
+        .ptr = &static.dummy,
+        .vtable = &.{
+            .call = vtable.call,
+            .deinit = vtable.deinitFn,
+        },
+    };
 }
 
 // ============================================================================

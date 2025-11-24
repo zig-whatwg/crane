@@ -110,17 +110,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// Spec: https://streams.spec.whatwg.org/#ws-default-controller-signal
 /// Returns: An AbortSignal that can be used to abort pending write/close operations
+///
+/// NOTE: This returns the AbortSignal associated with the controller's AbortController.
+/// Per spec, the signal should be created when the controller is set up.
 pub fn get_signal(instance: *runtime.Instance) ImplError!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
-    // Return the AbortController's signal
-    // Future: Implement proper AbortController.signal getter
-    if (internal.abort_controller) |controller| {
-        return controller;
+    // Return the AbortSignal from the AbortController
+    // Per spec, the controller's [[abortController]] should always exist
+    // and we return abortController.[[signal]]
+    if (internal.abort_controller) |abort_controller| {
+        // Get the signal from the AbortController
+        const AbortControllerImpl = @import("AbortController.zig");
+        return AbortControllerImpl.get_signal(abort_controller);
     }
 
-    return error.NotImplemented;
+    // If no abort controller is set, this is an implementation error
+    // The abort controller should be created during controller setup
+    return error.InvalidState;
 }
 
 /// Operation: error

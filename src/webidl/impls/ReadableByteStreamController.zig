@@ -151,6 +151,42 @@ pub fn init(
     return instance;
 }
 
+/// Initialize the internal state for the controller
+/// Called from ReadableStream.setUpReadableByteStreamController
+pub fn initInternalState(
+    internal: *InternalState,
+    allocator: std.mem.Allocator,
+    stream: *runtime.Instance,
+    highWaterMark: f64,
+    autoAllocateChunkSize: ?u64,
+    pull_algorithm: PullAlgorithm,
+    cancel_algorithm: CancelAlgorithm,
+) !void {
+    // Initialize with empty ArrayLists using Zig 0.15 API
+    const byte_queue = try std.ArrayList(ByteStreamQueueEntry).initCapacity(allocator, 0);
+    const pending_pull_intos = try std.ArrayList(*PullIntoDescriptor).initCapacity(allocator, 0);
+
+    internal.* = .{
+        .allocator = allocator,
+        .stream = stream,
+        .pull_again = false,
+        .pulling = false,
+        .byob_request = null,
+        .byte_queue = byte_queue,
+        .queue_total_size = 0.0,
+        .close_requested = false,
+        .started = false,
+        .strategy_hwm = highWaterMark,
+        .pull_algorithm = pull_algorithm,
+        .cancel_algorithm = cancel_algorithm,
+        .auto_allocate_chunk_size = autoAllocateChunkSize,
+        .pending_pull_intos = pending_pull_intos,
+        .abort_controller = null,
+        .isolate = null,
+        .v8_context = null,
+    };
+}
+
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);

@@ -417,10 +417,10 @@ fn readableStreamReaderGenericCancel(internal: *InternalState, reason: *const an
     // (Checked above)
 
     // Step 3: Return ! ReadableStreamCancel(stream, reason)
-    // TODO: Implement ReadableStream.cancel() properly
-    _ = reason;
-    _ = stream;
-    return error.NotImplemented;
+    // Note: We need to call the internal readableStreamCancel, not call_cancel
+    // because call_cancel checks if stream is locked (and reader holds the lock)
+    const ReadableStreamImpl = @import("ReadableStream.zig");
+    return ReadableStreamImpl.readableStreamCancelFromReader(stream, reason);
 }
 
 // ============================================================================
