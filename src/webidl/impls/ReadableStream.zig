@@ -565,7 +565,7 @@ pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) Imp
 pub fn call_values(
     instance: *runtime.Instance,
     options: dictionaries.ReadableStreamIteratorOptions,
-) ImplError!*runtime.Instance {
+) ImplError!*const anyopaque {
     const allocator = instance.ctx.getAllocator();
     const ctx = instance.ctx;
 
@@ -581,14 +581,9 @@ pub fn call_values(
         prevent_cancel,
     );
 
-    // For now, return the stream itself as a placeholder
-    // TODO: Create a proper ReadableStreamAsyncIterator WebIDL interface
-    // and return an instance of that
-    _ = iterator;
-
-    // Temporary: Return stream instance
-    // The iterator should be wrapped in a WebIDL interface instance
-    return instance;
+    // Return iterator as opaque pointer
+    // V8 will handle wrapping this with next() and return() methods
+    return @ptrCast(iterator);
 }
 
 /// Operation: [Symbol.asyncIterator]
@@ -604,7 +599,7 @@ pub fn call_values(
 pub fn call_getAsyncIterator(
     instance: *runtime.Instance,
     options: dictionaries.ReadableStreamIteratorOptions,
-) ImplError!*runtime.Instance {
+) ImplError!*const anyopaque {
     // Delegate to values() - they have identical behavior
     return call_values(instance, options);
 }
