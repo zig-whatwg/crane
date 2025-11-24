@@ -550,6 +550,65 @@ pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) Imp
     return error.NotImplemented;
 }
 
+/// Operation: values
+///
+/// Spec: https://streams.spec.whatwg.org/#rs-asynciterator
+/// Per spec "asynchronous iterator initialization steps" (streams.md lines 602-610)
+///
+/// Returns an async iterator for iterating over stream chunks.
+///
+/// Parameters:
+/// - options: Optional configuration with preventCancel flag
+///
+/// Steps (from spec):
+/// 1. Return ! AcquireReadableStreamAsyncIterator(this, options["preventCancel"])
+pub fn call_values(
+    instance: *runtime.Instance,
+    options: dictionaries.ReadableStreamIteratorOptions,
+) ImplError!*runtime.Instance {
+    const allocator = instance.ctx.getAllocator();
+    const ctx = instance.ctx;
+
+    // Extract preventCancel from options (defaults to false per WebIDL)
+    const prevent_cancel = options.preventCancel;
+
+    // Create async iterator
+    const async_iterator_mod = @import("streams_readable_stream_async_iterator");
+    const iterator = try async_iterator_mod.create(
+        allocator,
+        ctx,
+        instance,
+        prevent_cancel,
+    );
+
+    // For now, return the stream itself as a placeholder
+    // TODO: Create a proper ReadableStreamAsyncIterator WebIDL interface
+    // and return an instance of that
+    _ = iterator;
+
+    // Temporary: Return stream instance
+    // The iterator should be wrapped in a WebIDL interface instance
+    return instance;
+}
+
+/// Operation: [Symbol.asyncIterator]
+///
+/// Spec: https://streams.spec.whatwg.org/#rs-asynciterator
+/// WebIDL: async_iterable<any>(optional ReadableStreamIteratorOptions options = {});
+///
+/// Default async iterator (enables for-await-of loops).
+/// Delegates to values() with the same options.
+///
+/// Steps:
+/// 1. Return ! this.values(options)
+pub fn call_getAsyncIterator(
+    instance: *runtime.Instance,
+    options: dictionaries.ReadableStreamIteratorOptions,
+) ImplError!*runtime.Instance {
+    // Delegate to values() - they have identical behavior
+    return call_values(instance, options);
+}
+
 // ============================================================================
 // Internal Algorithms
 // ============================================================================

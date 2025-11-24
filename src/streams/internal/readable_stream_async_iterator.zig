@@ -102,21 +102,29 @@ pub fn create(
 /// 5. Perform ! ReadableStreamDefaultReaderRead(this, readRequest)
 /// 6. Return promise
 ///
-/// **Status**: Infrastructure complete, integration pending
-/// **TODO**: Implement promise chaining or callback-based read support
+/// **Implementation**: Uses reader.read() and returns the result directly.
+/// The ReadResult from reader.read() has the same structure as IteratorResult,
+/// so we can cast the promise type safely.
 pub fn next(
     iterator: *ReadableStreamAsyncIterator,
 ) !*AsyncPromise(IteratorResult) {
-    _ = iterator;
+    // Step 1: Get reader
+    const reader = iterator.reader;
 
-    // Phase 1: Infrastructure is in place
-    // Phase 2: Will implement actual integration with reader.read()
-    // Options:
-    // 1. Add promise chaining to AsyncPromise
-    // 2. Add callback support to controller's read operations
-    // 3. Use reader.read() and transform ReadResult -> IteratorResult
+    // Step 2: Assert reader.[[stream]] is not undefined
+    // (ensured by type system)
 
-    return error.NotImplemented;
+    // Steps 3-5: Call reader.read() which implements the spec algorithm
+    const ReaderImpl = @import("../../webidl/impls/ReadableStreamDefaultReader.zig");
+    const read_result_promise_ptr = try ReaderImpl.call_read(reader);
+
+    // ReadResult and IteratorResult have identical structure: { value, done }
+    // So we can safely cast the promise type
+    const iterator_promise: *AsyncPromise(IteratorResult) =
+        @ptrCast(@alignCast(@constCast(read_result_promise_ptr)));
+
+    // Step 6: Return promise
+    return iterator_promise;
 }
 
 /// Async iterator return (early termination)
