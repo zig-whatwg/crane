@@ -1276,8 +1276,9 @@ fn handleQueueDrain(internal: *InternalState) void {
         ReadableStreamImpl.readableStreamClose(stream_internal);
     } else {
         // Step 3: Otherwise, call pull if needed
-        // Need instance to call callPullIfNeeded - skip for now
-        // TODO: Pass instance parameter or refactor
+        if (internal.controller_instance) |controller| {
+            callPullIfNeeded(controller);
+        }
     }
 }
 
