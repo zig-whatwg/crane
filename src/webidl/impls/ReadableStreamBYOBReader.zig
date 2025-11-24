@@ -523,3 +523,47 @@ pub fn getNumReadIntoRequests(instance: *runtime.Instance) usize {
     const internal = state.own._internal orelse return 0;
     return internal.read_into_requests.items.len;
 }
+
+/// ReadableStreamFulfillReadIntoRequest(stream, chunk, done)
+///
+/// Spec: § 4.5.4 "Fulfill read-into request"
+///
+/// Fulfills the first pending read-into request with the provided chunk and done flag.
+/// Called by ReadableByteStreamController when data is available for a BYOB read.
+pub fn fulfillReadIntoRequest(instance: *runtime.Instance, chunk: *anyopaque, done: bool) ImplError!void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+
+    // Step 1: Assert readIntoRequests is not empty
+    if (internal.read_into_requests.items.len == 0) {
+        return error.InvalidState;
+    }
+
+    // Step 2: Let readIntoRequest be reader.[[readIntoRequests]][0]
+    // Step 3: Remove readIntoRequest from reader.[[readIntoRequests]]
+    const request_ptr = internal.read_into_requests.orderedRemove(0);
+
+    // Cast to ReadIntoRequest
+    const request: *const ReadIntoRequest = @ptrCast(@alignCast(request_ptr));
+
+    // Step 4: If done is true, perform readIntoRequest's close steps
+    // Step 5: Otherwise, perform readIntoRequest's chunk steps with chunk
+    if (done) {
+        request.executeCloseSteps();
+    } else {
+        // Create ArrayBufferView from the chunk pointer
+        // The chunk is expected to be a V8 TypedArray or our internal buffer
+        // For now, we pass the raw pointer - the callback will interpret it
+        const view = ReadIntoRequestModule.ArrayBufferView{
+            .data = @as([*]u8, @ptrCast(chunk))[0..0], // Placeholder - actual data in chunk
+            .offset = 0,
+            .length = 0,
+        };
+        _ = view;
+
+        // The chunk is the actual view pointer created by the controller
+        // Cast it appropriately for the callback
+        const view_ptr: *ReadIntoRequestModule.ArrayBufferView = @ptrCast(@alignCast(chunk));
+        request.executeChunkSteps(view_ptr.*);
+    }
+}
