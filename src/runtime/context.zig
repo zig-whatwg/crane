@@ -8,18 +8,25 @@
 //!
 //! The Context is a pointer to a ContextData struct that contains:
 //! - Logger: For console output (console.log, console.error, etc.)
-//! - Engine Context: Optional pointer to JS engine context (V8, JSC, etc.)
+//! - Engine Interface: Abstract interface to JS engine (V8, JSC, etc.)
+//! - Engine Context: Opaque pointer to engine-specific context
 //! - Allocator: For memory management
 //!
 //! By using a pointer (`*ContextData`), we keep the Context small (8 bytes)
 //! which is important for passing through generated code.
+//!
+//! ## Engine Abstraction
+//!
+//! The context holds an optional `EngineInterface` pointer which provides
+//! engine-agnostic operations like wrapping async iterators, creating promises,
+//! etc. This allows impl files to work with any JS engine without direct imports.
 //!
 //! ## Usage
 //!
 //! ```zig
 //! const runtime = @import("runtime");
 //!
-//! // Create context with logger
+//! // Create context with logger (no engine)
 //! var ctx_data = try runtime.ContextData.init(allocator, .{
 //!     .colored = true,
 //! });
@@ -29,19 +36,22 @@
 //!
 //! // Use in namespace operations
 //! console.log(ctx, "Hello from WebIDL!");
+//!
+//! // For engine operations, check if engine is available
+//! if (ctx.getEngine()) |engine| {
+//!     const wrapped = try engine.wrapAsyncIterator(ctx.engine_ctx.?, iterator);
+//! }
 //! ```
 
 const std = @import("std");
 const Logger = @import("logger.zig").Logger;
 const LoggerConfig = @import("logger.zig").LoggerConfig;
+const EngineInterface = @import("engine_interface.zig").EngineInterface;
 const infra = @import("infra");
 
 // Import event loop for streams and async operations
 // Note: This is an optional dependency - event_loop is only needed for async features
 const event_loop_mod = @import("event_loop");
-
-// Import V8 event loop for auto-detection
-const v8 = @import("v8");
 
 /// Console state for console namespace operations
 ///
@@ -102,16 +112,22 @@ pub const ConsoleState = struct {
 pub const ContextData = struct {
     allocator: std.mem.Allocator,
     logger: Logger,
+
+    /// Abstract engine interface (provides engine-agnostic operations)
+    engine: ?*const EngineInterface,
+
+    /// Engine-specific opaque context (V8 Isolate, JSC VM, etc.)
     engine_ctx: ?*anyopaque,
+
     console_state: ConsoleState,
 
     /// Event loop for async operations (streams, promises, etc.)
     /// Optional - only needed for async features like ReadableStream
     event_loop: ?event_loop_mod.EventLoop,
 
-    /// Internal: V8EventLoop storage (if created during init)
-    /// This is owned by the context and must be cleaned up
-    _v8_event_loop_storage: ?*v8.V8EventLoop,
+    /// Internal: Engine-created event loop storage (if created during init)
+    /// This is owned by the context and must be cleaned up via engine interface
+    _engine_event_loop_storage: ?*anyopaque,
 
     const Self = @This();
 
@@ -122,13 +138,18 @@ pub const ContextData = struct {
         show_timestamp: bool = false,
         show_labels: bool = false,
 
-        /// JS engine context (V8, JSC, etc.)
+        /// Abstract engine interface
+        /// Provides engine-agnostic operations (async iterators, promises, etc.)
+        engine: ?*const EngineInterface = null,
+
+        /// JS engine context (V8 Isolate, JSC VM, etc.)
         /// This is an opaque pointer to the engine-specific context
         engine_ctx: ?*anyopaque = null,
 
         /// Event loop for async operations
         /// Optional - only needed for async features like streams, promises
-        /// If not provided, async operations will fail with error.NoEventLoop
+        /// If not provided and engine supports it, engine will create one
+        /// If not provided and no engine, async operations will fail with error.NoEventLoop
         event_loop: ?event_loop_mod.EventLoop = null,
     };
 
@@ -140,39 +161,46 @@ pub const ContextData = struct {
             .show_labels = options.show_labels,
         });
 
-        // Auto-detect event loop:
-        // 1. If engine_ctx provided (V8 isolate) → create V8EventLoop
-        // 2. If event_loop provided explicitly → use it
+        // Determine event loop:
+        // 1. If event_loop provided explicitly → use it
+        // 2. If engine can create one → use engine's event loop
         // 3. Otherwise → no event loop (async operations will fail)
-        var v8_loop_storage: ?*v8.V8EventLoop = null;
-        const ev_loop = if (options.engine_ctx) |engine_ctx| blk: {
-            // V8 mode - create V8EventLoop wrapper
-            const isolate: *v8.ffi.Isolate = @ptrCast(@alignCast(engine_ctx));
-            const v8_loop_ptr = try allocator.create(v8.V8EventLoop);
-            errdefer allocator.destroy(v8_loop_ptr);
-
-            v8_loop_ptr.* = v8.V8EventLoop.init(isolate, allocator);
-            v8_loop_storage = v8_loop_ptr;
-
-            break :blk v8_loop_ptr.eventLoop();
-        } else options.event_loop;
+        var engine_event_loop_storage: ?*anyopaque = null;
+        const ev_loop: ?event_loop_mod.EventLoop = if (options.event_loop) |el|
+            el
+        else if (options.engine) |engine| blk: {
+            if (engine.createEventLoop) |create_fn| {
+                if (options.engine_ctx) |engine_ctx| {
+                    const loop_ptr = create_fn(engine_ctx, allocator) catch break :blk null;
+                    engine_event_loop_storage = loop_ptr;
+                    // Engine must provide a way to get EventLoop from its storage
+                    // For now, we assume the engine stores it and we query later
+                    break :blk null; // TODO: Engine should return EventLoop directly
+                }
+            }
+            break :blk null;
+        } else null;
 
         return .{
             .allocator = allocator,
             .logger = logger,
+            .engine = options.engine,
             .engine_ctx = options.engine_ctx,
             .console_state = ConsoleState.init(allocator),
             .event_loop = ev_loop,
-            ._v8_event_loop_storage = v8_loop_storage,
+            ._engine_event_loop_storage = engine_event_loop_storage,
         };
     }
 
     /// Deinitialize context and cleanup resources
     pub fn deinit(self: *Self) void {
-        // Clean up V8EventLoop if we created one
-        if (self._v8_event_loop_storage) |v8_loop| {
-            v8_loop.deinit();
-            self.allocator.destroy(v8_loop);
+        // Clean up engine-created event loop if we have one
+        if (self._engine_event_loop_storage) |loop_storage| {
+            if (self.engine) |engine| {
+                if (engine.destroyEventLoop) |destroy_fn| {
+                    destroy_fn(loop_storage, self.allocator);
+                }
+            }
         }
 
         self.console_state.deinit(self.allocator);
@@ -181,10 +209,15 @@ pub const ContextData = struct {
 
     /// Check if this context has a JS engine
     pub fn hasEngine(self: *const Self) bool {
-        return self.engine_ctx != null;
+        return self.engine != null and self.engine_ctx != null;
     }
 
-    /// Get the JS engine context (for V8 integration)
+    /// Get the abstract engine interface
+    pub fn getEngine(self: *const Self) ?*const EngineInterface {
+        return self.engine;
+    }
+
+    /// Get the JS engine context (opaque pointer to V8 Isolate, JSC VM, etc.)
     pub fn getEngineContext(self: *const Self) ?*anyopaque {
         return self.engine_ctx;
     }
@@ -243,8 +276,10 @@ test "ContextData - basic initialization" {
 }
 
 test "ContextData - with engine context" {
+    const stub = @import("engine_interface.zig").stub_engine;
     var dummy_engine: u32 = 42;
     var ctx_data = try ContextData.init(testing.allocator, .{
+        .engine = &stub,
         .engine_ctx = @ptrCast(&dummy_engine),
     });
     defer ctx_data.deinit();
@@ -252,6 +287,8 @@ test "ContextData - with engine context" {
     try testing.expect(ctx_data.hasEngine());
     const engine_ctx = ctx_data.getEngineContext();
     try testing.expect(engine_ctx != null);
+    const engine = ctx_data.getEngine();
+    try testing.expect(engine != null);
 }
 
 test "Context - is a pointer" {
