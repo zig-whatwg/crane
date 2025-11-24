@@ -500,13 +500,9 @@ pub fn readableStreamDefaultControllerCallPullIfNeeded(internal: *InternalState)
             return;
         };
 
-        // TODO: Chain the returned promise properly:
-        // - On fulfillment: call handlePullFulfillment
-        // - On rejection: call ReadableStreamDefaultControllerError with reason
-        _ = pull_promise;
-
-        // Simulate immediate fulfillment (until we have proper promise handling)
-        handlePullFulfillment(internal);
+        // Handle promise settlement (sync or async)
+        // Step 7-8: Chain promise to fulfillment/rejection handlers
+        handlePullPromise(internal, controller_instance, pull_promise);
     } else {
         // No pull algorithm - fulfill immediately
         handlePullFulfillment(internal);
@@ -514,6 +510,7 @@ pub fn readableStreamDefaultControllerCallPullIfNeeded(internal: *InternalState)
 }
 
 /// Handle pull algorithm fulfillment
+/// Spec: § 4.9.5 Step 7
 fn handlePullFulfillment(internal: *InternalState) void {
     // Step 7.1: Set pulling to false
     internal.pulling = false;
@@ -523,6 +520,65 @@ fn handlePullFulfillment(internal: *InternalState) void {
         internal.pull_again = false;
         readableStreamDefaultControllerCallPullIfNeeded(internal);
     }
+}
+
+/// Handle pull promise settlement
+/// Supports both synchronous (for testing) and asynchronous (with event loop) promises
+/// Spec: § 4.9.5 Steps 7-8
+fn handlePullPromise(internal: *InternalState, instance: *runtime.Instance, pull_promise: *AsyncPromise(void)) void {
+    // Step 7: Upon fulfillment of pullPromise
+    if (pull_promise.isFulfilled()) {
+        handlePullFulfillment(internal);
+        return;
+    }
+
+    // Step 8: Upon rejection of pullPromise with reason e
+    if (pull_promise.isRejected()) {
+        onPullRejected(internal, pull_promise.state.rejected);
+        return;
+    }
+
+    // Promise is still pending - use async handling via onSettleCtx
+    // This attaches handlers without creating a chained promise (no memory leak)
+    pull_promise.onSettleCtx(
+        pullPromiseFulfilledCallback,
+        pullPromiseRejectedCallback,
+        @ptrCast(internal),
+    ) catch {
+        // If we can't attach handlers, assume immediate fulfillment
+        handlePullFulfillment(internal);
+    };
+    _ = instance; // Instance kept for consistency with ReadableByteStreamController pattern
+}
+
+/// Context for async pull promise handling
+const PullPromiseContext = struct {
+    internal: *InternalState,
+};
+
+/// Callback for pull promise fulfillment (async handling)
+fn pullPromiseFulfilledCallback(ctx_ptr: *anyopaque, _: void) anyerror!void {
+    const internal: *InternalState = @ptrCast(@alignCast(ctx_ptr));
+    handlePullFulfillment(internal);
+}
+
+/// Callback for pull promise rejection (async handling)
+fn pullPromiseRejectedCallback(ctx_ptr: *anyopaque, exception: webidl.errors.Exception) anyerror!void {
+    const internal: *InternalState = @ptrCast(@alignCast(ctx_ptr));
+    onPullRejected(internal, exception);
+}
+
+/// Handle pull promise rejection
+/// Spec: § 4.9.5 Step 8
+fn onPullRejected(internal: *InternalState, error_value: webidl.errors.Exception) void {
+    // Step 8.1: Perform ! ReadableStreamDefaultControllerError(controller, e)
+    const error_msg = switch (error_value) {
+        .simple => |s| s.message,
+        else => "Pull algorithm failed",
+    };
+
+    const js_error = streams_common.JSValue{ .string = error_msg };
+    readableStreamDefaultControllerError(internal, @ptrCast(&js_error));
 }
 
 /// [[PullSteps]](readRequest)
