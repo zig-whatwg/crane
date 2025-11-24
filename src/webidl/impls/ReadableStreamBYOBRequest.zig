@@ -23,6 +23,7 @@ pub const ImplError = error{
     NotImplemented, // From ReadableByteStreamController
     RangeError, // From ReadableByteStreamController
     NullValue, // From ReadableByteStreamController
+    NoEventLoop,
 };
 
 /// Internal state for ReadableStreamBYOBRequest
