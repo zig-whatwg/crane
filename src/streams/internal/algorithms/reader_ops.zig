@@ -38,11 +38,11 @@ pub fn acquireReadableStreamDefaultReader(
     return impls.ReadableStreamDefaultReader.call_constructor(allocator, ctx, stream);
 }
 
-/// ReadableStreamDefaultReaderRead
+/// ReadableStreamDefaultReaderRead (callback-based version)
 ///
 /// Spec: https://streams.spec.whatwg.org/#readable-stream-default-reader-read
 ///
-/// Reads from a ReadableStreamDefaultReader using a read request.
+/// Reads from a ReadableStreamDefaultReader using a read request with callbacks.
 ///
 /// Steps:
 /// 1. Let stream be reader.[[stream]]
@@ -61,25 +61,106 @@ pub fn readableStreamDefaultReaderRead(
     close_steps: *const fn (ctx: *anyopaque) void,
     error_steps: *const fn (ctx: *anyopaque) void,
 ) !void {
-    // TODO: Implement callback-based read operation
-    //
-    // This function should implement the ReadableStreamDefaultReaderRead algorithm
-    // with callback-based handlers instead of promises.
-    //
-    // Current blocker: ReadableStreamDefaultController.pullSteps expects promises,
-    // not callbacks. Need to either:
-    // 1. Add callback support to controller
-    // 2. Wrap callbacks in promises
-    // 3. Use reader.read() and chain promises
-    //
-    // For Phase 1 (infrastructure), leaving as NotImplemented
-    _ = reader;
-    _ = context;
-    _ = chunk_steps;
-    _ = close_steps;
-    _ = error_steps;
+    const reader_state = reader.getState(interfaces.ReadableStreamDefaultReader.State);
+    const reader_internal = reader_state.own._internal orelse return error.TypeError;
 
-    return error.NotImplemented;
+    // Step 1: Let stream be reader.[[stream]]
+    const stream = reader_internal.stream orelse return error.TypeError;
+
+    // Step 2: Assert: stream is not undefined (checked above)
+
+    // Step 3: Set stream.[[disturbed]] to true
+    const stream_state = stream.getState(interfaces.ReadableStream.State);
+    const stream_internal = stream_state.own._internal orelse return error.TypeError;
+    stream_internal.disturbed = true;
+
+    // Step 4: If stream.[[state]] is "closed", perform close steps
+    if (stream_internal.state == .closed) {
+        close_steps(context);
+        return;
+    }
+
+    // Step 5: If stream.[[state]] is "errored", perform error steps
+    if (stream_internal.state == .errored) {
+        error_steps(context);
+        return;
+    }
+
+    // Step 6: Otherwise, perform ! stream.[[controller]].[[PullSteps]](readRequest)
+    // We wrap the callbacks in a promise-based interface that the controller expects
+    const impls = @import("impls");
+
+    // Get controller from stream
+    const controller = stream_internal.controller;
+
+    // Create a promise that will be fulfilled by the controller
+    const promise = try AsyncPromise(impls.ReadableStreamDefaultReader.ReadResult).init(
+        reader_internal.allocator,
+        reader_internal.event_loop,
+    );
+
+    // Create context that holds both the original context and callbacks
+    const CallbackContext = struct {
+        user_context: *anyopaque,
+        chunk_steps: *const fn (ctx: *anyopaque, chunk: *anyopaque) void,
+        close_steps: *const fn (ctx: *anyopaque) void,
+        error_steps: *const fn (ctx: *anyopaque) void,
+        allocator: std.mem.Allocator,
+    };
+
+    const callback_ctx = try reader_internal.allocator.create(CallbackContext);
+    callback_ctx.* = .{
+        .user_context = context,
+        .chunk_steps = chunk_steps,
+        .close_steps = close_steps,
+        .error_steps = error_steps,
+        .allocator = reader_internal.allocator,
+    };
+
+    // Attach handlers to the promise that will call the appropriate callbacks
+    try promise.onSettleCtx(
+        onReadFulfilled,
+        onReadRejected,
+        @ptrCast(callback_ctx),
+    );
+
+    // Call controller.pullSteps with the promise
+    try impls.ReadableStreamDefaultController.pullSteps(controller, promise);
+}
+
+/// Context for callback-based read
+const ReadCallbackContext = struct {
+    user_context: *anyopaque,
+    chunk_steps: *const fn (ctx: *anyopaque, chunk: *anyopaque) void,
+    close_steps: *const fn (ctx: *anyopaque) void,
+    error_steps: *const fn (ctx: *anyopaque) void,
+    allocator: std.mem.Allocator,
+};
+
+/// Handler for read promise fulfillment
+fn onReadFulfilled(ctx_ptr: *anyopaque, result: @import("impls").ReadableStreamDefaultReader.ReadResult) anyerror!void {
+    const ctx: *ReadCallbackContext = @ptrCast(@alignCast(ctx_ptr));
+    defer ctx.allocator.destroy(ctx);
+
+    if (result.done) {
+        // Stream closed - call close steps
+        ctx.close_steps(ctx.user_context);
+    } else if (result.value) |chunk| {
+        // Got a chunk - call chunk steps
+        ctx.chunk_steps(ctx.user_context, chunk);
+    } else {
+        // No value but not done - shouldn't happen per spec
+        ctx.close_steps(ctx.user_context);
+    }
+}
+
+/// Handler for read promise rejection
+fn onReadRejected(ctx_ptr: *anyopaque, _: webidl.errors.Exception) anyerror!void {
+    const ctx: *ReadCallbackContext = @ptrCast(@alignCast(ctx_ptr));
+    defer ctx.allocator.destroy(ctx);
+
+    // Call error steps
+    ctx.error_steps(ctx.user_context);
 }
 
 /// ReadableStreamDefaultReaderRelease

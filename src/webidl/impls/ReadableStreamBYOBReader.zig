@@ -367,24 +367,42 @@ fn readableStreamReaderGenericRelease(internal: *InternalState) void {
     // Step 2: Assert: stream.[[reader]] is reader
     // (Implicit)
 
-    // Step 3: If stream.[[state]] is "readable", reject reader.[[closedPromise]] with TypeError
-    // TODO: Reject closedPromise
+    const stream_state = stream.getState(interfaces.ReadableStream.State);
+    const stream_internal = stream_state.own._internal orelse return;
 
-    // Step 4: Otherwise, set reader.[[closedPromise]] to a promise rejected with TypeError
-    // TODO: Set closedPromise
+    // Step 3: If stream.[[state]] is "readable", reject reader.[[closedPromise]] with TypeError
+    if (stream_internal.state == .readable) {
+        const exception = webidl.errors.Exception{
+            .simple = .{
+                .type = .TypeError,
+                .message = "Reader was released while stream was readable",
+            },
+        };
+        internal.closed_promise.reject(exception);
+    } else {
+        // Step 4: Otherwise, set reader.[[closedPromise]] to a promise rejected with TypeError
+        // Note: We can't replace the promise (it's already shared), so we reject the existing one
+        const exception = webidl.errors.Exception{
+            .simple = .{
+                .type = .TypeError,
+                .message = "Reader was released",
+            },
+        };
+        internal.closed_promise.reject(exception);
+    }
 
     // Step 5: Set reader.[[closedPromise]].[[PromiseIsHandled]] to true
-    // TODO: Mark promise as handled
+    // Note: AsyncPromise doesn't have this flag yet; this prevents unhandled rejection warnings
+    // Future: Add PromiseIsHandled flag to AsyncPromise
 
     // Step 6: Perform ! stream.[[controller]].[[ReleaseSteps]]()
-    // TODO: Call controller release steps
+    // For ReadableByteStreamController, this clears pending pull-into descriptors
+    const ReadableByteStreamControllerImpl = @import("ReadableByteStreamController.zig");
+    ReadableByteStreamControllerImpl.releaseSteps(stream_internal.controller);
 
     // Step 7: Set stream.[[reader]] to undefined
-    const stream_state = stream.getState(interfaces.ReadableStream.State);
-    if (stream_state.own._internal) |stream_internal| {
-        const ReadableStreamImpl = @import("ReadableStream.zig");
-        stream_internal.reader = ReadableStreamImpl.Reader.none;
-    }
+    const ReadableStreamImpl = @import("ReadableStream.zig");
+    stream_internal.reader = ReadableStreamImpl.Reader.none;
 
     // Step 8: Set reader.[[stream]] to undefined
     internal.stream = null;

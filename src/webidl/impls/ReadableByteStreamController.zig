@@ -759,6 +759,38 @@ pub fn raiseError(instance: *runtime.Instance, e: JSValue) void {
 // BYOB Request Fulfillment
 // ============================================================================
 
+/// [[ReleaseSteps]]() for ReadableByteStreamController
+///
+/// Spec: § 4.7.4 "Release steps"
+///
+/// Called when a reader releases its lock on the stream.
+/// Clears pending pull-into descriptors that reference the released reader.
+pub fn releaseSteps(instance: ?*runtime.Instance) void {
+    if (instance == null) return;
+
+    const state = instance.?.getState(State);
+    const internal = state.own._internal orelse return;
+
+    // Step 1: If this.[[pendingPullIntos]] is not empty
+    if (internal.pending_pull_intos.len > 0) {
+        // Step 1.1: Let firstPendingPullInto be this.[[pendingPullIntos]][0]
+        const first_descriptor = internal.pending_pull_intos.get(0) orelse return;
+
+        // Step 1.2: Set firstPendingPullInto's reader type to "none"
+        first_descriptor.reader_type = .none;
+
+        // Step 1.3: Set this.[[pendingPullIntos]] to a list containing only firstPendingPullInto
+        // Clear all but the first item
+        while (internal.pending_pull_intos.len > 1) {
+            const descriptor = internal.pending_pull_intos.remove(internal.pending_pull_intos.len - 1) catch break;
+            // Clean up the removed descriptor's buffer
+            descriptor.buffer.deinit(internal.allocator);
+            internal.allocator.destroy(descriptor.buffer);
+            internal.allocator.destroy(descriptor);
+        }
+    }
+}
+
 /// ReadableByteStreamControllerPullInto(controller, view, min, readIntoRequest)
 ///
 /// Spec: § 4.10.11 "Pull data into a provided buffer"

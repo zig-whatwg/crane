@@ -214,8 +214,7 @@ fn enqueueInternal(internal: *InternalState, chunk: JSValue) !void {
     };
 
     // Spec step 6: Let backpressure be ! ReadableStreamDefaultControllerHasBackpressure(readableController)
-    // TODO: Implement proper backpressure calculation
-    const backpressure = false; // Placeholder
+    const backpressure = ReadableStreamDefaultControllerImpl.hasBackpressure(controller_instance);
 
     // Spec step 7: If backpressure is not stream.[[backpressure]]
     if (backpressure != transform_internal.backpressure) {

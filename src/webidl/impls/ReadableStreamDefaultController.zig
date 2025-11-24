@@ -420,6 +420,23 @@ fn shouldCallPull(internal: *InternalState) bool {
     return false;
 }
 
+/// ReadableStreamDefaultControllerHasBackpressure(controller)
+///
+/// Spec: https://streams.spec.whatwg.org/#readable-stream-default-controller-has-backpressure
+///
+/// Used by TransformStream to determine if backpressure should be applied.
+///
+/// Steps:
+/// 1. If ! ReadableStreamDefaultControllerShouldCallPull(controller) is true, return false.
+/// 2. Otherwise, return true.
+pub fn hasBackpressure(instance: *runtime.Instance) bool {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return true; // Safe default
+
+    // HasBackpressure is simply the inverse of shouldCallPull
+    return !shouldCallPull(internal);
+}
+
 /// ReadableStreamGetNumReadRequests(stream)
 ///
 /// Returns the number of pending read requests on the stream's reader
