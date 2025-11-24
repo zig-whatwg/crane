@@ -530,6 +530,90 @@ const Repl = struct {
         try self.history.append(self.allocator, dup);
     }
 
+    /// Check if JavaScript code is syntactically complete using bracket counting
+    /// Returns true if the code can be evaluated, false if more input is needed
+    ///
+    /// This uses a simple heuristic: count brackets, braces, and parens.
+    /// If they're balanced and we're not inside a string/template literal, the code is likely complete.
+    fn isCompleteCode(_: *Self, code: []const u8) bool {
+        if (code.len == 0) return true;
+
+        var brace_count: i32 = 0; // { }
+        var bracket_count: i32 = 0; // [ ]
+        var paren_count: i32 = 0; // ( )
+
+        var in_string: u8 = 0; // 0 = not in string, '"' or '\'' = in that string type
+        var in_template: bool = false; // Inside template literal ``
+        var escape_next: bool = false;
+
+        for (code) |c| {
+            // Handle escape sequences
+            if (escape_next) {
+                escape_next = false;
+                continue;
+            }
+
+            if (c == '\\' and (in_string != 0 or in_template)) {
+                escape_next = true;
+                continue;
+            }
+
+            // Handle string literals
+            if (in_string != 0) {
+                if (c == in_string) {
+                    in_string = 0;
+                }
+                continue;
+            }
+
+            // Handle template literals
+            if (in_template) {
+                if (c == '`') {
+                    in_template = false;
+                }
+                // Note: We're ignoring ${} inside templates for simplicity
+                continue;
+            }
+
+            // Check for string/template start
+            if (c == '"' or c == '\'') {
+                in_string = c;
+                continue;
+            }
+            if (c == '`') {
+                in_template = true;
+                continue;
+            }
+
+            // Handle single-line comment
+            // Note: This is simplified - doesn't handle all comment cases perfectly
+
+            // Count brackets
+            switch (c) {
+                '{' => brace_count += 1,
+                '}' => brace_count -= 1,
+                '[' => bracket_count += 1,
+                ']' => bracket_count -= 1,
+                '(' => paren_count += 1,
+                ')' => paren_count -= 1,
+                else => {},
+            }
+        }
+
+        // If we're inside a string or template, need more input
+        if (in_string != 0 or in_template) {
+            return false;
+        }
+
+        // If brackets are unbalanced (more opens than closes), need more input
+        if (brace_count > 0 or bracket_count > 0 or paren_count > 0) {
+            return false;
+        }
+
+        // Code appears complete
+        return true;
+    }
+
     /// Run the REPL loop
     pub fn run(self: *Self) !void {
         const stdout = std.fs.File.stdout();
@@ -539,21 +623,58 @@ const Repl = struct {
         try stdout.writeAll("Press Tab for completions, Ctrl+D to exit\n\n");
         syncIfSupported(stdout); // Flush output (ignore errors on pipes)
 
+        // Buffer for accumulating multi-line input
+        var multiline_buffer = std.ArrayListUnmanaged(u8){};
+        defer multiline_buffer.deinit(self.allocator);
+
         while (true) {
-            try stdout.writeAll(">>> ");
+            // Show appropriate prompt
+            if (multiline_buffer.items.len == 0) {
+                try stdout.writeAll(">>> ");
+            } else {
+                try stdout.writeAll("... ");
+            }
             syncIfSupported(stdout); // Flush prompt immediately
 
             const line = try self.readLine() orelse break;
             defer self.allocator.free(line);
 
-            // Skip empty lines
-            if (line.len == 0) continue;
+            // Handle empty lines
+            if (line.len == 0) {
+                if (multiline_buffer.items.len == 0) {
+                    continue;
+                }
+                // Empty line in multi-line mode - try to execute what we have
+            } else {
+                // Append line to buffer
+                if (multiline_buffer.items.len > 0) {
+                    try multiline_buffer.append(self.allocator, '\n');
+                }
+                try multiline_buffer.appendSlice(self.allocator, line);
+            }
+
+            // Check if code is complete
+            if (!self.isCompleteCode(multiline_buffer.items)) {
+                // Need more input
+                continue;
+            }
+
+            // Code is complete - evaluate it
+            const code = try self.allocator.dupe(u8, multiline_buffer.items);
+            defer self.allocator.free(code);
+
+            // Clear buffer for next input
+            multiline_buffer.clearRetainingCapacity();
+
+            // Skip if empty after trimming
+            const trimmed = std.mem.trim(u8, code, &std.ascii.whitespace);
+            if (trimmed.len == 0) continue;
 
             // Add to history
-            try self.addHistory(line);
+            try self.addHistory(code);
 
             // Evaluate
-            const result = self.eval(line) catch |err| {
+            const result = self.eval(code) catch |err| {
                 try print(self.allocator, stdout, "Error: {}\n", .{err});
                 syncIfSupported(stdout); // Flush error output
                 continue;
