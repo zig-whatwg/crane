@@ -30,6 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `call_releaseLock()` method to release reader lock
   - `call_cancel(reason)` method to cancel stream
   - Read-into request queue management
+  - Full V8 TypedArray validation (13 typed array types)
+  - Zero-length buffer rejection
+  - Detached buffer detection
 
 #### Integration
 - **ReadableStream** extended with BYOB support
@@ -118,9 +121,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Promise rejection with proper Exception types
   - Graceful error handling with fallback to TypeError
 
-**Status**: BYOB infrastructure complete for v0.2.0. Deferred to v0.3.0:
-- V8 ArrayBufferView introspection (6-8 hours, requires V8 TypedArray C++ wrappers)
-- ArrayBufferView validation in call_read() (view byte length, buffer detachment checks)
+- **V8 TypedArray Integration** (Phase 4 - 2025-11-24)
+  - C++ V8 wrappers for all 13 TypedArray types (v8_wrapper.cpp)
+  - Zig FFI bindings for TypedArray introspection (ffi.zig)
+  - Full ArrayBufferView V8 integration (arraybuffer_view.zig)
+  - Type detection for Uint8Array, Int8Array, Uint16Array, Int16Array, etc.
+  - Metadata extraction: buffer, byteLength, byteOffset, length
+  - Buffer detachment detection via V8 APIs
+  - ReadableStreamBYOBReader validation (zero-length, detached buffers)
+  - Interface event loop parameter threading
+
+**Status**: ✅ BYOB infrastructure COMPLETE for v0.3.0
 
 ### Added - WritableStream
 
