@@ -301,6 +301,31 @@ pub const Exception = union(enum) {
         };
     }
 
+    /// Create a RangeError exception from a string message
+    pub fn rangeError(allocator: Allocator, message: []const u8) !Exception {
+        const msg_copy = try allocator.dupe(u8, message);
+        return .{
+            .simple = .{
+                .type = .RangeError,
+                .message = msg_copy,
+            },
+        };
+    }
+
+    /// Create a SyntaxError exception from a string message
+    ///
+    /// Note: JavaScript SyntaxError is reserved for parser errors.
+    /// For Web API parsing errors, consider using DOMException with name "SyntaxError" instead.
+    pub fn syntaxError(allocator: Allocator, message: []const u8) !Exception {
+        const msg_copy = try allocator.dupe(u8, message);
+        return .{
+            .simple = .{
+                .type = .SyntaxError,
+                .message = msg_copy,
+            },
+        };
+    }
+
     /// Create a simple exception from a string message (defaults to TypeError)
     pub fn fromString(allocator: Allocator, message: []const u8) !Exception {
         return typeError(allocator, message);
@@ -430,10 +455,3 @@ pub const ErrorResult = struct {
 };
 
 // Tests
-
-
-
-
-
-
-

@@ -6,6 +6,21 @@
 const std = @import("std");
 const webidl = @import("webidl");
 
+/// Error type tag for proper exception type preservation
+/// Used by JSValue.error_value to indicate the type of error for V8 conversion
+pub const ErrorType = enum {
+    generic,
+    type_error,
+    range_error,
+    syntax_error,
+};
+
+/// Error value structure for proper V8 exception creation
+pub const ErrorValue = struct {
+    error_type: ErrorType,
+    message: []const u8,
+};
+
 /// Internal JSValue type (simplified from webidl.JSValue)
 /// Used for internal algorithms - bridges to webidl.JSValue at public boundaries
 pub const JSValue = union(enum) {
@@ -19,6 +34,9 @@ pub const JSValue = union(enum) {
     /// Close sentinel - unique value for WritableStream close signaling
     /// Spec: § 3.9.17 "The close sentinel is a unique value enqueued into [[queue]]"
     close_sentinel: void,
+    /// Error value with type information for proper V8 exception creation
+    /// Preserves TypeError/RangeError/etc. distinction through the conversion pipeline
+    error_value: ErrorValue,
 
     pub fn undefined_value() JSValue {
         return .undefined;
@@ -61,13 +79,21 @@ pub const JSValue = union(enum) {
             .string => |s| .{ .string = s },
             .bytes, .object => .{ .undefined = {} }, // Bytes/objects as undefined for now
             .close_sentinel => .{ .undefined = {} }, // Close sentinel never exposed to web
+            .error_value => |e| .{ .string = e.message }, // Convert error to string for now
         };
     }
 
     /// Convert JSValue to webidl.errors.Exception
     /// Used when rejecting promises - converts error values to proper exceptions
+    /// Preserves error type (TypeError, RangeError, etc.) through the conversion
     pub fn toException(self: JSValue, allocator: std.mem.Allocator) !webidl.errors.Exception {
         return switch (self) {
+            .error_value => |e| switch (e.error_type) {
+                .type_error => try webidl.errors.Exception.typeError(allocator, e.message),
+                .range_error => try webidl.errors.Exception.rangeError(allocator, e.message),
+                .syntax_error => try webidl.errors.Exception.syntaxError(allocator, e.message),
+                .generic => try webidl.errors.Exception.fromString(allocator, e.message),
+            },
             .string => |s| try webidl.errors.Exception.fromString(allocator, s),
             else => try webidl.errors.Exception.typeError(allocator, "Unknown error"),
         };
@@ -80,20 +106,43 @@ pub const JSValue = union(enum) {
     /// Create a TypeError JSValue with the given message
     ///
     /// Use this when stream algorithms need to error with TypeError.
+    /// The error type is preserved for proper V8 TypeError creation.
     pub fn createTypeError(message: []const u8) JSValue {
-        return .{ .string = message };
+        return .{ .error_value = .{ .error_type = .type_error, .message = message } };
     }
 
     /// Create a RangeError JSValue with the given message
     ///
     /// Use this when stream algorithms need to error with RangeError.
+    /// The error type is preserved for proper V8 RangeError creation.
     pub fn createRangeError(message: []const u8) JSValue {
-        return .{ .string = message };
+        return .{ .error_value = .{ .error_type = .range_error, .message = message } };
     }
 
     /// Create a generic error JSValue with the given message
     pub fn createError(message: []const u8) JSValue {
-        return .{ .string = message };
+        return .{ .error_value = .{ .error_type = .generic, .message = message } };
+    }
+
+    /// Check if this JSValue is an error
+    pub fn isError(self: JSValue) bool {
+        return self == .error_value;
+    }
+
+    /// Get error type if this is an error value
+    pub fn getErrorType(self: JSValue) ?ErrorType {
+        return switch (self) {
+            .error_value => |e| e.error_type,
+            else => null,
+        };
+    }
+
+    /// Get error message if this is an error value
+    pub fn getErrorMessage(self: JSValue) ?[]const u8 {
+        return switch (self) {
+            .error_value => |e| e.message,
+            else => null,
+        };
     }
 
     // ========================================================================
