@@ -94,10 +94,10 @@ pub const InternalState = struct {
     pulling: bool,
 
     /// [[pendingPullIntos]]: List of pending pull-into descriptors
-    pending_pull_intos: std.ArrayList(*PullIntoDescriptor),
+    pending_pull_intos: infra.List(*PullIntoDescriptor),
 
     /// [[queue]]: List of byte stream queue entries
-    byte_queue: std.ArrayList(ByteStreamQueueEntry),
+    byte_queue: infra.List(ByteStreamQueueEntry),
 
     /// [[queueTotalSize]]: Total size of all byte chunks in queue
     queue_total_size: f64,
@@ -117,19 +117,19 @@ pub const InternalState = struct {
 
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
         // Clean up byte queue buffers
-        for (self.byte_queue.items) |entry| {
+        for (self.byte_queue.toSlice()) |entry| {
             entry.buffer.deinit(self.allocator);
             self.allocator.destroy(entry.buffer);
         }
-        self.byte_queue.deinit(self.allocator);
+        self.byte_queue.deinit();
 
         // Clean up pending pull-intos
-        for (self.pending_pull_intos.items) |descriptor| {
+        for (self.pending_pull_intos.toSlice()) |descriptor| {
             descriptor.buffer.deinit(self.allocator);
             self.allocator.destroy(descriptor.buffer);
             self.allocator.destroy(descriptor);
         }
-        self.pending_pull_intos.deinit(self.allocator);
+        self.pending_pull_intos.deinit();
 
         // Clean up algorithms
         self.cancel_algorithm.deinit();
@@ -162,9 +162,25 @@ pub fn initInternalState(
     pull_algorithm: PullAlgorithm,
     cancel_algorithm: CancelAlgorithm,
 ) !void {
-    // Initialize with empty ArrayLists using Zig 0.15 API
-    const byte_queue = try std.ArrayList(ByteStreamQueueEntry).initCapacity(allocator, 0);
-    const pending_pull_intos = try std.ArrayList(*PullIntoDescriptor).initCapacity(allocator, 0);
+    initInternalStateWithV8(internal, allocator, stream, highWaterMark, autoAllocateChunkSize, pull_algorithm, cancel_algorithm, null, null);
+}
+
+/// Initialize the internal state with V8 context for view construction
+/// Called from ReadableStream.setUpReadableByteStreamController when V8 is active
+pub fn initInternalStateWithV8(
+    internal: *InternalState,
+    allocator: std.mem.Allocator,
+    stream: *runtime.Instance,
+    highWaterMark: f64,
+    autoAllocateChunkSize: ?u64,
+    pull_algorithm: PullAlgorithm,
+    cancel_algorithm: CancelAlgorithm,
+    isolate: ?*anyopaque,
+    v8_context: ?*anyopaque,
+) void {
+    // Initialize with empty Lists using infra.List
+    const byte_queue = infra.List(ByteStreamQueueEntry).init(allocator);
+    const pending_pull_intos = infra.List(*PullIntoDescriptor).init(allocator);
 
     internal.* = .{
         .allocator = allocator,
@@ -182,9 +198,19 @@ pub fn initInternalState(
         .auto_allocate_chunk_size = autoAllocateChunkSize,
         .pending_pull_intos = pending_pull_intos,
         .abort_controller = null,
-        .isolate = null,
-        .v8_context = null,
+        .isolate = isolate,
+        .v8_context = v8_context,
     };
+}
+
+/// Set the V8 context for an existing controller
+/// Used when V8 context becomes available after initial setup
+pub fn setV8Context(instance: *runtime.Instance, isolate: ?*anyopaque, v8_context: ?*anyopaque) void {
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.isolate = isolate;
+        internal.v8_context = v8_context;
+    }
 }
 
 /// Deinitialize instance
@@ -352,9 +378,9 @@ fn closeInternal(internal: *InternalState) void {
     }
 
     // Step 3: If controller.[[pendingPullIntos]] is not empty
-    if (internal.pending_pull_intos.items.len > 0) {
+    if (internal.pending_pull_intos.len > 0) {
         // Step 3.1: Let firstPendingPullInto be controller.[[pendingPullIntos]][0]
-        const first_pending = internal.pending_pull_intos.items[0];
+        const first_pending = internal.pending_pull_intos.get(0) orelse unreachable;
 
         // Step 3.2: If remainder of firstPendingPullInto's bytes filled > 0
         const remainder = first_pending.bytes_filled % first_pending.element_size;
@@ -425,12 +451,12 @@ fn clearAlgorithms(internal: *InternalState) void {
 /// Spec: § 4.7.4 "Clear pending pull-intos"
 fn clearPendingPullIntos(internal: *InternalState) void {
     // Clean up all pending pull-into descriptors
-    for (internal.pending_pull_intos.items) |descriptor| {
+    for (internal.pending_pull_intos.toSlice()) |descriptor| {
         descriptor.buffer.deinit(internal.allocator);
         internal.allocator.destroy(descriptor.buffer);
         internal.allocator.destroy(descriptor);
     }
-    internal.pending_pull_intos.clearRetainingCapacity();
+    internal.pending_pull_intos.clear();
 }
 
 /// ResetQueue(container)
@@ -438,11 +464,11 @@ fn clearPendingPullIntos(internal: *InternalState) void {
 /// Spec: § 4.7.4 "Reset the queue"
 fn resetQueue(internal: *InternalState) void {
     // Clean up byte queue
-    for (internal.byte_queue.items) |entry| {
+    for (internal.byte_queue.toSlice()) |entry| {
         entry.buffer.deinit(internal.allocator);
         internal.allocator.destroy(entry.buffer);
     }
-    internal.byte_queue.clearRetainingCapacity();
+    internal.byte_queue.clear();
     internal.queue_total_size = 0.0;
 }
 
@@ -689,7 +715,7 @@ pub fn pullInto(
     );
 
     // Step 17: Append descriptor to pending list
-    try internal.pending_pull_intos.append(internal.allocator, pullIntoDescriptor);
+    try internal.pending_pull_intos.append(pullIntoDescriptor);
 
     // Step 18: Add readIntoRequest to stream's readIntoRequests list
     const ReadableStreamImpl = @import("ReadableStream.zig");
@@ -707,7 +733,7 @@ pub fn respond(instance: *runtime.Instance, bytesWritten: u64) ImplError!void {
     const internal = state.own._internal orelse return error.InvalidState;
 
     // Step 1: Assert controller.[[pendingPullIntos]] is not empty
-    if (internal.pending_pull_intos.items.len == 0) {
+    if (internal.pending_pull_intos.len == 0) {
         return error.InvalidState;
     }
 
@@ -955,7 +981,7 @@ fn respondInReadableState(
 ///
 /// Spec: § 4.10.11 "Remove and return first pending pull-into descriptor"
 fn shiftPendingPullInto(internal: *InternalState) *PullIntoDescriptor {
-    return internal.pending_pull_intos.orderedRemove(0);
+    return internal.pending_pull_intos.remove(0) catch unreachable;
 }
 
 /// Fill the head pull-into descriptor with bytes written
@@ -1006,7 +1032,7 @@ fn enqueueChunkToQueue(
     };
 
     // Add to queue
-    try internal.byte_queue.append(internal.allocator, entry);
+    try internal.byte_queue.append(entry);
 
     // Update total size
     internal.queue_total_size += @as(f64, @floatFromInt(byteLength));
@@ -1034,17 +1060,80 @@ fn commitPullIntoDescriptor(
     }
 
     // Step 3: Let done be false
+    var done = false;
+
     // Step 4: If stream.[[state]] is "closed"
-    // Step 4.1: Assert: pullIntoDescriptor's bytes filled is 0
-    // Step 4.2: Set done to true
-    // (Done flag tracked for request fulfillment)
+    if (stream_internal.state == .closed) {
+        // Step 4.1: Assert: pullIntoDescriptor's bytes filled is 0
+        // Step 4.2: Set done to true
+        done = true;
+    }
 
-    // Step 5-9: Create view and fulfill read request
-    // TODO: Implement view construction and request fulfillment when ReadIntoRequest API is ready
+    // Step 5: Let filledView be ! ReadableByteStreamControllerConvertPullIntoDescriptor(pullIntoDescriptor)
+    const filled_view: *anyopaque = blk: {
+        // If we have V8 context, create a proper V8 TypedArray
+        if (internal.isolate != null and internal.v8_context != null) {
+            const v8_ffi = runtime.engines.v8.ffi;
+            const isolate: *v8_ffi.Isolate = @ptrCast(@alignCast(internal.isolate.?));
 
-    // Placeholder: Clean up the descriptor
-    pullIntoDescriptor.buffer.deinit(internal.allocator);
-    internal.allocator.destroy(pullIntoDescriptor.buffer);
+            // Create V8 ArrayBuffer from descriptor's buffer
+            const buffer_size = pullIntoDescriptor.buffer.byte_length;
+            const v8_buffer = v8_ffi.v8_ArrayBuffer_New(isolate, buffer_size) orelse {
+                break :blk @as(*anyopaque, @ptrCast(pullIntoDescriptor.buffer));
+            };
+
+            // Copy data to V8 buffer
+            const v8_data = v8_ffi.v8_ArrayBuffer_Data(v8_buffer);
+            if (v8_data) |data_ptr| {
+                const dest: [*]u8 = @ptrCast(data_ptr);
+                @memcpy(dest[0..buffer_size], pullIntoDescriptor.buffer.data[0..buffer_size]);
+            }
+
+            // Create typed array view based on constructor type
+            const byte_offset = pullIntoDescriptor.byte_offset;
+            const element_count = pullIntoDescriptor.bytes_filled / pullIntoDescriptor.element_size;
+
+            const view = switch (pullIntoDescriptor.view_constructor) {
+                .uint8_array => v8_ffi.v8_Uint8Array_New(isolate, v8_buffer, byte_offset, element_count),
+                .int8_array => v8_ffi.v8_Int8Array_New(isolate, v8_buffer, byte_offset, element_count),
+                .uint16_array => v8_ffi.v8_Uint16Array_New(isolate, v8_buffer, byte_offset, element_count),
+                .int16_array => v8_ffi.v8_Int16Array_New(isolate, v8_buffer, byte_offset, element_count),
+                .uint32_array => v8_ffi.v8_Uint32Array_New(isolate, v8_buffer, byte_offset, element_count),
+                .int32_array => v8_ffi.v8_Int32Array_New(isolate, v8_buffer, byte_offset, element_count),
+                .float32_array => v8_ffi.v8_Float32Array_New(isolate, v8_buffer, byte_offset, element_count),
+                .float64_array => v8_ffi.v8_Float64Array_New(isolate, v8_buffer, byte_offset, element_count),
+                .bigint64_array => v8_ffi.v8_BigInt64Array_New(isolate, v8_buffer, byte_offset, element_count),
+                .biguint64_array => v8_ffi.v8_BigUint64Array_New(isolate, v8_buffer, byte_offset, element_count),
+                .data_view => v8_ffi.v8_DataView_New(isolate, v8_buffer, byte_offset, pullIntoDescriptor.bytes_filled),
+            } orelse {
+                v8_ffi.v8_ArrayBuffer_Dispose(v8_buffer);
+                break :blk @as(*anyopaque, @ptrCast(pullIntoDescriptor.buffer));
+            };
+
+            // Clean up our internal buffer since data was copied
+            pullIntoDescriptor.buffer.deinit(internal.allocator);
+            internal.allocator.destroy(pullIntoDescriptor.buffer);
+
+            break :blk @as(*anyopaque, @ptrCast(view));
+        } else {
+            // No V8 context - use raw buffer pointer (for testing)
+            break :blk @as(*anyopaque, @ptrCast(pullIntoDescriptor.buffer));
+        }
+    };
+
+    // Step 6: If pullIntoDescriptor's reader type is "default"
+    if (pullIntoDescriptor.reader_type == .default) {
+        // Step 6.1: Perform ! ReadableStreamFulfillReadRequest(stream, filledView, done)
+        const ReadableStreamImpl = @import("ReadableStream.zig");
+        try ReadableStreamImpl.fulfillReadRequest(stream, filled_view, done);
+    } else {
+        // Step 7: Otherwise (reader type is "byob")
+        // Step 7.1: Perform ! ReadableStreamFulfillReadIntoRequest(stream, filledView, done)
+        const ReadableStreamImpl = @import("ReadableStream.zig");
+        try ReadableStreamImpl.fulfillReadIntoRequest(stream, filled_view, done);
+    }
+
+    // Clean up descriptor
     internal.allocator.destroy(pullIntoDescriptor);
 }
 
@@ -1117,15 +1206,48 @@ fn fillReadRequestFromQueue(internal: *InternalState, stream: *runtime.Instance)
     handleQueueDrain(internal);
 
     // Step 6: Create Uint8Array view from buffer slice
-    // TODO: Implement proper view construction when ArrayBufferView runtime API is ready
-    // For now, create a simple chunk pointer from the buffer data
-    const chunk: *anyopaque = @ptrCast(entry.buffer);
+    const chunk: *anyopaque = blk: {
+        // If we have V8 context, create a proper V8 Uint8Array
+        if (internal.isolate != null and internal.v8_context != null) {
+            const v8_ffi = runtime.engines.v8.ffi;
+            const isolate: *v8_ffi.Isolate = @ptrCast(@alignCast(internal.isolate.?));
+
+            // Create a V8 ArrayBuffer from our data
+            // Note: This creates a new buffer and copies data - for zero-copy we'd need
+            // v8::ArrayBuffer::New with external backing store
+            const v8_buffer = v8_ffi.v8_ArrayBuffer_New(isolate, entry.byte_length) orelse {
+                // Fallback to raw pointer if V8 allocation fails
+                break :blk @as(*anyopaque, @ptrCast(entry.buffer));
+            };
+
+            // Copy data to V8 buffer
+            const v8_data = v8_ffi.v8_ArrayBuffer_Data(v8_buffer);
+            if (v8_data) |data_ptr| {
+                const src = entry.buffer.data[entry.byteOffset..][0..entry.byte_length];
+                const dest: [*]u8 = @ptrCast(data_ptr);
+                @memcpy(dest[0..entry.byte_length], src);
+            }
+
+            // Create Uint8Array view over the buffer
+            const view = v8_ffi.v8_Uint8Array_New(isolate, v8_buffer, 0, entry.byte_length) orelse {
+                v8_ffi.v8_ArrayBuffer_Dispose(v8_buffer);
+                break :blk @as(*anyopaque, @ptrCast(entry.buffer));
+            };
+
+            // Clean up our internal buffer since data was copied
+            entry.buffer.deinit(internal.allocator);
+            internal.allocator.destroy(entry.buffer);
+
+            break :blk @as(*anyopaque, @ptrCast(view));
+        } else {
+            // No V8 context - use raw buffer pointer (for testing)
+            break :blk @as(*anyopaque, @ptrCast(entry.buffer));
+        }
+    };
 
     // Step 7: Fulfill the read request with chunk, done=false
     const ReadableStreamImpl = @import("ReadableStream.zig");
     try ReadableStreamImpl.fulfillReadRequest(stream, chunk, false);
-
-    // Note: Don't cleanup buffer here - ownership transferred to fulfilled request
 }
 
 /// ReadableByteStreamControllerFillPullIntoDescriptorFromQueue(controller, pullIntoDescriptor)
@@ -1247,8 +1369,8 @@ fn enqueueInternal(instance: *runtime.Instance, chunk: typedefs.ArrayBufferView)
     const buffer_ptr = try extractViewBuffer(internal.allocator, chunk);
 
     // Step 8: If pendingPullIntos not empty, handle specially
-    if (internal.pending_pull_intos.items.len > 0) {
-        const first_pending = internal.pending_pull_intos.items[0];
+    if (internal.pending_pull_intos.len > 0) {
+        const first_pending = internal.pending_pull_intos.get(0) orelse unreachable;
 
         // Check if buffer is detached
         if (first_pending.buffer.detached) {

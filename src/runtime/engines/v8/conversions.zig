@@ -1299,12 +1299,8 @@ pub fn createV8Null(isolate: *v8.Isolate) ConversionError!*v8.Value {
 }
 
 /// Create V8 boolean value
-///
-/// Note: V8 FFI doesn't have v8_Boolean_New - booleans are created via
-/// v8::Boolean::New which isn't exposed. For now, convert to number (0/1).
 pub fn createV8Boolean(isolate: *v8.Isolate, value: bool) ConversionError!*v8.Value {
-    // Use number representation: true = 1.0, false = 0.0
-    return @ptrCast(v8.v8_Number_New(isolate, if (value) 1.0 else 0.0));
+    return v8.v8_Boolean_New(isolate, value) orelse return ConversionError.OutOfMemory;
 }
 
 /// Create V8 number value

@@ -626,6 +626,12 @@ Global<Value>* v8_Null(Isolate* isolate) {
     return new Global<Value>(isolate, null_val);
 }
 
+Global<Value>* v8_Boolean_New(Isolate* isolate, bool value) {
+    HandleScope handle_scope(isolate);
+    Local<Boolean> bool_val = Boolean::New(isolate, value);
+    return new Global<Value>(isolate, bool_val);
+}
+
 // ============================================================================
 // FunctionTemplate & FunctionCallbackInfo (for namespace bindings)
 // ============================================================================

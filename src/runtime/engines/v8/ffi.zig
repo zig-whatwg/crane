@@ -394,6 +394,9 @@ pub extern fn v8_TryCatch_Exception(context: *Context) ?*Value;
 pub extern fn v8_Undefined(isolate: *Isolate) ?*Value;
 pub extern fn v8_Null(isolate: *Isolate) ?*Value;
 
+// Boolean creation
+pub extern fn v8_Boolean_New(isolate: *Isolate, value: bool) ?*Value;
+
 // Number creation
 pub extern fn v8_Number_New(isolate: *Isolate, value: f64) *Number;
 pub extern fn v8_Integer_New(isolate: *Isolate, value: i32) *Number;

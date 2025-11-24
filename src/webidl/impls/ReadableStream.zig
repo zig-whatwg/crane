@@ -2045,6 +2045,29 @@ pub fn addReadIntoRequest(
     };
 }
 
+/// ReadableStreamFulfillReadIntoRequest(stream, chunk, done)
+///
+/// Spec: § 4.4.5 "Fulfill read-into request with chunk"
+///
+/// Fulfills the first pending read-into request with the given chunk (for BYOB readers).
+pub fn fulfillReadIntoRequest(
+    instance: *runtime.Instance,
+    chunk: *anyopaque,
+    done: bool,
+) ImplError!void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+
+    return switch (internal.reader) {
+        .byob => |reader_instance| {
+            // Import BYOB reader implementation to fulfill request
+            const BYOBReaderImpl = @import("ReadableStreamBYOBReader.zig");
+            return BYOBReaderImpl.fulfillReadIntoRequest(reader_instance, chunk, done);
+        },
+        .default, .none => error.InvalidState, // No BYOB reader attached
+    };
+}
+
 // ============================================================================
 // Pipe Operations
 // ============================================================================
