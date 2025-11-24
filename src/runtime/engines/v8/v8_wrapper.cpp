@@ -263,6 +263,13 @@ bool v8_Value_IsObject(Global<Value>* value) {
     return val->IsObject();
 }
 
+bool v8_Value_IsFunction(Global<Value>* value) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    return val->IsFunction();
+}
+
 bool v8_Value_IsArray(Global<Value>* value) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);

@@ -11,12 +11,12 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const infra = @import("infra");
+const v8 = @import("v8");
 
-// V8 FFI types - will be properly imported when we integrate with V8
-// For now, use opaque types as placeholders
-const V8Object = opaque {};
-const V8Function = opaque {};
-const V8Value = opaque {};
+// V8 FFI types from v8 module
+const V8Object = v8.Object;
+const V8Function = v8.Function;
+const V8Value = v8.Value;
 
 /// V8 Resource Container
 /// Stores V8 Global<> handles and ensures proper disposal
@@ -70,17 +70,17 @@ pub const V8Resources = struct {
     }
 
     fn objectDispose(handle: *anyopaque) void {
-        _ = handle;
-        // TODO: Call v8_Object_Dispose(obj) when V8 FFI is available
+        const obj: *V8Object = @ptrCast(@alignCast(handle));
+        v8.v8_Object_Dispose(obj);
     }
 
     fn functionDispose(handle: *anyopaque) void {
-        _ = handle;
-        // TODO: Call v8_Function_Dispose(func) when V8 FFI is available
+        const func: *V8Function = @ptrCast(@alignCast(handle));
+        v8.v8_Function_Dispose(func);
     }
 
     fn valueDispose(handle: *anyopaque) void {
-        _ = handle;
-        // TODO: Call v8_Value_Dispose(val) when V8 FFI is available
+        const val: *V8Value = @ptrCast(@alignCast(handle));
+        v8.v8_Value_Dispose(val);
     }
 };
