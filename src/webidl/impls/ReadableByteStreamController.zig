@@ -1001,3 +1001,173 @@ fn commitPullIntoDescriptor(
     internal.allocator.destroy(pullIntoDescriptor.buffer);
     internal.allocator.destroy(pullIntoDescriptor);
 }
+
+/// ReadableByteStreamControllerHandleQueueDrain(controller)
+///
+/// Spec: § 4.10.11 "Handle queue drain"
+fn handleQueueDrain(internal: *InternalState) void {
+    // Step 1: Assert: stream.[[state]] is "readable"
+    // (Caller ensures this)
+
+    // Step 2: If queue is empty and close requested, close the stream
+    if (internal.queue_total_size == 0.0 and internal.close_requested) {
+        clearAlgorithms(internal);
+
+        const stream = internal.stream orelse return;
+        const ReadableStreamImpl = @import("ReadableStream.zig");
+        ReadableStreamImpl.closeInternal(stream);
+    } else {
+        // Step 3: Otherwise, call pull if needed
+        // Need instance to call callPullIfNeeded - skip for now
+        // TODO: Pass instance parameter or refactor
+    }
+}
+
+/// ReadableByteStreamControllerProcessReadRequestsUsingQueue(controller)
+///
+/// Spec: § 4.10.11 "Process all pending read requests using queue (for default readers)"
+pub fn processReadRequestsUsingQueue(instance: *runtime.Instance) ImplError!void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+
+    // Step 1: Get stream
+    const stream = internal.stream orelse return error.InvalidState;
+    const stream_state = stream.getState(interfaces.ReadableStream.State);
+    const stream_internal = stream_state.own._internal orelse return error.InvalidState;
+
+    // Step 3: Process all read requests
+    // TODO: Implement getNumReadRequests() on ReadableStream
+    // For now, check if there are any requests (placeholder)
+    _ = stream_internal;
+
+    // Step 3: Loop while read requests exist
+    // while (stream has read requests) {
+    //     // Step 3.1: If queue is empty, return
+    //     if (internal.queue_total_size == 0) {
+    //         return;
+    //     }
+    //
+    //     // Step 3.4: Fill read request from queue
+    //     try fillReadRequestFromQueue(internal);
+    // }
+
+    // Placeholder until ReadableStream API is complete
+}
+
+/// ReadableByteStreamControllerFillReadRequestFromQueue(controller)
+///
+/// Spec: § 4.10.11 "Fill a read request from the queue (for default readers)"
+fn fillReadRequestFromQueue(internal: *InternalState) ImplError!void {
+    // Step 1: Assert: queue is not empty
+    if (internal.byte_queue.items.len == 0) {
+        return error.InvalidState;
+    }
+
+    // Step 2: Remove first queue entry
+    const entry = internal.byte_queue.orderedRemove(0);
+
+    // Step 4: Update queue size
+    internal.queue_total_size -= @as(f64, @floatFromInt(entry.byte_length));
+
+    // Step 5: Handle queue drain
+    handleQueueDrain(internal);
+
+    // Step 6: Create Uint8Array view
+    // TODO: Implement view construction when view API is ready
+
+    // Step 7: Fulfill the read request
+    // TODO: Implement when ReadableStream fulfillReadRequest is ready
+
+    // Cleanup the buffer
+    entry.buffer.deinit(internal.allocator);
+    internal.allocator.destroy(entry.buffer);
+}
+
+/// ReadableByteStreamControllerFillPullIntoDescriptorFromQueue(controller, pullIntoDescriptor)
+///
+/// Spec: § 4.10.11 "Fill pull-into descriptor from byte queue"
+fn fillPullIntoDescriptorFromQueue(
+    internal: *InternalState,
+    pullIntoDescriptor: *PullIntoDescriptor,
+) ImplError!u64 {
+    // Step 1: Let maxBytesToCopy be min(queueTotalSize, pullIntoDescriptor.byteLength - pullIntoDescriptor.bytesFilled)
+    const queue_bytes = @as(u64, @intFromFloat(internal.queue_total_size));
+    const remaining = pullIntoDescriptor.byte_length - pullIntoDescriptor.bytes_filled;
+    const max_bytes_to_copy = @min(queue_bytes, remaining);
+
+    // Step 2: Let maxBytesFilled be pullIntoDescriptor.bytesFilled + maxBytesToCopy
+    const max_bytes_filled = pullIntoDescriptor.bytes_filled + max_bytes_to_copy;
+
+    // Step 3: Let totalBytesToCopyRemaining be maxBytesToCopy
+    var total_bytes_to_copy_remaining = max_bytes_to_copy;
+
+    // Step 4: Let ready be false
+    var ready = false;
+
+    // Step 5: Let remainderBytes = maxBytesFilled % pullIntoDescriptor.elementSize
+    const remainder_bytes = max_bytes_filled % pullIntoDescriptor.element_size;
+
+    // Step 6: Let maxAlignedBytes = maxBytesFilled - remainderBytes
+    const max_aligned_bytes = max_bytes_filled - remainder_bytes;
+
+    // Step 7: If maxAlignedBytes >= pullIntoDescriptor.minimumFill
+    if (max_aligned_bytes >= pullIntoDescriptor.minimum_fill) {
+        // Step 7.1: totalBytesToCopyRemaining = maxAlignedBytes - pullIntoDescriptor.bytesFilled
+        total_bytes_to_copy_remaining = max_aligned_bytes - pullIntoDescriptor.bytes_filled;
+        // Step 7.2: ready = true
+        ready = true;
+    }
+
+    // Step 8: Let queue be controller.[[queue]]
+    // Step 9: While totalBytesToCopyRemaining > 0
+    var bytes_copied: u64 = 0;
+    while (total_bytes_to_copy_remaining > 0 and internal.byte_queue.items.len > 0) {
+        // Step 9.1: Let headOfQueue be queue[0]
+        const head = &internal.byte_queue.items[0];
+
+        // Step 9.2: Let bytesToCopy = min(totalBytesToCopyRemaining, headOfQueue.byteLength)
+        const bytes_to_copy = @min(total_bytes_to_copy_remaining, head.byte_length);
+
+        // Step 9.3: Let destStart = pullIntoDescriptor.byteOffset + pullIntoDescriptor.bytesFilled
+        const dest_start = pullIntoDescriptor.byte_offset + pullIntoDescriptor.bytes_filled;
+
+        // Step 9.4: Perform ! CopyDataBlockBytes(pullIntoDescriptor.buffer, destStart, headOfQueue.buffer, headOfQueue.byteOffset, bytesToCopy)
+        const src_slice = head.buffer.data[head.byte_offset..][0..bytes_to_copy];
+        const dest_slice = pullIntoDescriptor.buffer.data[dest_start..][0..bytes_to_copy];
+        @memcpy(dest_slice, src_slice);
+
+        // Step 9.5: If headOfQueue.byteLength is bytesToCopy
+        if (head.byte_length == bytes_to_copy) {
+            // Step 9.5.1: Remove queue[0]
+            const removed = internal.byte_queue.orderedRemove(0);
+            removed.buffer.deinit(internal.allocator);
+            internal.allocator.destroy(removed.buffer);
+        } else {
+            // Step 9.6: Otherwise
+            // Step 9.6.1: headOfQueue.byteOffset += bytesToCopy
+            head.byte_offset += bytes_to_copy;
+            // Step 9.6.2: headOfQueue.byteLength -= bytesToCopy
+            head.byte_length -= bytes_to_copy;
+        }
+
+        // Step 9.7: controller.[[queueTotalSize]] -= bytesToCopy
+        internal.queue_total_size -= @as(f64, @floatFromInt(bytes_to_copy));
+
+        // Step 9.8: Perform ! ReadableByteStreamControllerFillHeadPullIntoDescriptor(controller, bytesToCopy, pullIntoDescriptor)
+        fillHeadPullIntoDescriptor(pullIntoDescriptor, bytes_to_copy);
+
+        // Step 9.9: totalBytesToCopyRemaining -= bytesToCopy
+        total_bytes_to_copy_remaining -= bytes_to_copy;
+        bytes_copied += bytes_to_copy;
+    }
+
+    // Step 10: If !ready
+    if (!ready) {
+        // Step 10.1: Assert: controller.[[queueTotalSize]] is 0
+        // Step 10.2: Assert: pullIntoDescriptor.bytesFilled > 0
+        // Step 10.3: Assert: pullIntoDescriptor.bytesFilled < pullIntoDescriptor.minimumFill
+    }
+
+    // Step 11: Return ready
+    return if (ready) bytes_copied else 0;
+}
