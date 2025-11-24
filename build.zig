@@ -733,6 +733,31 @@ pub fn build(b: *std.Build) void {
         },
     });
 
+    const streams_reader_ops_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/algorithms/reader_ops.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "runtime", .module = runtime_mod },
+            .{ .name = "interfaces", .module = interfaces_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "async_promise", .module = streams_async_promise_mod },
+        },
+    });
+
+    const streams_readable_stream_async_iterator_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/readable_stream_async_iterator.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "runtime", .module = runtime_mod },
+            .{ .name = "async_promise", .module = streams_async_promise_mod },
+            .{ .name = "interfaces", .module = interfaces_mod },
+            .{ .name = "typedefs", .module = typedefs_mod },
+            .{ .name = "dictionaries", .module = dictionaries_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "reader_ops", .module = streams_reader_ops_mod },
+        },
+    });
+
     const streams_view_construction_mod = b.createModule(.{
         .root_source_file = b.path("src/streams/internal/view_construction.zig"),
         .target = target,
@@ -789,6 +814,7 @@ pub fn build(b: *std.Build) void {
     streams_mod.addImport("v8_resources", streams_v8_resources_mod);
     streams_mod.addImport("iterator_record", streams_iterator_record_mod);
     streams_mod.addImport("from_iterable_algorithm", streams_from_iterable_algorithm_mod);
+    streams_mod.addImport("readable_stream_async_iterator", streams_readable_stream_async_iterator_mod);
     // Add unified interfaces module
     streams_mod.addImport("interfaces", interfaces_mod);
 
