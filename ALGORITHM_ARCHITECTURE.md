@@ -704,9 +704,109 @@ pub fn invoke(self: *const Algorithm, controller: *Instance) !*AsyncPromise(void
 
 ---
 
+## Async Iteration Pattern
+
+### ReadableStream Async Iterator
+
+**Feature:** `for await (const chunk of stream) { ... }`
+
+The async iteration pattern demonstrates how the Algorithm architecture extends beyond pull/cancel to support complete iteration protocols.
+
+### Architecture
+
+**Three-Layer Design:**
+
+1. **Iterator Data Structure** (`ReadableStreamAsyncIterator`)
+   ```zig
+   pub const ReadableStreamAsyncIterator = struct {
+       reader: *runtime.Instance,  // ReadableStreamDefaultReader
+       prevent_cancel: bool,        // Configurable behavior
+       allocator: Allocator,
+   };
+   ```
+
+2. **Iterator Operations**
+   - `create()` - Acquire reader, initialize iterator
+   - `next()` - Return Promise<{value, done}>
+   - `returnEarly()` - Early termination (optional cancel)
+
+3. **Stream Entry Points**
+   - `stream.values(options)` - Explicit iteration
+   - `stream[@@asyncIterator](options)` - Default iteration (for-await-of)
+
+### Promise Type Casting
+
+**Key Insight:** `ReadResult` and `IteratorResult` have identical structure:
+
+```zig
+// Both have: { value: ?*anyopaque, done: bool }
+ReadResult == IteratorResult
+
+// Safe to cast promise types
+AsyncPromise(ReadResult) → AsyncPromise(IteratorResult)
+```
+
+This enables zero-copy promise reuse without transformation overhead.
+
+### Spec Compliance
+
+Implements WHATWG Streams spec lines 602-661:
+- Asynchronous iterator initialization steps
+- Get next iteration result steps
+- Asynchronous iterator return steps
+
+### Reader Integration
+
+**Algorithm Reuse:**
+- Uses existing `ReadableStreamDefaultReader.read()`
+- Delegates to controller's pull mechanism
+- No new algorithm types needed
+
+**Lifecycle Management:**
+1. Iterator creation acquires reader lock
+2. Reading delegates to reader.read()
+3. Early return releases lock (optional cancel)
+4. Natural completion releases lock
+
+### Example Usage
+
+```javascript
+// JavaScript API (when V8 integrated)
+const stream = new ReadableStream({
+  start(controller) {
+    controller.enqueue(1);
+    controller.enqueue(2);
+    controller.enqueue(3);
+    controller.close();
+  }
+});
+
+// Async iteration
+for await (const chunk of stream) {
+  console.log(chunk); // 1, 2, 3
+}
+
+// With preventCancel
+for await (const chunk of stream.values({ preventCancel: true })) {
+  if (chunk === 2) break; // Stream NOT cancelled
+}
+```
+
+### Implementation Notes
+
+**Phase 1:** Infrastructure (reader_ops, async_iterator struct)  
+**Phase 2:** Stream methods (values, @@asyncIterator)  
+**Phase 3:** WebIDL codegen (deferred - manually implemented)  
+**Phase 4:** Tests & documentation
+
+**Build Status:** ✅ Compiles successfully  
+**Testing:** Requires V8 runtime for full integration tests
+
+---
+
 ## Conclusion
 
-The Algorithm vtable architecture successfully bridges JavaScript callbacks and native Zig closures through a unified, zero-cost abstraction. This enables spec-compliant implementations of complex features like `ReadableStream.from()` while maintaining Zig's performance and safety guarantees.
+The Algorithm vtable architecture successfully bridges JavaScript callbacks and native Zig closures through a unified, zero-cost abstraction. This enables spec-compliant implementations of complex features like `ReadableStream.from()` and async iteration while maintaining Zig's performance and safety guarantees.
 
 **Status:** Production-ready, extensible, well-tested  
 **Performance:** Near zero-cost abstraction  
@@ -717,4 +817,4 @@ The Algorithm vtable architecture successfully bridges JavaScript callbacks and 
 
 **Last Updated:** 2025-11-24  
 **Author:** OpenCode AI Assistant  
-**Version:** 1.0 (Phase 5 Complete)
+**Version:** 1.1 (Async Iteration Complete)
