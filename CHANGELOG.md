@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - WebIDL async_iterable Codegen Support (v0.5.1 - 2025-11-24)
+
+#### WebIDL Code Generator
+- **async_iterable<T> Declaration Support** (`webidl/codegen/`)
+  - Added AsyncIterable type with valueType, keyType, and arguments fields
+  - Parser extracts async_iterable declarations with iteration parameters
+  - Generator creates async_iterable metadata in interface Meta
+  - Auto-generates values() and getAsyncIterator() method bindings
+  - Supports optional arguments (e.g., ReadableStreamIteratorOptions)
+  
+- **Generated Interface Metadata**
+  - `async_iterable` metadata field with value_type and options_type
+  - Automatic method registration for values() and getAsyncIterator()
+  - V8-ready method bindings for async iteration protocol
+  
+- **Example Output** (ReadableStream)
+  ```zig
+  pub const async_iterable = .{
+      .value_type = "*const anyopaque",
+      .key_type = null,
+      .options_type = "ReadableStreamIteratorOptions",
+  };
+  
+  pub const methods = .{
+      .{ "values", "call_values", 0 },
+      .{ "getAsyncIterator", "call_getAsyncIterator", 0 },
+  };
+  ```
+
 ### Added - Algorithm Context Architecture (v0.4.0 - 2025-11-24)
 
 #### Core Infrastructure
