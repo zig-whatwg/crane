@@ -197,7 +197,9 @@ fn enqueueInternal(internal: *InternalState, chunk: JSValue) !void {
     }
 
     // Spec step 4: Let enqueueResult be ReadableStreamDefaultControllerEnqueue(readableController, chunk)
-    ReadableStreamDefaultControllerImpl.call_enqueue(controller_instance, chunk) catch |err| {
+    // Convert JSValue to anyopaque for ReadableStreamDefaultController API
+    const chunk_ptr: *const anyopaque = @ptrCast(&chunk);
+    ReadableStreamDefaultControllerImpl.call_enqueue(controller_instance, chunk_ptr) catch |err| {
         // Spec step 5: If enqueueResult is an abrupt completion
         // Spec step 5.1: Perform ! TransformStreamErrorWritableAndUnblockWrite(stream, enqueueResult.[[Value]])
         const error_value = JSValue{ .string = "Enqueue failed" };
