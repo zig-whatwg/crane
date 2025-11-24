@@ -615,7 +615,7 @@ fn setUpWritableStreamDefaultController(
 /// Steps:
 /// 1. If stream.[[closeRequest]] is undefined and stream.[[inFlightCloseRequest]] is undefined, return false
 /// 2. Return true
-fn writableStreamCloseQueuedOrInFlight(internal: *const InternalState) bool {
+pub fn writableStreamCloseQueuedOrInFlight(internal: *const InternalState) bool {
     return internal.close_request != null or internal.in_flight_close_request != null;
 }
 
