@@ -79,6 +79,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Step-by-step spec comments throughout
   - Proper error handling and edge cases
 
+#### Runtime Integration (v0.2.0 - 2025-11-24)
+
+- **ArrayBufferView Introspection** (`runtime/arraybuffer_view.zig`)
+  - ViewType enum for all TypedArray types
+  - ViewMetadata struct with buffer/offset/length/type information
+  - Helper functions: getViewElementSize, getViewByteOffset, getViewByteLength
+  - Detachment detection: isViewDetached
+  - Type identification: getViewConstructor
+  - Buffer extraction: extractViewBuffer
+  - Test helpers for creating mock views
+  - Clean API for spec-level code to use
+  - V8 integration points clearly marked
+
+- **Promise Integration Infrastructure** (`streams/internal/read_into_request_promise.zig`)
+  - ReadIntoRequestWithPromise for promise-based BYOB reads
+  - Wraps AsyncPromise<ReadIntoResult>
+  - chunk_steps, close_steps, error_steps callbacks
+  - ReadIntoCallbacks for compatibility layer
+  - Test coverage for fulfillment scenarios
+
+- **Integration Documentation** (`streams/PROMISE_INTEGRATION.md`)
+  - Complete promise integration roadmap
+  - Phase 1 (infrastructure): ✅ COMPLETE
+  - Phase 2 (promise integration): 🟡 READY
+  - Phase 3 (error handling): 🔴 BLOCKED (JSValue)
+  - Phase 4 (V8 integration): 🔴 BLOCKED (V8 expertise)
+  - API examples and testing strategy
+  - Clear V8 integration requirements
+
+**Status**: BYOB infrastructure 99% complete. Remaining work:
+- Promise returns in ReadableStreamBYOBReader.read() (2-3 hours, unblocked)
+- Error handling with JSValue (1-2 hours, blocked on JSValue definition)
+- V8 ArrayBufferView introspection (3-5 hours, requires V8 knowledge)
+
 ### Added - WritableStream
 
 #### Core Functionality
