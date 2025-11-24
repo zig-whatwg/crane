@@ -1062,21 +1062,19 @@ pub fn chunkToV8ValueSafe(
         },
 
         .number_f64 => |num| blk: {
-            const v8_num = v8.v8_Number_New(isolate, num) orelse
-                return ConversionError.OutOfMemory;
+            const v8_num = v8.v8_Number_New(isolate, num);
             break :blk @ptrCast(v8_num);
         },
 
         .number_i32 => |num| blk: {
-            const v8_num = v8.v8_Number_New(isolate, @floatFromInt(num)) orelse
-                return ConversionError.OutOfMemory;
+            const v8_num = v8.v8_Number_New(isolate, @floatFromInt(num));
             break :blk @ptrCast(v8_num);
         },
 
-        .boolean => |b| blk: {
-            const v8_bool = if (b) v8.v8_True(isolate) else v8.v8_False(isolate);
-            const v8_bool_val = v8_bool orelse return ConversionError.OutOfMemory;
-            break :blk @ptrCast(v8_bool_val);
+        .boolean => |b| {
+            // TODO: Implement v8_Boolean_New in v8_wrapper.cpp
+            _ = b;
+            return ConversionError.NotImplemented;
         },
 
         .undefined_type => blk: {
