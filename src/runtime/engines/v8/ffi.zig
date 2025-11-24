@@ -466,6 +466,24 @@ pub extern fn v8_Promise_Dispose(promise: *Promise) void;
 /// Dispose a PromiseResolver
 pub extern fn v8_PromiseResolver_Dispose(resolver: *PromiseResolver) void;
 
+/// Create a JavaScript function that resolves a PromiseResolver
+///
+/// Returns a Function that, when called, will resolve the PromiseResolver
+/// with the first argument passed to it. Used for chaining Promises.
+pub extern fn v8_PromiseResolver_CreateResolveHandler(
+    context: *Context,
+    resolver: *PromiseResolver,
+) ?*Function;
+
+/// Create a JavaScript function that rejects a PromiseResolver
+///
+/// Returns a Function that, when called, will reject the PromiseResolver
+/// with the first argument passed to it. Used for chaining Promises.
+pub extern fn v8_PromiseResolver_CreateRejectHandler(
+    context: *Context,
+    resolver: *PromiseResolver,
+) ?*Function;
+
 // ============================================================================
 // Microtask Functions (Event Loop Integration)
 // ============================================================================

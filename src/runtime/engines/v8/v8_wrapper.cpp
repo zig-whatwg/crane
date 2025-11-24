@@ -1243,4 +1243,108 @@ void v8_PromiseResolver_Dispose(Global<Promise::Resolver>* resolver) {
     }
 }
 
+// ============================================================================
+// Promise Handler Creation (Phase 3: Callback Utilities)
+// ============================================================================
+
+/// Create a function that resolves a PromiseResolver
+///
+/// Returns a JavaScript function that, when called, resolves the given
+/// PromiseResolver with its first argument.
+///
+/// Used for chaining Promises: source.then(createResolveHandler(target))
+Global<Function>* v8_PromiseResolver_CreateResolveHandler(
+    Global<Context>* context,
+    Global<Promise::Resolver>* resolver
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    
+    // Create External to hold resolver pointer
+    // NOTE: We're storing a raw pointer - caller must ensure resolver outlives handler
+    Local<External> data = External::New(isolate, resolver);
+    
+    // Create callback that resolves the PromiseResolver
+    auto callback = [](const FunctionCallbackInfo<Value>& info) {
+        Isolate* isolate = info.GetIsolate();
+        HandleScope scope(isolate);
+        
+        // Extract resolver from data
+        Local<External> external = Local<External>::Cast(info.Data());
+        auto* resolver = static_cast<Global<Promise::Resolver>*>(external->Value());
+        
+        // Get value argument (or undefined if no args)
+        Local<Value> value = info.Length() > 0 ? info[0] : Undefined(isolate).As<Value>();
+        
+        // Resolve the Promise
+        Local<Promise::Resolver> res = resolver->Get(isolate);
+        Local<Context> ctx = isolate->GetCurrentContext();
+        Maybe<bool> result = res->Resolve(ctx, value);
+        
+        // Return undefined
+        info.GetReturnValue().SetUndefined();
+    };
+    
+    // Create FunctionTemplate
+    Local<FunctionTemplate> tpl = FunctionTemplate::New(isolate, callback, data);
+    MaybeLocal<Function> maybe_fn = tpl->GetFunction(ctx);
+    if (maybe_fn.IsEmpty()) {
+        return nullptr;
+    }
+    
+    Local<Function> fn = maybe_fn.ToLocalChecked();
+    return new Global<Function>(isolate, fn);
+}
+
+/// Create a function that rejects a PromiseResolver
+///
+/// Returns a JavaScript function that, when called, rejects the given
+/// PromiseResolver with its first argument.
+///
+/// Used for chaining Promises: source.catch(createRejectHandler(target))
+Global<Function>* v8_PromiseResolver_CreateRejectHandler(
+    Global<Context>* context,
+    Global<Promise::Resolver>* resolver
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    
+    // Create External to hold resolver pointer
+    Local<External> data = External::New(isolate, resolver);
+    
+    // Create callback that rejects the PromiseResolver
+    auto callback = [](const FunctionCallbackInfo<Value>& info) {
+        Isolate* isolate = info.GetIsolate();
+        HandleScope scope(isolate);
+        
+        // Extract resolver from data
+        Local<External> external = Local<External>::Cast(info.Data());
+        auto* resolver = static_cast<Global<Promise::Resolver>*>(external->Value());
+        
+        // Get reason argument (or undefined if no args)
+        Local<Value> reason = info.Length() > 0 ? info[0] : Undefined(isolate).As<Value>();
+        
+        // Reject the Promise
+        Local<Promise::Resolver> res = resolver->Get(isolate);
+        Local<Context> ctx = isolate->GetCurrentContext();
+        Maybe<bool> result = res->Reject(ctx, reason);
+        
+        // Return undefined
+        info.GetReturnValue().SetUndefined();
+    };
+    
+    // Create FunctionTemplate
+    Local<FunctionTemplate> tpl = FunctionTemplate::New(isolate, callback, data);
+    MaybeLocal<Function> maybe_fn = tpl->GetFunction(ctx);
+    if (maybe_fn.IsEmpty()) {
+        return nullptr;
+    }
+    
+    Local<Function> fn = maybe_fn.ToLocalChecked();
+    return new Global<Function>(isolate, fn);
+}
+
+
 } // extern "C"

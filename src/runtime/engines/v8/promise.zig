@@ -170,6 +170,9 @@ pub fn Promise(comptime T: type) type {
 /// Helper for invoking callbacks that return Promises.
 /// Used by Streams API for write_algorithm, pull_algorithm, etc.
 ///
+/// This properly chains the callback's returned Promise to the wrapper Promise,
+/// so that when the callback's Promise settles, our wrapper Promise settles too.
+///
 /// Example:
 /// ```zig
 /// const promise = try invokeCallback(
@@ -209,14 +212,38 @@ pub fn invokeCallback(
     // TODO: Add runtime type check with v8_Value_IsPromise
     // For now, we assume the callback returns a Promise as per spec
 
-    // Create a wrapper Promise to return
-    const promise = try Promise(ReturnType).init(isolate, context);
+    // Create a wrapper Promise to return to Zig
+    var wrapper = try Promise(ReturnType).init(isolate, context);
+    errdefer wrapper.deinit();
 
-    // The result is already a V8 Promise, so we chain to our wrapper
-    // This allows us to maintain Zig-side Promise semantics
-    // TODO: Improve this by directly wrapping the returned Promise
+    // Create resolve/reject handlers that will settle our wrapper Promise
+    const resolve_handler = v8.v8_PromiseResolver_CreateResolveHandler(
+        context,
+        wrapper.resolver,
+    ) orelse return error.HandlerCreationFailed;
+    defer v8.v8_Function_Dispose(resolve_handler);
 
-    return promise;
+    const reject_handler = v8.v8_PromiseResolver_CreateRejectHandler(
+        context,
+        wrapper.resolver,
+    ) orelse return error.HandlerCreationFailed;
+    defer v8.v8_Function_Dispose(reject_handler);
+
+    // Chain the callback's returned Promise to our wrapper
+    // Cast result to Promise (we assume it's a Promise per spec)
+    const source_promise = @as(*v8.Promise, @ptrCast(result));
+
+    // source_promise.then(resolve_handler, reject_handler)
+    // This chains: when source settles → our wrapper settles with same value/reason
+    const chained = v8.v8_Promise_Then(
+        source_promise,
+        context,
+        resolve_handler,
+        reject_handler,
+    ) orelse return error.PromiseChainingFailed;
+    defer v8.v8_Promise_Dispose(chained);
+
+    return wrapper;
 }
 
 // ============================================================================
