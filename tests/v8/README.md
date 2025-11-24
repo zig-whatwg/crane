@@ -21,17 +21,34 @@ zig build test-v8
   - Tests non-constructible enforcement
   - Tests property descriptors
 
+- **`bindings_advanced_test.js`** - Advanced bindings tests
+  - Tests advanced WebIDL features
+  - Tests complex prototype scenarios
+
+- **`prototype_chain_test.js`** - Prototype chain validation
+  - Tests inheritance relationships
+  - Tests prototype linkage
+
+- **`streams_async_iteration_test.js`** - ReadableStream async iteration (40+ tests)
+  - Tests `ReadableStream.values()` and `[Symbol.asyncIterator]()`
+  - Tests async iteration with for-await-of loops
+  - Tests promise chaining and transformation
+  - Tests preventCancel option behavior
+  - Tests error propagation through iterators
+  - Tests early return and reader release
+  - Tests complex async scenarios
+
 - **`bindings_test_verbose.js`** - Full test suite with console.log output
   - Designed for future use when console.log is implemented
   - Contains descriptive test names and detailed assertions
 
 ## Current Results
 
-- **Total Tests**: 36
-- **Passing**: 36 (100%) ✅
-- **Failing**: 0
+- **Total Tests**: 76+
+- **Passing**: Expected when V8 integration complete
+- **Status**: ✅ Test infrastructure ready
 
-🎉 **All tests passing!** The V8 WebIDL bindings are 100% spec-compliant for all tested behaviors.
+**Note**: Async iteration tests require full ReadableStream implementation with V8 integration.
 
 ## What These Tests Validate
 

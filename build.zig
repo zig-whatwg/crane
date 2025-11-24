@@ -1259,7 +1259,13 @@ pub fn build(b: *std.Build) void {
     run_prototype_chain_tests.addArtifactArg(repl_exe);
     run_prototype_chain_tests.addArg("tests/v8/prototype_chain_test.js");
 
-    test_v8_step.dependOn(&run_prototype_chain_tests.step);
+    // Run streams async iteration tests
+    const run_streams_async_iteration_tests = b.addRunArtifact(test_runner_exe);
+    run_streams_async_iteration_tests.step.dependOn(&run_prototype_chain_tests.step);
+    run_streams_async_iteration_tests.addArtifactArg(repl_exe);
+    run_streams_async_iteration_tests.addArg("tests/v8/streams_async_iteration_test.js");
+
+    test_v8_step.dependOn(&run_streams_async_iteration_tests.step);
 
     // Note: bindings_test_verbose.js and prototype_property_access_test.js use
     // console.log() format and are not compatible with the simple test runner.
