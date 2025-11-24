@@ -269,7 +269,7 @@ pub fn call_enqueue(instance: *runtime.Instance, chunk: *const anyopaque) ImplEr
 }
 
 /// ReadableStreamDefaultControllerCanCloseOrEnqueue(controller)
-fn canCloseOrEnqueue(internal: *InternalState) bool {
+pub fn canCloseOrEnqueue(internal: *InternalState) bool {
     const stream_instance = internal.stream orelse return false;
     const stream_state = stream_instance.getState(interfaces.ReadableStream.State);
     const stream_internal = stream_state.own._internal orelse return false;

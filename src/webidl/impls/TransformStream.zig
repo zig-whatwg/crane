@@ -177,7 +177,9 @@ pub fn errorWritableAndUnblockWrite(instance: *runtime.Instance, e: JSValue) voi
     // Spec step 2: Perform ! WritableStreamDefaultControllerErrorIfNeeded(stream.[[writable]].[[controller]], e)
     if (internal.writableStream) |writable| {
         const WritableStreamImpl = @import("WritableStream.zig");
-        WritableStreamImpl.errorInternal(writable, e);
+        // Convert JSValue to anyopaque for WritableStream API
+        const error_ptr: *const anyopaque = @ptrCast(&e);
+        WritableStreamImpl.writableStreamStartErroring(writable, error_ptr);
     }
 
     // Spec step 3: Perform ! TransformStreamUnblockWrite(stream)

@@ -29,6 +29,7 @@ pub const ImplError = error{
     TypeError,
     OutOfMemory,
     InvalidState,
+    RangeError, // From ReadableStreamDefaultController.call_close
 };
 
 /// Internal state for TransformStreamDefaultController
@@ -354,7 +355,7 @@ fn defaultFlushAlgorithm() FlushAlgorithm {
 /// Default cancel algorithm (no-op)
 fn defaultCancelAlgorithm() CancelAlgorithm {
     const vtable = struct {
-        fn call(_: *anyopaque, _: JSValue) Promise(void) {
+        fn call(_: *anyopaque, _: ?JSValue) Promise(void) {
             return Promise(void).fulfilled({});
         }
         fn deinitFn(_: *anyopaque) void {}
