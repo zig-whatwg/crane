@@ -869,10 +869,9 @@ fn respondInClosedState(
         while (ReadableStreamImpl.getNumReadIntoRequests(stream) > 0) {
             // Step 4.1.1: Process pull-into descriptor from queue
             const result = try processPullIntoDescriptorsUsingQueue(internal);
-            defer result.deinit(internal.allocator);
 
             // If no more descriptors could be processed, break
-            if (result.items.len == 0) {
+            if (result.len == 0) {
                 break;
             }
         }
@@ -1264,19 +1263,14 @@ fn enqueueInternal(instance: *runtime.Instance, chunk: typedefs.ArrayBufferView)
 /// Spec: § 4.10.11 "Process pull-into descriptors using queue"
 fn processPullIntoDescriptorsUsingQueue(
     internal: *InternalState,
-) ImplError!std.ArrayList(*PullIntoDescriptor) {
-    var result = std.ArrayList(*PullIntoDescriptor){
-        .items = &[_]*PullIntoDescriptor{},
-        .capacity = 0,
-        .allocator = internal.allocator,
-    };
-    errdefer result.deinit(internal.allocator);
+) ImplError![]const *PullIntoDescriptor {
+    _ = internal; // TODO: Remove when implemented
 
     // Step 1: While ! ReadableStreamGetNumReadIntoRequests(stream) > 0
     // TODO: Implement when ReadableStream API is ready
-    // For now, return empty list
+    // For now, return empty slice
 
-    return result;
+    return &[_]*PullIntoDescriptor{};
 }
 
 /// ReadableByteStreamControllerPullSteps(controller, readRequest)
