@@ -54,6 +54,11 @@
 /// V8 C API FFI bindings
 pub const ffi = @import("ffi.zig");
 
+/// V8 Engine Interface (implements runtime.EngineInterface)
+/// Use this to create engine-agnostic contexts that work with V8
+pub const engine = @import("engine.zig");
+pub const v8_engine_interface = engine.v8_engine_interface;
+
 /// Type conversions between Zig and V8
 pub const conversions = @import("conversions.zig");
 

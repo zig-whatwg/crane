@@ -74,8 +74,8 @@ fn nextShim(
     // Cast to Zig iterator type
     const iterator: *ReadableStreamAsyncIterator = @ptrCast(@alignCast(iterator_ptr orelse return null));
 
-    // Call Zig next() - returns *AsyncPromise(IteratorResult)
-    const zig_promise = iterator.next() catch |err| {
+    // Call module-level next() function with iterator as argument
+    const zig_promise = readable_stream_async_iterator.next(iterator) catch |err| {
         // On error, return a rejected V8 promise
         return createRejectedPromise(isolate, context, err);
     };
@@ -96,8 +96,8 @@ fn returnShim(
     // Cast to Zig iterator type
     const iterator: *ReadableStreamAsyncIterator = @ptrCast(@alignCast(iterator_ptr orelse return null));
 
-    // Call Zig returnEarly() with no reason
-    const zig_promise = iterator.returnEarly(null) catch |err| {
+    // Call module-level returnEarly() function with iterator as argument
+    const zig_promise = readable_stream_async_iterator.returnEarly(iterator, null) catch |err| {
         // On error, return a rejected V8 promise
         return createRejectedPromise(isolate, context, err);
     };
@@ -105,6 +105,9 @@ fn returnShim(
     // Convert Zig AsyncPromise to V8 Promise (returns { value: undefined, done: true })
     return convertVoidPromiseToV8(isolate, context, zig_promise) catch null;
 }
+
+// Import webidl for Exception type
+const webidl = @import("webidl");
 
 /// Context for bridging Zig AsyncPromise to V8 Promise
 const PromiseBridge = struct {
@@ -128,13 +131,13 @@ const PromiseBridge = struct {
         self.allocator.destroy(self);
     }
 
-    fn onFulfilled(ctx: *anyopaque, value: IteratorResult) void {
+    fn onFulfilled(ctx: *anyopaque, value: IteratorResult) anyerror!void {
         const self: *PromiseBridge = @ptrCast(@alignCast(ctx));
         self.v8_promise.resolve(value) catch {};
         self.deinit();
     }
 
-    fn onRejected(ctx: *anyopaque, err_value: anytype) void {
+    fn onRejected(ctx: *anyopaque, err_value: webidl.errors.Exception) anyerror!void {
         const self: *PromiseBridge = @ptrCast(@alignCast(ctx));
         self.v8_promise.reject(err_value) catch {};
         self.deinit();
@@ -192,13 +195,13 @@ const VoidPromiseBridge = struct {
         self.allocator.destroy(self);
     }
 
-    fn onFulfilled(ctx: *anyopaque, _: void) void {
+    fn onFulfilled(ctx: *anyopaque, _: void) anyerror!void {
         const self: *VoidPromiseBridge = @ptrCast(@alignCast(ctx));
         self.v8_promise.resolve({}) catch {};
         self.deinit();
     }
 
-    fn onRejected(ctx: *anyopaque, err_value: anytype) void {
+    fn onRejected(ctx: *anyopaque, err_value: webidl.errors.Exception) anyerror!void {
         const self: *VoidPromiseBridge = @ptrCast(@alignCast(ctx));
         self.v8_promise.reject(err_value) catch {};
         self.deinit();

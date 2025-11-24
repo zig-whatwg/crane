@@ -32,6 +32,7 @@ const v8 = @import("ffi.zig");
 const conv = @import("conversions.zig");
 const runtime = @import("runtime");
 const overload_resolver = @import("overload_resolver.zig");
+const async_iterator = @import("async_iterator.zig");
 
 /// Comptime V8 interface binding generator
 ///
@@ -164,6 +165,33 @@ pub fn V8Interface(comptime Interface: type) type {
                         if (iterator_tmpl) |tmpl| {
                             const iterator_func = v8.v8_FunctionTemplate_GetFunction(tmpl, context);
                             if (iterator_func) |func| {
+                                _ = v8.v8_Object_DefineProperty(
+                                    @ptrCast(proto),
+                                    context,
+                                    @ptrCast(symbol),
+                                    @ptrCast(func),
+                                    true, // writable = true
+                                    false, // enumerable = false
+                                    true, // configurable = true
+                                );
+                            }
+                        }
+                    }
+                }
+
+                // Set Symbol.asyncIterator on prototype if interface is async iterable
+                if (@hasDecl(Meta, "async_iterable")) {
+                    const symbol_async_iterator = v8.v8_Symbol_GetAsyncIterator(isolate);
+                    if (symbol_async_iterator) |symbol| {
+                        // Create async iterator function that wraps call_values()
+                        const async_iterator_tmpl = v8.v8_FunctionTemplate_New(
+                            isolate,
+                            asyncIteratorCallback,
+                            null,
+                        );
+                        if (async_iterator_tmpl) |tmpl| {
+                            const async_iterator_func = v8.v8_FunctionTemplate_GetFunction(tmpl, context);
+                            if (async_iterator_func) |func| {
                                 _ = v8.v8_Object_DefineProperty(
                                     @ptrCast(proto),
                                     context,
@@ -870,6 +898,71 @@ pub fn V8Interface(comptime Interface: type) type {
                 info.setReturnValue(@ptrCast(obj));
             } else {
                 conv.throwError(isolate, "Failed to create iterator");
+            }
+        }
+
+        /// Async iterator callback for Symbol.asyncIterator
+        ///
+        /// This is called when JavaScript code calls stream[Symbol.asyncIterator]()
+        /// or for-await-of loops. It creates a Zig async iterator and wraps it
+        /// in a V8 object with next() and return() methods.
+        fn asyncIteratorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+            const isolate = info.getIsolate();
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+                conv.throwError(isolate, "No V8 context");
+                return;
+            };
+
+            // Get 'this' object (the instance)
+            const this_obj = info.getThis();
+            const instance = getInstance(runtime.Instance, this_obj) orelse {
+                conv.throwError(isolate, "Invalid instance for async iterator");
+                return;
+            };
+
+            // Call interface's call_values() method to get the Zig iterator
+            // The return type is *const anyopaque which is a *ReadableStreamAsyncIterator
+            if (@hasDecl(Interface, "call_values")) {
+                // Determine signature of call_values at comptime
+                const call_values_fn = @TypeOf(Interface.call_values);
+                const fn_info = @typeInfo(call_values_fn).@"fn";
+
+                // Call call_values() based on argument count
+                const zig_iterator_ptr = blk: {
+                    if (fn_info.params.len == 1) {
+                        // call_values(instance) - no options
+                        break :blk Interface.call_values(instance) catch |err| {
+                            const err_name = @errorName(err);
+                            conv.throwError(isolate, err_name);
+                            return;
+                        };
+                    } else if (fn_info.params.len == 2) {
+                        // call_values(instance, options) - has options
+                        const OptionsType = @import("dictionaries").ReadableStreamIteratorOptions;
+                        const options: OptionsType = .{ .preventCancel = false };
+                        break :blk Interface.call_values(instance, options) catch |err| {
+                            const err_name = @errorName(err);
+                            conv.throwError(isolate, err_name);
+                            return;
+                        };
+                    } else {
+                        @compileError("Unexpected call_values signature");
+                    }
+                };
+
+                // Wrap the Zig iterator in a V8 async iterator object
+                const wrapped = async_iterator.wrapAsyncIterator(
+                    isolate,
+                    v8_context,
+                    @ptrCast(@alignCast(@constCast(zig_iterator_ptr))),
+                ) catch {
+                    conv.throwError(isolate, "Failed to create async iterator");
+                    return;
+                };
+
+                info.setReturnValue(@ptrCast(wrapped));
+            } else {
+                conv.throwError(isolate, "Interface does not support async iteration");
             }
         }
 

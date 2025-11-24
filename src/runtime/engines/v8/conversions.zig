@@ -1123,6 +1123,102 @@ pub fn chunkToV8Value(
 }
 
 // ============================================================================
+// Generic Conversion Functions
+// ============================================================================
+
+/// Generic Zig to V8 value conversion
+///
+/// Handles conversion of common Zig types to V8 values.
+/// Used by Promise.resolve() and other generic APIs.
+///
+/// Supported types:
+/// - void: converts to undefined
+/// - bool: converts to V8 Boolean
+/// - integers: convert to V8 Number
+/// - floats: convert to V8 Number
+/// - []const u8 / DOMString: convert to V8 String
+/// - *anyopaque: returns as-is (assumes already a V8 Value)
+/// - structs with value/done fields: creates iterator result object
+pub fn toV8(
+    comptime T: type,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    value: T,
+) ConversionError!*v8.Value {
+    const info = @typeInfo(T);
+
+    switch (info) {
+        .void => {
+            return v8.v8_Undefined(isolate) orelse return ConversionError.OutOfMemory;
+        },
+        .bool => {
+            return toV8Boolean(isolate, value);
+        },
+        .int, .comptime_int => {
+            const float_val: f64 = @floatFromInt(value);
+            return @ptrCast(v8.v8_Number_New(isolate, float_val) orelse return ConversionError.OutOfMemory);
+        },
+        .float, .comptime_float => {
+            return @ptrCast(v8.v8_Number_New(isolate, @floatCast(value)) orelse return ConversionError.OutOfMemory);
+        },
+        .pointer => |ptr_info| {
+            if (ptr_info.size == .slice and ptr_info.child == u8) {
+                // []const u8 - convert to string
+                return @ptrCast(v8.v8_String_NewFromUtf8(
+                    isolate,
+                    value.ptr,
+                    @intCast(value.len),
+                ) orelse return ConversionError.OutOfMemory);
+            } else if (ptr_info.child == anyopaque) {
+                // *anyopaque - assume it's already a V8 value pointer
+                return @ptrCast(value);
+            } else {
+                // Unsupported pointer type
+                return ConversionError.TypeError;
+            }
+        },
+        .@"struct" => {
+            // Check if it's an IteratorResult-like struct
+            if (@hasField(T, "value") and @hasField(T, "done")) {
+                // Create { value: X, done: Y } object
+                const obj = v8.v8_Object_New(isolate) orelse return ConversionError.OutOfMemory;
+
+                // Set "done" property
+                const done_key = v8.v8_String_NewFromUtf8(isolate, "done", 4) orelse
+                    return ConversionError.OutOfMemory;
+                const done_value: *v8.Value = @ptrCast(toV8Boolean(isolate, value.done));
+                _ = v8.v8_Object_Set(obj, context, @ptrCast(done_key), done_value);
+
+                // Set "value" property
+                const value_key = v8.v8_String_NewFromUtf8(isolate, "value", 5) orelse
+                    return ConversionError.OutOfMemory;
+
+                // Value is ?*anyopaque, convert appropriately
+                const value_v8: *v8.Value = if (value.value) |v|
+                    @ptrCast(v)
+                else
+                    v8.v8_Undefined(isolate) orelse return ConversionError.OutOfMemory;
+
+                _ = v8.v8_Object_Set(obj, context, @ptrCast(value_key), value_v8);
+
+                return @ptrCast(obj);
+            }
+            return ConversionError.TypeError;
+        },
+        .optional => |opt_info| {
+            if (value) |v| {
+                return toV8(opt_info.child, isolate, context, v);
+            } else {
+                return v8.v8_Null(isolate) orelse return ConversionError.OutOfMemory;
+            }
+        },
+        else => {
+            return ConversionError.TypeError;
+        },
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
