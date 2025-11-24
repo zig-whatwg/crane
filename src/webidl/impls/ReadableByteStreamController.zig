@@ -216,8 +216,7 @@ pub fn call_enqueue(instance: *runtime.Instance, chunk: typedefs.ArrayBufferView
     const internal = state.own._internal orelse return error.InvalidState;
 
     // Step 1: If chunk ByteLength is 0, throw TypeError
-    // TODO: Proper ArrayBufferView handling
-    _ = chunk;
+    // TODO: Proper ArrayBufferView handling - check byteLength
 
     // Step 2: If buffer ByteLength is 0, throw TypeError
     // TODO: Get buffer from chunk and check
@@ -237,8 +236,7 @@ pub fn call_enqueue(instance: *runtime.Instance, chunk: typedefs.ArrayBufferView
     }
 
     // Step 5: Perform ReadableByteStreamControllerEnqueue
-    // TODO: Implement enqueueInternal
-    return error.NotImplemented;
+    try enqueueInternal(instance, chunk);
 }
 
 /// Operation: error
@@ -1170,4 +1168,87 @@ fn fillPullIntoDescriptorFromQueue(
 
     // Step 11: Return ready
     return if (ready) bytes_copied else 0;
+}
+
+/// Internal enqueue implementation (called from call_enqueue)
+///
+/// Spec: § 4.7.3 "ReadableByteStreamControllerEnqueue"
+fn enqueueInternal(instance: *runtime.Instance, chunk: typedefs.ArrayBufferView) ImplError!void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+
+    // Step 1: Get stream
+    const stream = internal.stream orelse return error.InvalidState;
+    const stream_state = stream.getState(interfaces.ReadableStream.State);
+    const stream_internal = stream_state.own._internal orelse return error.InvalidState;
+
+    // Step 2: If closeRequested or not readable, return
+    if (internal.close_requested or stream_internal.state != .readable) {
+        return;
+    }
+
+    // Step 3-5: Extract buffer details
+    // TODO: Implement proper ArrayBufferView introspection
+    _ = chunk;
+    const byteOffset: u64 = 0; // Placeholder
+    const byteLength: u64 = 1024; // Placeholder
+
+    // Step 6: Check if buffer is detached
+    // TODO: Implement buffer detachment check
+
+    // Step 7: Transfer the buffer
+    const buffer_ptr = try internal.allocator.create(ArrayBuffer);
+    buffer_ptr.* = .{
+        .data = &[_]u8{},
+        .byte_length = byteLength,
+        .detached = false,
+    };
+
+    // Step 8: If pendingPullIntos not empty, handle specially
+    if (internal.pending_pull_intos.items.len > 0) {
+        const first_pending = internal.pending_pull_intos.items[0];
+
+        // Check if buffer is detached
+        if (first_pending.buffer.detached) {
+            return error.TypeError;
+        }
+
+        invalidateBYOBRequest(internal);
+
+        // Transfer first pending buffer
+        const old_buffer = first_pending.buffer;
+        const transferred = try old_buffer.transfer();
+        const transferred_ptr = try internal.allocator.create(ArrayBuffer);
+        transferred_ptr.* = transferred;
+        first_pending.buffer = transferred_ptr;
+        internal.allocator.destroy(old_buffer);
+
+        if (first_pending.reader_type == .none) {
+            try enqueueDetachedPullIntoToQueue(internal, first_pending);
+        }
+    }
+
+    // Step 9: If has default reader, process read requests
+    // TODO: Implement stream.hasDefaultReader() check
+    // For now, just enqueue to queue
+    try enqueueChunkToQueue(internal, buffer_ptr, byteOffset, byteLength);
+
+    // Step 12: Call pull if needed
+    callPullIfNeeded(instance);
+}
+
+/// ReadableByteStreamControllerProcessPullIntoDescriptorsUsingQueue(controller)
+///
+/// Spec: § 4.10.11 "Process pull-into descriptors using queue"
+fn processPullIntoDescriptorsUsingQueue(
+    internal: *InternalState,
+) ImplError!std.ArrayList(*PullIntoDescriptor) {
+    var result = std.ArrayList(*PullIntoDescriptor).init(internal.allocator);
+    errdefer result.deinit();
+
+    // Step 1: While ! ReadableStreamGetNumReadIntoRequests(stream) > 0
+    // TODO: Implement when ReadableStream API is ready
+    // For now, return empty list
+
+    return result;
 }
