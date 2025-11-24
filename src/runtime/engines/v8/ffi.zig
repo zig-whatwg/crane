@@ -397,6 +397,24 @@ pub extern fn v8_FunctionTemplate_SetLength(tpl: *FunctionTemplate, length: c_in
 // Function
 pub extern fn v8_Function_Dispose(fn_ptr: *Function) void;
 
+/// Call a JavaScript function from native code
+///
+/// This enables Zig to invoke JavaScript callbacks, essential for Streams API.
+///
+/// @param function - The JavaScript function to call
+/// @param context - The V8 context in which to execute
+/// @param recv - The 'this' value (use v8_Undefined for no 'this')
+/// @param argc - Number of arguments
+/// @param argv - Array of argument values
+/// @return Return value from function, or null if exception occurred
+pub extern fn v8_Function_Call(
+    function: *Function,
+    context: *Context,
+    recv: *Value,
+    argc: c_int,
+    argv: [*]*Value,
+) ?*Value;
+
 // ============================================================================
 // Microtask Functions (Event Loop Integration)
 // ============================================================================

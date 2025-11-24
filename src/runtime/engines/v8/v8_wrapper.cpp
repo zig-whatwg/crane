@@ -1067,4 +1067,56 @@ void v8_Isolate_SetMicrotasksPolicy(Isolate* isolate, int policy) {
     isolate->SetMicrotasksPolicy(v8_policy);
 }
 
+// ============================================================================
+// Function Call Support (Phase 1: Runtime Callback Infrastructure)
+// ============================================================================
+
+/// Call a JavaScript function from native code
+///
+/// This enables Zig to invoke JavaScript callbacks, which is essential for
+/// Streams API callbacks (write_algorithm, pull_algorithm, etc.).
+///
+/// @param function - The JavaScript function to call
+/// @param context - The V8 context in which to execute the call
+/// @param recv - The 'this' value for the function call (use v8_Undefined for no 'this')
+/// @param argc - Number of arguments to pass
+/// @param argv - Array of argument values
+/// @return The return value from the function call, or nullptr if an exception occurred
+Global<Value>* v8_Function_Call(
+    Global<Function>* function,
+    Global<Context>* context,
+    Global<Value>* recv,
+    int argc,
+    Global<Value>** argv
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    // Convert Global handles to Local handles
+    Local<Function> fn = function->Get(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Local<Value> this_val = recv->Get(isolate);
+    
+    // Convert argument array from Global to Local
+    Local<Value>* local_argv = new Local<Value>[argc];
+    for (int i = 0; i < argc; i++) {
+        local_argv[i] = argv[i]->Get(isolate);
+    }
+    
+    // Call the function
+    MaybeLocal<Value> maybe_result = fn->Call(ctx, this_val, argc, local_argv);
+    
+    // Clean up local argument array
+    delete[] local_argv;
+    
+    // Check for exception
+    if (maybe_result.IsEmpty()) {
+        return nullptr;  // Exception occurred
+    }
+    
+    // Return the result as a Global handle
+    Local<Value> result = maybe_result.ToLocalChecked();
+    return new Global<Value>(isolate, result);
+}
+
 } // extern "C"
