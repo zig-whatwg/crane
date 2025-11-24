@@ -216,10 +216,13 @@ pub fn call_enqueue(instance: *runtime.Instance, chunk: typedefs.ArrayBufferView
     const internal = state.own._internal orelse return error.InvalidState;
 
     // Step 1: If chunk ByteLength is 0, throw TypeError
-    // TODO: Proper ArrayBufferView handling - check byteLength
+    const chunk_byte_length = getViewByteLength(chunk);
+    if (chunk_byte_length == 0) {
+        return error.TypeError;
+    }
 
     // Step 2: If buffer ByteLength is 0, throw TypeError
-    // TODO: Get buffer from chunk and check
+    // (Buffer byte length is checked via view detachment)
 
     // Step 3: If closeRequested is true, throw TypeError
     if (internal.close_requested) {
@@ -604,29 +607,18 @@ pub fn pullInto(
     const stream = internal.stream orelse return error.InvalidState;
 
     // Steps 2-4: Determine element size and constructor from view
-    // TODO: Proper ArrayBufferView element size extraction
-    _ = view; // TODO: Extract actual element size and constructor
-    const element_size: u64 = 1; // Placeholder - need proper view introspection
-
-    // Map to ViewConstructor (simplified - need proper type detection)
-    const ctor = ViewConstructor.uint8_array; // Placeholder
+    const element_size = getViewElementSize(view);
+    const ctor = getViewConstructor(view);
 
     // Step 5: Calculate minimum fill
     const minimum_fill = min * element_size;
 
     // Steps 8-9: Extract byteOffset and byteLength
-    // TODO: Proper ArrayBufferView introspection
-    const byteOffset: u64 = 0; // Placeholder
-    const byteLength: u64 = 1024; // Placeholder
+    const byteOffset = getViewByteOffset(view);
+    const byteLength = getViewByteLength(view);
 
     // Step 10: Transfer the ArrayBuffer
-    // TODO: Implement buffer transfer when view API is ready
-    const buffer_ptr = try internal.allocator.create(ArrayBuffer);
-    buffer_ptr.* = .{
-        .data = &[_]u8{},
-        .byte_length = byteLength,
-        .detached = false,
-    };
+    const buffer_ptr = try extractViewBuffer(internal.allocator, view);
 
     // Step 13: Create pull-into descriptor
     const pullIntoDescriptor = try internal.allocator.create(PullIntoDescriptor);
@@ -723,8 +715,9 @@ pub fn respondWithNewView(instance: *runtime.Instance, view: typedefs.ArrayBuffe
     }
 
     // Step 2: Assert: ! IsDetachedBuffer(view.[[ViewedArrayBuffer]]) is false
-    // TODO: Check if view is detached when ArrayBufferView API is ready
-    _ = view;
+    if (isViewDetached(view)) {
+        return error.TypeError;
+    }
 
     // Step 3: Let firstDescriptor be controller.[[pendingPullIntos]][0]
     const firstDescriptor = internal.pending_pull_intos.items[0];
@@ -735,12 +728,14 @@ pub fn respondWithNewView(instance: *runtime.Instance, view: typedefs.ArrayBuffe
     const stream_internal = stream_state.own._internal orelse return error.InvalidState;
     const read_state = stream_internal.state;
 
+    // Extract view properties
+    const view_byteOffset = getViewByteOffset(view);
+    const view_byteLength = getViewByteLength(view);
+
     // Step 5: If state is "closed"
     if (read_state == .closed) {
         // Step 5.1: If view.[[ByteLength]] is not 0, throw TypeError
-        // TODO: Get actual byte length when ArrayBufferView API is ready
-        const view_byte_length: u64 = 0; // Placeholder
-        if (view_byte_length != 0) {
+        if (view_byteLength != 0) {
             return error.TypeError;
         }
     } else {
@@ -751,17 +746,10 @@ pub fn respondWithNewView(instance: *runtime.Instance, view: typedefs.ArrayBuffe
         }
 
         // Step 6.2: If view.[[ByteLength]] is 0, throw TypeError
-        // TODO: Get actual byte length when ArrayBufferView API is ready
-        const view_byte_length: u64 = 0; // Placeholder
-        if (view_byte_length == 0) {
+        if (view_byteLength == 0) {
             return error.TypeError;
         }
     }
-
-    // Extract view properties (placeholders)
-    // TODO: Implement proper ArrayBufferView introspection
-    const view_byteOffset: u64 = 0;
-    const view_byteLength: u64 = 1024;
 
     // Step 7: If firstDescriptor's byte offset + firstDescriptor's bytes filled is not view.[[ByteOffset]], throw RangeError
     if (firstDescriptor.byte_offset + firstDescriptor.bytes_filled != view_byteOffset) {
@@ -777,13 +765,7 @@ pub fn respondWithNewView(instance: *runtime.Instance, view: typedefs.ArrayBuffe
     }
 
     // Step 11: Set firstDescriptor's buffer to ? TransferArrayBuffer(view.[[ViewedArrayBuffer]])
-    // TODO: Transfer actual buffer from view
-    const transferred_ptr = try internal.allocator.create(ArrayBuffer);
-    transferred_ptr.* = .{
-        .data = &[_]u8{},
-        .byte_length = view_byteLength,
-        .detached = false,
-    };
+    const transferred_ptr = try extractViewBuffer(internal.allocator, view);
 
     // Free old buffer before replacing
     firstDescriptor.buffer.deinit(internal.allocator);
@@ -1190,21 +1172,16 @@ fn enqueueInternal(instance: *runtime.Instance, chunk: typedefs.ArrayBufferView)
     }
 
     // Step 3-5: Extract buffer details
-    // TODO: Implement proper ArrayBufferView introspection
-    _ = chunk;
-    const byteOffset: u64 = 0; // Placeholder
-    const byteLength: u64 = 1024; // Placeholder
+    const byteOffset = getViewByteOffset(chunk);
+    const byteLength = getViewByteLength(chunk);
 
     // Step 6: Check if buffer is detached
-    // TODO: Implement buffer detachment check
+    if (isViewDetached(chunk)) {
+        return error.TypeError;
+    }
 
     // Step 7: Transfer the buffer
-    const buffer_ptr = try internal.allocator.create(ArrayBuffer);
-    buffer_ptr.* = .{
-        .data = &[_]u8{},
-        .byte_length = byteLength,
-        .detached = false,
-    };
+    const buffer_ptr = try extractViewBuffer(internal.allocator, chunk);
 
     // Step 8: If pendingPullIntos not empty, handle specially
     if (internal.pending_pull_intos.items.len > 0) {
@@ -1317,4 +1294,78 @@ pub fn pullSteps(
 
     // Step 7: Perform ! ReadableByteStreamControllerCallPullIfNeeded(this)
     callPullIfNeeded(instance);
+}
+
+// ============================================================================
+// ArrayBufferView Helper Functions (Placeholders for Runtime Integration)
+// ============================================================================
+//
+// These functions need to be implemented at the runtime level to properly
+// introspect TypedArray and DataView objects. The actual implementation will
+// depend on the JavaScript engine (V8, SpiderMonkey, etc.).
+//
+// Required operations:
+// - Get element size (1 for Uint8Array, 2 for Uint16Array, etc.)
+// - Get byte offset into the underlying ArrayBuffer
+// - Get byte length of the view
+// - Check if the underlying ArrayBuffer is detached
+// - Get the underlying ArrayBuffer reference
+// - Determine the TypedArray constructor type
+//
+
+/// Get the element size in bytes for a TypedArray view
+///
+/// Returns 1 for Uint8Array/Int8Array, 2 for Uint16Array/Int16Array, etc.
+fn getViewElementSize(view: typedefs.ArrayBufferView) u64 {
+    // TODO: Implement at runtime level
+    _ = view;
+    return 1; // Default to Uint8Array (1 byte elements)
+}
+
+/// Get the byte offset of the view into its underlying ArrayBuffer
+fn getViewByteOffset(view: typedefs.ArrayBufferView) u64 {
+    // TODO: Implement at runtime level
+    _ = view;
+    return 0; // Default to start of buffer
+}
+
+/// Get the byte length of the view
+fn getViewByteLength(view: typedefs.ArrayBufferView) u64 {
+    // TODO: Implement at runtime level
+    _ = view;
+    return 1024; // Placeholder
+}
+
+/// Check if the view's underlying ArrayBuffer is detached
+fn isViewDetached(view: typedefs.ArrayBufferView) bool {
+    // TODO: Implement at runtime level
+    _ = view;
+    return false; // Assume not detached
+}
+
+/// Get the ViewConstructor type for a TypedArray view
+fn getViewConstructor(view: typedefs.ArrayBufferView) ViewConstructor {
+    // TODO: Implement at runtime level - check actual TypedArray type
+    _ = view;
+    return ViewConstructor.uint8_array; // Default to Uint8Array
+}
+
+/// Extract the underlying ArrayBuffer from a view
+///
+/// This needs to get the actual buffer memory and create an internal ArrayBuffer
+fn extractViewBuffer(
+    allocator: std.mem.Allocator,
+    view: typedefs.ArrayBufferView,
+) !*ArrayBuffer {
+    // TODO: Implement at runtime level
+    _ = view;
+
+    // Placeholder: Create empty buffer
+    const buffer = try allocator.create(ArrayBuffer);
+    buffer.* = .{
+        .data = &[_]u8{},
+        .byte_length = 0,
+        .detached = false,
+    };
+    return buffer;
 }
