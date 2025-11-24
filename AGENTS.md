@@ -53,6 +53,56 @@ Is that correct, or did you mean [alternative interpretation]?"
 
 ---
 
+## ⚠️ CRITICAL: No Mid-Task Summaries
+
+**NEVER provide summaries or progress reports in the middle of active work.**
+
+### Summary Rules
+
+**When to Provide Summaries**:
+- ✅ **ONLY at the end of completed work** - After all tasks are done and committed
+- ✅ **When explicitly asked** - User requests "What did we do?" or similar
+- ✅ **After oneshot completion** - Final summary after entire epic is complete
+
+**When NOT to Provide Summaries**:
+- ❌ **During active work** - While implementing features, fixing bugs, or writing code
+- ❌ **Between logical steps** - After completing one part of a multi-part task
+- ❌ **After individual commits** - Just commit and continue to the next step
+- ❌ **To update on progress** - Work silently, report only when done
+
+### Correct Behavior
+
+```
+User: "Implement feature X"
+Agent: [Works on feature X implementation]
+Agent: [Commits code]
+Agent: [Continues to next logical step]
+Agent: [Commits more code]
+Agent: [Completes all work]
+Agent: "✅ Feature X is complete. [Brief completion note]"
+```
+
+### Incorrect Behavior
+
+```
+User: "Implement feature X"
+Agent: [Works on part 1]
+Agent: "I've completed part 1. Here's what I did: [long summary]" ❌ WRONG
+Agent: [Works on part 2]
+Agent: "Now I've finished part 2. Summary so far: [long summary]" ❌ WRONG
+```
+
+### Why This Matters
+
+- **Efficiency**: Summaries break flow and waste time
+- **Focus**: Stay focused on completing the work, not reporting on it
+- **Clarity**: Final summaries are more valuable than incremental updates
+- **User experience**: Users want completed work, not progress reports
+
+**WORK FIRST, SUMMARIZE LAST. If you're not done, keep working.**
+
+---
+
 ## ⚠️ CRITICAL: Spec-Compliant Implementation
 
 **THIS IS A WHATWG SPECIFICATIONS MONOREPO** providing Zig implementations of multiple WHATWG standards for web platform compatibility.
