@@ -74,10 +74,12 @@ pub fn init(
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
-    loop: event_loop.EventLoop,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
+
+    // Get event loop from context
+    const loop = ctx.getEventLoop() catch return error.NoEventLoop;
 
     const state = instance.getState(StateType);
     state.own._internal = try allocator.create(InternalState);
@@ -115,11 +117,10 @@ pub fn call_constructor(
     ctx: runtime.Context,
     stream: *runtime.Instance,
 ) !*runtime.Instance {
-    // Get event loop from stream's internal state
-    const stream_state = stream.getState(interfaces.ReadableStream.State);
-    const stream_internal = stream_state.own._internal orelse return error.InvalidState;
+    // Note: Event loop is now obtained from context inside init()
+    _ = stream.getState(interfaces.ReadableStream.State);
 
-    const instance = try init(allocator, State, &ReadableStreamBYOBReader.vtable, ctx, stream_internal.event_loop);
+    const instance = try init(allocator, State, &ReadableStreamBYOBReader.vtable, ctx);
     errdefer deinit(instance);
 
     // Step 1: Perform ? SetUpReadableStreamBYOBReader(this, stream)

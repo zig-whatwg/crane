@@ -140,3 +140,14 @@ pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) Imp
     return error.NotImplemented;
 }
 
+/// Operation: values (async iterator)
+pub fn call_values(instance: *runtime.Instance) ImplError!*const anyopaque {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Operation: getAsyncIterator (async iterator)
+pub fn call_getAsyncIterator(instance: *runtime.Instance) ImplError!*const anyopaque {
+    _ = instance;
+    return error.NotImplemented;
+}
