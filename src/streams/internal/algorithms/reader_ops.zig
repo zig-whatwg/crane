@@ -11,8 +11,8 @@ const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const webidl = @import("webidl");
-const AsyncPromise = @import("../async_promise").AsyncPromise;
-const event_loop_mod = @import("../event_loop");
+const AsyncPromise = @import("async_promise").AsyncPromise;
+const event_loop_mod = @import("event_loop");
 
 /// AcquireReadableStreamDefaultReader
 ///
@@ -129,7 +129,9 @@ pub fn readableStreamReaderGenericCancel(
     // Step 2: Assert stream is not undefined (checked above)
 
     // Step 3: Cancel the stream
-    const cancel_promise_ptr = try interfaces.ReadableStream.call_cancel(stream, reason);
+    // If reason is null, use a sentinel undefined value
+    const reason_ptr: *const anyopaque = reason orelse @ptrFromInt(0x1);
+    const cancel_promise_ptr = try interfaces.ReadableStream.call_cancel(stream, reason_ptr);
 
     // Cast the returned pointer to AsyncPromise(void)
     const cancel_promise: *AsyncPromise(void) = @ptrCast(@alignCast(@constCast(cancel_promise_ptr)));

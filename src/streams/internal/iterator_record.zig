@@ -11,6 +11,7 @@ const runtime = @import("runtime");
 const V8Resources = @import("v8_resources").V8Resources;
 const v8_mod = @import("v8");
 const v8 = v8_mod.ffi; // Use FFI functions directly
+const v8_engine = v8_mod.engine; // V8 engine helpers
 
 // V8 FFI types from v8 module
 const V8Object = v8_mod.Object;
@@ -51,8 +52,8 @@ pub const IteratorRecord = struct {
         ctx: runtime.Context,
         async_iterable: *const anyopaque,
     ) !*IteratorRecord {
-        const isolate = runtime.getIsolate(ctx);
-        const v8_context = runtime.getV8Context(ctx);
+        const isolate = v8_engine.getIsolate(ctx) orelse return error.NoV8Engine;
+        const v8_context = v8_engine.getV8Context(ctx) orelse return error.NoV8Context;
 
         // Cast to V8 Object
         const iterable_obj: *V8Object = @ptrCast(@alignCast(@constCast(async_iterable)));

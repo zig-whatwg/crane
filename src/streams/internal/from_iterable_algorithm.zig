@@ -11,6 +11,7 @@ const IteratorRecord = @import("iterator_record").IteratorRecord;
 const AsyncPromise = @import("async_promise").AsyncPromise;
 const v8_mod = @import("v8");
 const v8 = v8_mod.ffi; // Use FFI functions directly
+const v8_engine = v8_mod.engine; // V8 engine helpers
 const webidl = @import("webidl");
 const impls = @import("impls");
 
@@ -190,7 +191,7 @@ fn cancelInvoke(
     context_ptr: ?*anyopaque,
 ) !*AsyncPromise(void) {
     // Cancel without reason (use undefined)
-    const isolate = runtime.getIsolate(controller.ctx);
+    const isolate = v8_engine.getIsolate(controller.ctx) orelse return error.NoV8Engine;
     const undef = v8.v8_Undefined(isolate) orelse return error.V8Error;
     defer v8.v8_Value_Dispose(undef);
 
