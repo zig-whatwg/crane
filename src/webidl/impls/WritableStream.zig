@@ -44,6 +44,16 @@ pub const Writer = union(enum) {
     default: *runtime.Instance,
 };
 
+/// Abort request record per WHATWG spec § 5.3.3 step 10
+pub const AbortRequest = struct {
+    /// Promise that will be resolved/rejected when abort completes
+    promise: *AsyncPromise(void),
+    /// Reason for the abort (optional)
+    reason: ?*const anyopaque,
+    /// Whether the stream was already erroring when abort was called
+    was_already_erroring: bool,
+};
+
 /// Internal state for WritableStream
 ///
 /// This mirrors the internal slots defined in the WHATWG Streams spec § 4.2
@@ -73,7 +83,8 @@ pub const InternalState = struct {
     in_flight_close_request: ?*AsyncPromise(void),
 
     /// [[pendingAbortRequest]]: Record of pending abort request
-    pending_abort_request: ?*anyopaque,
+    /// Per WHATWG spec § 5.1 this is either undefined or an AbortRequest record
+    pending_abort_request: ?*AbortRequest,
 
     /// [[backpressure]]: boolean indicating if backpressure is applied
     backpressure: bool,
@@ -116,6 +127,12 @@ fn deinitInternal(internal: *InternalState, allocator: std.mem.Allocator) void {
     }
     if (internal.in_flight_close_request) |promise| {
         promise.deinit();
+    }
+
+    // Clean up pending abort request
+    if (internal.pending_abort_request) |abort_request| {
+        abort_request.promise.deinit();
+        allocator.destroy(abort_request);
     }
 
     allocator.destroy(internal);
@@ -362,14 +379,13 @@ pub fn writableStreamFinishErroring(instance: *runtime.Instance, internal: *Inte
     }
 
     // 5. Let storedError be stream.[[storedError]]
-    const stored_error = internal.stored_error;
+    // Create exception from stored error for rejection
+    const stored_exception = webidl.errors.Exception.typeError(internal.allocator, "Stream errored") catch return;
 
     // 6. Repeat for each writeRequest in stream.[[writeRequests]]
-    const exception = webidl.errors.Exception.typeError(internal.allocator, "Stream errored") catch return;
-
     for (internal.write_requests.items) |write_request| {
         // 6.1. Reject writeRequest's promise with storedError
-        write_request.reject(exception);
+        write_request.reject(stored_exception);
     }
 
     // 6.2. Set stream.[[writeRequests]] to empty list
@@ -383,10 +399,66 @@ pub fn writableStreamFinishErroring(instance: *runtime.Instance, internal: *Inte
     }
 
     // 8. Let abortRequest be stream.[[pendingAbortRequest]]
+    const abort_request = internal.pending_abort_request.?;
+
     // 9. Set stream.[[pendingAbortRequest]] to undefined
-    // 10. If abortRequest's was already erroring is true, reject/resolve promises
-    // TODO: Implement abort request handling when we have proper abort support
-    _ = stored_error;
+    internal.pending_abort_request = null;
+
+    // 10. If abortRequest's wasAlreadyErroring is true
+    if (abort_request.was_already_erroring) {
+        // 10.1. Reject abortRequest's promise with storedError
+        abort_request.promise.*.reject(stored_exception);
+
+        // 10.2. Perform ! WritableStreamRejectCloseAndClosedPromiseIfNeeded(stream)
+        writableStreamRejectCloseAndClosedPromiseIfNeeded(instance, internal);
+
+        // Clean up abort request
+        internal.allocator.destroy(abort_request);
+        return;
+    }
+
+    // 11. Let promise be ! stream.[[controller]].[[AbortSteps]](abortRequest's reason)
+    // For now, we'll handle this synchronously. Full async handling would require
+    // promise chaining infrastructure (see whatwg-co23 blocker).
+    var abort_succeeded = true;
+
+    if (internal.controller) |controller| {
+        const WritableStreamDefaultControllerImpl = @import("WritableStreamDefaultController.zig");
+        const controller_state = controller.getState(interfaces.WritableStreamDefaultController.State);
+        if (controller_state.own._internal) |controller_internal_ptr| {
+            const controller_internal: *WritableStreamDefaultControllerImpl.InternalState = @ptrCast(@alignCast(controller_internal_ptr));
+
+            // Call abort algorithm if provided
+            if (controller_internal.abort_algorithm) |abort_fn| {
+                // Create abort reason - use provided reason or undefined
+                const abort_callback: callbacks.UnderlyingSinkAbortCallback = @ptrCast(@alignCast(abort_fn));
+                // Use reason if provided, or pass a placeholder pointer (for undefined)
+                const reason_to_pass: *const anyopaque = abort_request.reason orelse @as(*const anyopaque, @ptrFromInt(1));
+                // Call the abort callback - it returns a promise result
+                // The callback should return a valid pointer (representing a promise)
+                _ = abort_callback(reason_to_pass);
+                // Callback invoked successfully
+                abort_succeeded = true;
+            }
+        }
+    }
+
+    // 12. Upon fulfillment of abort promise
+    if (abort_succeeded) {
+        // 12.1. Resolve abortRequest's promise with undefined
+        abort_request.promise.*.fulfill({});
+    } else {
+        // 13. Upon rejection with reason r
+        // 13.1. Reject abortRequest's promise with r
+        const abort_exception = webidl.errors.Exception.typeError(internal.allocator, "Abort algorithm failed") catch stored_exception;
+        abort_request.promise.*.reject(abort_exception);
+    }
+
+    // 12.2/13.2. Perform ! WritableStreamRejectCloseAndClosedPromiseIfNeeded(stream)
+    writableStreamRejectCloseAndClosedPromiseIfNeeded(instance, internal);
+
+    // Clean up abort request
+    internal.allocator.destroy(abort_request);
 }
 
 /// WritableStreamHasOperationMarkedInFlight - Check for in-flight operations
@@ -622,30 +694,107 @@ pub fn writableStreamCloseQueuedOrInFlight(internal: *const InternalState) bool 
 /// WritableStreamAbort(stream, reason)
 ///
 /// Spec: https://streams.spec.whatwg.org/#writable-stream-abort
+/// Spec: § 5.3.3 "Abort the stream with given reason"
 ///
-/// Simplified implementation - returns immediately resolved/rejected promise
+/// Steps:
+/// 1. If stream.[[state]] is "closed" or "errored", return resolved promise
+/// 2. Signal abort on stream.[[controller]].[[abortController]] with reason
+/// 3. Re-check state (may have changed during abort signal)
+/// 4. If stream.[[state]] is "closed" or "errored", return resolved promise
+/// 5. If stream.[[pendingAbortRequest]] is not undefined, return its promise
+/// 6. Assert: state is "writable" or "erroring"
+/// 7. Let wasAlreadyErroring = false
+/// 8. If state is "erroring", set wasAlreadyErroring = true and reason = undefined
+/// 9. Let promise be a new promise
+/// 10. Set stream.[[pendingAbortRequest]] to { promise, reason, wasAlreadyErroring }
+/// 11. If wasAlreadyErroring is false, perform WritableStreamStartErroring(stream, reason)
+/// 12. Return promise
 fn writableStreamAbort(
     instance: *runtime.Instance,
     internal: *InternalState,
     reason: *const anyopaque,
 ) !*const anyopaque {
-    _ = instance;
-    _ = reason;
+    // Step 1: If stream.[[state]] is "closed" or "errored", return resolved promise
+    if (internal.state == .closed or internal.state == .errored) {
+        const promise = try AsyncPromise(void).init(
+            internal.allocator,
+            internal.event_loop,
+        );
+        promise.*.fulfill({});
+        return @ptrCast(promise);
+    }
 
+    // Step 2: Signal abort on stream.[[controller]].[[abortController]] with reason
+    // Note: This invokes the abort controller's abort algorithm which may run user code
+    if (internal.controller) |controller| {
+        const WritableStreamDefaultControllerImpl = @import("WritableStreamDefaultController.zig");
+        const controller_state = controller.getState(interfaces.WritableStreamDefaultController.State);
+        if (controller_state.own._internal) |controller_internal_ptr| {
+            const controller_internal: *WritableStreamDefaultControllerImpl.InternalState = @ptrCast(@alignCast(controller_internal_ptr));
+            if (controller_internal.abort_controller) |abort_controller| {
+                // Signal abort on the AbortController
+                interfaces.AbortController.call_abort(abort_controller, reason) catch {};
+            }
+        }
+    }
+
+    // Step 3-4: Re-check state (may have changed during abort signal - runs user code)
+    if (internal.state == .closed or internal.state == .errored) {
+        const promise = try AsyncPromise(void).init(
+            internal.allocator,
+            internal.event_loop,
+        );
+        promise.*.fulfill({});
+        return @ptrCast(promise);
+    }
+
+    // Step 5: If stream.[[pendingAbortRequest]] is not undefined, return its promise
+    if (internal.pending_abort_request) |existing_abort| {
+        return @ptrCast(existing_abort.promise);
+    }
+
+    // Step 6: Assert: state is "writable" or "erroring"
+    // (Gracefully handle instead of asserting)
+    if (internal.state != .writable and internal.state != .erroring) {
+        const promise = try AsyncPromise(void).init(
+            internal.allocator,
+            internal.event_loop,
+        );
+        promise.*.fulfill({});
+        return @ptrCast(promise);
+    }
+
+    // Step 7: Let wasAlreadyErroring = false
+    var was_already_erroring = false;
+
+    // Step 8: If state is "erroring", set wasAlreadyErroring = true and reason = undefined
+    var abort_reason: ?*const anyopaque = reason;
+    if (internal.state == .erroring) {
+        was_already_erroring = true;
+        abort_reason = null;
+    }
+
+    // Step 9: Let promise be a new promise
     const promise = try AsyncPromise(void).init(
         internal.allocator,
         internal.event_loop,
     );
 
-    // Simplified: Check state and resolve/reject accordingly
-    if (internal.state == .closed or internal.state == .errored) {
-        promise.*.fulfill({});
-    } else {
-        // Future: Implement full abort algorithm
-        // For now, just fulfill
-        promise.*.fulfill({});
+    // Step 10: Set stream.[[pendingAbortRequest]] to { promise, reason, wasAlreadyErroring }
+    const abort_request = try internal.allocator.create(AbortRequest);
+    abort_request.* = .{
+        .promise = promise,
+        .reason = abort_reason,
+        .was_already_erroring = was_already_erroring,
+    };
+    internal.pending_abort_request = abort_request;
+
+    // Step 11: If wasAlreadyErroring is false, perform WritableStreamStartErroring(stream, reason)
+    if (!was_already_erroring) {
+        writableStreamStartErroring(instance, abort_reason orelse reason);
     }
 
+    // Step 12: Return promise
     return @ptrCast(promise);
 }
 
