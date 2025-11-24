@@ -1346,5 +1346,74 @@ Global<Function>* v8_PromiseResolver_CreateRejectHandler(
     return new Global<Function>(isolate, fn);
 }
 
+// ============================================================================
+// ArrayBuffer API (Phase 4: Runtime Infrastructure)
+// ============================================================================
+
+/// Create a new ArrayBuffer
+///
+/// Allocates a V8 ArrayBuffer with the specified byte length.
+/// Caller must call v8_ArrayBuffer_Dispose when done.
+Global<ArrayBuffer>* v8_ArrayBuffer_New(Isolate* isolate, size_t byte_length) {
+    HandleScope handle_scope(isolate);
+    Local<ArrayBuffer> buffer = ArrayBuffer::New(isolate, byte_length);
+    return new Global<ArrayBuffer>(isolate, buffer);
+}
+
+/// Get ArrayBuffer backing store pointer
+///
+/// Returns a pointer to the raw memory backing the ArrayBuffer.
+/// Valid only while the ArrayBuffer is not detached.
+void* v8_ArrayBuffer_Data(Global<ArrayBuffer>* buffer) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<ArrayBuffer> buf = buffer->Get(isolate);
+    
+    // Get backing store
+    std::shared_ptr<BackingStore> backing_store = buf->GetBackingStore();
+    if (!backing_store) {
+        return nullptr;
+    }
+    return backing_store->Data();
+}
+
+/// Get ArrayBuffer byte length
+size_t v8_ArrayBuffer_ByteLength(Global<ArrayBuffer>* buffer) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<ArrayBuffer> buf = buffer->Get(isolate);
+    return buf->ByteLength();
+}
+
+/// Check if ArrayBuffer is detached
+bool v8_ArrayBuffer_IsDetached(Global<ArrayBuffer>* buffer) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<ArrayBuffer> buf = buffer->Get(isolate);
+    return buf->WasDetached();
+}
+
+/// Detach an ArrayBuffer
+///
+/// Transfers ownership of the backing store, making the ArrayBuffer unusable.
+/// Used for transferable ArrayBuffers in postMessage and structured clone.
+void v8_ArrayBuffer_Detach(Global<ArrayBuffer>* buffer) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<ArrayBuffer> buf = buffer->Get(isolate);
+    
+    // Detach with no key (nullptr indicates default detach)
+    Maybe<bool> result = buf->Detach(Local<Value>());
+    (void)result; // Ignore result for now
+}
+
+/// Dispose ArrayBuffer
+void v8_ArrayBuffer_Dispose(Global<ArrayBuffer>* buffer) {
+    if (buffer) {
+        buffer->Reset();
+        delete buffer;
+    }
+}
+
 
 } // extern "C"

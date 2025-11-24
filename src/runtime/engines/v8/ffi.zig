@@ -46,6 +46,9 @@ pub const Promise = opaque {};
 /// V8 PromiseResolver - Creates and resolves/rejects Promises
 pub const PromiseResolver = opaque {};
 
+/// V8 ArrayBuffer - JavaScript ArrayBuffer object
+pub const ArrayBuffer = opaque {};
+
 /// V8 FunctionTemplate - Template for creating JavaScript functions
 pub const FunctionTemplate = opaque {};
 
@@ -483,6 +486,60 @@ pub extern fn v8_PromiseResolver_CreateRejectHandler(
     context: *Context,
     resolver: *PromiseResolver,
 ) ?*Function;
+
+// ============================================================================
+// ArrayBuffer API (Phase 4: Runtime Infrastructure)
+// ============================================================================
+
+/// Create a new ArrayBuffer
+///
+/// Allocates a V8 ArrayBuffer with the specified byte length.
+/// Caller must call v8_ArrayBuffer_Dispose when done.
+///
+/// @param isolate - The V8 isolate
+/// @param byte_length - Size of the buffer in bytes
+/// @return New ArrayBuffer, or null if allocation failed
+pub extern fn v8_ArrayBuffer_New(isolate: *Isolate, byte_length: usize) ?*ArrayBuffer;
+
+/// Get ArrayBuffer backing store pointer
+///
+/// Returns a pointer to the raw memory backing the ArrayBuffer.
+/// Valid only while the ArrayBuffer is not detached.
+///
+/// @param buffer - The ArrayBuffer
+/// @return Pointer to backing store, or null if detached
+pub extern fn v8_ArrayBuffer_Data(buffer: *ArrayBuffer) ?*anyopaque;
+
+/// Get ArrayBuffer byte length
+///
+/// @param buffer - The ArrayBuffer
+/// @return Size of the buffer in bytes
+pub extern fn v8_ArrayBuffer_ByteLength(buffer: *ArrayBuffer) usize;
+
+/// Check if ArrayBuffer is detached
+///
+/// A detached ArrayBuffer has had its backing store transferred away
+/// and can no longer be used.
+///
+/// @param buffer - The ArrayBuffer
+/// @return true if detached, false otherwise
+pub extern fn v8_ArrayBuffer_IsDetached(buffer: *ArrayBuffer) bool;
+
+/// Detach an ArrayBuffer
+///
+/// Transfers ownership of the backing store, making the ArrayBuffer unusable.
+/// Used for transferable ArrayBuffers in postMessage and structured clone.
+///
+/// @param buffer - The ArrayBuffer to detach
+pub extern fn v8_ArrayBuffer_Detach(buffer: *ArrayBuffer) void;
+
+/// Dispose ArrayBuffer
+///
+/// Releases the V8 ArrayBuffer handle.
+/// Must be called to avoid memory leaks.
+///
+/// @param buffer - The ArrayBuffer to dispose
+pub extern fn v8_ArrayBuffer_Dispose(buffer: *ArrayBuffer) void;
 
 // ============================================================================
 // Microtask Functions (Event Loop Integration)
