@@ -681,8 +681,49 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/streams/internal/cross_realm_transform.zig"),
         .target = target,
         .imports = &.{
+            .{ .name = "webidl", .module = webidl_mod },
             .{ .name = "common", .module = streams_common_mod },
+            .{ .name = "pull_into_descriptor", .module = streams_pull_into_descriptor_mod },
             .{ .name = "message_port", .module = streams_message_port_mod },
+        },
+    });
+
+    // Algorithm infrastructure for ReadableStream.from() and async iterator support
+    const streams_algorithm_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/algorithm.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "runtime", .module = runtime_mod },
+            .{ .name = "callbacks", .module = callbacks_mod },
+            .{ .name = "async_promise", .module = streams_async_promise_mod },
+        },
+    });
+
+    const streams_v8_resources_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/v8_resources.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "infra", .module = infra_mod },
+        },
+    });
+
+    const streams_iterator_record_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/iterator_record.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "runtime", .module = runtime_mod },
+            .{ .name = "v8_resources", .module = streams_v8_resources_mod },
+        },
+    });
+
+    const streams_from_iterable_algorithm_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/from_iterable_algorithm.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "runtime", .module = runtime_mod },
+            .{ .name = "algorithm", .module = streams_algorithm_mod },
+            .{ .name = "iterator_record", .module = streams_iterator_record_mod },
+            .{ .name = "async_promise", .module = streams_async_promise_mod },
         },
     });
 
@@ -738,6 +779,10 @@ pub fn build(b: *std.Build) void {
     streams_mod.addImport("async_iterator", streams_async_iterator_mod);
     streams_mod.addImport("message_port", streams_message_port_mod);
     streams_mod.addImport("cross_realm_transform", streams_cross_realm_transform_mod);
+    streams_mod.addImport("algorithm", streams_algorithm_mod);
+    streams_mod.addImport("v8_resources", streams_v8_resources_mod);
+    streams_mod.addImport("iterator_record", streams_iterator_record_mod);
+    streams_mod.addImport("from_iterable_algorithm", streams_from_iterable_algorithm_mod);
     // Add unified interfaces module
     streams_mod.addImport("interfaces", interfaces_mod);
 
@@ -755,6 +800,10 @@ pub fn build(b: *std.Build) void {
     impls_mod.addImport("streams_read_into_request", streams_read_into_request_mod);
     impls_mod.addImport("streams_read_into_request_promise", streams_read_into_request_promise_mod);
     impls_mod.addImport("streams_pull_into_descriptor", streams_pull_into_descriptor_mod);
+    impls_mod.addImport("streams_algorithm", streams_algorithm_mod);
+    impls_mod.addImport("streams_v8_resources", streams_v8_resources_mod);
+    impls_mod.addImport("streams_iterator_record", streams_iterator_record_mod);
+    impls_mod.addImport("streams_from_iterable_algorithm", streams_from_iterable_algorithm_mod);
 
     // ArrayBufferView is part of runtime module, no separate module needed
     // (ReadableStreamBYOBReader accesses it via runtime.arraybuffer_view)
