@@ -848,6 +848,7 @@ pub fn build(b: *std.Build) void {
     impls_mod.addImport("streams_iterator_record", streams_iterator_record_mod);
     impls_mod.addImport("streams_from_iterable_algorithm", streams_from_iterable_algorithm_mod);
     impls_mod.addImport("streams_readable_stream_async_iterator", streams_readable_stream_async_iterator_mod);
+    impls_mod.addImport("streams_internal", streams_message_port_mod);
 
     // ArrayBufferView is part of runtime module, no separate module needed
     // (ReadableStreamBYOBReader accesses it via runtime.arraybuffer_view)

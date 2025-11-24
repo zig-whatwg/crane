@@ -152,10 +152,10 @@ pub const MessagePort = struct {
     }
 
     /// Dispatch all queued messages
-    fn dispatchQueuedMessages(self: *MessagePort) !void {
+    pub fn dispatchQueuedMessages(self: *MessagePort) !void {
         while (self.message_queue.len > 0) {
-            const msg = self.message_queue.get(0);
-            try self.message_queue.remove(0);
+            const msg = self.message_queue.get(0) orelse continue;
+            _ = try self.message_queue.remove(0);
             defer msg.deinit();
 
             if (self.onmessage) |handler| {
@@ -229,9 +229,3 @@ pub fn crossRealmTransformSendError(port: *MessagePort, error_value: JSValue) vo
 // ============================================================================
 // Tests
 // ============================================================================
-
-
-
-
-
-
