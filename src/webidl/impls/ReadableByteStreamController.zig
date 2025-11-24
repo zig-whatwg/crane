@@ -1054,12 +1054,21 @@ fn respondInClosedState(
     if (ReadableStreamImpl.hasBYOBReader(stream)) {
         // Step 4.1: While there are pending read-into requests
         while (ReadableStreamImpl.getNumReadIntoRequests(stream) > 0) {
-            // Step 4.1.1: Process pull-into descriptor from queue
-            const result = try processPullIntoDescriptorsUsingQueue(internal);
+            // Step 4.1.1: Process pull-into descriptors from queue
+            var filled_pull_intos = try processPullIntoDescriptorsUsingQueue(internal);
+            defer filled_pull_intos.deinit();
 
             // If no more descriptors could be processed, break
-            if (result.len == 0) {
+            if (filled_pull_intos.len == 0) {
                 break;
+            }
+
+            // Step 4.1.2: For each filledPullInto, commit it
+            for (0..filled_pull_intos.len) |i| {
+                if (filled_pull_intos.get(i)) |filled_descriptor| {
+                    // Commit with done=true since we're in closed state
+                    try commitPullIntoDescriptor(internal, filled_descriptor);
+                }
             }
         }
     }
@@ -1079,7 +1088,16 @@ fn respondInReadableState(
     // Step 3: Handle reader type "none"
     if (pullIntoDescriptor.reader_type == .none) {
         try enqueueDetachedPullIntoToQueue(internal, pullIntoDescriptor);
-        // TODO: Process pull-into descriptors using queue
+        // Process any additional pull-into descriptors using the queue
+        var filled_pull_intos = try processPullIntoDescriptorsUsingQueue(internal);
+        defer filled_pull_intos.deinit();
+
+        // Commit each filled descriptor
+        for (0..filled_pull_intos.len) |i| {
+            if (filled_pull_intos.get(i)) |filled_descriptor| {
+                try commitPullIntoDescriptor(internal, filled_descriptor);
+            }
+        }
         return;
     }
 
@@ -1091,11 +1109,43 @@ fn respondInReadableState(
     // Step 5: Remove descriptor from pending list
     _ = shiftPendingPullInto(internal);
 
-    // Step 6: Process remaining descriptors
-    // TODO: Handle remaining descriptors when queue processing is ready
+    // Step 6-8: Handle remainder bytes (enqueue any leftover bytes back to queue)
+    const remainder_size = pullIntoDescriptor.bytes_filled % pullIntoDescriptor.element_size;
+    if (remainder_size > 0) {
+        // Step 6.1-6.2: Clone remainder bytes to queue
+        const end = pullIntoDescriptor.byte_offset + pullIntoDescriptor.bytes_filled;
+        const start = end - remainder_size;
 
-    // Step 7: Commit the pull-into descriptor
+        // Create a cloned buffer for the remainder
+        const remainder_buffer = try ArrayBuffer.init(internal.allocator, remainder_size);
+        errdefer {
+            remainder_buffer.deinit(internal.allocator);
+            internal.allocator.destroy(remainder_buffer);
+        }
+
+        // Copy remainder bytes
+        @memcpy(remainder_buffer.data[0..remainder_size], pullIntoDescriptor.buffer.data[start..end]);
+
+        // Enqueue the remainder
+        try enqueueChunkToQueue(internal, remainder_buffer, 0, remainder_size);
+
+        // Step 8: Adjust bytes filled
+        pullIntoDescriptor.bytes_filled -= remainder_size;
+    }
+
+    // Step 9: Process any additional pull-into descriptors using the queue
+    var filled_pull_intos = try processPullIntoDescriptorsUsingQueue(internal);
+    defer filled_pull_intos.deinit();
+
+    // Step 10: Commit the original pull-into descriptor
     try commitPullIntoDescriptor(internal, pullIntoDescriptor);
+
+    // Step 11: For each filledPullInto, commit it
+    for (0..filled_pull_intos.len) |i| {
+        if (filled_pull_intos.get(i)) |filled_descriptor| {
+            try commitPullIntoDescriptor(internal, filled_descriptor);
+        }
+    }
 }
 
 /// ReadableByteStreamControllerShiftPendingPullInto(controller)
@@ -1545,16 +1595,47 @@ fn enqueueInternal(instance: *runtime.Instance, chunk: typedefs.ArrayBufferView)
 /// ReadableByteStreamControllerProcessPullIntoDescriptorsUsingQueue(controller)
 ///
 /// Spec: § 4.10.11 "Process pull-into descriptors using queue"
+///
+/// This processes pending pull-into descriptors by filling them from the byte queue.
+/// Returns descriptors that have been completely filled (ready for committing).
 fn processPullIntoDescriptorsUsingQueue(
     internal: *InternalState,
-) ImplError![]const *PullIntoDescriptor {
-    _ = internal; // TODO: Remove when implemented
+) ImplError!infra.List(*PullIntoDescriptor) {
+    // Step 1: Assert: controller.[[closeRequested]] is false
+    // (Caller ensures this for readable state)
 
-    // Step 1: While ! ReadableStreamGetNumReadIntoRequests(stream) > 0
-    // TODO: Implement when ReadableStream API is ready
-    // For now, return empty slice
+    // Step 2: Let filledPullIntos be a new empty list
+    var filled_pull_intos = infra.List(*PullIntoDescriptor).init(internal.allocator);
+    errdefer filled_pull_intos.deinit();
 
-    return &[_]*PullIntoDescriptor{};
+    // Step 3: While controller.[[pendingPullIntos]] is not empty
+    while (internal.pending_pull_intos.len > 0) {
+        // Step 3.1: If controller.[[queueTotalSize]] is 0, then break
+        if (internal.queue_total_size == 0) {
+            break;
+        }
+
+        // Step 3.2: Let pullIntoDescriptor be controller.[[pendingPullIntos]][0]
+        const pull_into_descriptor = internal.pending_pull_intos.get(0) orelse break;
+
+        // Step 3.3: If ReadableByteStreamControllerFillPullIntoDescriptorFromQueue returns true (ready)
+        const bytes_copied = try fillPullIntoDescriptorFromQueue(internal, pull_into_descriptor);
+        const ready = bytes_copied > 0 and pull_into_descriptor.bytes_filled >= pull_into_descriptor.minimum_fill;
+
+        if (ready) {
+            // Step 3.3.1: Perform ReadableByteStreamControllerShiftPendingPullInto(controller)
+            _ = shiftPendingPullInto(internal);
+
+            // Step 3.3.2: Append pullIntoDescriptor to filledPullIntos
+            try filled_pull_intos.append(pull_into_descriptor);
+        } else {
+            // Descriptor not ready yet - stop processing
+            break;
+        }
+    }
+
+    // Step 4: Return filledPullIntos
+    return filled_pull_intos;
 }
 
 /// ReadableByteStreamControllerPullSteps(controller, readRequest)
