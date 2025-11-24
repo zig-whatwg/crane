@@ -1756,6 +1756,148 @@ size_t v8_TypedArray_Length(Global<Value>* typed_array) {
 }
 
 // ============================================================================
+// TypedArray Construction
+// ============================================================================
+
+/// Create a Uint8Array view over an ArrayBuffer
+///
+/// @param isolate - V8 isolate
+/// @param buffer - The ArrayBuffer to view
+/// @param byte_offset - Offset into the buffer
+/// @param length - Number of elements (bytes for Uint8Array)
+/// @return Global handle to new Uint8Array, or null on error
+Global<Value>* v8_Uint8Array_New(Isolate* isolate, Global<ArrayBuffer>* buffer, size_t byte_offset, size_t length) {
+    if (!isolate || !buffer) return nullptr;
+    
+    HandleScope handle_scope(isolate);
+    Local<ArrayBuffer> local_buffer = buffer->Get(isolate);
+    
+    Local<Uint8Array> arr = Uint8Array::New(local_buffer, byte_offset, length);
+    return new Global<Value>(isolate, arr);
+}
+
+/// Create an Int8Array view over an ArrayBuffer
+Global<Value>* v8_Int8Array_New(Isolate* isolate, Global<ArrayBuffer>* buffer, size_t byte_offset, size_t length) {
+    if (!isolate || !buffer) return nullptr;
+    
+    HandleScope handle_scope(isolate);
+    Local<ArrayBuffer> local_buffer = buffer->Get(isolate);
+    
+    Local<Int8Array> arr = Int8Array::New(local_buffer, byte_offset, length);
+    return new Global<Value>(isolate, arr);
+}
+
+/// Create a Uint8ClampedArray view over an ArrayBuffer
+Global<Value>* v8_Uint8ClampedArray_New(Isolate* isolate, Global<ArrayBuffer>* buffer, size_t byte_offset, size_t length) {
+    if (!isolate || !buffer) return nullptr;
+    
+    HandleScope handle_scope(isolate);
+    Local<ArrayBuffer> local_buffer = buffer->Get(isolate);
+    
+    Local<Uint8ClampedArray> arr = Uint8ClampedArray::New(local_buffer, byte_offset, length);
+    return new Global<Value>(isolate, arr);
+}
+
+/// Create a Uint16Array view over an ArrayBuffer
+Global<Value>* v8_Uint16Array_New(Isolate* isolate, Global<ArrayBuffer>* buffer, size_t byte_offset, size_t length) {
+    if (!isolate || !buffer) return nullptr;
+    
+    HandleScope handle_scope(isolate);
+    Local<ArrayBuffer> local_buffer = buffer->Get(isolate);
+    
+    Local<Uint16Array> arr = Uint16Array::New(local_buffer, byte_offset, length);
+    return new Global<Value>(isolate, arr);
+}
+
+/// Create an Int16Array view over an ArrayBuffer
+Global<Value>* v8_Int16Array_New(Isolate* isolate, Global<ArrayBuffer>* buffer, size_t byte_offset, size_t length) {
+    if (!isolate || !buffer) return nullptr;
+    
+    HandleScope handle_scope(isolate);
+    Local<ArrayBuffer> local_buffer = buffer->Get(isolate);
+    
+    Local<Int16Array> arr = Int16Array::New(local_buffer, byte_offset, length);
+    return new Global<Value>(isolate, arr);
+}
+
+/// Create a Uint32Array view over an ArrayBuffer
+Global<Value>* v8_Uint32Array_New(Isolate* isolate, Global<ArrayBuffer>* buffer, size_t byte_offset, size_t length) {
+    if (!isolate || !buffer) return nullptr;
+    
+    HandleScope handle_scope(isolate);
+    Local<ArrayBuffer> local_buffer = buffer->Get(isolate);
+    
+    Local<Uint32Array> arr = Uint32Array::New(local_buffer, byte_offset, length);
+    return new Global<Value>(isolate, arr);
+}
+
+/// Create an Int32Array view over an ArrayBuffer
+Global<Value>* v8_Int32Array_New(Isolate* isolate, Global<ArrayBuffer>* buffer, size_t byte_offset, size_t length) {
+    if (!isolate || !buffer) return nullptr;
+    
+    HandleScope handle_scope(isolate);
+    Local<ArrayBuffer> local_buffer = buffer->Get(isolate);
+    
+    Local<Int32Array> arr = Int32Array::New(local_buffer, byte_offset, length);
+    return new Global<Value>(isolate, arr);
+}
+
+/// Create a Float32Array view over an ArrayBuffer
+Global<Value>* v8_Float32Array_New(Isolate* isolate, Global<ArrayBuffer>* buffer, size_t byte_offset, size_t length) {
+    if (!isolate || !buffer) return nullptr;
+    
+    HandleScope handle_scope(isolate);
+    Local<ArrayBuffer> local_buffer = buffer->Get(isolate);
+    
+    Local<Float32Array> arr = Float32Array::New(local_buffer, byte_offset, length);
+    return new Global<Value>(isolate, arr);
+}
+
+/// Create a Float64Array view over an ArrayBuffer
+Global<Value>* v8_Float64Array_New(Isolate* isolate, Global<ArrayBuffer>* buffer, size_t byte_offset, size_t length) {
+    if (!isolate || !buffer) return nullptr;
+    
+    HandleScope handle_scope(isolate);
+    Local<ArrayBuffer> local_buffer = buffer->Get(isolate);
+    
+    Local<Float64Array> arr = Float64Array::New(local_buffer, byte_offset, length);
+    return new Global<Value>(isolate, arr);
+}
+
+/// Create a BigInt64Array view over an ArrayBuffer
+Global<Value>* v8_BigInt64Array_New(Isolate* isolate, Global<ArrayBuffer>* buffer, size_t byte_offset, size_t length) {
+    if (!isolate || !buffer) return nullptr;
+    
+    HandleScope handle_scope(isolate);
+    Local<ArrayBuffer> local_buffer = buffer->Get(isolate);
+    
+    Local<BigInt64Array> arr = BigInt64Array::New(local_buffer, byte_offset, length);
+    return new Global<Value>(isolate, arr);
+}
+
+/// Create a BigUint64Array view over an ArrayBuffer
+Global<Value>* v8_BigUint64Array_New(Isolate* isolate, Global<ArrayBuffer>* buffer, size_t byte_offset, size_t length) {
+    if (!isolate || !buffer) return nullptr;
+    
+    HandleScope handle_scope(isolate);
+    Local<ArrayBuffer> local_buffer = buffer->Get(isolate);
+    
+    Local<BigUint64Array> arr = BigUint64Array::New(local_buffer, byte_offset, length);
+    return new Global<Value>(isolate, arr);
+}
+
+/// Create a DataView over an ArrayBuffer
+Global<Value>* v8_DataView_New(Isolate* isolate, Global<ArrayBuffer>* buffer, size_t byte_offset, size_t byte_length) {
+    if (!isolate || !buffer) return nullptr;
+    
+    HandleScope handle_scope(isolate);
+    Local<ArrayBuffer> local_buffer = buffer->Get(isolate);
+    
+    Local<DataView> view = DataView::New(local_buffer, byte_offset, byte_length);
+    return new Global<Value>(isolate, view);
+}
+
+// ============================================================================
 // Weak Callbacks / Finalizers
 // ============================================================================
 

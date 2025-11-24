@@ -111,7 +111,12 @@ pub fn call_respond(instance: *runtime.Instance, bytesWritten: u64) ImplError!vo
     const controller = internal.controller orelse return error.TypeError;
 
     // Step 2: If this.[[view]].[[ViewedArrayBuffer]] is detached, throw TypeError
-    // TODO: Check buffer detachment when ArrayBufferView API is ready
+    if (internal.view) |view| {
+        const ArrayBufferViewModule = @import("runtime").arraybuffer_view;
+        if (ArrayBufferViewModule.isViewDetached(view)) {
+            return error.TypeError;
+        }
+    }
 
     // Step 3: Assert ! IsDetachedBuffer(view.[[ViewedArrayBuffer]]) is false
     // (Validation happens in controller)
@@ -136,7 +141,10 @@ pub fn call_respondWithNewView(instance: *runtime.Instance, view: typedefs.Array
     const controller = internal.controller orelse return error.TypeError;
 
     // Step 2: If ! IsDetachedBuffer(view.[[ViewedArrayBuffer]]) is true, throw TypeError
-    // TODO: Check buffer detachment when ArrayBufferView API is ready
+    const ArrayBufferViewModule = @import("runtime").arraybuffer_view;
+    if (ArrayBufferViewModule.isViewDetached(view)) {
+        return error.TypeError;
+    }
 
     // Step 3: Return ? ReadableByteStreamControllerRespondWithNewView(this.[[controller]], view)
     const ReadableByteStreamControllerImpl = @import("ReadableByteStreamController.zig");

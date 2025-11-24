@@ -643,6 +643,52 @@ pub extern fn v8_TypedArray_ByteOffset(typed_array: *Value) usize;
 pub extern fn v8_TypedArray_Length(typed_array: *Value) usize;
 
 // ============================================================================
+// TypedArray Construction
+// ============================================================================
+
+/// Create a Uint8Array view over an ArrayBuffer
+///
+/// @param isolate - V8 isolate
+/// @param buffer - The ArrayBuffer to view
+/// @param byte_offset - Offset into the buffer
+/// @param length - Number of elements (bytes for Uint8Array)
+/// @return Global handle to new Uint8Array, or null on error
+pub extern fn v8_Uint8Array_New(isolate: *Isolate, buffer: *ArrayBuffer, byte_offset: usize, length: usize) ?*Value;
+
+/// Create an Int8Array view over an ArrayBuffer
+pub extern fn v8_Int8Array_New(isolate: *Isolate, buffer: *ArrayBuffer, byte_offset: usize, length: usize) ?*Value;
+
+/// Create a Uint8ClampedArray view over an ArrayBuffer
+pub extern fn v8_Uint8ClampedArray_New(isolate: *Isolate, buffer: *ArrayBuffer, byte_offset: usize, length: usize) ?*Value;
+
+/// Create a Uint16Array view over an ArrayBuffer
+pub extern fn v8_Uint16Array_New(isolate: *Isolate, buffer: *ArrayBuffer, byte_offset: usize, length: usize) ?*Value;
+
+/// Create an Int16Array view over an ArrayBuffer
+pub extern fn v8_Int16Array_New(isolate: *Isolate, buffer: *ArrayBuffer, byte_offset: usize, length: usize) ?*Value;
+
+/// Create a Uint32Array view over an ArrayBuffer
+pub extern fn v8_Uint32Array_New(isolate: *Isolate, buffer: *ArrayBuffer, byte_offset: usize, length: usize) ?*Value;
+
+/// Create an Int32Array view over an ArrayBuffer
+pub extern fn v8_Int32Array_New(isolate: *Isolate, buffer: *ArrayBuffer, byte_offset: usize, length: usize) ?*Value;
+
+/// Create a Float32Array view over an ArrayBuffer
+pub extern fn v8_Float32Array_New(isolate: *Isolate, buffer: *ArrayBuffer, byte_offset: usize, length: usize) ?*Value;
+
+/// Create a Float64Array view over an ArrayBuffer
+pub extern fn v8_Float64Array_New(isolate: *Isolate, buffer: *ArrayBuffer, byte_offset: usize, length: usize) ?*Value;
+
+/// Create a BigInt64Array view over an ArrayBuffer
+pub extern fn v8_BigInt64Array_New(isolate: *Isolate, buffer: *ArrayBuffer, byte_offset: usize, length: usize) ?*Value;
+
+/// Create a BigUint64Array view over an ArrayBuffer
+pub extern fn v8_BigUint64Array_New(isolate: *Isolate, buffer: *ArrayBuffer, byte_offset: usize, length: usize) ?*Value;
+
+/// Create a DataView over an ArrayBuffer
+pub extern fn v8_DataView_New(isolate: *Isolate, buffer: *ArrayBuffer, byte_offset: usize, byte_length: usize) ?*Value;
+
+// ============================================================================
 // Microtask Functions (Event Loop Integration)
 // ============================================================================
 

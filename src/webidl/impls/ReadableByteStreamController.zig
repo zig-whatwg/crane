@@ -811,7 +811,10 @@ pub fn respondWithNewView(instance: *runtime.Instance, view: typedefs.ArrayBuffe
     }
 
     // Step 8: If firstDescriptor's buffer byte length is not view.[[ViewedArrayBuffer]].[[ByteLength]], throw RangeError
-    // TODO: Check buffer byte length when ArrayBuffer API is ready
+    const view_buffer_byte_length = ArrayBufferViewModule.getViewBufferByteLength(view);
+    if (firstDescriptor.buffer.byte_length != view_buffer_byte_length) {
+        return error.RangeError;
+    }
 
     // Step 9: If firstDescriptor's bytes filled + view.[[ByteLength]] > firstDescriptor's byte length, throw RangeError
     if (firstDescriptor.bytes_filled + view_byteLength > firstDescriptor.byte_length) {
