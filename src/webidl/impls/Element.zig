@@ -1,7 +1,13 @@
 //! Implementation for Element interface
 //!
-//! This file is AUTO-GENERATED on first creation.
-//! Add your custom implementation here.
+//! Spec: https://dom.spec.whatwg.org/#interface-element
+//! WHATWG DOM Standard §4.8
+//!
+//! Element is the most general base class from which all element objects
+//! (i.e. objects that represent elements) in a Document inherit. It only
+//! has methods and properties common to all kinds of elements.
+//!
+//! Migrated from: webidl/src/dom/element.zig
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -12,17 +18,124 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const Element = interfaces.Element;
 
+// Import related impls
+const NodeImpl = @import("Node.zig");
+
 pub const State = Element.State;
 
 pub const ImplError = error{
     NotImplemented,
+    InvalidStateError,
+    NotFoundError,
+    SyntaxError,
+    InvalidCharacterError,
+    OutOfMemory,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Custom element state per HTML spec
+/// Spec: https://html.spec.whatwg.org/#custom-element-state
+pub const CustomElementState = enum {
+    undefined,
+    failed,
+    uncustomized,
+    precustomized,
+    custom,
+};
+
+/// Internal state for Element implementation
+/// Stores element-specific data: namespace, prefix, local name, attributes
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+
+    /// The namespace URI of this element (null for HTML elements in HTML documents)
+    namespace_uri: ?runtime.DOMString = null,
+
+    /// The namespace prefix (null if no prefix)
+    prefix: ?runtime.DOMString = null,
+
+    /// The local name of this element (the tag name without prefix)
+    local_name: runtime.DOMString,
+
+    /// The element's id attribute value (cached for fast lookup)
+    id: runtime.DOMString,
+
+    /// The element's class attribute value (cached for classList)
+    class_name: runtime.DOMString,
+
+    /// The element's slot attribute value
+    slot: runtime.DOMString,
+
+    /// Shadow root attached to this element (null if not a shadow host)
+    shadow_root: ?*runtime.Instance = null,
+
+    /// Custom element state per HTML spec
+    custom_element_state: CustomElementState = .undefined,
+
+    /// "is" value for customized built-in elements
+    is_value: ?runtime.DOMString = null,
+
+    /// Attributes list - stored as pairs of (name, value)
+    /// TODO: Replace with proper Attr instances when NamedNodeMap is implemented
+    attributes: std.ArrayList(AttributeEntry),
+
+    pub const AttributeEntry = struct {
+        namespace_uri: ?[]const u8,
+        prefix: ?[]const u8,
+        local_name: []const u8,
+        value: []const u8,
+    };
+
+    pub fn init(allocator: std.mem.Allocator) InternalState {
+        return .{
+            .allocator = allocator,
+            .namespace_uri = null,
+            .prefix = null,
+            .local_name = runtime.DOMString.initEmpty(),
+            .id = runtime.DOMString.initEmpty(),
+            .class_name = runtime.DOMString.initEmpty(),
+            .slot = runtime.DOMString.initEmpty(),
+            .shadow_root = null,
+            .custom_element_state = .undefined,
+            .is_value = null,
+            .attributes = .{},
+        };
+    }
+
+    pub fn deinit(self: *InternalState) void {
+        if (self.namespace_uri) |*ns| {
+            ns.deinit(self.allocator);
+        }
+        if (self.prefix) |*p| {
+            p.deinit(self.allocator);
+        }
+        self.local_name.deinit(self.allocator);
+        self.id.deinit(self.allocator);
+        self.class_name.deinit(self.allocator);
+        self.slot.deinit(self.allocator);
+        if (self.is_value) |*v| {
+            v.deinit(self.allocator);
+        }
+
+        // Free attribute entries
+        for (self.attributes.items) |entry| {
+            if (entry.namespace_uri) |ns| {
+                self.allocator.free(ns);
+            }
+            if (entry.prefix) |p| {
+                self.allocator.free(p);
+            }
+            self.allocator.free(entry.local_name);
+            self.allocator.free(entry.value);
+        }
+        self.attributes.deinit(self.allocator);
+    }
+};
+
+/// Get the internal state from an instance
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    const state = instance.getState(State);
+    return state.own._internal;
+}
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -32,74 +145,119 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    errdefer runtime.Instance.deinit(instance);
+
+    // Initialize Element internal state
+    const state = instance.getState(StateType);
+    const ArenaAllocator = @import("runtime").ArenaAllocator;
+    const internal = try ArenaAllocator.get().create(InternalState);
+    internal.* = InternalState.init(allocator);
+    state.own._internal = internal;
+
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.deinit();
+    }
     runtime.Instance.deinit(instance);
 }
 
 /// Getter for namespaceURI
+/// DOM §4.8 - Returns the namespace URI of this element
 pub fn get_namespaceURI(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.namespace_uri) |ns| {
+        return ns;
+    }
+    return runtime.DOMString.initEmpty();
 }
 
 /// Getter for prefix
+/// DOM §4.8 - Returns the namespace prefix of this element
 pub fn get_prefix(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.prefix) |p| {
+        return p;
+    }
+    return runtime.DOMString.initEmpty();
 }
 
 /// Getter for localName
+/// DOM §4.8 - Returns the local name of this element
 pub fn get_localName(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.local_name;
 }
 
 /// Getter for tagName
+/// DOM §4.8 - Returns the qualified name of this element
+/// For HTML elements in HTML documents, this is uppercase
 pub fn get_tagName(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // If there's a prefix, return "prefix:localName"
+    if (internal.prefix) |p| {
+        // TODO: Concatenate prefix:localName
+        // For now, return local name
+        _ = p;
+        return internal.local_name;
+    }
+
+    // No prefix, return just local name
+    // TODO: Uppercase for HTML elements in HTML documents
+    return internal.local_name;
 }
 
 /// Getter for id
+/// DOM §4.8 - Returns the value of the id attribute
 pub fn get_id(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.id;
 }
 
 /// Getter for className
+/// DOM §4.8 - Returns the value of the class attribute
 pub fn get_className(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.class_name;
 }
 
 /// Getter for classList
+/// DOM §4.8 - Returns a DOMTokenList for the class attribute
+/// TODO: Implement DOMTokenList interface
 pub fn get_classList(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for slot
+/// DOM §4.8 - Returns the value of the slot attribute
 pub fn get_slot(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.slot;
 }
 
 /// Getter for attributes
+/// DOM §4.8 - Returns a NamedNodeMap of the element's attributes
+/// TODO: Implement NamedNodeMap interface
 pub fn get_attributes(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for shadowRoot
+/// DOM §4.8 - Returns the element's shadow root if attached and mode is "open"
 pub fn get_shadowRoot(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.shadow_root) |root| {
+        // TODO: Check if shadow root mode is "open"
+        return root;
+    }
+    return error.NotImplemented; // Return null
 }
 
 /// Getter for customElementRegistry
@@ -565,24 +723,81 @@ pub fn get_assignedSlot(instance: *runtime.Instance) ImplError!*runtime.Instance
 }
 
 /// Setter for id
+/// DOM §4.8 - Sets the id attribute value
 pub fn set_id(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Free old value
+    internal.id.deinit(internal.allocator);
+
+    // Clone and store new value
+    internal.id = try value.clone(internal.allocator);
+
+    // Also set as attribute
+    try setAttributeInternal(internal, null, null, "id", value.asSlice());
 }
 
 /// Setter for className
+/// DOM §4.8 - Sets the class attribute value
 pub fn set_className(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Free old value
+    internal.class_name.deinit(internal.allocator);
+
+    // Clone and store new value
+    internal.class_name = try value.clone(internal.allocator);
+
+    // Also set as attribute
+    try setAttributeInternal(internal, null, null, "class", value.asSlice());
 }
 
 /// Setter for slot
+/// DOM §4.8 - Sets the slot attribute value
 pub fn set_slot(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Free old value
+    internal.slot.deinit(internal.allocator);
+
+    // Clone and store new value
+    internal.slot = try value.clone(internal.allocator);
+
+    // Also set as attribute
+    try setAttributeInternal(internal, null, null, "slot", value.asSlice());
+}
+
+/// Internal helper to set an attribute
+fn setAttributeInternal(
+    internal: *InternalState,
+    namespace_uri: ?[]const u8,
+    prefix: ?[]const u8,
+    local_name: []const u8,
+    value: []const u8,
+) !void {
+    // Look for existing attribute
+    for (internal.attributes.items) |*entry| {
+        const ns_match = (namespace_uri == null and entry.namespace_uri == null) or
+            (namespace_uri != null and entry.namespace_uri != null and
+                std.mem.eql(u8, namespace_uri.?, entry.namespace_uri.?));
+        const name_match = std.mem.eql(u8, local_name, entry.local_name);
+
+        if (ns_match and name_match) {
+            // Update existing attribute
+            internal.allocator.free(entry.value);
+            entry.value = try internal.allocator.dupe(u8, value);
+            return;
+        }
+    }
+
+    // Create new attribute entry
+    const entry = InternalState.AttributeEntry{
+        .namespace_uri = if (namespace_uri) |ns| try internal.allocator.dupe(u8, ns) else null,
+        .prefix = if (prefix) |p| try internal.allocator.dupe(u8, p) else null,
+        .local_name = try internal.allocator.dupe(u8, local_name),
+        .value = try internal.allocator.dupe(u8, value),
+    };
+    try internal.attributes.append(internal.allocator, entry);
 }
 
 /// Setter for onfullscreenchange
@@ -1007,17 +1222,39 @@ pub fn call_getAttributeNS(instance: *runtime.Instance, namespace: runtime.DOMSt
 }
 
 /// Operation: getAttribute
+/// DOM §4.8 - Returns the value of the named attribute, or null if not found
 pub fn call_getAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString) ImplError!runtime.DOMString {
-    _ = instance;
-    _ = qualifiedName;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const name = qualifiedName.asSlice();
+
+    // TODO: Lowercase name for HTML elements in HTML documents
+
+    // Search attributes by local name (no namespace)
+    for (internal.attributes.items) |entry| {
+        if (entry.namespace_uri == null and std.mem.eql(u8, entry.local_name, name)) {
+            return runtime.DOMString.initInterned(entry.value);
+        }
+    }
+
+    // Return empty for not found (WebIDL nullable maps to empty)
+    return runtime.DOMString.initEmpty();
 }
 
 /// Operation: hasAttribute
+/// DOM §4.8 - Returns true if the element has an attribute with the given name
 pub fn call_hasAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString) ImplError!bool {
-    _ = instance;
-    _ = qualifiedName;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const name = qualifiedName.asSlice();
+
+    // TODO: Lowercase name for HTML elements in HTML documents
+
+    for (internal.attributes.items) |entry| {
+        if (entry.namespace_uri == null and std.mem.eql(u8, entry.local_name, name)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /// Operation: matches
@@ -1236,10 +1473,43 @@ pub fn call_remove(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: removeAttribute
+/// DOM §4.8 - Removes the named attribute
 pub fn call_removeAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = qualifiedName;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const name = qualifiedName.asSlice();
+
+    // TODO: Lowercase name for HTML elements in HTML documents
+
+    // Find and remove the attribute
+    var i: usize = 0;
+    while (i < internal.attributes.items.len) {
+        const entry = internal.attributes.items[i];
+        if (entry.namespace_uri == null and std.mem.eql(u8, entry.local_name, name)) {
+            // Free the entry's strings
+            if (entry.namespace_uri) |ns| internal.allocator.free(ns);
+            if (entry.prefix) |p| internal.allocator.free(p);
+            internal.allocator.free(entry.local_name);
+            internal.allocator.free(entry.value);
+
+            // Remove from list
+            _ = internal.attributes.orderedRemove(i);
+
+            // Clear cached values if applicable
+            if (std.mem.eql(u8, name, "id")) {
+                internal.id.deinit(internal.allocator);
+                internal.id = runtime.DOMString.initEmpty();
+            } else if (std.mem.eql(u8, name, "class")) {
+                internal.class_name.deinit(internal.allocator);
+                internal.class_name = runtime.DOMString.initEmpty();
+            } else if (std.mem.eql(u8, name, "slot")) {
+                internal.slot.deinit(internal.allocator);
+                internal.slot = runtime.DOMString.initEmpty();
+            }
+
+            return;
+        }
+        i += 1;
+    }
 }
 
 /// Operation: convertRectFromNode
@@ -1382,11 +1652,34 @@ pub fn call_after(instance: *runtime.Instance, nodes: *const anyopaque) ImplErro
 }
 
 /// Operation: setAttribute
+/// DOM §4.8 - Sets the value of the named attribute
+/// TODO: value is typed as anyopaque due to codegen - should be DOMString
 pub fn call_setAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString, value: *const anyopaque) ImplError!void {
-    _ = instance;
-    _ = qualifiedName;
-    _ = value;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const name = qualifiedName.asSlice();
+
+    // TODO: Validate qualifiedName per https://dom.spec.whatwg.org/#validate
+
+    // Cast value - it should be a DOMString
+    const value_str: *const runtime.DOMString = @ptrCast(@alignCast(value));
+    const val = value_str.asSlice();
+
+    // TODO: Lowercase name for HTML elements in HTML documents
+
+    // Update special cached attributes
+    if (std.mem.eql(u8, name, "id")) {
+        internal.id.deinit(internal.allocator);
+        internal.id = try runtime.DOMString.initDupe(internal.allocator, val);
+    } else if (std.mem.eql(u8, name, "class")) {
+        internal.class_name.deinit(internal.allocator);
+        internal.class_name = try runtime.DOMString.initDupe(internal.allocator, val);
+    } else if (std.mem.eql(u8, name, "slot")) {
+        internal.slot.deinit(internal.allocator);
+        internal.slot = try runtime.DOMString.initDupe(internal.allocator, val);
+    }
+
+    // Set in attribute list
+    try setAttributeInternal(internal, null, null, name, val);
 }
 
 /// Operation: insertAdjacentHTML
@@ -1451,4 +1744,3 @@ pub fn call_setPointerCapture(instance: *runtime.Instance, pointerId: i32) ImplE
     _ = pointerId;
     return error.NotImplemented;
 }
-
