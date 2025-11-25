@@ -1,15 +1,14 @@
-//! Implementation for TextEncoderCommon interface
+//! Implementation for TextEncoderCommon interface mixin
 //!
-//! This file is AUTO-GENERATED on first creation.
-//! Add your custom implementation here.
+//! WHATWG Encoding Standard § 5.2.1
+//! https://encoding.spec.whatwg.org/#interface-mixin-textencodercommon
+//!
+//! This mixin defines the readonly encoding attribute shared by TextEncoder
+//! and TextEncoderStream. The encoding is always "utf-8" for these encoders.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
 const TextEncoderCommon = interfaces.TextEncoderCommon;
 
 pub const State = TextEncoderCommon.State;
@@ -19,12 +18,12 @@ pub const ImplError = error{
 };
 
 /// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
+/// For the mixin, this is empty - the main interface (TextEncoder/TextEncoderStream)
+/// stores the actual encoder state.
 pub const InternalState = struct {};
 
 /// Initialize instance (creates the instance)
+/// Note: Mixins are typically not instantiated directly - this is provided for completeness.
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
@@ -32,19 +31,18 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
     runtime.Instance.deinit(instance);
 }
 
 /// Getter for encoding
+/// Returns the encoding name (always "utf-8" for TextEncoder/TextEncoderStream)
+/// Spec: https://encoding.spec.whatwg.org/#dom-textencodercommon-encoding
 pub fn get_encoding(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const state = instance.getState(State);
+    return state.own.encoding;
 }
-

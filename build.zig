@@ -570,6 +570,9 @@ pub fn build(b: *std.Build) void {
     // Infra module for URLSearchParams (List type)
     impls_mod.addImport("infra", infra_mod);
 
+    // Encoding module for TextDecoder/TextEncoder implementations
+    impls_mod.addImport("encoding", encoding_mod);
+
     const console_mod = b.addModule("console", .{
         .root_source_file = b.path("src/console/root.zig"),
         .target = target,
