@@ -1,5 +1,140 @@
 We track work in Beads instead of Markdown. Run \`bd quickstart\` to see how.
 
+## Issue Tracking with bd (beads)
+
+**IMPORTANT**: This project uses **bd (beads)** for ALL issue tracking. Do NOT use markdown TODOs, task lists, or other tracking methods.
+
+### Why bd?
+
+- Dependency-aware: Track blockers and relationships between issues
+- Git-friendly: Auto-syncs to JSONL for version control
+- Agent-optimized: JSON output, ready work detection, discovered-from links
+- Prevents duplicate tracking systems and confusion
+
+### Quick Start
+
+**Check for ready work:**
+```bash
+bd ready --json
+```
+
+**Create new issues:**
+```bash
+bd create "Issue title" -t bug|feature|task -p 0-4 --json
+bd create "Issue title" -p 1 --deps discovered-from:bd-123 --json
+```
+
+**Claim and update:**
+```bash
+bd update bd-42 --status in_progress --json
+bd update bd-42 --priority 1 --json
+```
+
+**Complete work:**
+```bash
+bd close bd-42 --reason "Completed" --json
+```
+
+### Issue Types
+
+- `bug` - Something broken
+- `feature` - New functionality
+- `task` - Work item (tests, docs, refactoring)
+- `epic` - Large feature with subtasks
+- `chore` - Maintenance (dependencies, tooling)
+
+### Priorities
+
+- `0` - Critical (security, data loss, broken builds)
+- `1` - High (major features, important bugs)
+- `2` - Medium (default, nice-to-have)
+- `3` - Low (polish, optimization)
+- `4` - Backlog (future ideas)
+
+### Workflow for AI Agents
+
+1. **Check ready work**: `bd ready` shows unblocked issues
+2. **Claim your task**: `bd update <id> --status in_progress`
+3. **Work on it**: Implement, test, document
+4. **Discover new work?** Create linked issue:
+   - `bd create "Found bug" -p 1 --deps discovered-from:<parent-id>`
+5. **Complete**: `bd close <id> --reason "Done"`
+6. **Commit together**: Always commit the `.beads/issues.jsonl` file together with the code changes so issue state stays in sync with code state
+
+### Auto-Sync
+
+bd automatically syncs with git:
+- Exports to `.beads/issues.jsonl` after changes (5s debounce)
+- Imports from JSONL when newer (e.g., after `git pull`)
+- No manual export/import needed!
+
+### GitHub Copilot Integration
+
+If using GitHub Copilot, also create `.github/copilot-instructions.md` for automatic instruction loading.
+Run `bd onboard` to get the content, or see step 2 of the onboard instructions.
+
+### MCP Server (Recommended)
+
+If using Claude or MCP-compatible clients, install the beads MCP server:
+
+```bash
+pip install beads-mcp
+```
+
+Add to MCP config (e.g., `~/.config/claude/config.json`):
+```json
+{
+  "beads": {
+    "command": "beads-mcp",
+    "args": []
+  }
+}
+```
+
+Then use `mcp__beads__*` functions instead of CLI commands.
+
+### Managing AI-Generated Planning Documents
+
+AI assistants often create planning and design documents during development:
+- PLAN.md, IMPLEMENTATION.md, ARCHITECTURE.md
+- DESIGN.md, CODEBASE_SUMMARY.md, INTEGRATION_PLAN.md
+- TESTING_GUIDE.md, TECHNICAL_DESIGN.md, and similar files
+
+**Best Practice: Use a dedicated directory for these ephemeral files**
+
+**Recommended approach:**
+- Create a `history/` directory in the project root
+- Store ALL AI-generated planning/design docs in `history/`
+- Keep the repository root clean and focused on permanent project files
+- Only access `history/` when explicitly asked to review past planning
+
+**Example .gitignore entry (optional):**
+```
+# AI planning documents (ephemeral)
+history/
+```
+
+**Benefits:**
+- ✅ Clean repository root
+- ✅ Clear separation between ephemeral and permanent documentation
+- ✅ Easy to exclude from version control if desired
+- ✅ Preserves planning history for archeological research
+- ✅ Reduces noise when browsing the project
+
+### Important Rules
+
+- ✅ Use bd for ALL task tracking
+- ✅ Always use `--json` flag for programmatic use
+- ✅ Link discovered work with `discovered-from` dependencies
+- ✅ Check `bd ready` before asking "what should I work on?"
+- ✅ Store AI planning docs in `history/` directory
+- ❌ Do NOT create markdown TODO lists
+- ❌ Do NOT use external issue trackers
+- ❌ Do NOT duplicate tracking systems
+- ❌ Do NOT clutter repo root with planning documents
+
+For more details, see README.md and QUICKSTART.md.
+
 # Agent Guidelines for WHATWG Specifications Monorepo in Zig
 
 ## ⚠️ CRITICAL: Ask Clarifying Questions When Unclear
@@ -178,7 +313,6 @@ This project uses a **dynamic skill loading system** where the LLM should:
 
 | Skill | Load When | Description |
 |-------|-----------|-------------|
-| **beads_workflow** | Managing tasks, tracking work, creating issues | Complete bd workflow for task tracking with dependency management |
 | **commit_workflow** | Committing code, managing git history | Incremental commit strategy - commit after each feature completion |
 | **communication_protocol** | ALWAYS (every interaction) | Ask clarifying questions when requirements are ambiguous |
 | **temporary_files** | ALWAYS (every interaction) | All AI-generated temporary files go to `tmp/` directory |
@@ -249,7 +383,7 @@ Analyze task type
 └──────────────────────────────┘
     ↓ ALSO CHECK
 ┌──────────────────────────────┐
-│ Is this task tracking?       │ → YES → Load: beads_workflow
+│ Is this task tracking?       │ → YES → Use: beads
 └──────────────────────────────┘
     ↓ ALSO CHECK
 ┌──────────────────────────────┐
@@ -286,13 +420,12 @@ Common task scenarios and their skill requirements:
 | Task Scenario | Skills to Load |
 |---------------|----------------|
 | **Oneshot execution** | `oneshot` (then loads others as needed: `zig`, `cpp`, `commit_workflow`, etc.) |
-| **Implement new WHATWG spec feature** | `zig`, `beads_workflow`, `monorepo_navigation` |
-| **Implement V8 FFI wrapper** | `cpp`, `beads_workflow` |
+| **Implement new WHATWG spec feature** | `zig`, `monorepo_navigation` |
+| **Implement V8 FFI wrapper** | `cpp` |
 | **Add V8 TypedArray API** | `cpp`, `zig` (for FFI bindings) |
-| **Fix bug in Zig code** | `zig`, `beads_workflow` |
-| **Fix bug in C++ wrapper** | `cpp`, `beads_workflow` |
+| **Fix bug in Zig code** | `zig` |
+| **Fix bug in C++ wrapper** | `cpp` |
 | **Commit code** | `commit_workflow`, `pre_commit_checks` |
-| **Create/update issue** | `beads_workflow` |
 | **Clarify requirements** | `communication_protocol` (always active) |
 | **Write Zig tests** | `zig` |
 | **Refactor Zig code** | `zig`, `commit_workflow` |
@@ -310,11 +443,10 @@ Common task scenarios and their skill requirements:
 ```
 I'll implement a new URL parser function for you.
 
-🔧 Loading skill: beads_workflow
+🔧 Loading skill: commit_workflow
 🔧 Loading skill: zig
 
 First, let me create an issue to track this work...
-[Creates issue using beads_workflow]
 
 Now I'll implement the parser function following Zig best practices...
 [Implements code using zig skill]
@@ -323,7 +455,6 @@ Writing comprehensive tests...
 [Writes tests using zig skill]
 
 Updating issue progress...
-[Updates issue using beads_workflow]
 
 The implementation is complete. Now let me commit the changes.
 
@@ -341,9 +472,7 @@ Committing changes...
 ✓ Unloading skill: pre_commit_checks
 
 Closing the issue...
-[Closes issue using beads_workflow]
 
-✓ Unloading skill: beads_workflow
 
 ✅ URL parser function implemented, tested, and committed!
 ```
@@ -357,7 +486,6 @@ Closing the issue...
 ```
 🔧 Loading skill: oneshot
 🔧 Loading skill: zig
-🔧 Loading skill: beads_workflow
 🔧 Loading skill: monorepo_navigation
 
 # Oneshot Execution Summary: Implement URL Host Parser
@@ -413,7 +541,6 @@ None - all planned work completed.
 
 ✓ Unloading skill: oneshot
 ✓ Unloading skill: zig
-✓ Unloading skill: beads_workflow
 ✓ Unloading skill: monorepo_navigation
 
 ✅ URL host parser implemented, tested, and committed!
@@ -554,8 +681,6 @@ chmod +x .git/hooks/pre-commit
 ```
 
 See `skills/pre_commit_checks/SKILL.md` for complete setup guide.
-
-
 
 
 ## Issue Tracking with bd (beads)

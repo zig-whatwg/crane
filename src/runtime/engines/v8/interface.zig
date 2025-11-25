@@ -34,6 +34,7 @@ const runtime = @import("runtime");
 const overload_resolver = @import("overload_resolver.zig");
 const async_iterator = @import("async_iterator.zig");
 const wrapper_type_info = @import("wrapper_type_info.zig");
+const template_registry = @import("template_registry.zig");
 
 /// Re-export WrapperTypeInfo for use by generated bindings
 pub const WrapperTypeInfo = wrapper_type_info.WrapperTypeInfo;
@@ -172,6 +173,7 @@ pub fn V8Interface(comptime Interface: type) type {
         /// Register interface as a global constructor in V8
         ///
         /// Creates a FunctionTemplate and attaches it to the global object.
+        /// Also registers the template in the global registry for instance wrapping.
         pub fn registerGlobal(
             isolate: *v8.Isolate,
             context: *v8.Context,
@@ -180,6 +182,10 @@ pub fn V8Interface(comptime Interface: type) type {
             const template = createTemplate(isolate);
             const constructor = v8.v8_FunctionTemplate_GetFunction(template, context);
             const global = v8.v8_Context_Global(context);
+
+            // Register template in global registry for instance wrapping
+            // This enables methods like createElement to return properly typed V8 objects
+            template_registry.register(interface_name, template, isolate);
 
             const key_str = v8.v8_String_NewFromUtf8(
                 isolate,
@@ -520,10 +526,23 @@ pub fn V8Interface(comptime Interface: type) type {
                             // Convert to V8 using comptime type dispatch
                             const v8_value: *v8.Value = comptime_convert: {
                                 // WebIDL primitive types
+                                // Handle all unsigned integer types (u8, u16, u32)
                                 if (PayloadType == u32 or PayloadType == runtime.UnsignedLong) {
                                     break :comptime_convert @ptrCast(conv.toV8UnsignedLong(isolate_inner, result));
+                                } else if (PayloadType == u16) {
+                                    // WebIDL unsigned short (u16) - convert to u32 for V8
+                                    break :comptime_convert @ptrCast(conv.toV8UnsignedLong(isolate_inner, @as(u32, result)));
+                                } else if (PayloadType == u8) {
+                                    // WebIDL octet (u8) - convert to u32 for V8
+                                    break :comptime_convert @ptrCast(conv.toV8UnsignedLong(isolate_inner, @as(u32, result)));
                                 } else if (PayloadType == i32 or PayloadType == runtime.Long) {
                                     break :comptime_convert @ptrCast(conv.toV8Long(isolate_inner, result));
+                                } else if (PayloadType == i16) {
+                                    // WebIDL short (i16) - convert to i32 for V8
+                                    break :comptime_convert @ptrCast(conv.toV8Long(isolate_inner, @as(i32, result)));
+                                } else if (PayloadType == i8) {
+                                    // WebIDL byte (i8) - convert to i32 for V8
+                                    break :comptime_convert @ptrCast(conv.toV8Long(isolate_inner, @as(i32, result)));
                                 } else if (PayloadType == u64 or PayloadType == runtime.UnsignedLongLong) {
                                     const val: f64 = @floatFromInt(result);
                                     break :comptime_convert @ptrCast(v8.v8_Number_New(isolate_inner, val));
@@ -539,6 +558,13 @@ pub fn V8Interface(comptime Interface: type) type {
                                     break :comptime_convert @ptrCast(v8.v8_Number_New(isolate_inner, num_val));
                                 } else if (PayloadType == runtime.DOMString) {
                                     break :comptime_convert @ptrCast(conv.toV8String(isolate_inner, result));
+                                } else if (PayloadType == runtime.USVString or PayloadType == []const u8) {
+                                    // USVString is []const u8 - convert to V8 string
+                                    if (v8.v8_String_NewFromUtf8(isolate_inner, result.ptr, @intCast(result.len))) |str| {
+                                        break :comptime_convert @ptrCast(str);
+                                    } else {
+                                        break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
+                                    }
                                 } else {
                                     // For complex types (interfaces, objects, etc.), return undefined for now
                                     // TODO: Implement proper object/interface conversions
@@ -865,8 +891,21 @@ pub fn V8Interface(comptime Interface: type) type {
             // Handle Instance pointer (return the V8 wrapper object)
             if (ReturnType == *runtime.Instance) {
                 // For methods returning Instance, we need to wrap it in a V8 object
-                // Use the conversion function that handles Instance types
-                return conv.toV8Value(*runtime.Instance, isolate, v8_context, result);
+                // with the correct prototype chain (e.g., Element for createElement)
+                //
+                // We use the interface name from the calling method's interface,
+                // but for factory methods like createElement we need to determine
+                // the actual type. For now, we use a heuristic in template_registry.
+                const iface_name = template_registry.getInstanceInterfaceName(result);
+                const v8_obj = template_registry.wrapInstanceAsV8Object(
+                    result,
+                    iface_name,
+                    isolate,
+                    v8_context,
+                ) catch {
+                    return @ptrCast(v8.v8_Undefined(isolate));
+                };
+                return @ptrCast(v8_obj);
             }
 
             // Handle primitive types

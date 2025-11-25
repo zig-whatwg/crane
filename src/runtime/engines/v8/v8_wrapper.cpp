@@ -943,6 +943,21 @@ void v8_ObjectTemplate_SetNamedPropertyHandler(
     ));
 }
 
+// ObjectTemplate - create instance from template
+Global<Object>* v8_ObjectTemplate_NewInstance(Global<ObjectTemplate>* tpl, Global<Context>* context) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<ObjectTemplate> local_tpl = tpl->Get(isolate);
+    Local<Context> local_ctx = context->Get(isolate);
+    Context::Scope context_scope(local_ctx);
+    
+    MaybeLocal<Object> maybe_obj = local_tpl->NewInstance(local_ctx);
+    if (maybe_obj.IsEmpty()) {
+        return nullptr;
+    }
+    return new Global<Object>(isolate, maybe_obj.ToLocalChecked());
+}
+
 // PropertyCallbackInfo - get isolate
 Isolate* v8_PropertyCallbackInfo_GetIsolate(const PropertyCallbackInfo<Value>* info) {
     return info->GetIsolate();

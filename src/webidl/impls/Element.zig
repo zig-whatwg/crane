@@ -152,40 +152,74 @@ pub const InternalState = struct {
     }
 };
 
+/// Global registry for Element internal state (workaround for state type hierarchy issues)
+var element_registry: std.AutoHashMap(usize, *InternalState) = undefined;
+var element_registry_initialized: bool = false;
+
+fn ensureElementRegistry() void {
+    if (!element_registry_initialized) {
+        element_registry = std.AutoHashMap(usize, *InternalState).init(std.heap.page_allocator);
+        element_registry_initialized = true;
+    }
+}
+
+fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) !void {
+    ensureElementRegistry();
+    try element_registry.put(@intFromPtr(instance), internal);
+}
+
+fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
+    ensureElementRegistry();
+    return element_registry.get(@intFromPtr(instance));
+}
+
 /// Get the internal state from an instance
 /// Made public for use by Document's getElementById, getElementsByTagName, etc.
 pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    const state = instance.getState(State);
-    return state.own._internal;
+    return getInternalFromRegistry(instance);
+}
+
+/// Get Element's internal state from the registry
+pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
+    return getInternalFromRegistry(instance);
 }
 
 /// Initialize instance (creates the instance)
+/// Chains to parent class initialization: Node -> EventTarget
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
+    // Chain to parent class (Node) which chains to EventTarget
+    // This properly sets up the Node and EventTarget registries
+    const instance = try NodeImpl.init(allocator, StateType, vtable, ctx);
+    errdefer NodeImpl.deinit(instance);
 
-    // Initialize Element internal state
-    const state = instance.getState(StateType);
+    // Initialize Element internal state in global registry
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
-    state.own._internal = internal;
+    try setInternalInRegistry(instance, internal);
+
+    // Initialize as ELEMENT_NODE
+    try NodeImpl.setNodeType(instance, NodeImpl.NodeType.ELEMENT_NODE);
 
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
+    // Clean up Element internal state from registry
+    if (getInternal(instance)) |internal| {
         internal.deinit();
+        // Remove from registry
+        ensureElementRegistry();
+        _ = element_registry.remove(@intFromPtr(instance));
     }
-    runtime.Instance.deinit(instance);
+    // Chain to parent cleanup
+    NodeImpl.deinit(instance);
 }
 
 // =============================================================================
