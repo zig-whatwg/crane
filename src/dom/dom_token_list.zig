@@ -115,8 +115,12 @@ pub const DOMTokenList = struct {
             const token_u16 = try infra.string.utf8ToUtf16(self.allocator, token);
             errdefer self.allocator.free(token_u16);
 
-            // append only adds if not already present (ordered set semantics)
-            try self.token_set.append(token_u16);
+            // add returns true if added, false if duplicate (ordered set semantics)
+            const was_added = try self.token_set.add(token_u16);
+            if (!was_added) {
+                // Token already exists, free the duplicate allocation
+                self.allocator.free(token_u16);
+            }
         }
 
         // Step 3: Run the update steps
@@ -145,7 +149,23 @@ pub const DOMTokenList = struct {
             const token_u16 = try infra.string.utf8ToUtf16(self.allocator, token);
             defer self.allocator.free(token_u16);
 
+            // Find the stored token to free after removal
+            var token_to_free: ?infra.String = null;
+            var it = self.token_set.iterator();
+            while (it.next()) |stored_token| {
+                if (std.mem.eql(u16, stored_token, token_u16)) {
+                    token_to_free = stored_token;
+                    break;
+                }
+            }
+
+            // Remove from set first
             _ = self.token_set.remove(token_u16);
+
+            // Then free the stored token's memory
+            if (token_to_free) |to_free| {
+                self.allocator.free(to_free);
+            }
         }
 
         // Step 3: Run the update steps
@@ -174,7 +194,23 @@ pub const DOMTokenList = struct {
             // then remove token from this's token set, run the update steps
             // and return false
             if (force == null or force.? == false) {
+                // Find the stored token to free after removal
+                var token_to_free: ?infra.String = null;
+                var it = self.token_set.iterator();
+                while (it.next()) |stored_token| {
+                    if (std.mem.eql(u16, stored_token, token_u16)) {
+                        token_to_free = stored_token;
+                        break;
+                    }
+                }
+
                 _ = self.token_set.remove(token_u16);
+
+                // Free the stored token's memory
+                if (token_to_free) |to_free| {
+                    self.allocator.free(to_free);
+                }
+
                 try self.runUpdateSteps();
                 return false;
             }
