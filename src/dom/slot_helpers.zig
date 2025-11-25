@@ -1,163 +1,255 @@
 //! Slot Algorithm Helper Utilities
 //!
 //! This module provides type-safe utilities for slot algorithms to work with
-//! polymorphic node types.
-//!
-//! TODO: These functions need to be updated to work with WebIDL-generated Node interface
-//! which doesn't have direct node_type field access. For now, stubbed to compile.
+//! polymorphic node types. Uses duck typing to work with both interface and
+//! implementation types.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const infra = @import("infra");
 
-// Import DOM types from root
-const dom = @import("root.zig");
-const Node = dom.Node;
-const Element = dom.Element;
-const ShadowRoot = dom.ShadowRoot;
-const HTMLSlotElement = dom.HTMLSlotElement;
-const tree_helpers = @import("tree_helpers.zig");
+// Node type constants (from DOM spec)
+pub const ELEMENT_NODE: u16 = 1;
+pub const TEXT_NODE: u16 = 3;
+pub const DOCUMENT_FRAGMENT_NODE: u16 = 11;
 
-/// Check if a Node pointer is an Element
-/// TODO: Implement runtime type checking for WebIDL-generated types
-pub fn isElement(node: *const anyopaque) bool {
-    _ = node;
-    // TODO: Need runtime type information from WebIDL instances
-    return false;
+/// Check if a value has a node_type field (duck typing)
+fn hasNodeType(comptime T: type) bool {
+    return @hasField(T, "node_type");
 }
 
-/// Check if a Node pointer is a ShadowRoot (DocumentFragment subtype)
-/// TODO: Implement runtime type checking for WebIDL-generated types
-pub fn isShadowRoot(node: *const anyopaque) bool {
-    _ = node;
-    // TODO: Need runtime type information from WebIDL instances
-    return false;
+/// Get node_type from any type that has it
+fn getNodeType(node: anytype) u16 {
+    const T = @TypeOf(node);
+    const ChildT = @typeInfo(T).pointer.child;
+    if (@hasField(ChildT, "node_type")) {
+        return node.node_type;
+    }
+    // Fallback: assume it's something else
+    return 0;
 }
 
-/// Try to cast a Node to an Element
-/// Returns null if the node is not an Element
-/// TODO: Implement runtime type checking for WebIDL-generated types
-pub fn asElement(node: *anyopaque) ?*Element {
-    _ = node;
-    // TODO: Need runtime type information from WebIDL instances
-    return null;
+/// Check if a Node pointer is an Element (node_type == 1)
+pub fn isElement(node: anytype) bool {
+    return getNodeType(node) == ELEMENT_NODE;
 }
 
-/// Try to cast a Node to a const Element
-/// Returns null if the node is not an Element
-/// TODO: Implement runtime type checking for WebIDL-generated types
-pub fn asElementConst(node: *const anyopaque) ?*const Element {
-    _ = node;
-    // TODO: Need runtime type information from WebIDL instances
-    return null;
+/// Check if a Node pointer is a Text node (node_type == 3)
+pub fn isText(node: anytype) bool {
+    return getNodeType(node) == TEXT_NODE;
 }
 
-/// Try to cast a Node to a ShadowRoot
-/// Returns null if the node is not a ShadowRoot
-/// TODO: Implement runtime type checking for WebIDL-generated types
-pub fn asShadowRoot(node: *anyopaque) ?*ShadowRoot {
-    _ = node;
-    // TODO: Need runtime type information from WebIDL instances
-    return null;
-}
-
-/// Try to cast a Node to a const ShadowRoot
-/// Returns null if the node is not a ShadowRoot
-/// TODO: Implement runtime type checking for WebIDL-generated types
-pub fn asShadowRootConst(node: *const anyopaque) ?*const ShadowRoot {
-    _ = node;
-    // TODO: Need runtime type information from WebIDL instances
-    return null;
+/// Check if a Node pointer is a DocumentFragment (node_type == 11)
+pub fn isDocumentFragment(node: anytype) bool {
+    return getNodeType(node) == DOCUMENT_FRAGMENT_NODE;
 }
 
 /// Check if a Node is a slottable (Element or Text)
-pub fn isSlottable(node: *const anyopaque) bool {
-    const node_ptr: *const Node = @ptrCast(@alignCast(node));
-    // Elements and Text nodes are slottables
-    return node_ptr.node_type == Node.ELEMENT_NODE or
-        node_ptr.node_type == Node.TEXT_NODE;
+/// DOM §4.3.7: Element and Text nodes are slottables
+pub fn isSlottable(node: anytype) bool {
+    const nt = getNodeType(node);
+    return nt == ELEMENT_NODE or nt == TEXT_NODE;
 }
 
 /// Check if a Node is an HTMLSlotElement
-/// For now, this checks if it's an element with tag name "slot"
-pub fn isSlot(node: *const anyopaque) bool {
-    if (asElementConst(node)) |element| {
-        // TODO: When HTMLSlotElement is fully integrated, use proper type check
-        // For now, check tag name
-        return std.mem.eql(u8, element.tag_name, "slot");
+/// For now, this checks if it's an element with local_name "slot"
+pub fn isSlot(node: anytype) bool {
+    if (!isElement(node)) return false;
+
+    const T = @TypeOf(node);
+    const ChildT = @typeInfo(T).pointer.child;
+
+    // Check if it has local_name field
+    if (@hasField(ChildT, "local_name")) {
+        return std.ascii.eqlIgnoreCase(node.local_name, "slot");
+    }
+    // Try tag_name
+    if (@hasField(ChildT, "tag_name")) {
+        return std.ascii.eqlIgnoreCase(node.tag_name, "slot");
     }
     return false;
 }
 
-/// Try to cast an Element to an HTMLSlotElement
-/// Returns null if the element is not a slot
-pub fn asSlot(node: *anyopaque) ?*HTMLSlotElement {
-    if (isSlot(node)) {
-        // Since HTMLSlotElement is currently a standalone struct (not extending Element),
-        // this is a placeholder that will need proper integration
-        // TODO: Implement proper HTMLSlotElement → Element relationship
-        return null;
+/// Get the parent node if it has parent_node field
+pub fn getParentNode(node: anytype) ?*@TypeOf(node.*) {
+    const T = @TypeOf(node);
+    const ChildT = @typeInfo(T).pointer.child;
+    if (@hasField(ChildT, "parent_node")) {
+        return node.parent_node;
     }
     return null;
 }
 
-/// Get the parent Element of a Node (if parent exists and is an Element)
-pub fn getParentElement(node: *anyopaque) ?*Element {
-    const node_ptr: *Node = @ptrCast(@alignCast(node));
-    if (node_ptr.get_parentNode()) |parent| {
-        return asElement(@ptrCast(@constCast(parent)));
+/// Get the slottable name from a slottable
+/// For Elements, this is the "slot" attribute value (via slottable_name field)
+/// For Text nodes, this is always empty string
+pub fn getSlottableName(node: anytype) []const u8 {
+    const T = @TypeOf(node);
+    const ChildT = @typeInfo(T).pointer.child;
+    if (@hasField(ChildT, "slottable_name")) {
+        return node.slottable_name;
     }
-    return null;
-}
-
-/// Get the root node of a node
-pub fn getRoot(node: *anyopaque) *anyopaque {
-    const node_ptr: *Node = @ptrCast(@alignCast(node));
-    const root = node_ptr.call_getRootNode(null);
-    return @ptrCast(root);
-}
-
-/// Get the slottable name from a slottable (Element or Text)
-/// Returns empty string if not accessible
-pub fn getSlottableName(node: *const anyopaque) []const u8 {
-    if (asElementConst(node)) |element| {
-        // Element has Slottable mixin fields flattened into Element struct
-        // Call the generated getter method
-        return element.getSlottableName();
-    }
-    // TODO: Handle Text nodes when they have Slottable mixin accessible
     return "";
 }
 
 /// Set the assigned slot for a slottable
-pub fn setSlottableAssignedSlot(node: *anyopaque, slot: ?*anyopaque) void {
-    if (asElement(node)) |element| {
-        // Element has Slottable mixin fields flattened into Element struct
-        // Call the generated setter method
-        element.setAssignedSlot(slot);
+pub fn setSlottableAssignedSlot(node: anytype, slot: ?*anyopaque) void {
+    const T = @TypeOf(node);
+    const ChildT = @typeInfo(T).pointer.child;
+    if (@hasField(ChildT, "assigned_slot")) {
+        node.assigned_slot = slot;
     }
-    // TODO: Handle Text nodes when they have Slottable mixin accessible
+}
+
+/// Get the assigned slot for a slottable
+pub fn getSlottableAssignedSlot(node: anytype) ?*anyopaque {
+    const T = @TypeOf(node);
+    const ChildT = @typeInfo(T).pointer.child;
+    if (@hasField(ChildT, "assigned_slot")) {
+        return node.assigned_slot;
+    }
+    return null;
+}
+
+/// Get the manual slot assignment for a slottable
+pub fn getSlottableManualAssignment(node: anytype) ?*anyopaque {
+    const T = @TypeOf(node);
+    const ChildT = @typeInfo(T).pointer.child;
+    if (@hasField(ChildT, "manual_slot_assignment")) {
+        return node.manual_slot_assignment;
+    }
+    return null;
+}
+
+/// Set the manual slot assignment for a slottable
+pub fn setSlottableManualAssignment(node: anytype, slot: ?*anyopaque) void {
+    const T = @TypeOf(node);
+    const ChildT = @typeInfo(T).pointer.child;
+    if (@hasField(ChildT, "manual_slot_assignment")) {
+        node.manual_slot_assignment = slot;
+    }
 }
 
 /// Get the name of a slot element
-/// Returns empty string if not a slot or name not found
-pub fn getSlotName(slot_element: *const anyopaque) []const u8 {
-    if (asElementConst(slot_element)) |element| {
-        // Slot name comes from the "name" attribute
-        // Per DOM spec: If name attribute is absent, returns empty string (default slot)
-        if (element.call_getAttribute("name")) |name| {
+/// Returns empty string if not a slot or name not found (which means default slot)
+pub fn getSlotName(slot_node: anytype) []const u8 {
+    if (!isSlot(slot_node)) return "";
+
+    const T = @TypeOf(slot_node);
+    const ChildT = @typeInfo(T).pointer.child;
+
+    // Try to get "name" attribute via call_getAttribute if available
+    if (@hasDecl(ChildT, "call_getAttribute")) {
+        if (slot_node.call_getAttribute("name")) |name| {
             return name;
         }
-        return "";
     }
     return "";
 }
 
-/// Get the children of a node
-pub fn getChildren(node: *const anyopaque) *const @import("infra").List(*Node) {
-    const node_ptr: *const Node = @ptrCast(@alignCast(node));
-    return node_ptr.get_childNodes();
+/// Check if node is a shadow host (has a shadow root attached)
+pub fn isShadowHost(node: anytype) bool {
+    if (!isElement(node)) return false;
+
+    const T = @TypeOf(node);
+    const ChildT = @typeInfo(T).pointer.child;
+    if (@hasField(ChildT, "shadow_root")) {
+        return node.shadow_root != null;
+    }
+    return false;
+}
+
+/// Get the shadow root of an element (if it's a shadow host)
+pub fn getShadowRoot(node: anytype) ?*anyopaque {
+    if (!isElement(node)) return null;
+
+    const T = @TypeOf(node);
+    const ChildT = @typeInfo(T).pointer.child;
+    if (@hasField(ChildT, "shadow_root")) {
+        if (node.shadow_root) |sr| {
+            return @ptrCast(sr);
+        }
+    }
+    return null;
+}
+
+/// Get the children of a node as a slice
+pub fn getChildNodes(node: anytype) []const *anyopaque {
+    const T = @TypeOf(node);
+    const ChildT = @typeInfo(T).pointer.child;
+    if (@hasField(ChildT, "child_nodes")) {
+        const slice = node.child_nodes.toSlice();
+        // Cast the slice (this is safe because we're just reinterpreting the pointer type)
+        return @as([*]const *anyopaque, @ptrCast(slice.ptr))[0..slice.len];
+    }
+    return &.{};
+}
+
+/// Get the root node of a node
+pub fn getRoot(node: anytype) *anyopaque {
+    var current = node;
+    const T = @TypeOf(node);
+    const ChildT = @typeInfo(T).pointer.child;
+
+    if (@hasField(ChildT, "parent_node")) {
+        while (current.parent_node) |parent| {
+            current = parent;
+        }
+    }
+    return @ptrCast(current);
+}
+
+/// Check if a node is a ShadowRoot
+/// ShadowRoot is a DocumentFragment with a host field
+pub fn isShadowRoot(node: anytype) bool {
+    if (!isDocumentFragment(node)) return false;
+
+    const T = @TypeOf(node);
+    const ChildT = @typeInfo(T).pointer.child;
+    if (@hasField(ChildT, "host")) {
+        return node.host != null;
+    }
+    return false;
+}
+
+/// Cast to ShadowRoot if it is one
+pub fn asShadowRoot(node: anytype) ?*anyopaque {
+    if (isShadowRoot(node)) {
+        return @ptrCast(node);
+    }
+    return null;
+}
+
+/// Check if ancestor is an inclusive ancestor of descendant
+pub fn isInclusiveAncestor(ancestor: anytype, descendant: anytype) bool {
+    // Same node?
+    if (@as(*anyopaque, @ptrCast(ancestor)) == @as(*anyopaque, @ptrCast(descendant))) {
+        return true;
+    }
+
+    // Walk up from descendant
+    const T = @TypeOf(descendant);
+    const ChildT = @typeInfo(T).pointer.child;
+
+    if (@hasField(ChildT, "parent_node")) {
+        var current = descendant.parent_node;
+        while (current) |node| {
+            if (@as(*anyopaque, @ptrCast(node)) == @as(*anyopaque, @ptrCast(ancestor))) {
+                return true;
+            }
+            current = node.parent_node;
+        }
+    }
+
+    return false;
 }
 
 // ============================================================================
 // Tests
 // ============================================================================
+
+test "slot_helpers: basic type checks" {
+    // Just verify the module compiles
+    try std.testing.expect(ELEMENT_NODE == 1);
+    try std.testing.expect(TEXT_NODE == 3);
+}

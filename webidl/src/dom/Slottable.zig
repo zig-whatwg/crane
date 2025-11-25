@@ -14,16 +14,18 @@ const webidl = @import("webidl");
 /// - An associated assigned slot (null or a slot)
 /// - An associated manual slot assignment (null or a slot)
 pub const Slottable = webidl.mixin(struct {
-    /// Slottable name (from "slot" attribute)
+    /// Slottable name (from "slot" attribute for elements, empty for text)
+    /// DOM §4.3.7: A slottable has an associated name (a string). Unless stated otherwise it is the empty string.
     slottable_name: []const u8 = "",
 
     /// Currently assigned slot (null if not assigned)
-    /// TODO: Implement when HTMLSlotElement is available
+    /// DOM §4.3.7: A slottable has an associated assigned slot (null or a slot).
+    /// Initially null.
     assigned_slot: ?*anyopaque = null,
 
     /// Manual slot assignment (for manual slot assignment mode)
-    /// TODO: Implement when HTMLSlotElement is available
-    /// Should use weak reference per spec
+    /// DOM §4.3.7: A slottable has an associated manual slot assignment (null or a slot).
+    /// Initially null. This is a weak reference per spec.
     manual_slot_assignment: ?*anyopaque = null,
 
     // ========================================================================
@@ -36,16 +38,21 @@ pub const Slottable = webidl.mixin(struct {
     /// Returns null if not assigned or if the shadow root is closed.
     ///
     /// Spec: https://dom.spec.whatwg.org/#dom-slottable-assignedslot
+    ///
+    /// The assignedSlot getter steps are to return the result of
+    /// find a slot given this and with the open flag set.
     pub fn get_assignedSlot(self: *const @This()) ?*anyopaque {
-        // The assignedSlot getter steps are to return the result of
-        // find a slot given this and true (open flag)
+        // Import dom module for algorithm access
+        const dom = @import("dom");
 
-        // TODO: Implement findSlot algorithm from shadow_dom_algorithms
-        // For now, return the assigned slot if it exists
-        // The "open" parameter means we only return slots in open shadow roots
+        // Find a slot for this slottable with open flag = true
+        // This means we only return slots in open shadow roots
+        //
+        // The "open" flag causes the algorithm to return null if the
+        // shadow root's mode is "closed", providing encapsulation.
+        const slot = dom.shadow_dom_algorithms.findSlot(@ptrCast(@constCast(self)), true);
 
-        _ = self;
-        return null; // TODO: Implement when slot algorithms are available
+        return slot;
     }
 
     // ========================================================================
@@ -58,21 +65,23 @@ pub const Slottable = webidl.mixin(struct {
     }
 
     /// Set the slottable name
+    /// For elements, this should be called when the "slot" attribute changes
     pub fn setSlottableName(self: *@This(), name: []const u8) void {
         self.slottable_name = name;
     }
 
-    /// Check if this slottable is assigned
+    /// Check if this slottable is assigned to a slot
     pub fn isAssigned(self: *const @This()) bool {
         return self.assigned_slot != null;
     }
 
-    /// Get the assigned slot
+    /// Get the assigned slot (internal use, doesn't check open/closed mode)
     pub fn getAssignedSlotInternal(self: *const @This()) ?*anyopaque {
         return self.assigned_slot;
     }
 
     /// Set the assigned slot
+    /// Called by the assign slottables algorithm
     pub fn setAssignedSlot(self: *@This(), slot: ?*anyopaque) void {
         self.assigned_slot = slot;
     }
@@ -83,13 +92,8 @@ pub const Slottable = webidl.mixin(struct {
     }
 
     /// Set the manual slot assignment
+    /// Called by HTMLSlotElement.assign() for manual slot assignment mode
     pub fn setManualSlotAssignment(self: *@This(), slot: ?*anyopaque) void {
         self.manual_slot_assignment = slot;
     }
 });
-
-// Tests
-
-
-
-

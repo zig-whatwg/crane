@@ -248,9 +248,26 @@ pub fn findSlot(slottable: *anyopaque, open: bool) ?*anyopaque {
 
     // Step 5: If shadow's slot assignment is "manual", return slot with manually assigned nodes
     if (shadow.getSlotAssignmentMode() == .manual) {
-        // TODO: Implement manual slot assignment search
-        // Need to traverse shadow's descendants and find slot whose manually_assigned_nodes contains slottable
-        // This requires HTMLSlotElement.manually_assigned_nodes integration
+        // For manual mode, find slot whose manually_assigned_nodes contains slottable
+        // Traverse shadow's descendants to find slots
+        const shadow_node: *Node = @ptrCast(@alignCast(shadow));
+
+        var descendants = tree_helpers.getDescendantsInTreeOrder(std.heap.page_allocator, shadow_node) catch return null;
+        defer descendants.deinit();
+
+        for (descendants.toSlice()) |descendant| {
+            if (slot_helpers.isSlot(descendant)) {
+                // Check if this slot's manually_assigned_nodes contains slottable
+                const slot_element: *HTMLSlotElement = @ptrCast(@alignCast(descendant));
+                const manual_nodes = slot_element.getManuallyAssignedNodesList();
+
+                for (manual_nodes.toSlice()) |manual_node| {
+                    if (manual_node == slottable) {
+                        return descendant;
+                    }
+                }
+            }
+        }
         return null;
     }
 
@@ -299,16 +316,26 @@ pub fn findSlottables(allocator: Allocator, slot: *anyopaque) !infra.List(*anyop
 
     // Step 5: If root's slot assignment is "manual":
     if (shadow.getSlotAssignmentMode() == .manual) {
-        // TODO: For manual mode, need to access slot's manually_assigned_nodes
-        // and check if each slottable's parent is host
-        // This requires HTMLSlotElement integration
+        // For manual mode, return slot's manually_assigned_nodes where parent is host
+        const slot_element: *HTMLSlotElement = @ptrCast(@alignCast(slot));
+        const manual_nodes = slot_element.getManuallyAssignedNodesList();
+
+        for (manual_nodes.toSlice()) |node| {
+            // Check if node's parent is host
+            const node_ptr: *Node = @ptrCast(@alignCast(node));
+            if (node_ptr.parent_node) |parent| {
+                if (@as(*anyopaque, @ptrCast(parent)) == @as(*anyopaque, @ptrCast(host))) {
+                    try result.append(node);
+                }
+            }
+        }
         return result;
     }
 
     // Step 6: Otherwise, for each slottable child of host, in tree order:
     const host_node: *Node = @ptrCast(@alignCast(host));
 
-    for (host_node.child_nodes.items()) |child| {
+    for (host_node.child_nodes.toSlice()) |child| {
         // Check if child is a slottable
         if (!slot_helpers.isSlottable(child)) continue;
 
