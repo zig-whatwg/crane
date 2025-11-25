@@ -605,6 +605,16 @@ pub fn V8Interface(comptime Interface: type) type {
                 );
             }
 
+            // Register indexed property handler if interface is iterable
+            // This enables array-like access: obj[0], obj[1], etc.
+            // WebIDL interfaces with "getter" operations support bracket notation
+            if (@hasDecl(Meta, "iterable") and @hasDecl(Interface, "call_item")) {
+                v8.v8_ObjectTemplate_SetIndexedPropertyHandler(
+                    instance_tmpl,
+                    indexedPropertyGetter,
+                );
+            }
+
             // Register only own methods on prototype (not inherited methods)
             // Inherited methods are accessible via V8's prototype chain
             //
@@ -1404,6 +1414,99 @@ pub fn V8Interface(comptime Interface: type) type {
             _ = property;
             const isolate = info.getIsolate();
             conv.throwError(isolate, "Getter not yet implemented");
+        }
+
+        /// Indexed property getter for array-like access (obj[0], obj[1], etc.)
+        /// Called when JavaScript accesses an indexed property on objects with WebIDL "getter" operations.
+        /// For example, NodeList has "getter Node? item(unsigned long index)" which enables list[0] syntax.
+        fn indexedPropertyGetter(
+            index: u32,
+            info: *const v8.PropertyCallbackInfo,
+        ) callconv(.c) void {
+            // Only compile this function body if Interface has call_item
+            if (comptime !@hasDecl(Interface, "call_item")) {
+                // No item() method - just return to let V8 handle lookup
+                return;
+            }
+
+            const isolate = info.getIsolate();
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+                conv.throwError(isolate, "No V8 context");
+                return;
+            };
+
+            // Get the 'this' object (the interface instance)
+            const this_obj = info.getThis();
+
+            // Extract instance pointer from internal field
+            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+            if (instance_ptr == null) {
+                // Called on prototype, not an instance - let V8 continue normal lookup
+                return;
+            }
+
+            const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+
+            // Call the item() method
+            const result = Interface.call_item(instance, index) catch |err| {
+                const err_msg = std.fmt.allocPrint(
+                    std.heap.c_allocator,
+                    "item() failed: {s}",
+                    .{@errorName(err)},
+                ) catch {
+                    conv.throwError(isolate, "item() failed");
+                    return;
+                };
+                defer std.heap.c_allocator.free(err_msg);
+                conv.throwError(isolate, err_msg);
+                return;
+            };
+
+            // Convert result to V8 value based on return type
+            const ReturnType = @typeInfo(@TypeOf(Interface.call_item)).@"fn".return_type.?;
+            const ActualReturnType = @typeInfo(ReturnType).error_union.payload;
+
+            // Handle different return types
+            const type_info = @typeInfo(ActualReturnType);
+            if (type_info == .optional) {
+                // Optional type - check for null
+                if (result) |unwrapped_result| {
+                    const ChildType = type_info.optional.child;
+                    // Check if it's an Instance pointer
+                    if (ChildType == *runtime.Instance) {
+                        // Wrap Instance in V8
+                        const iface_name = template_registry.getInstanceInterfaceName(unwrapped_result);
+                        const wrapped = template_registry.wrapInstanceAsV8Object(
+                            unwrapped_result,
+                            iface_name,
+                            isolate,
+                            v8_context,
+                        ) catch {
+                            conv.throwError(isolate, "Failed to wrap result");
+                            return;
+                        };
+                        info.setReturnValue(@ptrCast(wrapped));
+                    } else {
+                        // Other type (like DOMString, CSSOMString) - convert to V8 string
+                        const v8_value = conv.toV8Value(ChildType, isolate, v8_context, unwrapped_result) catch {
+                            conv.throwError(isolate, "Failed to convert result to V8");
+                            return;
+                        };
+                        info.setReturnValue(@ptrCast(v8_value));
+                    }
+                } else {
+                    // null - return undefined
+                    const undef = v8.v8_Undefined(isolate);
+                    info.setReturnValue(@ptrCast(undef));
+                }
+            } else {
+                // Non-optional type (like CSSOMString)
+                const v8_value = conv.toV8Value(ActualReturnType, isolate, v8_context, result) catch {
+                    conv.throwError(isolate, "Failed to convert result to V8");
+                    return;
+                };
+                info.setReturnValue(@ptrCast(v8_value));
+            }
         }
 
         /// Iterator callback for Symbol.iterator

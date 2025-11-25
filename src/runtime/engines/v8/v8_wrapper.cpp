@@ -955,6 +955,28 @@ void v8_ObjectTemplate_SetNamedPropertyHandler(
     ));
 }
 
+// ObjectTemplate - set indexed property handler (for array-like access: obj[0], obj[1], etc.)
+void v8_ObjectTemplate_SetIndexedPropertyHandler(
+    Global<ObjectTemplate>* tpl,
+    IndexedPropertyGetterCallbackV2 getter
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<ObjectTemplate> local_tpl = tpl->Get(isolate);
+    
+    local_tpl->SetHandler(IndexedPropertyHandlerConfiguration(
+        getter,
+        nullptr,  // setter callback (read-only for now)
+        nullptr,  // query callback (not needed)
+        nullptr,  // deleter callback (not needed)
+        nullptr,  // enumerator callback (not needed)
+        nullptr,  // definer callback (not needed)
+        nullptr,  // descriptor callback (not needed)
+        Local<Value>(),  // data (not needed)
+        PropertyHandlerFlags::kNone
+    ));
+}
+
 // ObjectTemplate - create instance from template
 Global<Object>* v8_ObjectTemplate_NewInstance(Global<ObjectTemplate>* tpl, Global<Context>* context) {
     Isolate* isolate = Isolate::GetCurrent();

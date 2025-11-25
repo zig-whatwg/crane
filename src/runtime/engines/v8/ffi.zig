@@ -234,6 +234,13 @@ pub const NamedPropertyEnumeratorCallback = *const fn (
     info: *const PropertyCallbackInfo,
 ) callconv(.c) void;
 
+/// Called when JavaScript accesses an indexed property (e.g., obj[0], obj[1])
+/// Should set the return value if the index exists, or do nothing to continue the lookup chain
+pub const IndexedPropertyGetterCallback = *const fn (
+    index: u32,
+    info: *const PropertyCallbackInfo,
+) callconv(.c) void;
+
 // ============================================================================
 // V8 API Function Declarations
 // ============================================================================
@@ -286,6 +293,13 @@ pub extern fn v8_ObjectTemplate_SetNamedPropertyHandler(
     deleter: ?NamedPropertyDeleterCallback,
     enumerator: ?NamedPropertyEnumeratorCallback,
     data: ?*Value,
+) void;
+
+/// Set an indexed property handler on the ObjectTemplate
+/// This intercepts indexed property access (e.g., obj[0], obj[1], etc.)
+pub extern fn v8_ObjectTemplate_SetIndexedPropertyHandler(
+    self: *ObjectTemplate,
+    getter: IndexedPropertyGetterCallback,
 ) void;
 
 // ============================================================================
