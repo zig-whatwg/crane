@@ -465,8 +465,73 @@ pub fn generateNamespacesRoot(
     try w.flush();
 }
 
+/// Check if a typedef has a special hand-written implementation that should not be generated
+/// These typedefs are in webidl/types/buffer_sources.zig with proper union types and methods
+pub fn isSpecialTypedef(name: []const u8) bool {
+    const special_typedefs = [_][]const u8{
+        // Buffer source types with rich implementations in buffer_sources.zig
+        "ArrayBufferView",
+        "BufferSource",
+        "AllowSharedBufferSource",
+    };
+
+    for (special_typedefs) |special| {
+        if (std.mem.eql(u8, name, special)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/// Check if a union type is the (Node or DOMString) pattern used by DOM mutation methods
+/// This pattern is used by ParentNode.prepend/append/replaceChildren and ChildNode.before/after/replaceWith
+fn isNodeOrDOMStringUnion(union_types: []const types.IDLType) bool {
+    if (union_types.len != 2) return false;
+
+    var has_node = false;
+    var has_string = false;
+
+    for (union_types) |ut| {
+        const t = ut.type;
+        if (std.mem.eql(u8, t, "Node")) has_node = true;
+        if (std.mem.eql(u8, t, "DOMString")) has_string = true;
+        // Also handle TrustedScript variant used in some specs
+        if (std.mem.eql(u8, t, "TrustedScript")) has_string = true;
+    }
+
+    return has_node and has_string;
+}
+
+/// Write a parameter type with proper nullable and variadic handling
+/// Handles: nullable types (T?), variadic (T...), and combinations
+fn writeParamType(w: anytype, arg: types.Argument, type_registry: ?*const ir_mod.TypeRegistry) !void {
+    // Handle variadic parameters: T... becomes []const T
+    if (arg.variadic) {
+        try w.writeAll("[]const ");
+    }
+
+    // Handle nullable parameters: T? becomes ?T (but not for variadic - slice handles null)
+    if (arg.idlType.nullable and !arg.variadic) {
+        try w.writeAll("?");
+    }
+
+    try writeTypeSimple(w, arg.idlType, type_registry);
+}
+
 /// Helper to write a WebIDL type as Zig type string (simplified)
 fn writeTypeSimple(w: anytype, webidl_type: types.IDLType, type_registry: ?*const ir_mod.TypeRegistry) !void {
+    // Handle union types first
+    if (webidl_type.unionTypes) |union_types| {
+        if (isNodeOrDOMStringUnion(union_types)) {
+            // Use the mixin's NodeOrString type for (Node or DOMString) pattern
+            try w.writeAll("mixins.ParentNode.NodeOrString");
+            return;
+        }
+        // Fallback for other union types - use anyopaque
+        try w.writeAll("*const anyopaque");
+        return;
+    }
+
     var type_str = webidl_type.type;
 
     // Strip namespace prefix if present (e.g., "dom::DOMString" -> "DOMString")
@@ -716,7 +781,7 @@ fn generateImplFile(
                 try w.writeAll(", ");
                 try writeEscapedImplParamName(w, arg.name);
                 try w.writeAll(": ");
-                try writeTypeSimple(w, arg.idlType, type_reg);
+                try writeParamType(w, arg, type_reg);
             }
             try w.writeAll(") !*runtime.Instance {\n");
             try w.writeAll("    // Create instance through init()\n");
@@ -830,7 +895,7 @@ fn generateImplFile(
                 try w.writeAll(", ");
                 try writeEscapedImplParamName(w, arg.name);
                 try w.writeAll(": ");
-                try writeTypeSimple(w, arg.idlType, type_reg);
+                try writeParamType(w, arg, type_reg);
             }
             try w.writeAll(") ImplError!");
             // For nullable return types, return ?T instead of T
@@ -1335,6 +1400,9 @@ pub fn generateFromFile(
         var typedef_iter = ir.typedefs.iterator();
         while (typedef_iter.next()) |entry| {
             const typedef = entry.value_ptr.*;
+            // Skip typedefs that have special hand-written implementations
+            // These are in webidl/types/buffer_sources.zig with proper union types and methods
+            if (isSpecialTypedef(typedef.name)) continue;
             try generateTypedef(allocator, typedef, typedefs_path);
         }
     }
@@ -1552,6 +1620,14 @@ fn typeReferencesCallback(allocator: std.mem.Allocator, idl_type: types.IDLType,
 
     // If file exists, this is a callback reference
     std.fs.cwd().access(callback_path, .{}) catch {
+        // Also check union member types
+        if (idl_type.unionTypes) |union_types| {
+            for (union_types) |union_member| {
+                if (try typeReferencesCallback(allocator, union_member, typedefs_path)) {
+                    return true;
+                }
+            }
+        }
         return false;
     };
 
@@ -1818,7 +1894,7 @@ pub fn generateCallback(
             try w.print("{s}: ", .{arg.name});
         }
 
-        try writeTypeSimple(w, arg.idlType, null);
+        try writeParamType(w, arg, null);
     }
 
     try w.writeAll(") ");
@@ -1935,11 +2011,7 @@ pub fn generateNamespace(
                 for (op.arguments) |arg| {
                     try w.writeAll(", ");
                     try w.print("{s}: ", .{arg.name});
-                    if (arg.variadic) {
-                        // Variadic parameters (any...) should be a slice
-                        try w.writeAll("[]const ");
-                    }
-                    try writeTypeSimple(w, arg.idlType, null);
+                    try writeParamType(w, arg, null);
                 }
 
                 try w.writeAll(") anyerror!");
@@ -1973,11 +2045,7 @@ pub fn generateNamespace(
             for (op.arguments) |arg| {
                 try w.writeAll(", ");
                 try w.print("{s}: ", .{arg.name});
-                // Variadic parameters (any...) should be a slice
-                if (arg.variadic) {
-                    try w.writeAll("[]const ");
-                }
-                try writeTypeSimple(w, arg.idlType, null);
+                try writeParamType(w, arg, null);
             }
 
             try w.writeAll(") anyerror!");
@@ -2090,10 +2158,7 @@ pub fn generateNamespaceImpl(
                 for (op.arguments) |arg| {
                     try w.writeAll(", ");
                     try w.print("{s}: ", .{arg.name});
-                    if (arg.variadic) {
-                        try w.writeAll("[]const ");
-                    }
-                    try writeTypeSimple(w, arg.idlType, null);
+                    try writeParamType(w, arg, null);
                 }
 
                 try w.writeAll(") anyerror!");
@@ -2126,10 +2191,7 @@ pub fn generateNamespaceImpl(
             for (op.arguments) |arg| {
                 try w.writeAll(", ");
                 try w.print("{s}: ", .{arg.name});
-                if (arg.variadic) {
-                    try w.writeAll("[]const ");
-                }
-                try writeTypeSimple(w, arg.idlType, null);
+                try writeParamType(w, arg, null);
             }
 
             try w.writeAll(") anyerror!");

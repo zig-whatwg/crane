@@ -1033,6 +1033,10 @@ pub const Parser = struct {
         var union_str = std.ArrayList(u8).empty;
         defer union_str.deinit(self.allocator);
 
+        // Collect individual union member types
+        var union_types_list = std.ArrayList(types.IDLType).empty;
+        defer union_types_list.deinit(self.allocator);
+
         try union_str.append(self.allocator, '(');
 
         // Parse first type (skip extended attributes if present)
@@ -1043,6 +1047,7 @@ pub const Parser = struct {
         }
         const first_type = try self.parseSimpleType();
         try union_str.appendSlice(self.allocator, first_type.type);
+        try union_types_list.append(self.allocator, first_type);
 
         // Parse remaining types separated by 'or'
         while (self.current_token.type == .keyword_or) {
@@ -1057,19 +1062,24 @@ pub const Parser = struct {
             }
             const next_type = try self.parseSimpleType();
             try union_str.appendSlice(self.allocator, next_type.type);
+            try union_types_list.append(self.allocator, next_type);
         }
 
         try self.expect(.right_paren);
         try union_str.append(self.allocator, ')');
 
         // Handle nullable union: (A or B)?
+        var is_nullable = false;
         if (self.current_token.type == .question) {
             try self.advance();
             try union_str.append(self.allocator, '?');
+            is_nullable = true;
         }
 
         return types.IDLType{
             .type = try union_str.toOwnedSlice(self.allocator),
+            .unionTypes = try union_types_list.toOwnedSlice(self.allocator),
+            .nullable = is_nullable,
         };
     }
 

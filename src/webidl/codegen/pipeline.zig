@@ -255,6 +255,10 @@ pub fn processDirectory(
 
         while (typedef_iter.next()) |entry| {
             const typedef = entry.value_ptr.*;
+            // Skip typedefs that have special hand-written implementations
+            // These are in webidl/types/buffer_sources.zig with proper union types and methods
+            if (generator.isSpecialTypedef(typedef.name)) continue;
+
             try generator.generateTypedef(allocator, typedef, typedefs_path);
 
             const name_copy = try allocator.dupe(u8, typedef.name);
