@@ -12,15 +12,27 @@ const std = @import("std");
 const infra = @import("infra");
 const Allocator = std.mem.Allocator;
 
-// Import DOM types
-const Node = @import("node").Node;
-const Element = @import("element").Element;
-const ShadowRoot = @import("shadow_root").ShadowRoot;
-const ShadowRootMode = @import("shadow_root").ShadowRootMode;
-const SlotAssignmentMode = @import("shadow_root").SlotAssignmentMode;
-const HTMLSlotElement = @import("html_slot_element").HTMLSlotElement;
-const slot_helpers = @import("slot_helpers.zig"); // File import (same directory)
-const tree_helpers = @import("tree_helpers.zig"); // File import (same directory)
+// Import DOM types - use interfaces module for WebIDL types
+const interfaces = @import("interfaces");
+const Node = interfaces.Node;
+const Element = interfaces.Element;
+const ShadowRoot = interfaces.ShadowRoot;
+const HTMLSlotElement = interfaces.HTMLSlotElement;
+
+// Shadow DOM enums (matching WebIDL spec)
+pub const ShadowRootMode = enum {
+    open,
+    closed,
+};
+
+pub const SlotAssignmentMode = enum {
+    manual,
+    named,
+};
+
+// Import local helpers
+const slot_helpers = @import("slot_helpers.zig");
+const tree_helpers = @import("tree_helpers.zig");
 
 /// Valid shadow host names per DOM spec
 const VALID_SHADOW_HOST_NAMES = [_][]const u8{
