@@ -1,5 +1,8 @@
 // Test NodeList indexed property access (bracket notation)
 // This tests that list[0], list[1], etc. work correctly
+//
+// Expected output format: Each test evaluates to true/false
+// The test runner counts true/false lines to determine pass/fail
 
 var doc = new Document();
 var body = doc.createElement("body");
@@ -20,40 +23,33 @@ body.appendChild(div3);
 // Get NodeList
 var list = body.querySelectorAll('div');
 
-console.log('NodeList length:', list.length);
-console.assert(list.length === 3, 'Expected 3 divs');
+// Test: NodeList has correct length
+list.length === 3
 
 // Test indexed access with bracket notation
-console.log('Testing indexed access...');
 var item0 = list[0];
 var item1 = list[1];
 var item2 = list[2];
 
-console.log('list[0]:', item0);
-console.log('list[1]:', item1);
-console.log('list[2]:', item2);
+// Test: Items are defined
+item0 !== undefined
+item1 !== undefined
+item2 !== undefined
 
-// Verify elements are correct
-console.assert(item0 !== undefined, 'list[0] should not be undefined');
-console.assert(item1 !== undefined, 'list[1] should not be undefined');
-console.assert(item2 !== undefined, 'list[2] should not be undefined');
+// Test: IDs are correct
+item0.id === 'div1'
+item1.id === 'div2'
+item2.id === 'div3'
 
-console.assert(item0.id === 'div1', 'list[0] should be div1');
-console.assert(item1.id === 'div2', 'list[1] should be div2');
-console.assert(item2.id === 'div3', 'list[2] should be div3');
-
-// Test out-of-bounds access
+// Test: Out-of-bounds returns undefined
 var item3 = list[3];
-console.log('list[3] (out of bounds):', item3);
-console.assert(item3 === undefined, 'list[3] should be undefined');
+item3 === undefined
 
-// Verify order (document order)
-console.assert(list[0] === div1, 'list[0] === div1');
-console.assert(list[1] === div2, 'list[1] === div2');
-console.assert(list[2] === div3, 'list[2] === div3');
+// Test: Identity is preserved (same object references)
+list[0] === div1
+list[1] === div2
+list[2] === div3
 
-// Also test that .item() still works
+// Test: .item() method still works
 var itemMethod0 = list.item(0);
-console.assert(itemMethod0 === item0, 'list.item(0) === list[0]');
-
-console.log('✅ All NodeList indexed access tests passed!');
+itemMethod0 === item0

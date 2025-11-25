@@ -1285,52 +1285,76 @@ pub fn build(b: *std.Build) void {
     // V8 WebIDL bindings conformance tests
     const test_v8_step = b.step("test-v8", "Run V8 WebIDL bindings JavaScript tests");
 
-    // Run basic tests
-    const run_basic_tests = b.addRunArtifact(test_runner_exe);
-    run_basic_tests.addArtifactArg(repl_exe);
-    run_basic_tests.addArg("tests/v8/bindings_test.js");
+    // Automatically discover and run all .js test files in tests/v8/
+    // Excludes files that don't work with the simple test runner (debug_, *verbose*, etc.)
+    const v8_test_dir = "tests/v8";
 
-    // Run advanced tests
-    const run_advanced_tests = b.addRunArtifact(test_runner_exe);
-    run_advanced_tests.step.dependOn(&run_basic_tests.step);
-    run_advanced_tests.addArtifactArg(repl_exe);
-    run_advanced_tests.addArg("tests/v8/bindings_advanced_test.js");
+    // Helper to check if a filename should be excluded
+    const shouldExcludeFile = struct {
+        fn check(filename: []const u8) bool {
+            // Exclude debug files
+            if (std.mem.startsWith(u8, filename, "debug_")) return true;
 
-    // Run prototype chain tests
-    const run_prototype_chain_tests = b.addRunArtifact(test_runner_exe);
-    run_prototype_chain_tests.step.dependOn(&run_advanced_tests.step);
-    run_prototype_chain_tests.addArtifactArg(repl_exe);
-    run_prototype_chain_tests.addArg("tests/v8/prototype_chain_test.js");
+            // Exclude verbose output files
+            if (std.mem.indexOf(u8, filename, "verbose") != null) return true;
 
-    // Run streams async iteration tests
-    const run_streams_async_iteration_tests = b.addRunArtifact(test_runner_exe);
-    run_streams_async_iteration_tests.step.dependOn(&run_prototype_chain_tests.step);
-    run_streams_async_iteration_tests.addArtifactArg(repl_exe);
-    run_streams_async_iteration_tests.addArg("tests/v8/streams_async_iteration_test.js");
+            // Exclude wrapper_identity_debug (diagnostic output)
+            if (std.mem.eql(u8, filename, "wrapper_identity_debug.js")) return true;
 
-    // Run DOM tests
-    const run_dom_tests = b.addRunArtifact(test_runner_exe);
-    run_dom_tests.step.dependOn(&run_streams_async_iteration_tests.step);
-    run_dom_tests.addArtifactArg(repl_exe);
-    run_dom_tests.addArg("tests/v8/dom_test.js");
+            // Exclude prototype_property_access_test (uses console.log format)
+            if (std.mem.eql(u8, filename, "prototype_property_access_test.js")) return true;
 
-    // Run property setter tests
-    const run_setter_tests = b.addRunArtifact(test_runner_exe);
-    run_setter_tests.step.dependOn(&run_dom_tests.step);
-    run_setter_tests.addArtifactArg(repl_exe);
-    run_setter_tests.addArg("tests/v8/setter_test.js");
+            return false;
+        }
+    }.check;
 
-    // Run querySelector tests (basic version - full version requires property setters)
-    const run_querySelector_tests = b.addRunArtifact(test_runner_exe);
-    run_querySelector_tests.step.dependOn(&run_setter_tests.step);
-    run_querySelector_tests.addArtifactArg(repl_exe);
-    run_querySelector_tests.addArg("tests/v8/querySelector_basic_test.js");
+    // Collect all .js test files
+    var test_dir = std.fs.cwd().openDir(v8_test_dir, .{ .iterate = true }) catch {
+        std.debug.print("Warning: Could not open {s} directory\n", .{v8_test_dir});
+        return;
+    };
+    defer test_dir.close();
 
-    test_v8_step.dependOn(&run_querySelector_tests.step);
+    // Use a fixed-size buffer for collecting test files
+    var test_files_buffer: [100][]const u8 = undefined;
+    var test_files_count: usize = 0;
 
-    // Note: bindings_test_verbose.js and prototype_property_access_test.js use
-    // console.log() format and are not compatible with the simple test runner.
-    // Run them manually with: ./zig-out/bin/repl < tests/v8/[test-file].js
+    var dir_iterator = test_dir.iterate();
+    while (dir_iterator.next() catch null) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.endsWith(u8, entry.name, ".js")) continue;
+        if (shouldExcludeFile(entry.name)) continue;
+
+        const test_file_path = b.fmt("{s}/{s}", .{ v8_test_dir, entry.name });
+        test_files_buffer[test_files_count] = test_file_path;
+        test_files_count += 1;
+
+        if (test_files_count >= test_files_buffer.len) {
+            std.debug.print("Warning: Too many test files (max 100)\n", .{});
+            break;
+        }
+    }
+
+    // Sort test files alphabetically for consistent ordering
+    const test_files = test_files_buffer[0..test_files_count];
+    std.mem.sort([]const u8, test_files, {}, struct {
+        fn lessThan(_: void, lhs: []const u8, rhs: []const u8) bool {
+            return std.mem.lessThan(u8, lhs, rhs);
+        }
+    }.lessThan);
+
+    // Create test steps - run all tests independently (don't stop on first failure)
+    for (test_files) |test_file| {
+        const run_test = b.addRunArtifact(test_runner_exe);
+        run_test.addArtifactArg(repl_exe);
+        run_test.addArg(test_file);
+
+        // Each test runs independently - failures won't stop other tests
+        test_v8_step.dependOn(&run_test.step);
+    }
+
+    // Note: Excluded files can be run manually:
+    //   cat tests/v8/[test-file].js | ./zig-out/bin/repl
 
     // ========================================================================
     // COMPREHENSIVE BUILD TEST
