@@ -409,9 +409,9 @@ aside.querySelector("form") === form
 })()
 
 // Case sensitivity
-body.querySelector("HEADER") === null  // HTML elements are lowercase
+body.querySelector("HEADER") === null  // HTML element type selectors are case-sensitive
 body.querySelector("header") === header
-body.querySelector("[ID='main-header']") === null  // Attribute names are lowercase
+body.querySelector("[ID='main-header']") === header  // Attribute names are case-insensitive in HTML
 body.querySelector("[id='main-header']") === header
 body.querySelector("[class='TITLE']") === null  // Attribute values are case-sensitive
 body.querySelector("[class='title']") === h1

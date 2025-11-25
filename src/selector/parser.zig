@@ -581,7 +581,10 @@ pub const Parser = struct {
         // Parse attribute name
         const name_token = self.current_token orelse return error.UnexpectedEOF;
         if (name_token.tag != .ident) return error.InvalidSelector;
-        const name = name_token.value;
+
+        // Per HTML spec and Selectors spec: attribute names are ASCII case-insensitive in HTML
+        // Normalize to lowercase for consistent matching
+        const name = try std.ascii.allocLowerString(self.allocator, name_token.value);
         try self.advance();
 
         // Check for matcher operator

@@ -134,11 +134,24 @@ pub const ElementWithBase = struct {
         try self.attributes.append(attr);
     }
 
-    /// Get attribute by name
+    /// Get attribute by name (case-sensitive)
     pub fn getAttribute(self: *const ElementWithBase, name: []const u8) ?[]const u8 {
         for (0..self.attributes.size()) |i| {
             if (self.attributes.get(i)) |attr| {
                 if (std.mem.eql(u8, attr.local_name, name)) {
+                    return attr.value;
+                }
+            }
+        }
+        return null;
+    }
+
+    /// Get attribute by name (case-insensitive for HTML elements)
+    /// Per HTML spec, attribute names are ASCII case-insensitive
+    pub fn getAttributeCaseInsensitive(self: *const ElementWithBase, name: []const u8) ?[]const u8 {
+        for (0..self.attributes.size()) |i| {
+            if (self.attributes.get(i)) |attr| {
+                if (std.ascii.eqlIgnoreCase(attr.local_name, name)) {
                     return attr.value;
                 }
             }

@@ -2082,7 +2082,7 @@ pub fn set_ariaValueText(instance: *runtime.Instance, value: runtime.DOMString) 
 /// Operation: getAttributeNS
 /// DOM §4.8 - Returns the value of the attribute with the given namespace and local name
 /// Spec: https://dom.spec.whatwg.org/#dom-element-getattributens
-pub fn call_getAttributeNS(instance: *runtime.Instance, namespace: runtime.DOMString, localName: runtime.DOMString) ImplError!runtime.DOMString {
+pub fn call_getAttributeNS(instance: *runtime.Instance, namespace: runtime.DOMString, localName: runtime.DOMString) ImplError!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const ns_slice = namespace.asSlice();
     const name_slice = localName.asSlice();
@@ -2092,13 +2092,13 @@ pub fn call_getAttributeNS(instance: *runtime.Instance, namespace: runtime.DOMSt
         return runtime.DOMString.initInterned(entry.value);
     }
 
-    // Return empty for not found (WebIDL nullable maps to empty)
-    return runtime.DOMString.initEmpty();
+    // Return null for not found per WebIDL nullable
+    return null;
 }
 
 /// Operation: getAttribute
 /// DOM §4.8 - Returns the value of the named attribute, or null if not found
-pub fn call_getAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString) ImplError!runtime.DOMString {
+pub fn call_getAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString) ImplError!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const name = qualifiedName.asSlice();
 
@@ -2111,8 +2111,8 @@ pub fn call_getAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOM
         }
     }
 
-    // Return empty for not found (WebIDL nullable maps to empty)
-    return runtime.DOMString.initEmpty();
+    // Return null for not found per WebIDL nullable
+    return null;
 }
 
 /// Operation: hasAttribute
