@@ -47,6 +47,13 @@ const Repl = struct {
             // Continue anyway - some interfaces may not work properly
         };
 
+        // Register the V8 context with context manager to enable wrapper caching
+        // This creates a runtime context with wrapper cache for object identity
+        _ = context_manager.getOrCreate(context, allocator) catch |err| {
+            std.debug.print("Warning: Context registration failed: {}\n", .{err});
+            // Continue anyway - wrapper caching won't work but basic functionality will
+        };
+
         // Register all interface bindings using comptime reflection
         // The @setEvalBranchQuota is needed because we iterate over 1231 declarations
         @setEvalBranchQuota(200_000);
