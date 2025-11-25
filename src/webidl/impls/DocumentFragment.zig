@@ -20,12 +20,18 @@ const DocumentFragment = interfaces.DocumentFragment;
 // Import related impls
 const NodeImpl = @import("Node.zig");
 
+// Import mixins for shared interface methods
+const mixins = @import("mixins");
+const ParentNode = mixins.ParentNode;
+const NonElementParentNode = mixins.NonElementParentNode;
+
 pub const State = DocumentFragment.State;
 
 pub const ImplError = error{
     NotImplemented,
     InvalidStateError,
     OutOfMemory,
+    SyntaxError,
 };
 
 /// Internal state for DocumentFragment implementation
@@ -162,18 +168,39 @@ pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, chi
 }
 
 /// Operation: querySelector (from ParentNode mixin)
-pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMString) !*runtime.Instance {
-    _ = instance;
-    _ = selectors;
-    // TODO: Use selector parser/matcher from src/selector/
-    return error.NotImplemented;
+/// Returns the first element matching the selector
+/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-queryselector
+pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!*runtime.Instance {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const selectors_str = selectors.asSlice();
+
+    // Delegate to ParentNode mixin
+    const result = ParentNode.querySelector(internal.allocator, instance, selectors_str) catch |err| {
+        return switch (err) {
+            error.SyntaxError => error.SyntaxError,
+            error.OutOfMemory => error.OutOfMemory,
+            else => error.NotImplemented,
+        };
+    };
+
+    return result orelse error.NotImplemented; // null case
 }
 
 /// Operation: querySelectorAll (from ParentNode mixin)
-pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOMString) !*runtime.Instance {
-    _ = instance;
-    _ = selectors;
-    return error.NotImplemented;
+/// Returns all elements matching the selector
+/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-queryselectorall
+pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!*runtime.Instance {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const selectors_str = selectors.asSlice();
+
+    // Delegate to ParentNode mixin
+    return ParentNode.querySelectorAll(internal.allocator, instance, selectors_str, instance.ctx) catch |err| {
+        return switch (err) {
+            error.SyntaxError => error.SyntaxError,
+            error.OutOfMemory => error.OutOfMemory,
+            else => error.NotImplemented,
+        };
+    };
 }
 
 // =============================================================================
@@ -181,9 +208,10 @@ pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOM
 // =============================================================================
 
 /// Operation: getElementById (from NonElementParentNode mixin)
-pub fn call_getElementById(instance: *runtime.Instance, elementId: runtime.DOMString) !*runtime.Instance {
-    _ = instance;
-    _ = elementId;
-    // TODO: Search descendants for element with matching id
-    return error.NotImplemented;
+/// Spec: https://dom.spec.whatwg.org/#dom-nonelementparentnode-getelementbyid
+pub fn call_getElementById(instance: *runtime.Instance, elementId: runtime.DOMString) ImplError!*runtime.Instance {
+    const element_id = elementId.asSlice();
+
+    // Delegate to NonElementParentNode mixin
+    return NonElementParentNode.getElementById(instance, element_id) orelse error.NotImplemented;
 }

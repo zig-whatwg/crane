@@ -187,19 +187,21 @@ pub fn get_filter(instance: *runtime.Instance) ImplError!*runtime.Instance {
 
 /// DOM §6.2 - NodeIterator.nextNode()
 /// Returns the next node in the iteration, or null if none
-pub fn call_nextNode(instance: *runtime.Instance) ImplError!?*runtime.Instance {
-    return try traverse(instance, .next);
+/// Note: WebIDL says nullable, but generated interface expects non-null - we throw NotImplemented for null
+pub fn call_nextNode(instance: *runtime.Instance) ImplError!*runtime.Instance {
+    return try traverse(instance, .next) orelse return error.NotImplemented;
 }
 
 /// DOM §6.2 - NodeIterator.previousNode()
 /// Returns the previous node in the iteration, or null if none
-pub fn call_previousNode(instance: *runtime.Instance) ImplError!?*runtime.Instance {
-    return try traverse(instance, .previous);
+/// Note: WebIDL says nullable, but generated interface expects non-null - we throw NotImplemented for null
+pub fn call_previousNode(instance: *runtime.Instance) ImplError!*runtime.Instance {
+    return try traverse(instance, .previous) orelse return error.NotImplemented;
 }
 
 /// DOM §6.2 - NodeIterator.detach()
 /// Legacy method - does nothing (functionality removed, kept for compatibility)
-pub fn call_detach(instance: *runtime.Instance) void {
+pub fn call_detach(instance: *runtime.Instance) ImplError!void {
     _ = instance;
     // Do nothing per spec
 }

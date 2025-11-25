@@ -21,6 +21,11 @@ const Element = interfaces.Element;
 // Import related impls
 const NodeImpl = @import("Node.zig");
 
+// Import mixins for shared interface methods
+const mixins = @import("mixins");
+const ParentNode = mixins.ParentNode;
+const NonDocumentTypeChildNode = mixins.NonDocumentTypeChildNode;
+
 pub const State = Element.State;
 
 pub const ImplError = error{
@@ -756,15 +761,17 @@ pub fn get_childElementCount(instance: *runtime.Instance) ImplError!u32 {
 }
 
 /// Getter for previousElementSibling
+/// NonDocumentTypeChildNode mixin - Returns the previous sibling that is an element
+/// Spec: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-previouselementsibling
 pub fn get_previousElementSibling(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return NonDocumentTypeChildNode.previousElementSibling(instance) orelse error.NotImplemented;
 }
 
 /// Getter for nextElementSibling
+/// NonDocumentTypeChildNode mixin - Returns the next sibling that is an element
+/// Spec: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-nextelementsibling
 pub fn get_nextElementSibling(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return NonDocumentTypeChildNode.nextElementSibling(instance) orelse error.NotImplemented;
 }
 
 /// Getter for assignedSlot
@@ -1579,10 +1586,22 @@ pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: run
 }
 
 /// Operation: querySelector
+/// ParentNode mixin - Returns the first element matching the selector
+/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-queryselector
 pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = selectors;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const selectors_str = selectors.asSlice();
+
+    // Delegate to ParentNode mixin
+    const result = ParentNode.querySelector(internal.allocator, instance, selectors_str) catch |err| {
+        return switch (err) {
+            error.SyntaxError => error.SyntaxError,
+            error.OutOfMemory => error.OutOfMemory,
+            else => error.NotImplemented,
+        };
+    };
+
+    return result orelse error.NotImplemented; // null case
 }
 
 /// Operation: closest
@@ -1934,10 +1953,20 @@ pub fn call_getBoundingClientRect(instance: *runtime.Instance) ImplError!*runtim
 }
 
 /// Operation: querySelectorAll
+/// ParentNode mixin - Returns all elements matching the selector
+/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-queryselectorall
 pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = selectors;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const selectors_str = selectors.asSlice();
+
+    // Delegate to ParentNode mixin
+    return ParentNode.querySelectorAll(internal.allocator, instance, selectors_str, instance.ctx) catch |err| {
+        return switch (err) {
+            error.SyntaxError => error.SyntaxError,
+            error.OutOfMemory => error.OutOfMemory,
+            else => error.NotImplemented,
+        };
+    };
 }
 
 /// Operation: setPointerCapture

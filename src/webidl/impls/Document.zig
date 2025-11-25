@@ -28,6 +28,13 @@ const CDATASectionImpl = @import("CDATASection.zig");
 const EventImpl = @import("Event.zig");
 const AttrImpl = @import("Attr.zig");
 const DocumentTypeImpl = @import("DocumentType.zig");
+const RangeImpl = @import("Range.zig");
+const NodeIteratorImpl = @import("NodeIterator.zig");
+const TreeWalkerImpl = @import("TreeWalker.zig");
+
+// Import ParentNode mixin for shared ParentNode interface methods
+const mixins = @import("mixins");
+const ParentNode = mixins.ParentNode;
 
 pub const State = Document.State;
 
@@ -303,7 +310,7 @@ pub fn internString(instance: *runtime.Instance, str: []const u8) ![]const u8 {
 /// Spec: https://dom.spec.whatwg.org/#concept-live-range
 pub fn registerRange(instance: *runtime.Instance, range: *runtime.Instance) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    try internal.ranges.append(range);
+    try internal.ranges.append(internal.allocator, range);
 }
 
 /// Unregister a live range from this document
@@ -321,7 +328,7 @@ pub fn unregisterRange(instance: *runtime.Instance, range: *runtime.Instance) vo
 /// Register a node iterator with this document
 pub fn registerNodeIterator(instance: *runtime.Instance, iterator: *runtime.Instance) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    try internal.node_iterators.append(iterator);
+    try internal.node_iterators.append(internal.allocator, iterator);
 }
 
 /// Unregister a node iterator from this document
@@ -1689,16 +1696,12 @@ pub fn set_designMode(instance: *runtime.Instance, value: runtime.DOMString) Imp
 
 /// Setter for onreadystatechange
 pub fn set_onreadystatechange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "readystatechange", value);
 }
 
 /// Setter for onvisibilitychange
 pub fn set_onvisibilitychange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "visibilitychange", value);
 }
 
 /// Setter for fgColor
@@ -1750,212 +1753,152 @@ pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: *const anyopaq
 
 /// Setter for onabort
 pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "abort", value);
 }
 
 /// Setter for onauxclick
 pub fn set_onauxclick(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "auxclick", value);
 }
 
 /// Setter for onbeforeinput
 pub fn set_onbeforeinput(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "beforeinput", value);
 }
 
 /// Setter for onbeforematch
 pub fn set_onbeforematch(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "beforematch", value);
 }
 
 /// Setter for onbeforetoggle
 pub fn set_onbeforetoggle(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "beforetoggle", value);
 }
 
 /// Setter for onblur
 pub fn set_onblur(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "blur", value);
 }
 
 /// Setter for oncancel
 pub fn set_oncancel(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "cancel", value);
 }
 
 /// Setter for oncanplay
 pub fn set_oncanplay(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "canplay", value);
 }
 
 /// Setter for oncanplaythrough
 pub fn set_oncanplaythrough(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "canplaythrough", value);
 }
 
 /// Setter for onchange
 pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "change", value);
 }
 
 /// Setter for onclick
 pub fn set_onclick(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "click", value);
 }
 
 /// Setter for onclose
 pub fn set_onclose(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "close", value);
 }
 
 /// Setter for oncommand
 pub fn set_oncommand(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "command", value);
 }
 
 /// Setter for oncontextlost
 pub fn set_oncontextlost(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "contextlost", value);
 }
 
 /// Setter for oncontextmenu
 pub fn set_oncontextmenu(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "contextmenu", value);
 }
 
 /// Setter for oncontextrestored
 pub fn set_oncontextrestored(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "contextrestored", value);
 }
 
 /// Setter for oncopy
 pub fn set_oncopy(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "copy", value);
 }
 
 /// Setter for oncuechange
 pub fn set_oncuechange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "cuechange", value);
 }
 
 /// Setter for oncut
 pub fn set_oncut(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "cut", value);
 }
 
 /// Setter for ondblclick
 pub fn set_ondblclick(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "dblclick", value);
 }
 
 /// Setter for ondrag
 pub fn set_ondrag(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "drag", value);
 }
 
 /// Setter for ondragend
 pub fn set_ondragend(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "dragend", value);
 }
 
 /// Setter for ondragenter
 pub fn set_ondragenter(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "dragenter", value);
 }
 
 /// Setter for ondragleave
 pub fn set_ondragleave(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "dragleave", value);
 }
 
 /// Setter for ondragover
 pub fn set_ondragover(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "dragover", value);
 }
 
 /// Setter for ondragstart
 pub fn set_ondragstart(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "dragstart", value);
 }
 
 /// Setter for ondrop
 pub fn set_ondrop(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "drop", value);
 }
 
 /// Setter for ondurationchange
 pub fn set_ondurationchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "durationchange", value);
 }
 
 /// Setter for onemptied
 pub fn set_onemptied(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "emptied", value);
 }
 
 /// Setter for onended
 pub fn set_onended(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "ended", value);
 }
 
 /// Setter for onerror
@@ -1967,520 +1910,372 @@ pub fn set_onerror(instance: *runtime.Instance, value: typedefs.OnErrorEventHand
 
 /// Setter for onfocus
 pub fn set_onfocus(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "focus", value);
 }
 
 /// Setter for onformdata
 pub fn set_onformdata(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "formdata", value);
 }
 
 /// Setter for oninput
 pub fn set_oninput(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "input", value);
 }
 
 /// Setter for oninvalid
 pub fn set_oninvalid(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "invalid", value);
 }
 
 /// Setter for onkeydown
 pub fn set_onkeydown(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "keydown", value);
 }
 
 /// Setter for onkeypress
 pub fn set_onkeypress(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "keypress", value);
 }
 
 /// Setter for onkeyup
 pub fn set_onkeyup(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "keyup", value);
 }
 
 /// Setter for onload
 pub fn set_onload(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "load", value);
 }
 
 /// Setter for onloadeddata
 pub fn set_onloadeddata(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "loadeddata", value);
 }
 
 /// Setter for onloadedmetadata
 pub fn set_onloadedmetadata(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "loadedmetadata", value);
 }
 
 /// Setter for onloadstart
 pub fn set_onloadstart(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "loadstart", value);
 }
 
 /// Setter for onmousedown
 pub fn set_onmousedown(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "mousedown", value);
 }
 
 /// Setter for onmouseenter
 pub fn set_onmouseenter(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "mouseenter", value);
 }
 
 /// Setter for onmouseleave
 pub fn set_onmouseleave(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "mouseleave", value);
 }
 
 /// Setter for onmousemove
 pub fn set_onmousemove(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "mousemove", value);
 }
 
 /// Setter for onmouseout
 pub fn set_onmouseout(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "mouseout", value);
 }
 
 /// Setter for onmouseover
 pub fn set_onmouseover(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "mouseover", value);
 }
 
 /// Setter for onmouseup
 pub fn set_onmouseup(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "mouseup", value);
 }
 
 /// Setter for onpaste
 pub fn set_onpaste(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "paste", value);
 }
 
 /// Setter for onpause
 pub fn set_onpause(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "pause", value);
 }
 
 /// Setter for onplay
 pub fn set_onplay(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "play", value);
 }
 
 /// Setter for onplaying
 pub fn set_onplaying(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "playing", value);
 }
 
 /// Setter for onprogress
 pub fn set_onprogress(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "progress", value);
 }
 
 /// Setter for onratechange
 pub fn set_onratechange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "ratechange", value);
 }
 
 /// Setter for onreset
 pub fn set_onreset(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "reset", value);
 }
 
 /// Setter for onresize
 pub fn set_onresize(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "resize", value);
 }
 
 /// Setter for onscroll
 pub fn set_onscroll(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "scroll", value);
 }
 
 /// Setter for onscrollend
 pub fn set_onscrollend(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "scrollend", value);
 }
 
 /// Setter for onsecuritypolicyviolation
 pub fn set_onsecuritypolicyviolation(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "securitypolicyviolation", value);
 }
 
 /// Setter for onseeked
 pub fn set_onseeked(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "seeked", value);
 }
 
 /// Setter for onseeking
 pub fn set_onseeking(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "seeking", value);
 }
 
 /// Setter for onselect
 pub fn set_onselect(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "select", value);
 }
 
 /// Setter for onslotchange
 pub fn set_onslotchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "slotchange", value);
 }
 
 /// Setter for onstalled
 pub fn set_onstalled(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "stalled", value);
 }
 
 /// Setter for onsubmit
 pub fn set_onsubmit(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "submit", value);
 }
 
 /// Setter for onsuspend
 pub fn set_onsuspend(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "suspend", value);
 }
 
 /// Setter for ontimeupdate
 pub fn set_ontimeupdate(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "timeupdate", value);
 }
 
 /// Setter for ontoggle
 pub fn set_ontoggle(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "toggle", value);
 }
 
 /// Setter for onvolumechange
 pub fn set_onvolumechange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "volumechange", value);
 }
 
 /// Setter for onwaiting
 pub fn set_onwaiting(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "waiting", value);
 }
 
 /// Setter for onwebkitanimationend
 pub fn set_onwebkitanimationend(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "webkitanimationend", value);
 }
 
 /// Setter for onwebkitanimationiteration
 pub fn set_onwebkitanimationiteration(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "webkitanimationiteration", value);
 }
 
 /// Setter for onwebkitanimationstart
 pub fn set_onwebkitanimationstart(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "webkitanimationstart", value);
 }
 
 /// Setter for onwebkittransitionend
 pub fn set_onwebkittransitionend(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "webkittransitionend", value);
 }
 
 /// Setter for onwheel
 pub fn set_onwheel(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "wheel", value);
 }
 
 /// Setter for onselectstart
 pub fn set_onselectstart(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "selectstart", value);
 }
 
 /// Setter for onselectionchange
 pub fn set_onselectionchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "selectionchange", value);
 }
 
 /// Setter for onanimationstart
 pub fn set_onanimationstart(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "animationstart", value);
 }
 
 /// Setter for onanimationiteration
 pub fn set_onanimationiteration(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "animationiteration", value);
 }
 
 /// Setter for onanimationend
 pub fn set_onanimationend(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "animationend", value);
 }
 
 /// Setter for onanimationcancel
 pub fn set_onanimationcancel(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "animationcancel", value);
 }
 
 /// Setter for ontransitionrun
 pub fn set_ontransitionrun(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "transitionrun", value);
 }
 
 /// Setter for ontransitionstart
 pub fn set_ontransitionstart(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "transitionstart", value);
 }
 
 /// Setter for ontransitionend
 pub fn set_ontransitionend(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "transitionend", value);
 }
 
 /// Setter for ontransitioncancel
 pub fn set_ontransitioncancel(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "transitioncancel", value);
 }
 
 /// Setter for onbeforexrselect
 pub fn set_onbeforexrselect(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "beforexrselect", value);
 }
 
 /// Setter for onpointerover
 pub fn set_onpointerover(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "pointerover", value);
 }
 
 /// Setter for onpointerenter
 pub fn set_onpointerenter(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "pointerenter", value);
 }
 
 /// Setter for onpointerdown
 pub fn set_onpointerdown(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "pointerdown", value);
 }
 
 /// Setter for onpointermove
 pub fn set_onpointermove(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "pointermove", value);
 }
 
 /// Setter for onpointerrawupdate
 pub fn set_onpointerrawupdate(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "pointerrawupdate", value);
 }
 
 /// Setter for onpointerup
 pub fn set_onpointerup(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "pointerup", value);
 }
 
 /// Setter for onpointercancel
 pub fn set_onpointercancel(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "pointercancel", value);
 }
 
 /// Setter for onpointerout
 pub fn set_onpointerout(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "pointerout", value);
 }
 
 /// Setter for onpointerleave
 pub fn set_onpointerleave(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "pointerleave", value);
 }
 
 /// Setter for ongotpointercapture
 pub fn set_ongotpointercapture(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "gotpointercapture", value);
 }
 
 /// Setter for onlostpointercapture
 pub fn set_onlostpointercapture(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "lostpointercapture", value);
 }
 
 /// Setter for ontouchstart
 pub fn set_ontouchstart(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "touchstart", value);
 }
 
 /// Setter for ontouchend
 pub fn set_ontouchend(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "touchend", value);
 }
 
 /// Setter for ontouchmove
 pub fn set_ontouchmove(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "touchmove", value);
 }
 
 /// Setter for ontouchcancel
 pub fn set_ontouchcancel(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "touchcancel", value);
 }
 
 /// Setter for onfencedtreeclick
 pub fn set_onfencedtreeclick(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "fencedtreeclick", value);
 }
 
 /// Setter for onsnapchanged
 pub fn set_onsnapchanged(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "snapchanged", value);
 }
 
 /// Setter for onsnapchanging
 pub fn set_onsnapchanging(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "snapchanging", value);
 }
 
 /// Operation: exitPointerLock
@@ -3021,10 +2816,22 @@ pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString,
 }
 
 /// Operation: querySelector
+/// ParentNode mixin - Returns the first element matching the selector
+/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-queryselector
 pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = selectors;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const selectors_str = selectors.asSlice();
+
+    // Delegate to ParentNode mixin
+    const result = ParentNode.querySelector(internal.allocator, instance, selectors_str) catch |err| {
+        return switch (err) {
+            error.SyntaxError => error.InvalidStateError, // Map SyntaxError to our error set
+            error.OutOfMemory => error.OutOfMemory,
+            else => error.NotImplemented,
+        };
+    };
+
+    return result orelse error.NotImplemented; // null case
 }
 
 /// Operation: hasStorageAccess
@@ -3236,9 +3043,42 @@ pub fn call_queryCommandEnabled(instance: *runtime.Instance, commandId: runtime.
 }
 
 /// Operation: createRange
+/// DOM §5 - Creates a new live Range
+/// Spec: https://dom.spec.whatwg.org/#dom-document-createrange
+///
+/// Steps:
+/// 1. Let range be a new live range
+/// 2. Set range's start and end to (this, 0)
+/// 3. Return range
 pub fn call_createRange(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Step 1: Create a new Range
+    const range = try RangeImpl.init(
+        internal.allocator,
+        interfaces.Range.State,
+        &interfaces.Range.vtable,
+        instance.ctx,
+    );
+    errdefer RangeImpl.deinit(range);
+
+    // Step 2: Set range's start and end to (this, 0)
+    // Access Range's internal state to set boundary points
+    const range_state = range.getState(interfaces.Range.State);
+    if (range_state.own._internal) |range_internal_ptr| {
+        const range_internal: *RangeImpl.InternalState = @ptrCast(@alignCast(range_internal_ptr));
+        range_internal.start_container = instance;
+        range_internal.start_offset = 0;
+        range_internal.end_container = instance;
+        range_internal.end_offset = 0;
+        range_internal.owner_document = instance;
+    }
+
+    // Register this range with the document
+    try registerRange(instance, range);
+
+    // Step 3: Return range
+    return range;
 }
 
 /// Operation: getElementById
@@ -3336,9 +3176,16 @@ pub fn call_createAttributeNS(instance: *runtime.Instance, namespace: runtime.DO
 }
 
 /// Operation: hasFocus
+/// HTML §6.4.4 - Returns true if document has focus
+/// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-document-hasfocus
+///
+/// In a typical browser context, this checks if the document's browsing context
+/// is focused. Since we're not in a browser, we return true as a sensible default.
 pub fn call_hasFocus(instance: *runtime.Instance) ImplError!bool {
     _ = instance;
-    return error.NotImplemented;
+    // In non-browser environment, default to true (document is considered focused)
+    // TODO: Integrate with browsing context/window focus state when available
+    return true;
 }
 
 /// Operation: exitFullscreen
@@ -3424,19 +3271,101 @@ pub fn call_createTextNode(instance: *runtime.Instance, data: runtime.DOMString)
 }
 
 /// Operation: createTreeWalker
+/// DOM §6.3 - Creates a TreeWalker object
+/// Spec: https://dom.spec.whatwg.org/#dom-document-createtreewalker
+///
+/// Steps:
+/// 1. Create a TreeWalker object
+/// 2. Set walker's root to root
+/// 3. Set walker's currentNode to root
+/// 4. Set walker's whatToShow to whatToShow
+/// 5. Set walker's filter to filter
+/// 6. Return walker
 pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: u32, filter: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = root;
-    _ = whatToShow;
-    _ = filter;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = filter; // TODO: Handle NodeFilter callback properly
+
+    // Step 1: Create TreeWalker
+    const walker = try TreeWalkerImpl.init(
+        internal.allocator,
+        interfaces.TreeWalker.State,
+        &interfaces.TreeWalker.vtable,
+        instance.ctx,
+    );
+    errdefer TreeWalkerImpl.deinit(walker);
+
+    // Steps 2-5: Initialize walker state
+    const walker_state = walker.getState(interfaces.TreeWalker.State);
+    if (walker_state.own._internal) |walker_internal_ptr| {
+        const walker_internal: *TreeWalkerImpl.InternalState = @ptrCast(@alignCast(walker_internal_ptr));
+        walker_internal.root = root;
+        walker_internal.current = root;
+        walker_internal.what_to_show = whatToShow;
+        // walker_internal.filter = filter; // TODO: Handle filter properly
+    }
+
+    // Step 6: Return walker
+    return walker;
 }
 
 /// Operation: getElementsByName
+/// HTML §3.1.3 - Returns a NodeList of elements with matching name attribute
+/// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-getelementsbyname
+///
+/// Note: Returns a live NodeList (but our implementation is static for now)
 pub fn call_getElementsByName(instance: *runtime.Instance, elementName: runtime.DOMString) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = elementName;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const target_name = elementName.asSlice();
+
+    // Create a NodeList to hold results
+    // We use HTMLCollection since we don't have a separate NodeList impl yet
+    const HTMLCollectionImpl = @import("HTMLCollection.zig");
+    const collection = try HTMLCollectionImpl.init(
+        internal.allocator,
+        interfaces.HTMLCollection.State,
+        &interfaces.HTMLCollection.vtable,
+        instance.ctx,
+    );
+    errdefer HTMLCollectionImpl.deinit(collection);
+
+    // Traverse tree and collect elements with matching name attribute
+    try collectElementsByName(instance, target_name, collection);
+
+    return collection;
+}
+
+/// Helper: Recursively collect elements by name attribute
+fn collectElementsByName(
+    node: *runtime.Instance,
+    target_name: []const u8,
+    collection: *runtime.Instance,
+) ImplError!void {
+    const HTMLCollectionImpl = @import("HTMLCollection.zig");
+    const ElementImpl = @import("Element.zig");
+
+    var child = NodeImpl.getFirstChild(node);
+    while (child) |c| {
+        const node_type = NodeImpl.getNodeType(c) orelse 0;
+        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+            // Check if element has matching "name" attribute
+            if (ElementImpl.getInternal(c)) |elem_internal| {
+                // Look for "name" attribute in element's attributes
+                for (elem_internal.attributes.items) |attr| {
+                    if (std.mem.eql(u8, attr.local_name, "name")) {
+                        if (std.mem.eql(u8, attr.value, target_name)) {
+                            HTMLCollectionImpl.addElement(collection, c) catch return error.OutOfMemory;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Recursively search descendants
+        try collectElementsByName(c, target_name, collection);
+
+        child = NodeImpl.getNextSibling(c);
+    }
 }
 
 /// Operation: writeln
@@ -3610,10 +3539,20 @@ pub fn call_captureEvents(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: querySelectorAll
+/// ParentNode mixin - Returns all elements matching the selector
+/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-queryselectorall
 pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = selectors;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const selectors_str = selectors.asSlice();
+
+    // Delegate to ParentNode mixin
+    return ParentNode.querySelectorAll(internal.allocator, instance, selectors_str, instance.ctx) catch |err| {
+        return switch (err) {
+            error.SyntaxError => error.InvalidStateError, // Map SyntaxError to our error set
+            error.OutOfMemory => error.OutOfMemory,
+            else => error.NotImplemented,
+        };
+    };
 }
 
 /// Operation: browsingTopics
@@ -3631,12 +3570,46 @@ pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime
 }
 
 /// Operation: createNodeIterator
+/// DOM §6.2 - Creates a NodeIterator object
+/// Spec: https://dom.spec.whatwg.org/#dom-document-createnodeiterator
+///
+/// Steps:
+/// 1. Create a NodeIterator object
+/// 2. Set iterator's root to root
+/// 3. Set iterator's reference to root
+/// 4. Set iterator's pointer before reference to true
+/// 5. Set iterator's whatToShow to whatToShow
+/// 6. Set iterator's filter to filter
+/// 7. Return iterator
 pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: u32, filter: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = root;
-    _ = whatToShow;
-    _ = filter;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = filter; // TODO: Handle NodeFilter callback properly
+
+    // Step 1: Create NodeIterator
+    const iterator = try NodeIteratorImpl.init(
+        internal.allocator,
+        interfaces.NodeIterator.State,
+        &interfaces.NodeIterator.vtable,
+        instance.ctx,
+    );
+    errdefer NodeIteratorImpl.deinit(iterator);
+
+    // Steps 2-6: Initialize iterator state
+    const iter_state = iterator.getState(interfaces.NodeIterator.State);
+    if (iter_state.own._internal) |iter_internal_ptr| {
+        const iter_internal: *NodeIteratorImpl.InternalState = @ptrCast(@alignCast(iter_internal_ptr));
+        iter_internal.root = root;
+        iter_internal.reference = root;
+        iter_internal.pointer_before_reference = true;
+        iter_internal.what_to_show = whatToShow;
+        // iter_internal.filter = filter; // TODO: Handle filter properly
+    }
+
+    // Register this iterator with the document
+    try registerNodeIterator(instance, iterator);
+
+    // Step 7: Return iterator
+    return iterator;
 }
 
 /// Operation: measureText

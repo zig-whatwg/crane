@@ -1170,3 +1170,10 @@ pub fn getNextSibling(instance: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
     return internal.next_sibling;
 }
+
+/// Get the previous sibling (returns null if no sibling or instance has no state)
+/// This is a convenience helper for traversing siblings backwards
+pub fn getPreviousSibling(instance: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(instance) orelse return null;
+    return internal.previous_sibling;
+}
