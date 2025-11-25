@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const ReportEventType = *const anyopaque;
+pub const ReportEventType = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: runtime.DOMString,
+};

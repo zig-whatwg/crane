@@ -105,7 +105,7 @@ pub const console = struct {
         return try console_impl.call_debug(ctx, data);
     }
 
-    pub fn call_dir(ctx: runtime.Context, item: *const anyopaque, options: *const anyopaque) anyerror!void {
+    pub fn call_dir(ctx: runtime.Context, item: *const anyopaque, options: ?*const anyopaque) anyerror!void {
         return try console_impl.call_dir(ctx, item, options);
     }
 

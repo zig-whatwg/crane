@@ -4,4 +4,9 @@
 
 const runtime = @import("runtime");
 
-pub const FileSystemWriteChunkType = *const anyopaque;
+pub const FileSystemWriteChunkType = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: *const anyopaque,
+    variant_2: runtime.USVString,
+    variant_3: *const anyopaque,
+};

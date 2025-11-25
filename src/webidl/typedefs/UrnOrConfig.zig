@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const UrnOrConfig = *const anyopaque;
+pub const UrnOrConfig = union(enum) {
+    variant_0: runtime.USVString,
+    variant_1: *const anyopaque,
+};

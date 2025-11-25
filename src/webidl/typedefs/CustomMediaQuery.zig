@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const CustomMediaQuery = *const anyopaque;
+pub const CustomMediaQuery = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: bool,
+};

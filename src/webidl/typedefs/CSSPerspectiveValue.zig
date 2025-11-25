@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const CSSPerspectiveValue = *const anyopaque;
+pub const CSSPerspectiveValue = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: *const anyopaque,
+};

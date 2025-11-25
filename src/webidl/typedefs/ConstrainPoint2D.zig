@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const ConstrainPoint2D = *const anyopaque;
+pub const ConstrainPoint2D = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: *const anyopaque,
+};

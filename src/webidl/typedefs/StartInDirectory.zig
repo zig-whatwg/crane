@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const StartInDirectory = *const anyopaque;
+pub const StartInDirectory = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: *const anyopaque,
+};

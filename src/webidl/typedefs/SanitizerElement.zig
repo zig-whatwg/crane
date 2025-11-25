@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const SanitizerElement = *const anyopaque;
+pub const SanitizerElement = union(enum) {
+    variant_0: runtime.DOMString,
+    variant_1: *const anyopaque,
+};

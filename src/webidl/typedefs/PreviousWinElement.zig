@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const PreviousWinElement = *const anyopaque;
+pub const PreviousWinElement = union(enum) {
+    variant_0: i64,
+    variant_1: *const anyopaque,
+};

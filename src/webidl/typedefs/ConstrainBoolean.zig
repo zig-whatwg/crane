@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const ConstrainBoolean = *const anyopaque;
+pub const ConstrainBoolean = union(enum) {
+    variant_0: bool,
+    variant_1: *const anyopaque,
+};

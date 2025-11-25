@@ -4,4 +4,8 @@
 
 const runtime = @import("runtime");
 
-pub const JsonLdContext = *const anyopaque;
+pub const JsonLdContext = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: *const anyopaque,
+    variant_2: runtime.USVString,
+};

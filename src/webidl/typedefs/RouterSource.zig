@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const RouterSource = *const anyopaque;
+pub const RouterSource = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: *const anyopaque,
+};

@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const BluetoothDescriptorUUID = *const anyopaque;
+pub const BluetoothDescriptorUUID = union(enum) {
+    variant_0: runtime.DOMString,
+    variant_1: u32,
+};

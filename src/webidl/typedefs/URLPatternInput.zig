@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const URLPatternInput = *const anyopaque;
+pub const URLPatternInput = union(enum) {
+    variant_0: runtime.USVString,
+    variant_1: *const anyopaque,
+};

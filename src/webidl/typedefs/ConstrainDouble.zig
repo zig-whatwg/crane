@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const ConstrainDouble = *const anyopaque;
+pub const ConstrainDouble = union(enum) {
+    variant_0: f64,
+    variant_1: *const anyopaque,
+};

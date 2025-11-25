@@ -4,4 +4,8 @@
 
 const runtime = @import("runtime");
 
-pub const NDEFMessageSource = *const anyopaque;
+pub const NDEFMessageSource = union(enum) {
+    variant_0: runtime.DOMString,
+    variant_1: *const anyopaque,
+    variant_2: *const anyopaque,
+};

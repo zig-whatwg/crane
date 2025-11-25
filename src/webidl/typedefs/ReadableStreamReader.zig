@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const ReadableStreamReader = *const anyopaque;
+pub const ReadableStreamReader = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: *const anyopaque,
+};

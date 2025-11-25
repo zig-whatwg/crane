@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const FormDataEntryValue = *const anyopaque;
+pub const FormDataEntryValue = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: runtime.USVString,
+};

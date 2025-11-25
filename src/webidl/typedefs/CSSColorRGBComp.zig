@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const CSSColorRGBComp = *const anyopaque;
+pub const CSSColorRGBComp = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: *const anyopaque,
+};

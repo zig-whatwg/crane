@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const CryptoKeyID = *const anyopaque;
+pub const CryptoKeyID = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: *const anyopaque,
+};

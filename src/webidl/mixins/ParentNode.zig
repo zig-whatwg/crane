@@ -34,6 +34,8 @@ pub const MixinError = error{
     InvalidStateError,
     SyntaxError,
     OutOfMemory,
+    HierarchyRequestError,
+    NotFoundError,
 };
 
 // =============================================================================
@@ -861,6 +863,267 @@ pub fn closest(
     }
 
     return null;
+}
+
+// =============================================================================
+// ParentNode Mutation Methods
+// =============================================================================
+
+/// Union type for nodes or strings (used in variadic node methods)
+/// Spec: https://dom.spec.whatwg.org/#converting-nodes-into-a-node
+pub const NodeOrString = union(enum) {
+    node: *runtime.Instance,
+    string: []const u8,
+};
+
+/// Convert nodes into a node
+/// Spec: https://dom.spec.whatwg.org/#converting-nodes-into-a-node
+///
+/// Steps:
+/// 1. Let node be null.
+/// 2. Replace each string in nodes with a new Text node whose data is the string
+///    and node document is document.
+/// 3. If nodes contains one node, then set node to nodes[0].
+/// 4. Otherwise, set node to a new DocumentFragment node whose node document is document,
+///    and then append each node in nodes to it.
+/// 5. Return node.
+fn convertNodesIntoNode(
+    allocator: std.mem.Allocator,
+    nodes: []const NodeOrString,
+    document: *runtime.Instance,
+    ctx: runtime.Context,
+) MixinError!*runtime.Instance {
+    if (nodes.len == 0) {
+        // Return an empty DocumentFragment
+        return createDocumentFragment(allocator, document, ctx);
+    }
+
+    if (nodes.len == 1) {
+        // Step 3: If nodes contains one node, return it (or create Text for string)
+        return switch (nodes[0]) {
+            .node => |n| n,
+            .string => |s| createTextNode(allocator, s, document, ctx),
+        };
+    }
+
+    // Step 4: Create DocumentFragment and append all nodes
+    const fragment = try createDocumentFragment(allocator, document, ctx);
+    errdefer runtime.Instance.deinit(fragment);
+
+    for (nodes) |item| {
+        const child = switch (item) {
+            .node => |n| n,
+            .string => |s| try createTextNode(allocator, s, document, ctx),
+        };
+        _ = try NodeImpl.call_appendChild(fragment, child);
+    }
+
+    return fragment;
+}
+
+/// Create a new Text node
+fn createTextNode(
+    allocator: std.mem.Allocator,
+    data: []const u8,
+    document: *runtime.Instance,
+    ctx: runtime.Context,
+) MixinError!*runtime.Instance {
+    // Create Text instance via the Text interface
+    const TextImpl = impls.Text;
+    const CharacterDataImpl = impls.CharacterData;
+
+    const text = TextImpl.init(
+        allocator,
+        interfaces.Text.State,
+        &interfaces.Text.vtable,
+        ctx,
+    ) catch return error.OutOfMemory;
+    errdefer TextImpl.deinit(text);
+
+    // Set node type to TEXT_NODE (3)
+    NodeImpl.setNodeType(text, NodeImpl.NodeType.TEXT_NODE) catch return error.OutOfMemory;
+
+    // Set the text data via CharacterData
+    CharacterDataImpl.setData(text, data) catch return error.OutOfMemory;
+
+    // Set owner document via NodeImpl
+    NodeImpl.setOwnerDocument(text, document) catch {};
+
+    return text;
+}
+
+/// Create a new DocumentFragment node
+fn createDocumentFragment(
+    allocator: std.mem.Allocator,
+    document: *runtime.Instance,
+    ctx: runtime.Context,
+) MixinError!*runtime.Instance {
+    const DocumentFragmentImpl = impls.DocumentFragment;
+
+    const fragment = DocumentFragmentImpl.init(
+        allocator,
+        interfaces.DocumentFragment.State,
+        &interfaces.DocumentFragment.vtable,
+        ctx,
+    ) catch return error.OutOfMemory;
+
+    // Set node type to DOCUMENT_FRAGMENT_NODE (11)
+    NodeImpl.setNodeType(fragment, NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE) catch return error.OutOfMemory;
+
+    // Set owner document via NodeImpl
+    NodeImpl.setOwnerDocument(fragment, document) catch {};
+
+    return fragment;
+}
+
+/// prepend - Inserts nodes before the first child
+/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-prepend
+///
+/// Steps:
+/// 1. Let node be the result of converting nodes into a node given nodes and this's node document.
+/// 2. Pre-insert node into this before this's first child.
+pub fn prepend(
+    allocator: std.mem.Allocator,
+    parent: *runtime.Instance,
+    nodes: []const NodeOrString,
+    ctx: runtime.Context,
+) MixinError!void {
+    // Get this node's document
+    const document = NodeImpl.getOwnerDocument(parent) orelse parent; // Document is its own document
+
+    // Step 1: Convert nodes into a node
+    const node = try convertNodesIntoNode(allocator, nodes, document, ctx);
+
+    // Step 2: Pre-insert node into this before this's first child
+    const first_child = NodeImpl.getFirstChild(parent);
+    if (first_child) |child| {
+        _ = NodeImpl.call_insertBefore(parent, node, child) catch return error.HierarchyRequestError;
+    } else {
+        _ = NodeImpl.call_appendChild(parent, node) catch return error.HierarchyRequestError;
+    }
+}
+
+/// append - Inserts nodes after the last child
+/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-append
+///
+/// Steps:
+/// 1. Let node be the result of converting nodes into a node given nodes and this's node document.
+/// 2. Append node to this.
+pub fn append(
+    allocator: std.mem.Allocator,
+    parent: *runtime.Instance,
+    nodes: []const NodeOrString,
+    ctx: runtime.Context,
+) MixinError!void {
+    // Get this node's document
+    const document = NodeImpl.getOwnerDocument(parent) orelse parent;
+
+    // Step 1: Convert nodes into a node
+    const node = try convertNodesIntoNode(allocator, nodes, document, ctx);
+
+    // Step 2: Append node to this
+    _ = NodeImpl.call_appendChild(parent, node) catch return error.HierarchyRequestError;
+}
+
+/// replaceChildren - Replaces all children with nodes
+/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-replacechildren
+///
+/// Steps:
+/// 1. Let node be the result of converting nodes into a node given nodes and this's node document.
+/// 2. Ensure pre-insertion validity of node into this before null.
+/// 3. Replace all with node within this.
+pub fn replaceChildren(
+    allocator: std.mem.Allocator,
+    parent: *runtime.Instance,
+    nodes: []const NodeOrString,
+    ctx: runtime.Context,
+) MixinError!void {
+    // Get this node's document
+    const document = NodeImpl.getOwnerDocument(parent) orelse parent;
+
+    // Step 1: Convert nodes into a node
+    const node = try convertNodesIntoNode(allocator, nodes, document, ctx);
+
+    // Steps 2-3: Remove all children, then append new node
+    // First, remove all existing children
+    var child = NodeImpl.getFirstChild(parent);
+    while (child) |c| {
+        const next = NodeImpl.getNextSibling(c);
+        _ = NodeImpl.call_removeChild(parent, c) catch {};
+        child = next;
+    }
+
+    // Then append the new node (which may be a DocumentFragment)
+    _ = NodeImpl.call_appendChild(parent, node) catch return error.HierarchyRequestError;
+}
+
+/// moveBefore - Moves a node into this parent before child, preserving state
+/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-movebefore
+///
+/// This is distinct from remove + insert. It preserves state associated with the node.
+///
+/// Steps:
+/// 1. Let referenceChild be child.
+/// 2. If referenceChild is node, then set referenceChild to node's next sibling.
+/// 3. Move node into this before referenceChild.
+pub fn moveBefore(
+    parent: *runtime.Instance,
+    node: *runtime.Instance,
+    child: ?*runtime.Instance,
+) MixinError!void {
+    // Step 1: Let referenceChild be child
+    var reference_child = child;
+
+    // Step 2: If referenceChild is node, set to node's next sibling
+    if (reference_child == node) {
+        reference_child = NodeImpl.getNextSibling(node);
+    }
+
+    // Validate: node must already be in a tree (have a parent)
+    const old_parent = NodeImpl.getParent(node) orelse return error.HierarchyRequestError;
+
+    // Validate: child (if non-null) must be a child of parent
+    if (reference_child) |rc| {
+        const rc_parent = NodeImpl.getParent(rc);
+        if (rc_parent != parent) {
+            return error.NotFoundError;
+        }
+    }
+
+    // Validate: parent's shadow-including root must be same as node's
+    // (For now, we skip full shadow DOM validation)
+
+    // Validate: node cannot be an ancestor of parent
+    var ancestor: ?*runtime.Instance = parent;
+    while (ancestor) |anc| {
+        if (anc == node) return error.HierarchyRequestError;
+        ancestor = NodeImpl.getParent(anc);
+    }
+
+    // Step 3: Move node into this before referenceChild
+    // The move algorithm preserves state (unlike remove + insert)
+
+    // If node is already at the correct position, do nothing
+    if (old_parent == parent) {
+        if (reference_child) |rc| {
+            const prev = NodeImpl.getPreviousSibling(rc);
+            if (prev == node) return; // Already in correct position
+        } else {
+            // Moving to end - check if already last child
+            const last = NodeImpl.getLastChild(parent);
+            if (last == node) return;
+        }
+    }
+
+    // Remove from old position (but don't run removing steps - this is a move)
+    NodeImpl.removeNodeFromParent(node, old_parent) catch return error.HierarchyRequestError;
+
+    // Insert at new position
+    if (reference_child) |rc| {
+        _ = NodeImpl.call_insertBefore(parent, node, rc) catch return error.HierarchyRequestError;
+    } else {
+        _ = NodeImpl.call_appendChild(parent, node) catch return error.HierarchyRequestError;
+    }
 }
 
 // =============================================================================

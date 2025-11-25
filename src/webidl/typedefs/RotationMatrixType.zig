@@ -4,4 +4,8 @@
 
 const runtime = @import("runtime");
 
-pub const RotationMatrixType = *const anyopaque;
+pub const RotationMatrixType = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: *const anyopaque,
+    variant_2: *const anyopaque,
+};

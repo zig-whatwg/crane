@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const Int32List = *const anyopaque;
+pub const Int32List = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: *const anyopaque,
+};

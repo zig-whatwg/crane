@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const BodyInit = *const anyopaque;
+pub const BodyInit = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: *const anyopaque,
+};

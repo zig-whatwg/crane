@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const HTMLOrSVGScriptElement = *const anyopaque;
+pub const HTMLOrSVGScriptElement = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: *const anyopaque,
+};

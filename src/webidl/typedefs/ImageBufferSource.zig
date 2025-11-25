@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const ImageBufferSource = *const anyopaque;
+pub const ImageBufferSource = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: *const anyopaque,
+};

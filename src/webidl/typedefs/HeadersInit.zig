@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const HeadersInit = *const anyopaque;
+pub const HeadersInit = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: *const anyopaque,
+};

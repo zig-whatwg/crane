@@ -4,4 +4,10 @@
 
 const runtime = @import("runtime");
 
-pub const RenderingContext = *const anyopaque;
+pub const RenderingContext = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: *const anyopaque,
+    variant_2: *const anyopaque,
+    variant_3: *const anyopaque,
+    variant_4: *const anyopaque,
+};

@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const RTCRtpTransform = *const anyopaque;
+pub const RTCRtpTransform = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: *const anyopaque,
+};

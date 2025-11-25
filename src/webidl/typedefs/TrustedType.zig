@@ -4,4 +4,8 @@
 
 const runtime = @import("runtime");
 
-pub const TrustedType = *const anyopaque;
+pub const TrustedType = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: *const anyopaque,
+    variant_2: *const anyopaque,
+};

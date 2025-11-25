@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const PasswordCredentialInit = *const anyopaque;
+pub const PasswordCredentialInit = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: *const anyopaque,
+};

@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const ImageDataArray = *const anyopaque;
+pub const ImageDataArray = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: *const anyopaque,
+};

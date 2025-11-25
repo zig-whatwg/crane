@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const CSSColorPercent = *const anyopaque;
+pub const CSSColorPercent = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: *const anyopaque,
+};

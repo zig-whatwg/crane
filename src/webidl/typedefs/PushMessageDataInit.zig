@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const PushMessageDataInit = *const anyopaque;
+pub const PushMessageDataInit = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: runtime.USVString,
+};

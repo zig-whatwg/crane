@@ -4,4 +4,8 @@
 
 const runtime = @import("runtime");
 
-pub const URLPatternCompatible = *const anyopaque;
+pub const URLPatternCompatible = union(enum) {
+    variant_0: runtime.USVString,
+    variant_1: *const anyopaque,
+    variant_2: *const anyopaque,
+};

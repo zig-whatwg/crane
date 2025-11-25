@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const MLNumber = *const anyopaque;
+pub const MLNumber = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: f64,
+};

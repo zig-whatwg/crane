@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const GPUExtent3D = *const anyopaque;
+pub const GPUExtent3D = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: *const anyopaque,
+};

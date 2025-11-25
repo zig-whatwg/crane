@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const CSSKeywordish = *const anyopaque;
+pub const CSSKeywordish = union(enum) {
+    variant_0: runtime.DOMString,
+    variant_1: *const anyopaque,
+};

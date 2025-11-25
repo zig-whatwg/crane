@@ -4,4 +4,8 @@
 
 const runtime = @import("runtime");
 
-pub const ConstrainDOMString = *const anyopaque;
+pub const ConstrainDOMString = union(enum) {
+    variant_0: runtime.DOMString,
+    variant_1: *const anyopaque,
+    variant_2: *const anyopaque,
+};

@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const RequestInfo = *const anyopaque;
+pub const RequestInfo = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: runtime.USVString,
+};

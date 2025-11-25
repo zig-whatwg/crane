@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const ReadableStreamController = *const anyopaque;
+pub const ReadableStreamController = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: *const anyopaque,
+};

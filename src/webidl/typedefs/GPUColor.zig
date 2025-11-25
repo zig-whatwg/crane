@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const GPUColor = *const anyopaque;
+pub const GPUColor = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: *const anyopaque,
+};

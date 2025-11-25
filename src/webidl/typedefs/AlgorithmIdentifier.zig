@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const AlgorithmIdentifier = *const anyopaque;
+pub const AlgorithmIdentifier = union(enum) {
+    variant_0: *const anyopaque,
+    variant_1: runtime.DOMString,
+};

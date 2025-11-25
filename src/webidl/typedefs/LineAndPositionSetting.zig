@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const LineAndPositionSetting = *const anyopaque;
+pub const LineAndPositionSetting = union(enum) {
+    variant_0: f64,
+    variant_1: *const anyopaque,
+};

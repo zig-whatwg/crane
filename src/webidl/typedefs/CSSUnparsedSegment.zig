@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const CSSUnparsedSegment = *const anyopaque;
+pub const CSSUnparsedSegment = union(enum) {
+    variant_0: runtime.USVString,
+    variant_1: *const anyopaque,
+};
