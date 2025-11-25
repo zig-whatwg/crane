@@ -410,14 +410,14 @@ pub fn get_contentType(instance: *runtime.Instance) ImplError!runtime.DOMString 
 /// DOM §4.6 - Returns the DocumentType node or null
 pub fn get_doctype(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.doctype orelse return error.NotImplemented; // null case - need nullable return
+    return internal.doctype; // Returns null if no doctype
 }
 
 /// Getter for documentElement
 /// DOM §4.6 - Returns the document element (root element, e.g., <html>)
 pub fn get_documentElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.document_element orelse return error.NotImplemented; // null case - need nullable return
+    return internal.document_element; // Returns null if no document element
 }
 
 /// Getter for fragmentDirective
@@ -515,21 +515,33 @@ pub fn get_namedFlows(instance: *runtime.Instance) ImplError!*runtime.Instance {
 }
 
 /// Getter for rootElement
+/// SVG §5.1.2 - Returns the root svg element for SVG documents, null otherwise
 pub fn get_rootElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // For SVG documents, this would return the root <svg> element
+    // For non-SVG documents, return null
+    // TODO: Check if document is SVG and return root svg element
+    _ = internal;
+    return null;
 }
 
 /// Getter for activeViewTransition
+/// View Transitions API - Returns the active ViewTransition or null
+/// Spec: https://drafts.csswg.org/css-view-transitions/#dom-document-activeviewtransition
 pub fn get_activeViewTransition(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    // View transitions not yet implemented - return null
+    return null;
 }
 
 /// Getter for location
+/// HTML §7.7.2 - Returns the Location object for the document
+/// Spec: https://html.spec.whatwg.org/multipage/history.html#dom-document-location
+/// Returns null if the document is not associated with a browsing context
 pub fn get_location(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    // Location object not yet implemented - return null (no browsing context)
+    return null;
 }
 
 /// Getter for domain
@@ -588,7 +600,7 @@ pub fn get_body(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Get document element (should be <html>)
-    const doc_element = internal.document_element orelse return error.NotImplemented;
+    const doc_element = internal.document_element orelse return null;
 
     // Find first body or frameset child of the document element
     const ElementImpl = @import("Element.zig");
@@ -617,7 +629,7 @@ pub fn get_body(instance: *runtime.Instance) ImplError!?*runtime.Instance {
         child = NodeImpl.getNextSibling(c);
     }
 
-    return error.NotImplemented; // null
+    return null; // No body or frameset found
 }
 
 /// Getter for head
@@ -627,7 +639,7 @@ pub fn get_head(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Get document element (should be <html>)
-    const doc_element = internal.document_element orelse return error.NotImplemented;
+    const doc_element = internal.document_element orelse return null;
 
     // Find first head child of the document element
     const ElementImpl = @import("Element.zig");
@@ -652,7 +664,7 @@ pub fn get_head(instance: *runtime.Instance) ImplError!?*runtime.Instance {
         child = NodeImpl.getNextSibling(c);
     }
 
-    return error.NotImplemented; // null
+    return null; // No head element found
 }
 
 /// Helper: Create an HTMLCollection containing elements matching a single tag name
