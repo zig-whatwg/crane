@@ -526,6 +526,108 @@ pub const Document = webidl.interface(struct {
         return node;
     }
 
+    /// createRange()
+    /// DOM §5.1 - The createRange() method steps are to return a new live range
+    /// with (this, 0) as its start and end.
+    /// Spec: https://dom.spec.whatwg.org/#dom-document-createrange
+    pub fn call_createRange(self: *Document) !*Range {
+        const range = try self.allocator.create(Range);
+        errdefer self.allocator.destroy(range);
+
+        // Initialize range with (this, 0) as start and end
+        const doc_node: *Node = @ptrCast(self);
+        range.* = try Range.init(self.allocator, doc_node);
+
+        // Register this range with the document for live range tracking
+        try self.registerRange(range);
+
+        return range;
+    }
+
+    /// createNodeIterator(root, whatToShow, filter)
+    /// DOM §7.2.1 - Creates a NodeIterator to traverse the node tree
+    /// Spec: https://dom.spec.whatwg.org/#dom-document-createnodeiterator
+    pub fn call_createNodeIterator(
+        self: *Document,
+        root: *Node,
+        what_to_show: u32,
+        filter: ?*anyopaque, // NodeFilter callback
+    ) !*NodeIterator {
+        const iterator = try self.allocator.create(NodeIterator);
+        errdefer self.allocator.destroy(iterator);
+
+        iterator.* = try NodeIterator.init(self.allocator, root, what_to_show, filter);
+
+        // Register iterator with document for pre-removing steps
+        try self.registerNodeIterator(iterator);
+
+        return iterator;
+    }
+
+    /// createTreeWalker(root, whatToShow, filter)
+    /// DOM §7.3.1 - Creates a TreeWalker to traverse the node tree
+    /// Spec: https://dom.spec.whatwg.org/#dom-document-createtreewalker
+    pub fn call_createTreeWalker(
+        self: *Document,
+        root: *Node,
+        what_to_show: u32,
+        filter: ?*anyopaque, // NodeFilter callback
+    ) !*@import("tree_walker").TreeWalker {
+        const TreeWalker = @import("tree_walker").TreeWalker;
+        const walker = try self.allocator.create(TreeWalker);
+        errdefer self.allocator.destroy(walker);
+
+        walker.* = try TreeWalker.init(self.allocator, root, what_to_show, filter);
+
+        return walker;
+    }
+
+    /// getElementsByTagName(qualifiedName)
+    /// DOM §4.5 - Returns the list of elements with qualified name qualifiedName
+    /// Spec: https://dom.spec.whatwg.org/#dom-document-getelementsbytagname
+    ///
+    /// Returns an HTMLCollection rooted at this document, matching descendant
+    /// elements whose qualified name is qualifiedName.
+    pub fn call_getElementsByTagName(self: *Document, qualified_name: []const u8) !*HTMLCollection {
+        const collection = try self.allocator.create(HTMLCollection);
+        errdefer self.allocator.destroy(collection);
+
+        const doc_node: *Node = @ptrCast(self);
+        collection.* = try HTMLCollection.initByTagName(self.allocator, doc_node, qualified_name, self.doc_type == .html);
+
+        return collection;
+    }
+
+    /// getElementsByTagNameNS(namespace, localName)
+    /// DOM §4.5 - Returns the list of elements with namespace and local name
+    /// Spec: https://dom.spec.whatwg.org/#dom-document-getelementsbytagnamens
+    pub fn call_getElementsByTagNameNS(
+        self: *Document,
+        namespace: ?[]const u8,
+        local_name: []const u8,
+    ) !*HTMLCollection {
+        const collection = try self.allocator.create(HTMLCollection);
+        errdefer self.allocator.destroy(collection);
+
+        const doc_node: *Node = @ptrCast(self);
+        collection.* = try HTMLCollection.initByTagNameNS(self.allocator, doc_node, namespace, local_name);
+
+        return collection;
+    }
+
+    /// getElementsByClassName(classNames)
+    /// DOM §4.5 - Returns the list of elements with class names
+    /// Spec: https://dom.spec.whatwg.org/#dom-document-getelementsbyclassname
+    pub fn call_getElementsByClassName(self: *Document, class_names: []const u8) !*HTMLCollection {
+        const collection = try self.allocator.create(HTMLCollection);
+        errdefer self.allocator.destroy(collection);
+
+        const doc_node: *Node = @ptrCast(self);
+        collection.* = try HTMLCollection.initByClassName(self.allocator, doc_node, class_names, self.doc_type == .html);
+
+        return collection;
+    }
+
     /// createEvent(interface)
     /// DOM §4.6.1 - Creates a legacy event object
     /// Spec: https://dom.spec.whatwg.org/#dom-document-createevent
