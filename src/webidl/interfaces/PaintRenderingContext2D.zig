@@ -1,5 +1,5 @@
 //! Generated from: css-paint-api.idl
-//! Generated at: 2025-11-25T13:07:12Z
+//! Generated at: 2025-11-25T14:21:38Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -18,18 +18,18 @@ const CanvasDrawImage = @import("interfaces").CanvasDrawImage;
 const CanvasPathDrawingStyles = @import("interfaces").CanvasPathDrawingStyles;
 const CanvasPath = @import("interfaces").CanvasPath;
 const DOMMatrix2DInit = @import("dictionaries").DOMMatrix2DInit;
-const CanvasPattern = @import("interfaces").CanvasPattern;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
-const CanvasImageSource = @import("typedefs").CanvasImageSource;
 const CanvasFillRule = @import("enums").CanvasFillRule;
 const DOMMatrix = @import("interfaces").DOMMatrix;
-const Path2D = @import("interfaces").Path2D;
-const ImageSmoothingQuality = @import("enums").ImageSmoothingQuality;
 const CanvasGradient = @import("interfaces").CanvasGradient;
 const CanvasLineCap = @import("enums").CanvasLineCap;
+const CanvasPattern = @import("interfaces").CanvasPattern;
+const CanvasImageSource = @import("typedefs").CanvasImageSource;
+const Path2D = @import("interfaces").Path2D;
+const ImageSmoothingQuality = @import("enums").ImageSmoothingQuality;
+const sequence = @import("interfaces").sequence;
 const CanvasLineJoin = @import("enums").CanvasLineJoin;
 const DOMString = @import("typedefs").DOMString;
-const sequence = @import("interfaces").sequence;
 
 pub const PaintRenderingContext2D = struct {
     pub const Meta = struct {

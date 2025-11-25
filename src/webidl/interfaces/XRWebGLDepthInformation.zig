@@ -1,5 +1,5 @@
 //! Generated from: webxr-depth-sensing.idl
-//! Generated at: 2025-11-25T13:07:12Z
+//! Generated at: 2025-11-25T14:21:39Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 

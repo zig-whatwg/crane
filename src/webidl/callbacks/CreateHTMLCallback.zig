@@ -4,4 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const CreateHTMLCallback = *const fn (input: runtime.DOMString, arguments: *const anyopaque) runtime.DOMString;
+pub const CreateHTMLCallback = *const fn (input: runtime.DOMString, arguments: []const *const anyopaque) runtime.DOMString;

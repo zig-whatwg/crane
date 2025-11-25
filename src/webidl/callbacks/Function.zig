@@ -4,4 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const Function = *const fn (arguments: *const anyopaque) *const anyopaque;
+pub const Function = *const fn (arguments: []const *const anyopaque) *const anyopaque;

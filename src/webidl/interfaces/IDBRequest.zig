@@ -1,5 +1,5 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-25T13:07:11Z
+//! Generated at: 2025-11-25T14:21:38Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -136,7 +136,7 @@ pub const IDBRequest = struct {
         return try IDBRequestImpl.get_error(instance);
     }
 
-    pub fn get_source(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_source(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try IDBRequestImpl.get_source(instance);
     }
 

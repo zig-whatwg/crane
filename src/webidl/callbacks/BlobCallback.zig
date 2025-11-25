@@ -4,4 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const BlobCallback = *const fn (blob: *const anyopaque) void;
+pub const BlobCallback = *const fn (blob: ?*const anyopaque) void;

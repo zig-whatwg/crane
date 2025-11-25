@@ -1,5 +1,5 @@
 //! Generated from: intersection-observer.idl
-//! Generated at: 2025-11-25T13:07:13Z
+//! Generated at: 2025-11-25T14:21:40Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -123,7 +123,7 @@ pub const IntersectionObserver = struct {
         return try IntersectionObserverImpl.call_constructor(allocator, ctx, callback, options);
     }
 
-    pub fn get_root(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_root(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try IntersectionObserverImpl.get_root(instance);
     }
 

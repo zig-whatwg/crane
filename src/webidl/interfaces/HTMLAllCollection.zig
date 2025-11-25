@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-25T13:07:12Z
+//! Generated at: 2025-11-25T14:21:39Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -90,12 +90,12 @@ pub const HTMLAllCollection = struct {
         return try HTMLAllCollectionImpl.get_length(instance);
     }
 
-    pub fn call_item(instance: *runtime.Instance, nameOrIndex: DOMString) anyerror!*const anyopaque {
+    pub fn call_item(instance: *runtime.Instance, nameOrIndex: DOMString) anyerror!?*const anyopaque {
         
         return try HTMLAllCollectionImpl.call_item(instance, nameOrIndex);
     }
 
-    pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!*const anyopaque {
+    pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!?*const anyopaque {
         
         return try HTMLAllCollectionImpl.call_namedItem(instance, name);
     }

@@ -1,5 +1,5 @@
 //! Generated from: FileAPI.idl
-//! Generated at: 2025-11-25T13:07:13Z
+//! Generated at: 2025-11-25T14:21:40Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -190,7 +190,7 @@ pub const FileReader = struct {
         return try FileReaderImpl.get_readyState(instance);
     }
 
-    pub fn get_result(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_result(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try FileReaderImpl.get_result(instance);
     }
 

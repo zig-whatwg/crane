@@ -4,4 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const LockGrantedCallback = *const fn (lock: *const anyopaque) *const anyopaque;
+pub const LockGrantedCallback = *const fn (lock: ?*const anyopaque) *const anyopaque;
