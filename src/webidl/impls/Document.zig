@@ -1034,184 +1034,174 @@ pub fn get_childElementCount(instance: *runtime.Instance) ImplError!u32 {
     return count;
 }
 
+// =============================================================================
+// Event Handler Helpers
+// =============================================================================
+
+/// Helper: Get an event handler by name
+fn getEventHandler(instance: *runtime.Instance, name: []const u8) ?typedefs.EventHandler {
+    const internal = getInternal(instance) orelse return null;
+    return internal.event_handlers.get(name);
+}
+
+/// Helper: Set an event handler by name
+fn setEventHandler(instance: *runtime.Instance, name: []const u8, handler: typedefs.EventHandler) ImplError!void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    internal.event_handlers.put(name, handler) catch return error.OutOfMemory;
+}
+
+// =============================================================================
+// Event Handler Getters
+// =============================================================================
+
 /// Getter for onabort
 pub fn get_onabort(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "abort") orelse error.NotImplemented;
 }
 
 /// Getter for onauxclick
 pub fn get_onauxclick(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "auxclick") orelse error.NotImplemented;
 }
 
 /// Getter for onbeforeinput
 pub fn get_onbeforeinput(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "beforeinput") orelse error.NotImplemented;
 }
 
 /// Getter for onbeforematch
 pub fn get_onbeforematch(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "beforematch") orelse error.NotImplemented;
 }
 
 /// Getter for onbeforetoggle
 pub fn get_onbeforetoggle(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "beforetoggle") orelse error.NotImplemented;
 }
 
 /// Getter for onblur
 pub fn get_onblur(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "blur") orelse error.NotImplemented;
 }
 
 /// Getter for oncancel
 pub fn get_oncancel(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "cancel") orelse error.NotImplemented;
 }
 
 /// Getter for oncanplay
 pub fn get_oncanplay(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "canplay") orelse error.NotImplemented;
 }
 
 /// Getter for oncanplaythrough
 pub fn get_oncanplaythrough(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "canplaythrough") orelse error.NotImplemented;
 }
 
 /// Getter for onchange
 pub fn get_onchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "change") orelse error.NotImplemented;
 }
 
 /// Getter for onclick
 pub fn get_onclick(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "click") orelse error.NotImplemented;
 }
 
 /// Getter for onclose
 pub fn get_onclose(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "close") orelse error.NotImplemented;
 }
 
 /// Getter for oncommand
 pub fn get_oncommand(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "command") orelse error.NotImplemented;
 }
 
 /// Getter for oncontextlost
 pub fn get_oncontextlost(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "contextlost") orelse error.NotImplemented;
 }
 
 /// Getter for oncontextmenu
 pub fn get_oncontextmenu(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "contextmenu") orelse error.NotImplemented;
 }
 
 /// Getter for oncontextrestored
 pub fn get_oncontextrestored(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "contextrestored") orelse error.NotImplemented;
 }
 
 /// Getter for oncopy
 pub fn get_oncopy(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "copy") orelse error.NotImplemented;
 }
 
 /// Getter for oncuechange
 pub fn get_oncuechange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "cuechange") orelse error.NotImplemented;
 }
 
 /// Getter for oncut
 pub fn get_oncut(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "cut") orelse error.NotImplemented;
 }
 
 /// Getter for ondblclick
 pub fn get_ondblclick(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "dblclick") orelse error.NotImplemented;
 }
 
 /// Getter for ondrag
 pub fn get_ondrag(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "drag") orelse error.NotImplemented;
 }
 
 /// Getter for ondragend
 pub fn get_ondragend(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "dragend") orelse error.NotImplemented;
 }
 
 /// Getter for ondragenter
 pub fn get_ondragenter(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "dragenter") orelse error.NotImplemented;
 }
 
 /// Getter for ondragleave
 pub fn get_ondragleave(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "dragleave") orelse error.NotImplemented;
 }
 
 /// Getter for ondragover
 pub fn get_ondragover(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "dragover") orelse error.NotImplemented;
 }
 
 /// Getter for ondragstart
 pub fn get_ondragstart(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "dragstart") orelse error.NotImplemented;
 }
 
 /// Getter for ondrop
 pub fn get_ondrop(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "drop") orelse error.NotImplemented;
 }
 
 /// Getter for ondurationchange
 pub fn get_ondurationchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "durationchange") orelse error.NotImplemented;
 }
 
 /// Getter for onemptied
 pub fn get_onemptied(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "emptied") orelse error.NotImplemented;
 }
 
 /// Getter for onended
 pub fn get_onended(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "ended") orelse error.NotImplemented;
 }
 
 /// Getter for onerror
@@ -1222,495 +1212,411 @@ pub fn get_onerror(instance: *runtime.Instance) ImplError!typedefs.OnErrorEventH
 
 /// Getter for onfocus
 pub fn get_onfocus(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "focus") orelse error.NotImplemented;
 }
 
 /// Getter for onformdata
 pub fn get_onformdata(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "formdata") orelse error.NotImplemented;
 }
 
 /// Getter for oninput
 pub fn get_oninput(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "input") orelse error.NotImplemented;
 }
 
 /// Getter for oninvalid
 pub fn get_oninvalid(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "invalid") orelse error.NotImplemented;
 }
 
 /// Getter for onkeydown
 pub fn get_onkeydown(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "keydown") orelse error.NotImplemented;
 }
 
 /// Getter for onkeypress
 pub fn get_onkeypress(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "keypress") orelse error.NotImplemented;
 }
 
 /// Getter for onkeyup
 pub fn get_onkeyup(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "keyup") orelse error.NotImplemented;
 }
 
 /// Getter for onload
 pub fn get_onload(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "load") orelse error.NotImplemented;
 }
 
 /// Getter for onloadeddata
 pub fn get_onloadeddata(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "loadeddata") orelse error.NotImplemented;
 }
 
 /// Getter for onloadedmetadata
 pub fn get_onloadedmetadata(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "loadedmetadata") orelse error.NotImplemented;
 }
 
 /// Getter for onloadstart
 pub fn get_onloadstart(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "loadstart") orelse error.NotImplemented;
 }
 
 /// Getter for onmousedown
 pub fn get_onmousedown(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "mousedown") orelse error.NotImplemented;
 }
 
 /// Getter for onmouseenter
 pub fn get_onmouseenter(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "mouseenter") orelse error.NotImplemented;
 }
 
 /// Getter for onmouseleave
 pub fn get_onmouseleave(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "mouseleave") orelse error.NotImplemented;
 }
 
 /// Getter for onmousemove
 pub fn get_onmousemove(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "mousemove") orelse error.NotImplemented;
 }
 
 /// Getter for onmouseout
 pub fn get_onmouseout(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "mouseout") orelse error.NotImplemented;
 }
 
 /// Getter for onmouseover
 pub fn get_onmouseover(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "mouseover") orelse error.NotImplemented;
 }
 
 /// Getter for onmouseup
 pub fn get_onmouseup(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "mouseup") orelse error.NotImplemented;
 }
 
 /// Getter for onpaste
 pub fn get_onpaste(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "paste") orelse error.NotImplemented;
 }
 
 /// Getter for onpause
 pub fn get_onpause(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "pause") orelse error.NotImplemented;
 }
 
 /// Getter for onplay
 pub fn get_onplay(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "play") orelse error.NotImplemented;
 }
 
 /// Getter for onplaying
 pub fn get_onplaying(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "playing") orelse error.NotImplemented;
 }
 
 /// Getter for onprogress
 pub fn get_onprogress(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "progress") orelse error.NotImplemented;
 }
 
 /// Getter for onratechange
 pub fn get_onratechange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "ratechange") orelse error.NotImplemented;
 }
 
 /// Getter for onreset
 pub fn get_onreset(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "reset") orelse error.NotImplemented;
 }
 
 /// Getter for onresize
 pub fn get_onresize(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "resize") orelse error.NotImplemented;
 }
 
 /// Getter for onscroll
 pub fn get_onscroll(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "scroll") orelse error.NotImplemented;
 }
 
 /// Getter for onscrollend
 pub fn get_onscrollend(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "scrollend") orelse error.NotImplemented;
 }
 
 /// Getter for onsecuritypolicyviolation
 pub fn get_onsecuritypolicyviolation(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "securitypolicyviolation") orelse error.NotImplemented;
 }
 
 /// Getter for onseeked
 pub fn get_onseeked(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "seeked") orelse error.NotImplemented;
 }
 
 /// Getter for onseeking
 pub fn get_onseeking(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "seeking") orelse error.NotImplemented;
 }
 
 /// Getter for onselect
 pub fn get_onselect(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "select") orelse error.NotImplemented;
 }
 
 /// Getter for onslotchange
 pub fn get_onslotchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "slotchange") orelse error.NotImplemented;
 }
 
 /// Getter for onstalled
 pub fn get_onstalled(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "stalled") orelse error.NotImplemented;
 }
 
 /// Getter for onsubmit
 pub fn get_onsubmit(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "submit") orelse error.NotImplemented;
 }
 
 /// Getter for onsuspend
 pub fn get_onsuspend(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "suspend") orelse error.NotImplemented;
 }
 
 /// Getter for ontimeupdate
 pub fn get_ontimeupdate(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "timeupdate") orelse error.NotImplemented;
 }
 
 /// Getter for ontoggle
 pub fn get_ontoggle(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "toggle") orelse error.NotImplemented;
 }
 
 /// Getter for onvolumechange
 pub fn get_onvolumechange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "volumechange") orelse error.NotImplemented;
 }
 
 /// Getter for onwaiting
 pub fn get_onwaiting(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "waiting") orelse error.NotImplemented;
 }
 
 /// Getter for onwebkitanimationend
 pub fn get_onwebkitanimationend(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "webkitanimationend") orelse error.NotImplemented;
 }
 
 /// Getter for onwebkitanimationiteration
 pub fn get_onwebkitanimationiteration(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "webkitanimationiteration") orelse error.NotImplemented;
 }
 
 /// Getter for onwebkitanimationstart
 pub fn get_onwebkitanimationstart(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "webkitanimationstart") orelse error.NotImplemented;
 }
 
 /// Getter for onwebkittransitionend
 pub fn get_onwebkittransitionend(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "webkittransitionend") orelse error.NotImplemented;
 }
 
 /// Getter for onwheel
 pub fn get_onwheel(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "wheel") orelse error.NotImplemented;
 }
 
 /// Getter for onselectstart
 pub fn get_onselectstart(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "selectstart") orelse error.NotImplemented;
 }
 
 /// Getter for onselectionchange
 pub fn get_onselectionchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "selectionchange") orelse error.NotImplemented;
 }
 
 /// Getter for onanimationstart
 pub fn get_onanimationstart(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "animationstart") orelse error.NotImplemented;
 }
 
 /// Getter for onanimationiteration
 pub fn get_onanimationiteration(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "animationiteration") orelse error.NotImplemented;
 }
 
 /// Getter for onanimationend
 pub fn get_onanimationend(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "animationend") orelse error.NotImplemented;
 }
 
 /// Getter for onanimationcancel
 pub fn get_onanimationcancel(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "animationcancel") orelse error.NotImplemented;
 }
 
 /// Getter for ontransitionrun
 pub fn get_ontransitionrun(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "transitionrun") orelse error.NotImplemented;
 }
 
 /// Getter for ontransitionstart
 pub fn get_ontransitionstart(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "transitionstart") orelse error.NotImplemented;
 }
 
 /// Getter for ontransitionend
 pub fn get_ontransitionend(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "transitionend") orelse error.NotImplemented;
 }
 
 /// Getter for ontransitioncancel
 pub fn get_ontransitioncancel(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "transitioncancel") orelse error.NotImplemented;
 }
 
 /// Getter for onbeforexrselect
 pub fn get_onbeforexrselect(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "beforexrselect") orelse error.NotImplemented;
 }
 
 /// Getter for onpointerover
 pub fn get_onpointerover(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "pointerover") orelse error.NotImplemented;
 }
 
 /// Getter for onpointerenter
 pub fn get_onpointerenter(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "pointerenter") orelse error.NotImplemented;
 }
 
 /// Getter for onpointerdown
 pub fn get_onpointerdown(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "pointerdown") orelse error.NotImplemented;
 }
 
 /// Getter for onpointermove
 pub fn get_onpointermove(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "pointermove") orelse error.NotImplemented;
 }
 
 /// Getter for onpointerrawupdate
 pub fn get_onpointerrawupdate(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "pointerrawupdate") orelse error.NotImplemented;
 }
 
 /// Getter for onpointerup
 pub fn get_onpointerup(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "pointerup") orelse error.NotImplemented;
 }
 
 /// Getter for onpointercancel
 pub fn get_onpointercancel(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "pointercancel") orelse error.NotImplemented;
 }
 
 /// Getter for onpointerout
 pub fn get_onpointerout(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "pointerout") orelse error.NotImplemented;
 }
 
 /// Getter for onpointerleave
 pub fn get_onpointerleave(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "pointerleave") orelse error.NotImplemented;
 }
 
 /// Getter for ongotpointercapture
 pub fn get_ongotpointercapture(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "gotpointercapture") orelse error.NotImplemented;
 }
 
 /// Getter for onlostpointercapture
 pub fn get_onlostpointercapture(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "lostpointercapture") orelse error.NotImplemented;
 }
 
 /// Getter for ontouchstart
 pub fn get_ontouchstart(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "touchstart") orelse error.NotImplemented;
 }
 
 /// Getter for ontouchend
 pub fn get_ontouchend(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "touchend") orelse error.NotImplemented;
 }
 
 /// Getter for ontouchmove
 pub fn get_ontouchmove(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "touchmove") orelse error.NotImplemented;
 }
 
 /// Getter for ontouchcancel
 pub fn get_ontouchcancel(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "touchcancel") orelse error.NotImplemented;
 }
 
 /// Getter for onfencedtreeclick
 pub fn get_onfencedtreeclick(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "fencedtreeclick") orelse error.NotImplemented;
 }
 
 /// Getter for onsnapchanged
 pub fn get_onsnapchanged(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "snapchanged") orelse error.NotImplemented;
 }
 
 /// Getter for onsnapchanging
 pub fn get_onsnapchanging(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "snapchanging") orelse error.NotImplemented;
 }
+
+// =============================================================================
+// Event Handler Setters
+// =============================================================================
 
 /// Setter for onprerenderingchange
 pub fn set_onprerenderingchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "prerenderingchange", value);
 }
 
 /// Setter for onfullscreenchange
 pub fn set_onfullscreenchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "fullscreenchange", value);
 }
 
 /// Setter for onfullscreenerror
 pub fn set_onfullscreenerror(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "fullscreenerror", value);
 }
 
 /// Setter for onpointerlockchange
 pub fn set_onpointerlockchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "pointerlockchange", value);
 }
 
 /// Setter for onpointerlockerror
 pub fn set_onpointerlockerror(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "pointerlockerror", value);
 }
 
 /// Setter for onfreeze
 pub fn set_onfreeze(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "freeze", value);
 }
 
 /// Setter for onresume
 pub fn set_onresume(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setEventHandler(instance, "resume", value);
 }
 
 /// Setter for domain
