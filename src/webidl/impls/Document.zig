@@ -26,6 +26,8 @@ const DocumentFragmentImpl = @import("DocumentFragment.zig");
 const ProcessingInstructionImpl = @import("ProcessingInstruction.zig");
 const CDATASectionImpl = @import("CDATASection.zig");
 const EventImpl = @import("Event.zig");
+const AttrImpl = @import("Attr.zig");
+const DocumentTypeImpl = @import("DocumentType.zig");
 
 pub const State = Document.State;
 
@@ -2379,10 +2381,46 @@ pub fn call_write(instance: *runtime.Instance, text: *const anyopaque) ImplError
 }
 
 /// Operation: createAttribute
+/// DOM §4.6 - Creates an Attr node with the given local name
+/// Spec: https://dom.spec.whatwg.org/#dom-document-createattribute
+///
+/// Steps:
+/// 1. If localName does not match the Name production, throw InvalidCharacterError
+/// 2. If this is an HTML document, set localName to ASCII lowercase
+/// 3. Return a new Attr with localName as local name
 pub fn call_createAttribute(instance: *runtime.Instance, localName: runtime.DOMString) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = localName;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const local_name_slice = localName.asSlice();
+
+    // TODO: Step 1: Validate localName against Name production
+
+    // Step 2: For HTML documents, convert to lowercase
+    var name_buf: [256]u8 = undefined;
+    var actual_name = local_name_slice;
+    if (internal.doc_type == .html and local_name_slice.len <= name_buf.len) {
+        for (local_name_slice, 0..) |c, i| {
+            name_buf[i] = std.ascii.toLower(c);
+        }
+        actual_name = name_buf[0..local_name_slice.len];
+    }
+
+    // Step 3: Create a new Attr
+    const attr = try AttrImpl.init(
+        internal.allocator,
+        interfaces.Attr.State,
+        &interfaces.Attr.vtable,
+        instance.ctx,
+    );
+    errdefer AttrImpl.deinit(attr);
+
+    // Set node type to ATTRIBUTE_NODE
+    try NodeImpl.setNodeType(attr, NodeImpl.NodeType.ATTRIBUTE_NODE);
+
+    // Set the local name on the Attr
+    const attr_internal = attr.getState(interfaces.Attr.State).own._internal orelse return error.InvalidStateError;
+    attr_internal.local_name = try internal.allocator.dupe(u8, actual_name);
+
+    return attr;
 }
 
 /// Operation: clear
@@ -2547,17 +2585,165 @@ pub fn call_getAnimations(instance: *runtime.Instance) ImplError!*const anyopaqu
 }
 
 /// Operation: getElementsByClassName
+/// DOM §4.4 - Returns a live HTMLCollection of elements with matching class names
+/// Spec: https://dom.spec.whatwg.org/#dom-document-getelementsbyclassname
+///
+/// Steps:
+/// 1. Return a collection of descendant elements that have all classes in classNames
+///    (classNames is a space-separated string of class names)
 pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: runtime.DOMString) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = classNames;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const class_names = classNames.asSlice();
+
+    // Empty class string returns empty collection
+    if (class_names.len == 0) {
+        const HTMLCollectionImpl = @import("HTMLCollection.zig");
+        return try HTMLCollectionImpl.init(
+            internal.allocator,
+            interfaces.HTMLCollection.State,
+            &interfaces.HTMLCollection.vtable,
+            instance.ctx,
+        );
+    }
+
+    // Create an HTMLCollection to hold results
+    const HTMLCollectionImpl = @import("HTMLCollection.zig");
+    const collection = try HTMLCollectionImpl.init(
+        internal.allocator,
+        interfaces.HTMLCollection.State,
+        &interfaces.HTMLCollection.vtable,
+        instance.ctx,
+    );
+    errdefer HTMLCollectionImpl.deinit(collection);
+
+    // Traverse tree and collect matching elements
+    try collectElementsByClassName(instance, class_names, collection);
+
+    return collection;
+}
+
+/// Helper: Recursively collect elements by class name
+fn collectElementsByClassName(
+    node: *runtime.Instance,
+    target_classes: []const u8,
+    collection: *runtime.Instance,
+) ImplError!void {
+    const HTMLCollectionImpl = @import("HTMLCollection.zig");
+    const ElementImpl = @import("Element.zig");
+
+    var child = NodeImpl.getFirstChild(node);
+    while (child) |c| {
+        const node_type = NodeImpl.getNodeType(c) orelse 0;
+        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+            // Check if element has all the target classes
+            if (ElementImpl.getInternal(c)) |elem_internal| {
+                const elem_classes = elem_internal.class_name.asSlice();
+                if (hasAllClasses(elem_classes, target_classes)) {
+                    HTMLCollectionImpl.addElement(collection, c) catch return error.OutOfMemory;
+                }
+            }
+        }
+
+        // Recursively search descendants
+        try collectElementsByClassName(c, target_classes, collection);
+
+        child = NodeImpl.getNextSibling(c);
+    }
+}
+
+/// Helper: Check if element_classes contains all classes in target_classes
+/// Both are space-separated strings
+fn hasAllClasses(element_classes: []const u8, target_classes: []const u8) bool {
+    // Split target classes by spaces
+    var target_iter = std.mem.splitScalar(u8, target_classes, ' ');
+    while (target_iter.next()) |target_class| {
+        if (target_class.len == 0) continue; // Skip empty tokens
+
+        // Check if element has this class
+        var found = false;
+        var elem_iter = std.mem.splitScalar(u8, element_classes, ' ');
+        while (elem_iter.next()) |elem_class| {
+            if (elem_class.len == 0) continue;
+            if (std.mem.eql(u8, elem_class, target_class)) {
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) return false;
+    }
+
+    return true;
 }
 
 /// Operation: getElementsByTagName
+/// DOM §4.4 - Returns a live HTMLCollection of elements with matching tag name
+/// Spec: https://dom.spec.whatwg.org/#dom-document-getelementsbytagname
+///
+/// Steps:
+/// 1. If qualifiedName is "*", return a collection of all descendant elements
+/// 2. Otherwise, return a collection of descendant elements whose qualified name is
+///    qualifiedName (case-insensitively for HTML documents)
 pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: runtime.DOMString) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = qualifiedName;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const qname = qualifiedName.asSlice();
+
+    // Create an HTMLCollection to hold results
+    const HTMLCollectionImpl = @import("HTMLCollection.zig");
+    const collection = try HTMLCollectionImpl.init(
+        internal.allocator,
+        interfaces.HTMLCollection.State,
+        &interfaces.HTMLCollection.vtable,
+        instance.ctx,
+    );
+    errdefer HTMLCollectionImpl.deinit(collection);
+
+    // Traverse tree and collect matching elements
+    try collectElementsByTagName(instance, qname, internal.doc_type == .html, collection);
+
+    return collection;
+}
+
+/// Helper: Recursively collect elements by tag name
+fn collectElementsByTagName(
+    node: *runtime.Instance,
+    target_name: []const u8,
+    is_html: bool,
+    collection: *runtime.Instance,
+) ImplError!void {
+    const HTMLCollectionImpl = @import("HTMLCollection.zig");
+    const ElementImpl = @import("Element.zig");
+    const wildcard = std.mem.eql(u8, target_name, "*");
+
+    var child = NodeImpl.getFirstChild(node);
+    while (child) |c| {
+        const node_type = NodeImpl.getNodeType(c) orelse 0;
+        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+            var matches = wildcard;
+
+            if (!wildcard) {
+                // Get element's tag name and compare
+                if (ElementImpl.getInternal(c)) |elem_internal| {
+                    const elem_name = elem_internal.local_name.asSlice();
+                    if (is_html) {
+                        // Case-insensitive comparison for HTML
+                        matches = std.ascii.eqlIgnoreCase(elem_name, target_name);
+                    } else {
+                        matches = std.mem.eql(u8, elem_name, target_name);
+                    }
+                }
+            }
+
+            if (matches) {
+                HTMLCollectionImpl.addElement(collection, c) catch return error.OutOfMemory;
+            }
+        }
+
+        // Recursively search descendants
+        try collectElementsByTagName(c, target_name, is_html, collection);
+
+        child = NodeImpl.getNextSibling(c);
+    }
 }
 
 /// Operation: evaluate
@@ -2752,18 +2938,97 @@ pub fn call_createRange(instance: *runtime.Instance) ImplError!*runtime.Instance
 }
 
 /// Operation: getElementById
+/// DOM §4.3.1 (NonElementParentNode) - Returns the first element with matching ID
+/// Spec: https://dom.spec.whatwg.org/#dom-nonelementparentnode-getelementbyid
+///
+/// Steps:
+/// 1. Return the first element, in tree order, within this's descendants,
+///    that has an ID equal to elementId; otherwise null
 pub fn call_getElementById(instance: *runtime.Instance, elementId: runtime.DOMString) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = elementId;
-    return error.NotImplemented;
+    const element_id = elementId.asSlice();
+
+    // Empty ID never matches
+    if (element_id.len == 0) {
+        return error.NotImplemented; // null
+    }
+
+    // Traverse tree in tree order (preorder depth-first)
+    return findElementById(instance, element_id) orelse error.NotImplemented;
+}
+
+/// Helper: Recursively search for element by ID
+fn findElementById(node: *runtime.Instance, target_id: []const u8) ?*runtime.Instance {
+    // First check children
+    var child = NodeImpl.getFirstChild(node);
+    while (child) |c| {
+        // Check if this child is an element with matching ID
+        const node_type = NodeImpl.getNodeType(c) orelse 0;
+        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+            // Get element's id
+            const ElementImpl = @import("Element.zig");
+            if (ElementImpl.getInternal(c)) |elem_internal| {
+                const elem_id = elem_internal.id.asSlice();
+                if (std.mem.eql(u8, elem_id, target_id)) {
+                    return c;
+                }
+            }
+        }
+
+        // Recursively search descendants
+        if (findElementById(c, target_id)) |found| {
+            return found;
+        }
+
+        child = NodeImpl.getNextSibling(c);
+    }
+
+    return null;
 }
 
 /// Operation: createAttributeNS
+/// DOM §4.6 - Creates an Attr node in the given namespace
+/// Spec: https://dom.spec.whatwg.org/#dom-document-createattributens
+///
+/// Steps:
+/// 1. Let namespace, prefix, and localName be the result of passing namespace and qualifiedName
+/// 2. Return a new Attr with namespace, prefix, localName, and empty value
 pub fn call_createAttributeNS(instance: *runtime.Instance, namespace: runtime.DOMString, qualifiedName: runtime.DOMString) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = namespace;
-    _ = qualifiedName;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const ns_slice = namespace.asSlice();
+    const qname_slice = qualifiedName.asSlice();
+
+    // Parse qualified name for prefix and local name
+    var prefix: ?[]const u8 = null;
+    var local_name: []const u8 = qname_slice;
+
+    if (std.mem.indexOfScalar(u8, qname_slice, ':')) |colon_pos| {
+        prefix = qname_slice[0..colon_pos];
+        local_name = qname_slice[colon_pos + 1 ..];
+    }
+
+    // Create a new Attr
+    const attr = try AttrImpl.init(
+        internal.allocator,
+        interfaces.Attr.State,
+        &interfaces.Attr.vtable,
+        instance.ctx,
+    );
+    errdefer AttrImpl.deinit(attr);
+
+    // Set node type to ATTRIBUTE_NODE
+    try NodeImpl.setNodeType(attr, NodeImpl.NodeType.ATTRIBUTE_NODE);
+
+    // Set namespace, prefix, and local name on the Attr
+    const attr_internal = attr.getState(interfaces.Attr.State).own._internal orelse return error.InvalidStateError;
+    if (ns_slice.len > 0) {
+        attr_internal.namespace_uri = try internal.allocator.dupe(u8, ns_slice);
+    }
+    if (prefix) |p| {
+        attr_internal.prefix = try internal.allocator.dupe(u8, p);
+    }
+    attr_internal.local_name = try internal.allocator.dupe(u8, local_name);
+
+    return attr;
 }
 
 /// Operation: hasFocus

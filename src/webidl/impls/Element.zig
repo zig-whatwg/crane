@@ -132,7 +132,8 @@ pub const InternalState = struct {
 };
 
 /// Get the internal state from an instance
-fn getInternal(instance: *runtime.Instance) ?*InternalState {
+/// Made public for use by Document's getElementById, getElementsByTagName, etc.
+pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
     const state = instance.getState(State);
     return state.own._internal;
 }
