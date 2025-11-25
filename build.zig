@@ -1314,9 +1314,15 @@ pub fn build(b: *std.Build) void {
     run_dom_tests.addArtifactArg(repl_exe);
     run_dom_tests.addArg("tests/v8/dom_test.js");
 
+    // Run property setter tests
+    const run_setter_tests = b.addRunArtifact(test_runner_exe);
+    run_setter_tests.step.dependOn(&run_dom_tests.step);
+    run_setter_tests.addArtifactArg(repl_exe);
+    run_setter_tests.addArg("tests/v8/setter_test.js");
+
     // Run querySelector tests (basic version - full version requires property setters)
     const run_querySelector_tests = b.addRunArtifact(test_runner_exe);
-    run_querySelector_tests.step.dependOn(&run_dom_tests.step);
+    run_querySelector_tests.step.dependOn(&run_setter_tests.step);
     run_querySelector_tests.addArtifactArg(repl_exe);
     run_querySelector_tests.addArg("tests/v8/querySelector_basic_test.js");
 

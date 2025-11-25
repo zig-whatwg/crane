@@ -579,7 +579,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                 // Generate setter callback that calls the actual Zig function
                 // Uses FunctionCallback signature - setter receives new value as info[0]
-                const setter_cb: ?v8.FunctionCallback = if (setter_name != null) placeholderSetterCallback else null;
+                const setter_cb: ?v8.FunctionCallback = if (setter_name) |s_name| makeSetterCallback(s_name) else null;
 
                 // Use SetAccessorProperty instead of SetAccessor to create visible descriptors
                 // This makes the getter/setter appear in Object.getOwnPropertyDescriptor
@@ -1651,12 +1651,152 @@ pub fn V8Interface(comptime Interface: type) type {
             }
         }
 
-        /// Placeholder setter callback (uses FunctionCallback signature)
+        /// Real setter callback generator (uses FunctionCallback signature)
         /// Setter receives the new value as info.get(0)
-        fn placeholderSetterCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-            const isolate = info.getIsolate();
-            _ = info.get(0); // New value would be here
-            conv.throwError(isolate, "Setter not yet implemented");
+        fn makeSetterCallback(comptime setter_name_param: []const u8) v8.FunctionCallback {
+            // Check if setter actually exists at compile time
+            if (!@hasDecl(Interface, setter_name_param)) {
+                // Return a placeholder that throws "not implemented"
+                return struct {
+                    fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+                        const isolate = info.getIsolate();
+                        conv.throwError(isolate, "Setter not yet implemented");
+                    }
+                }.callback;
+            }
+
+            return struct {
+                fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+                    const zig_setter = @field(Interface, setter_name_param);
+                    const isolate_inner = info.getIsolate();
+                    const context = v8.v8_Isolate_GetCurrentContext(isolate_inner) orelse {
+                        conv.throwError(isolate_inner, "No context available");
+                        return;
+                    };
+
+                    // Get the new value from info[0]
+                    // Note: info.get() always returns a valid pointer in V8
+                    const new_value_v8 = info.get(0);
+
+                    // Extract instance from 'this'
+                    const this_obj = info.getThis();
+                    const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+
+                    if (instance_ptr == null) {
+                        conv.throwError(isolate_inner, "Cannot set property on prototype");
+                        return;
+                    }
+
+                    const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+
+                    // Analyze setter signature
+                    const fn_info = @typeInfo(@TypeOf(zig_setter)).@"fn";
+                    const params = fn_info.params;
+
+                    // Setter signature: fn(instance: *Instance, value: T) !void
+                    if (params.len != 2) {
+                        conv.throwError(isolate_inner, "Invalid setter signature");
+                        return;
+                    }
+
+                    // Get the value parameter type (second parameter after instance)
+                    const ValueType = params[1].type.?;
+
+                    // Get allocator from instance context
+                    const allocator = instance.ctx.allocator;
+
+                    // Convert V8 value to Zig type
+                    const zig_value = convertV8ToZig(ValueType, allocator, isolate_inner, context, new_value_v8) catch |err| {
+                        conv.throwError(isolate_inner, @errorName(err));
+                        return;
+                    };
+                    defer freeConvertedValue(ValueType, allocator, zig_value);
+
+                    // Call the setter (handle error union return)
+                    const ReturnType = fn_info.return_type.?;
+                    const return_type_info = @typeInfo(ReturnType);
+
+                    if (return_type_info == .error_union) {
+                        zig_setter(instance, zig_value) catch |err| {
+                            conv.throwError(isolate_inner, @errorName(err));
+                            return;
+                        };
+                    } else {
+                        zig_setter(instance, zig_value);
+                    }
+
+                    // Setter succeeded - return undefined
+                    if (v8.v8_Undefined(isolate_inner)) |undef| {
+                        info.setReturnValue(undef);
+                    }
+                }
+            }.callback;
+        }
+
+        /// Convert V8 value to Zig type based on comptime type information
+        fn convertV8ToZig(comptime T: type, allocator: std.mem.Allocator, isolate: *v8.Isolate, context: *v8.Context, v8_value: *v8.Value) !T {
+            // Handle primitive types
+            if (T == runtime.DOMString) {
+                // Check if it's a string
+                if (!v8.v8_Value_IsString(v8_value)) {
+                    // Coerce to string
+                    const str = v8.v8_Value_ToString(v8_value, context) orelse return error.TypeError;
+                    return try conv.fromV8String(allocator, isolate, context, str);
+                }
+                const str: *v8.String = @ptrCast(v8_value);
+                return try conv.fromV8String(allocator, isolate, context, str);
+            } else if (T == runtime.USVString or T == []const u8) {
+                // Similar to DOMString
+                if (!v8.v8_Value_IsString(v8_value)) {
+                    const str = v8.v8_Value_ToString(v8_value, context) orelse return error.TypeError;
+                    const dom_str = try conv.fromV8String(allocator, isolate, context, str);
+                    return dom_str.asSlice();
+                }
+                const str: *v8.String = @ptrCast(v8_value);
+                const dom_str = try conv.fromV8String(allocator, isolate, context, str);
+                return dom_str.asSlice();
+            } else if (T == bool or T == runtime.Boolean) {
+                return conv.fromV8Boolean(isolate, v8_value);
+            } else if (T == i32 or T == runtime.Long) {
+                return try conv.fromV8Long(context, v8_value);
+            } else if (T == i16) {
+                const val = try conv.fromV8Long(context, v8_value);
+                return @intCast(val);
+            } else if (T == i8) {
+                const val = try conv.fromV8Long(context, v8_value);
+                return @intCast(val);
+            } else if (T == u32 or T == runtime.UnsignedLong) {
+                return try conv.fromV8UnsignedLong(context, v8_value);
+            } else if (T == u16) {
+                const val = try conv.fromV8UnsignedLong(context, v8_value);
+                return @intCast(val);
+            } else if (T == u8) {
+                const val = try conv.fromV8UnsignedLong(context, v8_value);
+                return @intCast(val);
+            } else if (T == i64 or T == runtime.LongLong) {
+                return try conv.fromV8LongLong(context, v8_value);
+            } else if (T == u64 or T == runtime.UnsignedLongLong) {
+                const val = try conv.fromV8LongLong(context, v8_value);
+                return @intCast(val);
+            } else if (T == f64 or T == runtime.Double) {
+                return try conv.fromV8Double(context, v8_value);
+            } else if (T == f32 or T == runtime.Float) {
+                return try conv.fromV8Float(context, v8_value);
+            } else {
+                // For complex types, we'd need more sophisticated conversion
+                // For now, return an error
+                return error.TypeError;
+            }
+        }
+
+        /// Free converted value if it needs cleanup (e.g., DOMString)
+        fn freeConvertedValue(comptime T: type, allocator: std.mem.Allocator, value: T) void {
+            if (T == runtime.DOMString) {
+                // DOMString owns its buffer - deinit it
+                var mutable_value = value;
+                mutable_value.deinit(allocator);
+            }
+            // Other types don't need cleanup
         }
 
         /// Static method callback
