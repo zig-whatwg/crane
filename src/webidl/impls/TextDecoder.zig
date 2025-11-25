@@ -288,22 +288,11 @@ pub fn call_decode(
 
 /// Extract bytes from AllowSharedBufferSource
 fn extractBytesFromBufferSource(source: typedefs.AllowSharedBufferSource) []const u8 {
-    const source_addr = @intFromPtr(source);
-    if (source_addr == 0) {
+    // Use the asBytes() method on the union type
+    return source.asBytes() catch {
+        // If buffer is detached, return empty slice
         return "";
-    }
-
-    const ByteSliceHeader = extern struct {
-        len: usize,
     };
-
-    const header: *const ByteSliceHeader = @ptrCast(@alignCast(source));
-    if (header.len == 0) {
-        return "";
-    }
-
-    const data_ptr: [*]const u8 = @ptrCast(@as([*]const u8, @ptrCast(source)) + @sizeOf(ByteSliceHeader));
-    return data_ptr[0..header.len];
 }
 
 /// Process bytes through decoder and run serialize I/O queue algorithm

@@ -102,7 +102,7 @@ pub fn call_debug(ctx: runtime.Context, data: []const *const anyopaque) anyerror
     return error.NotImplemented;
 }
 
-pub fn call_dir(ctx: runtime.Context, item: *const anyopaque, options: *const anyopaque) anyerror!void {
+pub fn call_dir(ctx: runtime.Context, item: *const anyopaque, options: ?*const anyopaque) anyerror!void {
     _ = ctx;
     _ = item;
     _ = options;
@@ -120,4 +120,3 @@ pub fn call_countReset(ctx: runtime.Context, label: runtime.DOMString) anyerror!
     _ = label;
     return error.NotImplemented;
 }
-
