@@ -374,6 +374,7 @@ pub const Parser = struct {
                 .extAttrs = try self.allocator.dupe(types.ExtendedAttribute, ext_attrs),
                 .partial = is_partial,
                 .mixin = is_mixin,
+                .callback = is_callback,
             },
             .is_namespace = is_namespace,
         };

@@ -347,6 +347,7 @@ pub const Interface = struct {
     extAttrs: std.ArrayList(types.ExtendedAttribute),
     mixins: std.ArrayList([]const u8), // List of mixin names included
     mixin: bool,
+    callback: bool, // Whether this is a callback interface (e.g., EventListener)
     has_base: bool, // true if we've seen a non-partial definition
     base_source_index: usize, // index in source_map list of the file containing the base definition
 
@@ -369,6 +370,7 @@ pub const Interface = struct {
             .extAttrs = extAttrs,
             .mixins = mixins,
             .mixin = iface.mixin,
+            .callback = iface.callback,
             .has_base = !iface.partial, // has_base if this is not a partial
             .base_source_index = source_index, // Track which source has the base
         };
@@ -437,6 +439,7 @@ pub const Interface = struct {
             .includes = try allocator.dupe([]const u8, self.mixins.items),
             .partial = false, // After merging, it's no longer partial
             .mixin = self.mixin,
+            .callback = self.callback,
         };
     }
 

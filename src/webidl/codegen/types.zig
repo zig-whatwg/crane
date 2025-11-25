@@ -105,6 +105,10 @@ pub const Interface = struct {
     /// Whether this is a mixin
     mixin: bool = false,
 
+    /// Whether this is a callback interface (e.g., EventListener, NodeFilter)
+    /// Callback interfaces represent JavaScript functions or objects with callable methods
+    callback: bool = false,
+
     /// Mixin interfaces that this interface includes
     includes: [][]const u8 = &.{},
 };

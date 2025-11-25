@@ -1221,6 +1221,7 @@ fn generateInterfaceFile(
         own_constants.items, // Constants (for V8 static property registration)
         has_constructor,
         interface.mixin, // Whether this is a mixin interface
+        interface.callback, // Whether this is a callback interface
         iterable_member, // Iterable declaration if present
         own_attrs.items, // Own attributes (for V8 property registration)
         async_iterable_member, // Async iterable declaration if present

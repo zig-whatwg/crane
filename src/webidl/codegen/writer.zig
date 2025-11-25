@@ -239,6 +239,7 @@ pub fn writeMetadata(
     constants: []const types.Constant,
     has_constructor: bool,
     is_mixin: bool,
+    is_callback: bool,
     iterable: ?types.Iterable,
     own_attributes: []const types.Attribute,
     async_iterable: ?types.AsyncIterable,
@@ -248,6 +249,7 @@ pub fn writeMetadata(
     try writer.writeAll("    pub const Meta = struct {\n");
     try writer.print("        pub const name = \"{s}\";\n", .{interface_name});
     try writer.print("        pub const is_mixin = {};\n", .{is_mixin});
+    try writer.print("        pub const is_callback_interface = {};\n", .{is_callback});
 
     if (spec_url) |url| {
         try writer.print("        pub const spec_url = \"{s}\";\n", .{url});
@@ -2756,7 +2758,7 @@ test "writeMetadata generates Meta struct" {
 
     const writer = buffer.writer(testing.allocator);
 
-    try writeMetadata(writer.any(), "Node", "https://dom.spec.whatwg.org/#interface-node", "EventTarget", &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, null, &.{}, null);
+    try writeMetadata(writer.any(), "Node", "https://dom.spec.whatwg.org/#interface-node", "EventTarget", &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null);
 
     const output = buffer.items;
     try testing.expect(std.mem.indexOf(u8, output, "pub const Meta = struct {") != null);
@@ -2770,7 +2772,7 @@ test "writeMetadata handles no base type" {
 
     const writer = buffer.writer(testing.allocator);
 
-    try writeMetadata(writer.any(), "EventTarget", null, null, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, null, &.{}, null);
+    try writeMetadata(writer.any(), "EventTarget", null, null, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null);
 
     const output = buffer.items;
     try testing.expect(std.mem.indexOf(u8, output, "pub const BaseType = ?*anyopaque;") != null);
@@ -2783,7 +2785,7 @@ test "writeMetadata includes mixins" {
     const writer = buffer.writer(testing.allocator);
 
     const mixins = [_][]const u8{"ParentNode"};
-    try writeMetadata(writer.any(), "Node", null, null, &mixins, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, null, &.{}, null);
+    try writeMetadata(writer.any(), "Node", null, null, &mixins, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null);
 
     const output = buffer.items;
     try testing.expect(std.mem.indexOf(u8, output, "pub const MixinTypes = &.{") != null);
@@ -2800,7 +2802,7 @@ test "writeMetadata includes extended attributes" {
         .{ .name = "Exposed", .rhs = .{ .identifier = "Window" } },
         .{ .name = "LegacyUnforgeable", .rhs = null },
     };
-    try writeMetadata(writer.any(), "Event", null, null, &.{}, &ext_attrs, &.{}, &.{}, &.{}, &.{}, false, false, null, &.{}, null);
+    try writeMetadata(writer.any(), "Event", null, null, &.{}, &ext_attrs, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null);
 
     const output = buffer.items;
     try testing.expect(std.mem.indexOf(u8, output, "pub const extended_attributes = .{") != null);
@@ -2832,7 +2834,7 @@ test "writeMetadata includes legacy unforgeable properties" {
         },
     };
 
-    try writeMetadata(writer.any(), "Event", null, null, &.{}, &.{}, &attrs, &.{}, &.{}, &.{}, false, false, null, &attrs, null);
+    try writeMetadata(writer.any(), "Event", null, null, &.{}, &.{}, &attrs, &.{}, &.{}, &.{}, false, false, false, null, &attrs, null);
 
     const output = buffer.items;
 
