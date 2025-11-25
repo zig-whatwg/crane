@@ -1178,3 +1178,17 @@ pub fn getPreviousSibling(instance: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
     return internal.previous_sibling;
 }
+
+/// Get the last child (returns null if no children or instance has no state)
+/// This is a convenience helper for reverse child iteration
+pub fn getLastChild(instance: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(instance) orelse return null;
+    return internal.last_child;
+}
+
+/// Check if node has any children
+/// This is a convenience helper for tree traversal
+pub fn hasChildren(instance: *runtime.Instance) bool {
+    const internal = getInternal(instance) orelse return false;
+    return internal.first_child != null;
+}

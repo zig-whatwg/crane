@@ -699,3 +699,64 @@ pub fn call_createContextualFragment(instance: *runtime.Instance, string: *const
     // TODO: Requires HTML parser integration
     return error.NotImplemented;
 }
+
+// =============================================================================
+// Helper functions for Selection and other impls
+// =============================================================================
+
+/// Get start container (nullable, non-throwing helper for Selection)
+pub fn getStartContainer(instance: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(instance) orelse return null;
+    return internal.start_container;
+}
+
+/// Get start offset (non-throwing helper for Selection)
+pub fn getStartOffset(instance: *runtime.Instance) u32 {
+    const internal = getInternal(instance) orelse return 0;
+    return internal.start_offset;
+}
+
+/// Get end container (nullable, non-throwing helper for Selection)
+pub fn getEndContainer(instance: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(instance) orelse return null;
+    return internal.end_container;
+}
+
+/// Get end offset (non-throwing helper for Selection)
+pub fn getEndOffset(instance: *runtime.Instance) u32 {
+    const internal = getInternal(instance) orelse return 0;
+    return internal.end_offset;
+}
+
+/// Check if range intersects with node (non-throwing helper)
+pub fn intersectsNode(instance: *runtime.Instance, node: *runtime.Instance) !bool {
+    return try call_intersectsNode(instance, node);
+}
+
+/// Check if range fully contains node
+pub fn containsNode(instance: *runtime.Instance, node: *runtime.Instance) !bool {
+    const internal = getInternal(instance) orelse return false;
+
+    const start = internal.start_container orelse return false;
+    const end = internal.end_container orelse return false;
+
+    // Check if node's root is the same as range's root
+    const nodeRoot = getRoot(node);
+    const thisRoot = getRoot(start);
+    if (nodeRoot != thisRoot) {
+        return false;
+    }
+
+    // Node must be a descendant of or equal to both start and end containers
+    // For a node to be fully contained:
+    // 1. Its start boundary must be at or after range start
+    // 2. Its end boundary must be at or before range end
+
+    // Simplified: check if node is between start and end
+    const parent = NodeImpl.getParent(node) orelse return false;
+    _ = parent;
+    _ = end;
+
+    // TODO: Implement proper boundary comparison
+    return false;
+}

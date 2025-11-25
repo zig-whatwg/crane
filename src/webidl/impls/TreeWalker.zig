@@ -23,6 +23,9 @@ const TreeWalker = interfaces.TreeWalker;
 const NodeIteratorImpl = @import("NodeIterator.zig");
 const NodeFilter = NodeIteratorImpl.NodeFilter;
 
+// Import NodeImpl for tree navigation helpers
+const NodeImpl = @import("Node.zig");
+
 pub const State = TreeWalker.State;
 
 pub const ImplError = error{
@@ -111,6 +114,27 @@ pub fn deinit(instance: *runtime.Instance) void {
         internal.allocator.destroy(internal);
     }
     runtime.Instance.deinit(instance);
+}
+
+/// Create a TreeWalker with the given parameters
+/// This is called by Document.createTreeWalker()
+pub fn createTreeWalker(
+    allocator: std.mem.Allocator,
+    ctx: runtime.Context,
+    root: *runtime.Instance,
+    what_to_show: u32,
+    filter: ?*anyopaque,
+) !*runtime.Instance {
+    const instance = try init(allocator, State, &interfaces.TreeWalker.vtable, ctx);
+    errdefer deinit(instance);
+
+    const internal = getInternal(instance);
+    internal.root = root;
+    internal.current = root; // Start at root per spec
+    internal.what_to_show = what_to_show;
+    internal.filter = filter;
+
+    return instance;
 }
 
 // ============================================================================
@@ -494,7 +518,6 @@ fn traverseSiblings(instance: *runtime.Instance, sibling_type: SiblingType) Impl
 /// Filter a node within this walker
 fn filterNode(instance: *runtime.Instance, node: *runtime.Instance) ImplError!u16 {
     const internal = getInternal(instance);
-    _ = node; // TODO: Use node to get nodeType once bridged
 
     // Step 1: If traverser's active flag is set, throw InvalidStateError
     if (internal.active_flag) {
@@ -502,9 +525,8 @@ fn filterNode(instance: *runtime.Instance, node: *runtime.Instance) ImplError!u1
     }
 
     // Step 2: Let n be node's nodeType attribute value − 1
-    // TODO: Get node_type from Node interface
-    const node_type: u8 = 1; // ELEMENT_NODE as default
-    const n = node_type - 1;
+    const node_type = getNodeType(node);
+    const n: u8 = @intCast(node_type - 1);
 
     // Step 3: If the nth bit of whatToShow is not set, return FILTER_SKIP
     if (!NodeFilter.isNodeTypeShown(internal.what_to_show, n)) {
@@ -520,7 +542,8 @@ fn filterNode(instance: *runtime.Instance, node: *runtime.Instance) ImplError!u1
     internal.active_flag = true;
 
     // Step 6: Call filter callback
-    // TODO: Implement proper WebIDL callback invocation
+    // TODO: Implement proper WebIDL callback invocation when callback system is ready
+    // For now, accept all nodes that pass whatToShow
     const result = NodeFilter.FILTER_ACCEPT;
 
     // Step 7: Unset traverser's active flag
@@ -531,42 +554,34 @@ fn filterNode(instance: *runtime.Instance, node: *runtime.Instance) ImplError!u1
 }
 
 // ============================================================================
-// Tree traversal helpers (adapted for runtime.Instance)
+// Tree traversal helpers (using NodeImpl)
 // ============================================================================
-// TODO: These should use DOM tree_helpers once Node bridging is complete
 
 fn getParentNode(node: *runtime.Instance) ?*runtime.Instance {
-    // TODO: Implement via Node.parentNode
-    _ = node;
-    return null;
+    return NodeImpl.getParent(node);
 }
 
 fn getFirstChild(node: *runtime.Instance) ?*runtime.Instance {
-    // TODO: Implement via Node.firstChild
-    _ = node;
-    return null;
+    return NodeImpl.getFirstChild(node);
 }
 
 fn getLastChild(node: *runtime.Instance) ?*runtime.Instance {
-    // TODO: Implement via Node.lastChild
-    _ = node;
-    return null;
+    return NodeImpl.getLastChild(node);
 }
 
 fn getNextSibling(node: *runtime.Instance) ?*runtime.Instance {
-    // TODO: Implement via Node.nextSibling
-    _ = node;
-    return null;
+    return NodeImpl.getNextSibling(node);
 }
 
 fn getPreviousSibling(node: *runtime.Instance) ?*runtime.Instance {
-    // TODO: Implement via Node.previousSibling
-    _ = node;
-    return null;
+    return NodeImpl.getPreviousSibling(node);
 }
 
 fn hasChildren(node: *runtime.Instance) bool {
-    // TODO: Implement via Node.hasChildNodes()
-    _ = node;
-    return false;
+    return NodeImpl.hasChildren(node);
+}
+
+/// Get the node type from a node instance
+fn getNodeType(node: *runtime.Instance) u16 {
+    return NodeImpl.getNodeType(node) orelse 1; // Default to ELEMENT_NODE
 }
