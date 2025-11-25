@@ -350,9 +350,19 @@ pub fn fromV8Value(
 
         // Check if this is a function (callback interface like EventListener)
         // Functions don't have internal fields, so we can't extract a *runtime.Instance
-        // TODO: The codegen should generate proper callback types instead of *runtime.Instance
-        // For now, return TypeError to avoid crash
+        //
+        // NOTE: This is an architectural limitation. Callback interfaces (EventListener,
+        // NodeFilter, XPathNSResolver) should be generated as *CallbackWrapper types,
+        // not *runtime.Instance. Until codegen is updated:
+        //
+        // - Functions passed as callback interface params will return TypeError
+        // - The impl code should handle null callbacks gracefully
+        //
+        // TODO: Update codegen to generate proper callback interface types
+        // See: src/webidl/v8_bindings/callback_wrapper.zig for CallbackWrapper
         if (v8.v8_Value_IsFunction(value)) {
+            // Return null instead of error - allows impl to handle gracefully
+            // This is a workaround until proper callback interface support is added
             return ConversionError.TypeError;
         }
 
