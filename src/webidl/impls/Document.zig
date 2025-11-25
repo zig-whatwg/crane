@@ -1,7 +1,13 @@
 //! Implementation for Document interface
 //!
-//! This file is AUTO-GENERATED on first creation.
-//! Add your custom implementation here.
+//! Spec: https://dom.spec.whatwg.org/#interface-document
+//! WHATWG DOM Standard §4.6
+//!
+//! Document represents the entire HTML or XML document. Conceptually, it is
+//! the root of the document tree, and provides the primary access to the
+//! document's data.
+//!
+//! Migrated from: webidl/src/dom/Document.zig
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -12,17 +18,130 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const Document = interfaces.Document;
 
+// Import related impls for factory methods
+const NodeImpl = @import("Node.zig");
+const TextImpl = @import("Text.zig");
+const CommentImpl = @import("Comment.zig");
+const DocumentFragmentImpl = @import("DocumentFragment.zig");
+const ProcessingInstructionImpl = @import("ProcessingInstruction.zig");
+const CDATASectionImpl = @import("CDATASection.zig");
+
 pub const State = Document.State;
 
 pub const ImplError = error{
     NotImplemented,
+    InvalidStateError,
+    NotSupportedError,
+    HierarchyRequestError,
+    OutOfMemory,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Document format type enumeration
+pub const DocType = enum {
+    html,
+    xml,
+};
+
+/// Internal state for Document implementation
+/// Spec: https://dom.spec.whatwg.org/#concept-document
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+
+    /// Cached DOMImplementation instance ([SameObject])
+    implementation: ?*runtime.Instance,
+
+    /// String interning pool for tag names, attribute names, etc.
+    /// Provides memory savings and O(1) string comparison via pointer equality
+    string_pool: std.StringHashMap(void),
+
+    /// Document base URL (fallback: empty string for about:blank)
+    /// Stored as owned slice
+    base_uri: []const u8,
+
+    /// Document content type (e.g., "text/html", "application/xml")
+    /// Stored as DOMString for proper memory management
+    content_type: runtime.DOMString,
+
+    /// Document type: html or xml
+    doc_type: DocType,
+
+    /// Document URL
+    /// Stored as owned slice
+    url: []const u8,
+
+    /// Document origin (opaque for now)
+    origin: ?*anyopaque,
+
+    /// Document encoding (default: UTF-8)
+    /// Stored as DOMString for proper memory management
+    encoding: runtime.DOMString,
+
+    /// Document ready state
+    ready_state: enums.DocumentReadyState,
+
+    /// The document element (root element, usually <html>)
+    document_element: ?*runtime.Instance,
+
+    /// The doctype node (if any)
+    doctype: ?*runtime.Instance,
+
+    /// Live ranges associated with this document
+    /// Spec: https://dom.spec.whatwg.org/#concept-live-range
+    ranges: std.ArrayList(*runtime.Instance),
+
+    /// Node iterators associated with this document
+    node_iterators: std.ArrayList(*runtime.Instance),
+
+    pub fn init(allocator: std.mem.Allocator) InternalState {
+        return .{
+            .allocator = allocator,
+            .implementation = null,
+            .string_pool = std.StringHashMap(void).init(allocator),
+            .base_uri = "",
+            .content_type = runtime.DOMString.initEmpty(),
+            .doc_type = .xml,
+            .url = "",
+            .origin = null,
+            .encoding = runtime.DOMString.initEmpty(),
+            .ready_state = ._loading_,
+            .document_element = null,
+            .doctype = null,
+            .ranges = .{},
+            .node_iterators = .{},
+        };
+    }
+
+    pub fn deinit(self: *InternalState) void {
+        // Free all interned strings from pool
+        var it = self.string_pool.keyIterator();
+        while (it.next()) |key_ptr| {
+            self.allocator.free(key_ptr.*);
+        }
+        self.string_pool.deinit();
+
+        // Clean up lists (don't own the items, just the list storage)
+        self.ranges.deinit(self.allocator);
+        self.node_iterators.deinit(self.allocator);
+
+        // Free owned strings
+        if (self.base_uri.len > 0) {
+            self.allocator.free(self.base_uri);
+        }
+        if (self.url.len > 0) {
+            self.allocator.free(self.url);
+        }
+
+        // Free DOMString storage
+        self.content_type.deinit(self.allocator);
+        self.encoding.deinit(self.allocator);
+    }
+};
+
+/// Get the internal state from an instance
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    const state = instance.getState(State);
+    return state.own._internal;
+}
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -32,86 +151,185 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    errdefer runtime.Instance.deinit(instance);
+
+    // Initialize Document internal state
+    const state = instance.getState(StateType);
+    const ArenaAllocator = @import("runtime").ArenaAllocator;
+    const internal = try ArenaAllocator.get().create(InternalState);
+    internal.* = InternalState.init(allocator);
+    state.own._internal = internal;
+
+    // Initialize as DOCUMENT_NODE
+    try NodeImpl.setNodeType(instance, NodeImpl.NodeType.DOCUMENT_NODE);
+
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.deinit();
+    }
     runtime.Instance.deinit(instance);
 }
 
 /// Constructor implementation
-/// This is called when the interface is constructed from JavaScript
+/// DOM §4.6 - new Document()
 pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-    // Create instance through init()
     const instance = try init(allocator, State, &Document.vtable, ctx);
     errdefer deinit(instance);
 
-    // TODO: Implement constructor logic with parameters
+    // Set default values
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    internal.content_type = try runtime.DOMString.initDupe(allocator, "application/xml");
+    internal.url = try allocator.dupe(u8, "about:blank");
+    internal.encoding = try runtime.DOMString.initDupe(allocator, "UTF-8");
 
     return instance;
 }
 
+// =============================================================================
+// String Interning
+// =============================================================================
+
+/// Intern a string in the document's string pool
+/// Returns a pointer to the interned string which can be compared via pointer equality
+/// If the string is already interned, returns the existing copy
+/// Caller does NOT own the returned slice - it's managed by the Document
+pub fn internString(instance: *runtime.Instance, str: []const u8) ![]const u8 {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Check if string is already interned
+    if (internal.string_pool.getKey(str)) |existing| {
+        return existing;
+    }
+
+    // Not interned yet - allocate and store
+    const owned = try internal.allocator.dupe(u8, str);
+    errdefer internal.allocator.free(owned);
+
+    try internal.string_pool.put(owned, {});
+    return owned;
+}
+
+// =============================================================================
+// Range and NodeIterator Registration
+// =============================================================================
+
+/// Register a live range with this document
+/// Spec: https://dom.spec.whatwg.org/#concept-live-range
+pub fn registerRange(instance: *runtime.Instance, range: *runtime.Instance) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    try internal.ranges.append(range);
+}
+
+/// Unregister a live range from this document
+pub fn unregisterRange(instance: *runtime.Instance, range: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+
+    for (internal.ranges.items, 0..) |r, i| {
+        if (r == range) {
+            _ = internal.ranges.orderedRemove(i);
+            return;
+        }
+    }
+}
+
+/// Register a node iterator with this document
+pub fn registerNodeIterator(instance: *runtime.Instance, iterator: *runtime.Instance) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    try internal.node_iterators.append(iterator);
+}
+
+/// Unregister a node iterator from this document
+pub fn unregisterNodeIterator(instance: *runtime.Instance, iterator: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+
+    for (internal.node_iterators.items, 0..) |iter, i| {
+        if (iter == iterator) {
+            _ = internal.node_iterators.orderedRemove(i);
+            return;
+        }
+    }
+}
+
 /// Getter for implementation
+/// DOM §4.6 - Returns document's DOMImplementation object
+/// [SameObject] - Always returns the same instance
+/// TODO: Implement DOMImplementation interface first
 pub fn get_implementation(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.implementation) |impl| {
+        return impl;
+    }
+    // TODO: Create and cache DOMImplementation when that interface is migrated
     return error.NotImplemented;
 }
 
 /// Getter for URL
+/// DOM §4.6 - Returns document's URL
 pub fn get_URL(instance: *runtime.Instance) ImplError!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // USVString is just []const u8
+    return internal.url;
 }
 
 /// Getter for documentURI
+/// DOM §4.6 - Returns document's URL (alias for URL)
 pub fn get_documentURI(instance: *runtime.Instance) ImplError!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    return get_URL(instance);
 }
 
 /// Getter for compatMode
+/// DOM §4.6 - Returns "BackCompat" if quirks mode, "CSS1Compat" otherwise
+/// For now, always return "CSS1Compat" (standards mode)
 pub fn get_compatMode(instance: *runtime.Instance) ImplError!runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    // TODO: Track quirks mode flag in InternalState
+    // Return interned string - no allocation needed
+    return runtime.DOMString.initInterned("CSS1Compat");
 }
 
 /// Getter for characterSet
+/// DOM §4.6 - Returns document's encoding
 pub fn get_characterSet(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.encoding;
 }
 
 /// Getter for charset
+/// DOM §4.6 - Historical alias for characterSet
 pub fn get_charset(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return get_characterSet(instance);
 }
 
 /// Getter for inputEncoding
+/// DOM §4.6 - Historical alias for characterSet
 pub fn get_inputEncoding(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return get_characterSet(instance);
 }
 
 /// Getter for contentType
+/// DOM §4.6 - Returns document's content type
 pub fn get_contentType(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.content_type;
 }
 
 /// Getter for doctype
+/// DOM §4.6 - Returns the DocumentType node or null
 pub fn get_doctype(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.doctype orelse return error.NotImplemented; // null case - need nullable return
 }
 
 /// Getter for documentElement
+/// DOM §4.6 - Returns the document element (root element, e.g., <html>)
 pub fn get_documentElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.document_element orelse return error.NotImplemented; // null case - need nullable return
 }
 
 /// Getter for fragmentDirective
@@ -247,9 +465,10 @@ pub fn get_lastModified(instance: *runtime.Instance) ImplError!runtime.DOMString
 }
 
 /// Getter for readyState
+/// DOM §4.6 - Returns the document's ready state
 pub fn get_readyState(instance: *runtime.Instance) ImplError!enums.DocumentReadyState {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.ready_state;
 }
 
 /// Getter for title
@@ -2041,11 +2260,37 @@ pub fn call_elementFromPoint(instance: *runtime.Instance, x: f64, y: f64) ImplEr
 }
 
 /// Operation: createElement
+/// DOM §4.6 - Creates an element with the given local name
+/// Spec: https://dom.spec.whatwg.org/#dom-document-createelement
 pub fn call_createElement(instance: *runtime.Instance, localName: runtime.DOMString, options: *const anyopaque) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = localName;
-    _ = options;
-    return error.NotImplemented;
+    _ = options; // TODO: Handle ElementCreationOptions (custom elements)
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Intern the tag name for memory efficiency
+    const interned_name = try internString(instance, localName.asSlice());
+    _ = interned_name;
+
+    // Create element via Element impl
+    const ElementImpl = @import("Element.zig");
+    const element = try ElementImpl.init(
+        internal.allocator,
+        interfaces.Element.State,
+        &interfaces.Element.vtable,
+        instance.ctx,
+    );
+    errdefer ElementImpl.deinit(element);
+
+    // Set node type to ELEMENT_NODE via Node impl
+    try NodeImpl.setNodeType(element, NodeImpl.NodeType.ELEMENT_NODE);
+
+    // Set the local name via the element's state
+    // TODO: Element needs proper localName setter implementation
+    // For now, the element is created but tagName is not set
+
+    // Set owner document
+    try NodeImpl.setOwnerDocument(element, instance);
+
+    return element;
 }
 
 /// Operation: releaseEvents
@@ -2172,11 +2417,31 @@ pub fn call_elementsFromPoint(instance: *runtime.Instance, x: f64, y: f64) ImplE
 }
 
 /// Operation: createProcessingInstruction
+/// DOM §4.6 - Creates a ProcessingInstruction node
+/// Spec: https://dom.spec.whatwg.org/#dom-document-createprocessinginstruction
 pub fn call_createProcessingInstruction(instance: *runtime.Instance, target: runtime.DOMString, data: runtime.DOMString) ImplError!*runtime.Instance {
-    _ = instance;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Create ProcessingInstruction node via impl
+    const pi = try ProcessingInstructionImpl.init(
+        internal.allocator,
+        interfaces.ProcessingInstruction.State,
+        &interfaces.ProcessingInstruction.vtable,
+        instance.ctx,
+    );
+    errdefer ProcessingInstructionImpl.deinit(pi);
+
+    // Set node type
+    try NodeImpl.setNodeType(pi, NodeImpl.NodeType.PROCESSING_INSTRUCTION_NODE);
+
+    // TODO: Set target and data fields on the ProcessingInstruction
     _ = target;
     _ = data;
-    return error.NotImplemented;
+
+    // Set owner document
+    try NodeImpl.setOwnerDocument(pi, instance);
+
+    return pi;
 }
 
 /// Operation: createEvent
@@ -2262,10 +2527,36 @@ pub fn call_importNode(instance: *runtime.Instance, node: *runtime.Instance, opt
 }
 
 /// Operation: createCDATASection
+/// DOM §4.6 - Creates a CDATASection node
+/// Spec: https://dom.spec.whatwg.org/#dom-document-createcdatasection
+/// Note: Only valid for XML documents
 pub fn call_createCDATASection(instance: *runtime.Instance, data: runtime.DOMString) ImplError!*runtime.Instance {
-    _ = instance;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Per spec: If this is an HTML document, throw NotSupportedError
+    if (internal.doc_type == .html) {
+        return error.NotSupportedError;
+    }
+
+    // Create CDATASection node via impl
+    const cdata = try CDATASectionImpl.init(
+        internal.allocator,
+        interfaces.CDATASection.State,
+        &interfaces.CDATASection.vtable,
+        instance.ctx,
+    );
+    errdefer CDATASectionImpl.deinit(cdata);
+
+    // Set node type
+    try NodeImpl.setNodeType(cdata, NodeImpl.NodeType.CDATA_SECTION_NODE);
+
+    // TODO: Set data field via CharacterData
     _ = data;
-    return error.NotImplemented;
+
+    // Set owner document
+    try NodeImpl.setOwnerDocument(cdata, instance);
+
+    return cdata;
 }
 
 /// Operation: queryCommandEnabled
@@ -2316,10 +2607,19 @@ pub fn call_adoptNode(instance: *runtime.Instance, node: *runtime.Instance) Impl
 }
 
 /// Operation: createTextNode
+/// DOM §4.6 - Creates a Text node with the given data
+/// Spec: https://dom.spec.whatwg.org/#dom-document-createtextnode
 pub fn call_createTextNode(instance: *runtime.Instance, data: runtime.DOMString) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = data;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Create Text node via Text impl constructor
+    const text = try TextImpl.call_constructor(internal.allocator, instance.ctx, data);
+    errdefer TextImpl.deinit(text);
+
+    // Set owner document
+    try NodeImpl.setOwnerDocument(text, instance);
+
+    return text;
 }
 
 /// Operation: createTreeWalker
@@ -2393,16 +2693,43 @@ pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: *c
 }
 
 /// Operation: createComment
+/// DOM §4.6 - Creates a Comment node with the given data
+/// Spec: https://dom.spec.whatwg.org/#dom-document-createcomment
 pub fn call_createComment(instance: *runtime.Instance, data: runtime.DOMString) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = data;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Create Comment node via Comment impl constructor
+    const comment = try CommentImpl.call_constructor(internal.allocator, instance.ctx, data);
+    errdefer CommentImpl.deinit(comment);
+
+    // Set owner document
+    try NodeImpl.setOwnerDocument(comment, instance);
+
+    return comment;
 }
 
 /// Operation: createDocumentFragment
+/// DOM §4.6 - Creates a DocumentFragment node
+/// Spec: https://dom.spec.whatwg.org/#dom-document-createdocumentfragment
 pub fn call_createDocumentFragment(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Create DocumentFragment node via impl
+    const fragment = try DocumentFragmentImpl.init(
+        internal.allocator,
+        interfaces.DocumentFragment.State,
+        &interfaces.DocumentFragment.vtable,
+        instance.ctx,
+    );
+    errdefer DocumentFragmentImpl.deinit(fragment);
+
+    // Set node type
+    try NodeImpl.setNodeType(fragment, NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE);
+
+    // Set owner document
+    try NodeImpl.setOwnerDocument(fragment, instance);
+
+    return fragment;
 }
 
 /// Operation: getSelection
@@ -2475,4 +2802,3 @@ pub fn call_measureText(instance: *runtime.Instance, text: runtime.DOMString, st
     _ = styleMap;
     return error.NotImplemented;
 }
-
