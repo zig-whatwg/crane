@@ -305,9 +305,28 @@ pub fn get_childNodes(instance: *runtime.Instance) !*runtime.Instance {
         return list;
     }
 
-    // TODO: Create a live NodeList for this node's children
-    // This requires NodeList implementation with live collection support
-    return error.NotImplemented;
+    // Create a new NodeList for this node's children
+    const NodeListImpl = @import("NodeList.zig");
+    const list = try NodeListImpl.init(
+        internal.allocator,
+        interfaces.NodeList.State,
+        &interfaces.NodeList.vtable,
+        instance.ctx,
+    );
+    errdefer NodeListImpl.deinit(list);
+
+    // Populate with current children
+    var child = internal.first_child;
+    while (child) |c| {
+        try NodeListImpl.addNode(list, c);
+        const child_internal = getInternal(c) orelse break;
+        child = child_internal.next_sibling;
+    }
+
+    // Cache the NodeList (per [SameObject] semantics)
+    internal.child_nodes_list = list;
+
+    return list;
 }
 
 /// Getter for firstChild
@@ -369,7 +388,7 @@ pub fn get_textContent(instance: *runtime.Instance) !runtime.DOMString {
 
     return switch (internal.node_type) {
         NodeType.DOCUMENT_NODE, NodeType.DOCUMENT_TYPE_NODE => {
-            // Returns null
+            // Returns null (represented as empty string for DOMString)
             return runtime.DOMString.initEmpty();
         },
         NodeType.ATTRIBUTE_NODE,
@@ -385,12 +404,42 @@ pub fn get_textContent(instance: *runtime.Instance) !runtime.DOMString {
             break :blk runtime.DOMString.initEmpty();
         },
         NodeType.ELEMENT_NODE, NodeType.DOCUMENT_FRAGMENT_NODE => {
-            // Returns concatenation of descendant text content
-            // TODO: Implement tree traversal to collect text
-            return error.NotImplemented;
+            // Returns concatenation of descendant text content (DOM §4.4.3)
+            var result = infra.List(u8).init(internal.allocator);
+            errdefer result.deinit();
+
+            try collectDescendantTextContent(instance, &result);
+
+            const slice = result.toOwnedSlice() catch return error.OutOfMemory;
+            if (slice.len == 0) {
+                return runtime.DOMString.initEmpty();
+            }
+            return runtime.DOMString.initOwned(slice);
         },
         else => runtime.DOMString.initEmpty(),
     };
+}
+
+/// Helper: Collect all descendant text content in tree order
+/// DOM §4.4.3 - The descendant text content of a node is the concatenation of
+/// the data of all the Text node descendants of node, in tree order.
+fn collectDescendantTextContent(node: *runtime.Instance, result: *infra.List(u8)) !void {
+    const internal = getInternal(node) orelse return;
+
+    // If this is a Text node, collect its data
+    if (internal.node_type == NodeType.TEXT_NODE) {
+        if (internal.node_value) |val| {
+            try result.appendSlice(val.asSlice());
+        }
+    }
+
+    // Recursively process all children
+    var child = internal.first_child;
+    while (child) |c| {
+        try collectDescendantTextContent(c, result);
+        const child_internal = getInternal(c) orelse break;
+        child = child_internal.next_sibling;
+    }
 }
 
 // =============================================================================
@@ -443,9 +492,67 @@ pub fn set_textContent(instance: *runtime.Instance, value: runtime.DOMString) !v
             internal.node_value = try value.clone(internal.allocator);
         },
         NodeType.ELEMENT_NODE, NodeType.DOCUMENT_FRAGMENT_NODE => {
-            // Remove all children, then append a Text node with value
-            // TODO: Implement removeAllChildren and createTextNode
-            return error.NotImplemented;
+            // DOM §4.4.3 - String replace all with value within node
+            // 1. Let node be null
+            // 2. If string is not empty, set node to a new Text node with data string
+            // 3. Replace all with node within parent
+
+            // Step 1-2: Create text node only if value is not empty
+            var new_text_node: ?*runtime.Instance = null;
+            const value_slice = value.asSlice();
+
+            if (value_slice.len > 0) {
+                // Create a new Text node
+                const TextImpl = @import("Text.zig");
+                const text_node = try TextImpl.call_constructor(internal.allocator, instance.ctx, value);
+                new_text_node = text_node;
+            }
+
+            // Step 3: Replace all children with the new node (or remove all if null)
+            // First, remove all existing children
+            var child = internal.first_child;
+            while (child) |c| {
+                const child_internal = getInternal(c) orelse break;
+                const next = child_internal.next_sibling;
+
+                // Clear child's parent reference
+                child_internal.parent = null;
+                child_internal.previous_sibling = null;
+                child_internal.next_sibling = null;
+                child_internal.is_connected = false;
+
+                child = next;
+            }
+
+            // Clear parent's child pointers
+            internal.first_child = null;
+            internal.last_child = null;
+
+            // Invalidate cached childNodes if it exists
+            if (internal.child_nodes_list) |list| {
+                const NodeListImpl = @import("NodeList.zig");
+                NodeListImpl.clear(list);
+            }
+
+            // If we have a new text node, append it
+            if (new_text_node) |text_node| {
+                const text_internal = getInternal(text_node) orelse return error.OutOfMemory;
+
+                // Set up parent relationship
+                text_internal.parent = instance;
+                text_internal.owner_document = internal.owner_document;
+                text_internal.is_connected = internal.is_connected;
+
+                // Set as only child
+                internal.first_child = text_node;
+                internal.last_child = text_node;
+
+                // Add to cached childNodes if it exists
+                if (internal.child_nodes_list) |list| {
+                    const NodeListImpl = @import("NodeList.zig");
+                    try NodeListImpl.addNode(list, text_node);
+                }
+            }
         },
         else => {},
     }
@@ -1192,4 +1299,11 @@ pub fn getChildCount(instance: *runtime.Instance) u32 {
 /// This is a public helper for DOMImplementation and other impls
 pub fn appendChild(parent: *runtime.Instance, node: *runtime.Instance) !*runtime.Instance {
     return call_appendChild(parent, node);
+}
+
+/// Get the owner document (returns null if not set or instance has no state)
+/// This is a convenience helper for mutation algorithms
+pub fn getOwnerDocument(instance: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(instance) orelse return null;
+    return internal.owner_document;
 }
