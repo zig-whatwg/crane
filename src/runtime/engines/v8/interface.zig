@@ -1047,6 +1047,19 @@ pub fn V8Interface(comptime Interface: type) type {
                 setInstance(runtime.Instance, this_obj, instance);
             }
 
+            // ========================================
+            // CACHE THE WRAPPER: Store constructor-created wrapper for identity
+            // ========================================
+            if (ctx.getV8WrapperCacheStorage()) |cache_storage| {
+                const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
+                const cache: *WrapperCache = @ptrCast(@alignCast(cache_storage));
+
+                // Cache the wrapper (log but don't fail if caching fails)
+                cache.set(instance, this_obj, isolate) catch |err| {
+                    std.log.warn("Failed to cache constructor wrapper: {s}", .{@errorName(err)});
+                };
+            }
+
             // Return 'this' (V8 does this automatically for constructors)
         }
 
