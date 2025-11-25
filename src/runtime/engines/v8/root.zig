@@ -113,6 +113,10 @@ pub const CallbackWrapper = callback_wrapper_mod.CallbackWrapper;
 pub const EventListenerCallback = callback_wrapper_mod.EventListenerCallback;
 pub const createCallbackFromV8Value = callback_wrapper_mod.createFromV8Value;
 
+/// V8 Wrapper Identity Cache - Maintains 1:1 mapping between instances and V8 wrappers
+pub const wrapper_cache_mod = @import("wrapper_cache.zig");
+pub const WrapperCache = wrapper_cache_mod.WrapperCache;
+
 // Re-export commonly used types for convenience
 pub const Isolate = ffi.Isolate;
 pub const Context = ffi.Context;
