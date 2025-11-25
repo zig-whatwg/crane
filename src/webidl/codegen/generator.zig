@@ -581,7 +581,8 @@ fn generateImplFile(
     // Get type registry for proper type mapping
     const type_reg = if (ir) |ir_ptr| &ir_ptr.type_registry else null;
 
-    // Write header with strict DO NOT COMPILE notices
+    // Write header with strict DO NOT COMPILE notices for impls_tmp/ files
+    // These warnings should be removed when copying to impls/
     try w.writeAll("//! ============================================================================\n");
     try w.writeAll("//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY\n");
     try w.writeAll("//! ============================================================================\n");
@@ -593,8 +594,9 @@ fn generateImplFile(
     try w.writeAll("//!\n");
     try w.writeAll("//! TO USE THIS STUB:\n");
     try w.writeAll("//!   1. Copy this file to src/webidl/impls/\n");
-    try w.writeAll("//!   2. Add your implementation logic\n");
-    try w.writeAll("//!   3. The impls/ directory is the canonical location for implementations\n");
+    try w.writeAll("//!   2. Remove this header comment block\n");
+    try w.writeAll("//!   3. Add your implementation logic\n");
+    try w.writeAll("//!   4. The impls/ directory is the canonical location for implementations\n");
     try w.writeAll("//!\n");
     try w.writeAll("//! If updating an existing implementation:\n");
     try w.writeAll("//!   1. Diff this stub against the existing file in impls/\n");
