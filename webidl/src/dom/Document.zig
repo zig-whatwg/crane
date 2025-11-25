@@ -319,23 +319,208 @@ pub const Document = webidl.interface(struct {
 
     /// createAttribute(localName)
     /// DOM §4.6.1 - Creates an Attr node with the given local name
+    ///
+    /// Spec: https://dom.spec.whatwg.org/#dom-document-createattribute
+    /// Steps:
+    /// 1. If localName does not match the Name production in XML, throw "InvalidCharacterError"
+    /// 2. If this is an HTML document, set localName to localName in ASCII lowercase
+    /// 3. Return a new attribute whose local name is localName and node document is this
     pub fn call_createAttribute(self: *Document, local_name: []const u8) !*Attr {
-        _ = self;
-        _ = local_name;
-        return error.NotImplemented;
+        // Step 1: Validate localName matches XML Name production
+        if (!isValidXmlName(local_name)) {
+            return error.InvalidCharacterError;
+        }
+
+        // Step 2: ASCII lowercase for HTML documents
+        var processed_name: []u8 = undefined;
+        if (self.doc_type == .html) {
+            processed_name = try self.allocator.alloc(u8, local_name.len);
+            for (local_name, 0..) |c, i| {
+                processed_name[i] = if (c >= 'A' and c <= 'Z') c + 32 else c;
+            }
+        } else {
+            processed_name = try self.allocator.dupe(u8, local_name);
+        }
+        errdefer self.allocator.free(processed_name);
+
+        // Step 3: Create new attribute
+        const attr = try self.allocator.create(Attr);
+        attr.* = try Attr.init(self.allocator, null, null, processed_name, "");
+        self.allocator.free(processed_name); // Attr.init duplicates the string
+
+        // Set node document
+        const self_node: *Node = @ptrCast(self);
+        attr.owner_document = self_node;
+
+        return attr;
     }
 
     /// createAttributeNS(namespace, qualifiedName)
     /// DOM §4.6.1 - Creates an Attr node in the given namespace
+    ///
+    /// Spec: https://dom.spec.whatwg.org/#dom-document-createattributens
+    /// Steps:
+    /// 1. Let namespace, prefix, and localName be the result of passing namespace and qualifiedName
+    ///    to validate and extract
+    /// 2. Return a new attribute whose namespace is namespace, namespace prefix is prefix,
+    ///    local name is localName, and node document is this
     pub fn call_createAttributeNS(
         self: *Document,
         namespace: ?[]const u8,
         qualified_name: []const u8,
     ) !*Attr {
-        _ = self;
-        _ = namespace;
-        _ = qualified_name;
-        return error.NotImplemented;
+        // Step 1: Validate and extract namespace, prefix, and localName
+        const result = try validateAndExtract(namespace, qualified_name);
+
+        // Step 2: Create new attribute
+        const attr = try self.allocator.create(Attr);
+        attr.* = try Attr.init(
+            self.allocator,
+            result.namespace,
+            result.prefix,
+            result.local_name,
+            "",
+        );
+
+        // Set node document
+        const self_node: *Node = @ptrCast(self);
+        attr.owner_document = self_node;
+
+        return attr;
+    }
+
+    /// Validate and extract namespace, prefix, and localName from namespace and qualifiedName
+    /// Spec: https://dom.spec.whatwg.org/#validate-and-extract
+    const ValidateExtractResult = struct {
+        namespace: ?[]const u8,
+        prefix: ?[]const u8,
+        local_name: []const u8,
+    };
+
+    fn validateAndExtract(namespace: ?[]const u8, qualified_name: []const u8) !ValidateExtractResult {
+        // Step 1: If namespace is empty string, set it to null
+        const ns = if (namespace) |n| (if (n.len == 0) null else n) else null;
+
+        // Step 2: Validate qualifiedName
+        if (!isValidXmlQName(qualified_name)) {
+            return error.InvalidCharacterError;
+        }
+
+        // Step 3: Parse prefix and localName from qualifiedName
+        var prefix: ?[]const u8 = null;
+        var local_name: []const u8 = qualified_name;
+
+        if (std.mem.indexOf(u8, qualified_name, ":")) |colon_pos| {
+            prefix = qualified_name[0..colon_pos];
+            local_name = qualified_name[colon_pos + 1 ..];
+        }
+
+        // Step 4: If prefix is non-null and namespace is null, throw "NamespaceError"
+        if (prefix != null and ns == null) {
+            return error.NamespaceError;
+        }
+
+        // Step 5: If prefix is "xml" and namespace is not XML namespace, throw "NamespaceError"
+        const XML_NAMESPACE = "http://www.w3.org/XML/1998/namespace";
+        if (prefix != null and std.mem.eql(u8, prefix.?, "xml")) {
+            if (ns == null or !std.mem.eql(u8, ns.?, XML_NAMESPACE)) {
+                return error.NamespaceError;
+            }
+        }
+
+        // Step 6: If qualifiedName or prefix is "xmlns" and namespace is not XMLNS namespace
+        const XMLNS_NAMESPACE = "http://www.w3.org/2000/xmlns/";
+        const is_xmlns_qn = std.mem.eql(u8, qualified_name, "xmlns");
+        const is_xmlns_prefix = prefix != null and std.mem.eql(u8, prefix.?, "xmlns");
+
+        if (is_xmlns_qn or is_xmlns_prefix) {
+            if (ns == null or !std.mem.eql(u8, ns.?, XMLNS_NAMESPACE)) {
+                return error.NamespaceError;
+            }
+        }
+
+        // Step 7: If namespace is XMLNS and qualifiedName/prefix are not "xmlns"
+        if (ns != null and std.mem.eql(u8, ns.?, XMLNS_NAMESPACE)) {
+            if (!is_xmlns_qn and !is_xmlns_prefix) {
+                return error.NamespaceError;
+            }
+        }
+
+        return .{
+            .namespace = ns,
+            .prefix = prefix,
+            .local_name = local_name,
+        };
+    }
+
+    /// Check if a string is a valid XML Name
+    /// Spec: https://www.w3.org/TR/xml/#NT-Name
+    fn isValidXmlName(name: []const u8) bool {
+        if (name.len == 0) return false;
+
+        // First character must be a NameStartChar
+        const first = name[0];
+        if (!isNameStartChar(first)) return false;
+
+        // Remaining characters must be NameChar
+        for (name[1..]) |c| {
+            if (!isNameChar(c)) return false;
+        }
+
+        return true;
+    }
+
+    /// Check if a string is a valid XML QName
+    /// Spec: https://www.w3.org/TR/xml-names/#NT-QName
+    fn isValidXmlQName(qname: []const u8) bool {
+        if (qname.len == 0) return false;
+
+        // QName = PrefixedName | UnprefixedName
+        // PrefixedName = Prefix ':' LocalPart
+        // Prefix = NCName
+        // LocalPart = NCName
+        // UnprefixedName = LocalPart
+
+        if (std.mem.indexOf(u8, qname, ":")) |colon_pos| {
+            // PrefixedName - both parts must be valid NCNames
+            const prefix_part = qname[0..colon_pos];
+            const local_part = qname[colon_pos + 1 ..];
+
+            return isValidNcName(prefix_part) and isValidNcName(local_part);
+        } else {
+            // UnprefixedName - must be valid NCName
+            return isValidNcName(qname);
+        }
+    }
+
+    /// Check if a string is a valid NCName (Name without colons)
+    fn isValidNcName(name: []const u8) bool {
+        if (name.len == 0) return false;
+
+        // First character must be a NameStartChar but not ':'
+        const first = name[0];
+        if (first == ':' or !isNameStartChar(first)) return false;
+
+        // Remaining characters must be NameChar but not ':'
+        for (name[1..]) |c| {
+            if (c == ':' or !isNameChar(c)) return false;
+        }
+
+        return true;
+    }
+
+    /// XML NameStartChar (simplified ASCII subset)
+    fn isNameStartChar(c: u8) bool {
+        return (c >= 'A' and c <= 'Z') or
+            (c >= 'a' and c <= 'z') or
+            c == '_' or c == ':';
+    }
+
+    /// XML NameChar (simplified ASCII subset)
+    fn isNameChar(c: u8) bool {
+        return isNameStartChar(c) or
+            (c >= '0' and c <= '9') or
+            c == '-' or c == '.';
     }
 
     /// importNode(node, deep)
@@ -450,8 +635,9 @@ pub const Document = webidl.interface(struct {
             },
 
             Node.CDATA_SECTION_NODE => {
-                // TODO: Implement when CDATASection is fully supported
-                return error.NotImplemented;
+                const cdata: *CDATASection = @ptrCast(node);
+                const copy_cdata = try self.call_createCDATASection(cdata.data);
+                return @ptrCast(copy_cdata);
             },
 
             else => {
@@ -487,6 +673,11 @@ pub const Document = webidl.interface(struct {
                 const fragment: *DocumentFragment = @ptrCast(node);
                 fragment.deinit();
                 self.allocator.destroy(fragment);
+            },
+            Node.CDATA_SECTION_NODE => {
+                const cdata: *CDATASection = @ptrCast(node);
+                cdata.deinit();
+                self.allocator.destroy(cdata);
             },
             else => {},
         }
