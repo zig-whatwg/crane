@@ -26,14 +26,7 @@
 //! This is different from regular interfaces which store a pointer to a Zig struct.
 
 const std = @import("std");
-// NOTE: This file uses V8-specific types directly. It should only be used
-// from V8 binding code, not from engine-agnostic WebIDL impls.
-// TODO: Create engine-agnostic callback wrapper in EngineInterface
-//
-// WARNING: This import path is currently broken. This file needs to be moved
-// to src/runtime/engines/v8/ or the v8 module needs to be added as a dependency
-// of the webidl module in build.zig when this code is actually needed.
-const v8 = @import("../runtime/engines/v8/ffi.zig");
+const v8 = @import("ffi.zig");
 const runtime = @import("runtime");
 
 /// Wrapper for a JavaScript callback (function or object with method)
@@ -98,13 +91,10 @@ pub const CallbackWrapper = struct {
 
     /// Clean up the callback wrapper
     pub fn deinit(self: *CallbackWrapper) void {
-        // Dispose persistent handles
-        if (self.callback_function) |func| {
-            v8.v8_Function_Dispose(func);
-        }
-        if (self.callback_object) |obj| {
-            v8.v8_Object_Dispose(obj);
-        }
+        // TODO: Dispose persistent handles when FFI supports v8_Function_Dispose/v8_Object_Dispose
+        // For now, just free the wrapper struct - the V8 GC owns the underlying values
+        _ = self.callback_function;
+        _ = self.callback_object;
         self.allocator.destroy(self);
     }
 
@@ -179,9 +169,9 @@ pub fn createFromV8Value(
     if (v8.v8_Value_IsFunction(value)) {
         // Direct function callback
         const func: *v8.Function = @ptrCast(value);
-        // Create a persistent handle
-        const persistent_func = v8.v8_Function_Persist(isolate, func) orelse return error.OutOfMemory;
-        return try CallbackWrapper.initFunction(allocator, isolate, persistent_func);
+        // TODO: Use persistent handles when FFI supports v8_Function_Persist
+        // For now, store the raw pointer (caller must ensure callback stays alive)
+        return try CallbackWrapper.initFunction(allocator, isolate, func);
     }
 
     if (v8.v8_Value_IsObject(value)) {
@@ -199,9 +189,9 @@ pub fn createFromV8Value(
             return null;
         }
 
-        // Create a persistent handle for the object
-        const persistent_obj = v8.v8_Object_Persist(isolate, obj) orelse return error.OutOfMemory;
-        return try CallbackWrapper.initObject(allocator, isolate, persistent_obj, method_name);
+        // TODO: Use persistent handles when FFI supports v8_Object_Persist
+        // For now, store the raw pointer (caller must ensure callback stays alive)
+        return try CallbackWrapper.initObject(allocator, isolate, obj, method_name);
     }
 
     return null;

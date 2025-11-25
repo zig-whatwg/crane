@@ -157,9 +157,9 @@ pub fn get_whatToShow(instance: *runtime.Instance) ImplError!u32 {
 
 /// DOM §6.3 - TreeWalker.filter
 /// Returns the filter callback (may be null)
-pub fn get_filter(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_filter(instance: *runtime.Instance) ImplError!??*runtime.CallbackWrapper {
     const internal = getInternal(instance);
-    // TODO: Return proper NodeFilter interface
+    // TODO: Return proper NodeFilter callback wrapper
     _ = internal;
     return null;
 }

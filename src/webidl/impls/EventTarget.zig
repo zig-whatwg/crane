@@ -27,8 +27,10 @@ pub const EventListenerRecord = struct {
     /// type (a string)
     event_type: runtime.DOMString,
 
-    /// callback (null or an EventListener callback)
-    callback: ?*runtime.Instance,
+    /// callback (null or an EventListener callback interface)
+    /// Per WebIDL, EventListener is a callback interface - can be a function
+    /// or an object with handleEvent method
+    callback: ?*runtime.CallbackWrapper,
 
     /// capture (a boolean, initially false)
     capture: bool = false,
@@ -225,7 +227,7 @@ fn defaultPassiveValue(event_type: []const u8, event_target: *runtime.Instance) 
 }
 
 /// Compare two callbacks for equality (by reference)
-fn callbackEquals(a: ?*runtime.Instance, b: ?*runtime.Instance) bool {
+fn callbackEquals(a: ?*runtime.CallbackWrapper, b: ?*runtime.CallbackWrapper) bool {
     if (a == null and b == null) return true;
     if (a == null or b == null) return false;
     return a.? == b.?;
@@ -305,7 +307,7 @@ fn removeAnEventListener(internal: *InternalState, listener: EventListenerRecord
 
 /// Operation: addEventListener
 /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
-pub fn call_addEventListener(instance: *runtime.Instance, event_type: runtime.DOMString, callback: *runtime.Instance, options: *const anyopaque) ImplError!void {
+pub fn call_addEventListener(instance: *runtime.Instance, event_type: runtime.DOMString, callback: ?*runtime.CallbackWrapper, options: *const anyopaque) ImplError!void {
     // Get or create internal state
     var internal = getInternalFromRegistry(instance);
     if (internal == null) {
@@ -340,7 +342,7 @@ pub fn call_addEventListener(instance: *runtime.Instance, event_type: runtime.DO
 
 /// Operation: removeEventListener
 /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-removeeventlistener
-pub fn call_removeEventListener(instance: *runtime.Instance, event_type: runtime.DOMString, callback: *runtime.Instance, options: *const anyopaque) ImplError!void {
+pub fn call_removeEventListener(instance: *runtime.Instance, event_type: runtime.DOMString, callback: ?*runtime.CallbackWrapper, options: *const anyopaque) ImplError!void {
     const internal = getInternalFromRegistry(instance) orelse return;
 
     // Flatten options

@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-25T19:42:24Z
+//! Generated at: 2025-11-25T20:02:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -75,7 +75,7 @@ pub const NodeIterator = struct {
             referenceNode: *runtime.Instance = undefined,
             pointerBeforeReferenceNode: bool = undefined,
             whatToShow: u32 = undefined,
-            filter: ?*runtime.Instance = null,
+            filter: ??*runtime.CallbackWrapper = null,
             cached_root: ?*runtime.Instance = null,
             _internal: ?*NodeIteratorImpl.InternalState = null,
         },
@@ -129,7 +129,7 @@ pub const NodeIterator = struct {
         return try NodeIteratorImpl.get_whatToShow(instance);
     }
 
-    pub fn get_filter(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+    pub fn get_filter(instance: *runtime.Instance) anyerror!??*runtime.CallbackWrapper {
         return try NodeIteratorImpl.get_filter(instance);
     }
 

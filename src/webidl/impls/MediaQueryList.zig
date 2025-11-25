@@ -65,16 +65,15 @@ pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) I
 }
 
 /// Operation: removeListener
-pub fn call_removeListener(instance: *runtime.Instance, callback: *runtime.Instance) ImplError!void {
+pub fn call_removeListener(instance: *runtime.Instance, callback: ?*runtime.CallbackWrapper) ImplError!void {
     _ = instance;
     _ = callback;
     return error.NotImplemented;
 }
 
 /// Operation: addListener
-pub fn call_addListener(instance: *runtime.Instance, callback: *runtime.Instance) ImplError!void {
+pub fn call_addListener(instance: *runtime.Instance, callback: ?*runtime.CallbackWrapper) ImplError!void {
     _ = instance;
     _ = callback;
     return error.NotImplemented;
 }
-

@@ -107,6 +107,12 @@ pub const INTERNAL_FIELD_COUNT = wrapper_type_info_mod.INTERNAL_FIELD_COUNT;
 /// DOM WrapperTypeInfo definitions (pre-defined until codegen generates them)
 pub const dom_type_info = @import("dom_type_info.zig");
 
+/// V8 Callback Wrapper for callback interfaces (EventListener, NodeFilter, etc.)
+pub const callback_wrapper_mod = @import("callback_wrapper.zig");
+pub const CallbackWrapper = callback_wrapper_mod.CallbackWrapper;
+pub const EventListenerCallback = callback_wrapper_mod.EventListenerCallback;
+pub const createCallbackFromV8Value = callback_wrapper_mod.createFromV8Value;
+
 // Re-export commonly used types for convenience
 pub const Isolate = ffi.Isolate;
 pub const Context = ffi.Context;

@@ -1,5 +1,5 @@
 //! Generated from: xhr.idl
-//! Generated at: 2025-11-25T19:42:23Z
+//! Generated at: 2025-11-25T20:02:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 

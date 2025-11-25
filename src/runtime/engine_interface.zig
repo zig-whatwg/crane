@@ -149,6 +149,57 @@ pub const EngineInterface = struct {
         allocator: std.mem.Allocator,
     ) void,
 
+    // ========================================================================
+    // Callback Interface Support
+    // ========================================================================
+
+    /// Create a callback wrapper from a JavaScript value
+    ///
+    /// Used for WebIDL callback interfaces (EventListener, NodeFilter, etc.)
+    /// The wrapper stores a persistent reference to the JS function/object.
+    ///
+    /// Arguments:
+    ///   - engine_ctx: Engine-specific context (V8 Context, etc.)
+    ///   - js_value: Opaque pointer to JS value (function or object)
+    ///   - method_name: For object callbacks, the method to call (e.g., "handleEvent")
+    ///   - allocator: Allocator for wrapper storage
+    ///
+    /// Returns:
+    ///   - Opaque pointer to callback wrapper, or null if value is not callable
+    createCallbackWrapper: ?*const fn (
+        engine_ctx: *anyopaque,
+        js_value: *anyopaque,
+        method_name: [*:0]const u8,
+        allocator: std.mem.Allocator,
+    ) EngineError!?*anyopaque,
+
+    /// Invoke a callback wrapper with arguments
+    ///
+    /// Arguments:
+    ///   - engine_ctx: Engine-specific context
+    ///   - callback_wrapper: Wrapper from createCallbackWrapper
+    ///   - args: Array of opaque pointers to JS values
+    ///   - args_len: Number of arguments
+    ///
+    /// Returns:
+    ///   - Opaque pointer to return value (may be undefined)
+    invokeCallback: ?*const fn (
+        engine_ctx: *anyopaque,
+        callback_wrapper: *anyopaque,
+        args: [*]const *anyopaque,
+        args_len: usize,
+    ) EngineError!?*anyopaque,
+
+    /// Destroy a callback wrapper
+    ///
+    /// Releases the persistent handle to the JS function/object.
+    ///
+    /// Arguments:
+    ///   - callback_wrapper: Wrapper from createCallbackWrapper
+    destroyCallbackWrapper: ?*const fn (
+        callback_wrapper: *anyopaque,
+    ) void,
+
     /// Engine name for debugging/logging
     name: []const u8,
 
@@ -167,6 +218,9 @@ pub const stub_engine: EngineInterface = .{
     .getPromiseObject = stubGetPromiseObject,
     .createEventLoop = null,
     .destroyEventLoop = null,
+    .createCallbackWrapper = null,
+    .invokeCallback = null,
+    .destroyCallbackWrapper = null,
     .name = "stub",
     .version = "0.0.0",
 };

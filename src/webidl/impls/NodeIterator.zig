@@ -201,14 +201,16 @@ pub fn get_whatToShow(instance: *runtime.Instance) ImplError!u32 {
 /// DOM §6.2 - NodeIterator.filter
 /// Returns the filter callback (may be null)
 /// Note: WebIDL says nullable NodeFilter, returns null if no filter
-pub fn get_filter(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_filter(instance: *runtime.Instance) ImplError!??*runtime.CallbackWrapper {
     const internal = getInternal(instance);
-    // If filter is null, return NotImplemented (signals null in WebIDL)
+    // If filter is null, return null (outer optional = null means no value)
     if (internal.filter) |filter_ptr| {
-        // Cast opaque pointer back to Instance
-        return @ptrCast(@alignCast(filter_ptr));
+        // Cast opaque pointer back to CallbackWrapper
+        // Wrap in outer optional to satisfy ??* type
+        const wrapper: *runtime.CallbackWrapper = @ptrCast(@alignCast(filter_ptr));
+        return @as(?*runtime.CallbackWrapper, wrapper);
     }
-    return error.NotImplemented; // null
+    return @as(?*runtime.CallbackWrapper, null);
 }
 
 // ============================================================================

@@ -1,5 +1,5 @@
 //! Generated from: cssom-view.idl
-//! Generated at: 2025-11-25T19:42:24Z
+//! Generated at: 2025-11-25T20:02:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -123,12 +123,12 @@ pub const MediaQueryList = struct {
         try MediaQueryListImpl.set_onchange(instance, value);
     }
 
-    pub fn call_removeListener(instance: *runtime.Instance, callback: *runtime.Instance) anyerror!void {
+    pub fn call_removeListener(instance: *runtime.Instance, callback: ?*runtime.CallbackWrapper) anyerror!void {
         
         return try MediaQueryListImpl.call_removeListener(instance, callback);
     }
 
-    pub fn call_addListener(instance: *runtime.Instance, callback: *runtime.Instance) anyerror!void {
+    pub fn call_addListener(instance: *runtime.Instance, callback: ?*runtime.CallbackWrapper) anyerror!void {
         
         return try MediaQueryListImpl.call_addListener(instance, callback);
     }

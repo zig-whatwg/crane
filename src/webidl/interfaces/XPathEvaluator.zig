@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-25T19:42:24Z
+//! Generated at: 2025-11-25T20:02:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -100,13 +100,13 @@ pub const XPathEvaluator = struct {
         return try XPathEvaluatorImpl.call_createNSResolver(instance, nodeResolver);
     }
 
-    pub fn call_evaluate(instance: *runtime.Instance, expression: DOMString, contextNode: *runtime.Instance, resolver: *runtime.Instance, @"type": u16, result: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_evaluate(instance: *runtime.Instance, expression: DOMString, contextNode: *runtime.Instance, resolver: ?*runtime.CallbackWrapper, @"type": u16, result: *runtime.Instance) anyerror!*runtime.Instance {
         
         return try XPathEvaluatorImpl.call_evaluate(instance, expression, contextNode, resolver, @"type", result);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createExpression(instance: *runtime.Instance, expression: DOMString, resolver: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_createExpression(instance: *runtime.Instance, expression: DOMString, resolver: ?*runtime.CallbackWrapper) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try XPathEvaluatorImpl.call_createExpression(instance, expression, resolver);

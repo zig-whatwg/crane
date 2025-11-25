@@ -26,6 +26,7 @@ const ffi = @import("ffi.zig");
 const async_iterator = @import("async_iterator.zig");
 const promise_mod = @import("promise.zig");
 const event_loop_mod = @import("event_loop.zig");
+const callback_wrapper_mod = @import("callback_wrapper.zig");
 
 /// V8 implementation of the abstract EngineInterface
 pub const v8_engine_interface: EngineInterface = .{
@@ -36,6 +37,9 @@ pub const v8_engine_interface: EngineInterface = .{
     .getPromiseObject = v8GetPromiseObject,
     .createEventLoop = v8CreateEventLoop,
     .destroyEventLoop = v8DestroyEventLoop,
+    .createCallbackWrapper = v8CreateCallbackWrapper,
+    .invokeCallback = v8InvokeCallback,
+    .destroyCallbackWrapper = v8DestroyCallbackWrapper,
     .name = "V8",
     .version = "12.x", // TODO: Get actual version from V8
 };
@@ -181,6 +185,68 @@ fn v8DestroyEventLoop(
 }
 
 // ============================================================================
+// Callback Wrapper Implementation
+// ============================================================================
+
+/// Create a V8 callback wrapper from a JavaScript value
+///
+/// Used for WebIDL callback interfaces like EventListener.
+/// Supports both direct function callbacks and object callbacks with methods.
+fn v8CreateCallbackWrapper(
+    engine_ctx: *anyopaque,
+    js_value: *anyopaque,
+    method_name: [*:0]const u8,
+    allocator: std.mem.Allocator,
+) EngineError!?*anyopaque {
+    const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const isolate = ffi.v8_Context_GetIsolate(context) orelse
+        return EngineError.OperationFailed;
+    const value: *ffi.Value = @ptrCast(@alignCast(js_value));
+
+    const wrapper = callback_wrapper_mod.createFromV8Value(
+        allocator,
+        isolate,
+        context,
+        value,
+        method_name,
+    ) catch return EngineError.OutOfMemory;
+
+    if (wrapper) |w| {
+        return @ptrCast(w);
+    }
+    return null;
+}
+
+/// Invoke a V8 callback wrapper with arguments
+fn v8InvokeCallback(
+    engine_ctx: *anyopaque,
+    callback_wrapper: *anyopaque,
+    args: [*]const *anyopaque,
+    args_len: usize,
+) EngineError!?*anyopaque {
+    const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const wrapper: *callback_wrapper_mod.CallbackWrapper = @ptrCast(@alignCast(callback_wrapper));
+
+    // Convert args to V8 values
+    const v8_args: [*]const *ffi.Value = @ptrCast(args);
+    const v8_args_slice = v8_args[0..args_len];
+
+    const result = wrapper.callN(context, v8_args_slice);
+    if (result) |r| {
+        return @ptrCast(r);
+    }
+    return null;
+}
+
+/// Destroy a V8 callback wrapper
+fn v8DestroyCallbackWrapper(
+    callback_wrapper: *anyopaque,
+) void {
+    const wrapper: *callback_wrapper_mod.CallbackWrapper = @ptrCast(@alignCast(callback_wrapper));
+    wrapper.deinit();
+}
+
+// ============================================================================
 // Helper functions for V8-specific operations
 // ============================================================================
 
@@ -216,5 +282,8 @@ test "v8_engine_interface - has all required functions" {
     try testing.expect(v8_engine_interface.getPromiseObject != null);
     try testing.expect(v8_engine_interface.createEventLoop != null);
     try testing.expect(v8_engine_interface.destroyEventLoop != null);
+    try testing.expect(v8_engine_interface.createCallbackWrapper != null);
+    try testing.expect(v8_engine_interface.invokeCallback != null);
+    try testing.expect(v8_engine_interface.destroyCallbackWrapper != null);
     try testing.expectEqualStrings("V8", v8_engine_interface.name);
 }

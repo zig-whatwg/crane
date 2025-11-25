@@ -2486,7 +2486,7 @@ pub fn call_exitPictureInPicture(instance: *runtime.Instance) ImplError!*const a
 }
 
 /// Operation: createExpression
-pub fn call_createExpression(instance: *runtime.Instance, expression: runtime.DOMString, resolver: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_createExpression(instance: *runtime.Instance, expression: runtime.DOMString, resolver: ?*runtime.CallbackWrapper) ImplError!*runtime.Instance {
     _ = instance;
     _ = expression;
     _ = resolver;
@@ -3022,7 +3022,7 @@ fn collectElementsByTagName(
 }
 
 /// Operation: evaluate
-pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString, contextNode: *runtime.Instance, resolver: *runtime.Instance, @"type": u16, result: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString, contextNode: *runtime.Instance, resolver: ?*runtime.CallbackWrapper, @"type": u16, result: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
     _ = expression;
     _ = contextNode;
@@ -3498,7 +3498,7 @@ pub fn call_createTextNode(instance: *runtime.Instance, data: runtime.DOMString)
 /// 4. Set walker's whatToShow to whatToShow
 /// 5. Set walker's filter to filter
 /// 6. Return walker
-pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: u32, filter: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: u32, filter: ?*runtime.CallbackWrapper) ImplError!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     _ = filter; // TODO: Handle NodeFilter callback properly
 
@@ -3820,7 +3820,7 @@ pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime
 /// 5. Set iterator's whatToShow to whatToShow
 /// 6. Set iterator's filter to filter
 /// 7. Return iterator
-pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: u32, filter: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: u32, filter: ?*runtime.CallbackWrapper) ImplError!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     _ = filter; // TODO: Handle NodeFilter callback properly
 

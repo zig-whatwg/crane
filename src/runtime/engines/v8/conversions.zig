@@ -25,6 +25,7 @@ const runtime = @import("runtime");
 const namespace = @import("namespace.zig");
 const interface_mod = @import("interface.zig");
 const dom_type_info = @import("dom_type_info.zig");
+const callback_wrapper = @import("callback_wrapper.zig");
 
 /// Conversion errors that can occur during type conversion
 pub const ConversionError = error{
@@ -471,6 +472,39 @@ pub fn fromV8Value(
     }
     if (T == runtime.Any) return fromV8Any(value);
     if (T == *const anyopaque) return @ptrCast(value); // Used for variadic ...any parameters
+
+    // Handle CallbackWrapper types (for callback interfaces like EventListener, NodeFilter, etc.)
+    // We use the V8-specific callback wrapper and cast to runtime.CallbackWrapper pointer
+    if (T == *runtime.CallbackWrapper) {
+        // Create a V8 CallbackWrapper from the V8 value (function or object with handleEvent)
+        const v8_wrapper = try callback_wrapper.createFromV8Value(
+            allocator,
+            isolate,
+            context,
+            value,
+            "handleEvent", // Default method name for callback interfaces
+        ) orelse return ConversionError.TypeError;
+        // Cast to opaque runtime.CallbackWrapper pointer
+        // The runtime.CallbackWrapper and v8 CallbackWrapper are layout-compatible for this use
+        return @ptrCast(v8_wrapper);
+    }
+    if (T == ?*runtime.CallbackWrapper) {
+        // Optional callback - null/undefined is valid
+        if (v8.v8_Value_IsNullOrUndefined(value)) {
+            return null;
+        }
+        const v8_wrapper = try callback_wrapper.createFromV8Value(
+            allocator,
+            isolate,
+            context,
+            value,
+            "handleEvent",
+        );
+        if (v8_wrapper) |w| {
+            return @ptrCast(w);
+        }
+        return null;
+    }
 
     // If we get here, it's an unsupported type
     @compileError("Unsupported type for V8 conversion: " ++ @typeName(T));
