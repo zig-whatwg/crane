@@ -742,10 +742,19 @@ fn generateImplFile(
 
         try w.print("/// Getter for {s}\n", .{attr.name});
         try w.print("pub fn get_{s}(instance: *runtime.Instance) ImplError!", .{sanitized_name});
+        // For nullable types, return ?T instead of T
+        if (attr.idlType.nullable) {
+            try w.writeAll("?");
+        }
         try writeTypeSimple(w, attr.idlType, type_reg);
         try w.writeAll(" {\n");
         try w.writeAll("    _ = instance;\n");
-        try w.print("    return error.NotImplemented;\n", .{});
+        // For nullable types, return null instead of error.NotImplemented
+        if (attr.idlType.nullable) {
+            try w.writeAll("    return null;\n");
+        } else {
+            try w.writeAll("    return error.NotImplemented;\n");
+        }
         try w.writeAll("}\n\n");
     }
 
@@ -779,6 +788,7 @@ fn generateImplFile(
             // Multiple overloads - generate ONE impl stub that accepts the Args union
             const first_op = set.operations[0];
             const op_name = first_op.name orelse "unnamed";
+            const is_nullable_return = first_op.idlType.nullable;
 
             try w.print("/// Operation: {s} (overloaded - {d} variants)\n", .{ op_name, set.operations.len });
             try w.print("pub fn call_{s}(instance: *runtime.Instance, args: interfaces.{s}.", .{ op_name, interface.name });
@@ -791,16 +801,27 @@ fn generateImplFile(
             try capitalized_name.appendSlice(allocator, "Args");
 
             try w.print("{s}) ImplError!", .{capitalized_name.items});
+            // For nullable return types, return ?T instead of T
+            if (is_nullable_return) {
+                try w.writeAll("?");
+            }
             try writeTypeSimple(w, first_op.idlType, type_reg);
             try w.writeAll(" {\n");
             try w.writeAll("    _ = instance;\n");
             try w.writeAll("    _ = args;\n");
-            try w.writeAll("    return error.NotImplemented;\n");
+            // For nullable types, return null instead of error.NotImplemented
+            if (is_nullable_return) {
+                try w.writeAll("    return null;\n");
+            } else {
+                try w.writeAll("    return error.NotImplemented;\n");
+            }
             try w.writeAll("}\n\n");
         } else {
             // Single operation - generate normal function (same as before)
             const op = set.operations[0];
             const op_name = op.name orelse "unnamed";
+            const is_nullable_return = op.idlType.nullable;
+
             try w.print("/// Operation: {s}\n", .{op_name});
             try w.print("pub fn call_{s}(instance: *runtime.Instance", .{op_name});
             for (op.arguments) |arg| {
@@ -810,6 +831,10 @@ fn generateImplFile(
                 try writeTypeSimple(w, arg.idlType, type_reg);
             }
             try w.writeAll(") ImplError!");
+            // For nullable return types, return ?T instead of T
+            if (is_nullable_return) {
+                try w.writeAll("?");
+            }
             try writeTypeSimple(w, op.idlType, type_reg);
             try w.writeAll(" {\n");
             try w.writeAll("    _ = instance;\n");
@@ -818,7 +843,12 @@ fn generateImplFile(
                 try writeEscapedImplParamName(w, arg.name);
                 try w.writeAll(";\n");
             }
-            try w.writeAll("    return error.NotImplemented;\n");
+            // For nullable types, return null instead of error.NotImplemented
+            if (is_nullable_return) {
+                try w.writeAll("    return null;\n");
+            } else {
+                try w.writeAll("    return error.NotImplemented;\n");
+            }
             try w.writeAll("}\n\n");
         }
     }

@@ -1107,11 +1107,11 @@ pub fn writeGeneratedState(
     try writer.writeAll("        Meta.MixinTypes,\n");
 
     // Write the own-fields struct inline as third parameter
-    if (!has_fields) {
-        // Empty struct for interfaces with no own instance attributes
-        try writer.writeAll("        struct {},\n");
-    } else {
-        try writer.writeAll("        struct {\n");
+    // Always generate a struct with _internal field for impl-specific state,
+    // even if there are no WebIDL attributes
+    try writer.writeAll("        struct {\n");
+
+    if (has_fields) {
 
         // Write a field for each attribute
         for (attributes) |attr| {
@@ -1240,14 +1240,15 @@ pub fn writeGeneratedState(
 
             try writer.writeAll(" = null,\n");
         }
-
-        // Add _internal field for impl-specific state
-        // This allows implementations to store custom state (like URLRecord)
-        // while keeping the codegen automated
-        try writer.print("            _internal: ?*{s}.InternalState = null,\n", .{impl_name});
-
-        try writer.writeAll("        },\n");
     }
+
+    // Add _internal field for impl-specific state
+    // This allows implementations to store custom state (like URLRecord)
+    // while keeping the codegen automated
+    // Always added, even for interfaces with no WebIDL attributes
+    try writer.print("            _internal: ?*{s}.InternalState = null,\n", .{impl_name});
+
+    try writer.writeAll("        },\n");
 
     // Complete the FlattenedState call
     try writer.writeAll("    );\n\n");
@@ -1874,6 +1875,9 @@ fn writeSingleOperation(
         return_type = "*const anyopaque";
     }
 
+    // Check if return type is nullable (WebIDL T? type)
+    const is_nullable_return = op.idlType.nullable;
+
     const has_ce_reactions = hasExtendedAttribute(op.extAttrs, "CEReactions");
     const has_new_object = hasExtendedAttribute(op.extAttrs, "NewObject");
 
@@ -1908,7 +1912,12 @@ fn writeSingleOperation(
         try writer.print(": {s}", .{arg_type});
     }
 
-    try writer.print(") anyerror!{s} {{\n", .{return_type});
+    // For nullable return types, return ?T instead of T (allows returning null instead of error)
+    if (is_nullable_return) {
+        try writer.print(") anyerror!?{s} {{\n", .{return_type});
+    } else {
+        try writer.print(") anyerror!{s} {{\n", .{return_type});
+    }
 
     if (has_ce_reactions) {
         try writer.writeAll("        // [CEReactions] - Trigger Custom Element lifecycle callbacks\n");
@@ -1983,6 +1992,9 @@ fn writeOverloadedOperation(
     else
         mapWebIDLType(set.operations[0].idlType);
 
+    // Check if return type is nullable (WebIDL T? type)
+    const is_nullable_return = set.operations[0].idlType.nullable;
+
     // Generate Args union type
     try writer.print("    /// Arguments for {s} (WebIDL overloading)\n", .{name});
     const cap_name = try capitalize(allocator, name);
@@ -2035,7 +2047,12 @@ fn writeOverloadedOperation(
     // Generate dispatch function
     const cap_name2 = try capitalize(allocator, name);
     defer allocator.free(cap_name2);
-    try writer.print("    pub fn call_{s}(instance: *runtime.Instance, args: {s}Args) anyerror!{s} {{\n", .{ name, cap_name2, return_type });
+    // For nullable return types, return ?T instead of T
+    if (is_nullable_return) {
+        try writer.print("    pub fn call_{s}(instance: *runtime.Instance, args: {s}Args) anyerror!?{s} {{\n", .{ name, cap_name2, return_type });
+    } else {
+        try writer.print("    pub fn call_{s}(instance: *runtime.Instance, args: {s}Args) anyerror!{s} {{\n", .{ name, cap_name2, return_type });
+    }
     try writer.print("        switch (args) {{\n", .{});
 
     // Generate case for each variant
@@ -2104,6 +2121,9 @@ pub fn writeDelegateFunctions(
             return_type = "*const anyopaque";
         }
 
+        // Check if this attribute is nullable (WebIDL T? type)
+        const is_nullable = attr.idlType.nullable;
+
         const has_same_object = hasExtendedAttribute(attr.extAttrs, "SameObject");
 
         // Sanitize attribute name for function names (convert hyphens to underscores)
@@ -2114,7 +2134,12 @@ pub fn writeDelegateFunctions(
         // Write extended attributes as comment
         try writeExtendedAttributesComment(writer, attr.extAttrs);
 
-        try writer.print("    pub fn get_{s}(instance: *runtime.Instance) anyerror!{s} {{\n", .{ sanitized_name, return_type });
+        // For nullable types, return ?T instead of T (allows returning null instead of error)
+        if (is_nullable) {
+            try writer.print("    pub fn get_{s}(instance: *runtime.Instance) anyerror!?{s} {{\n", .{ sanitized_name, return_type });
+        } else {
+            try writer.print("    pub fn get_{s}(instance: *runtime.Instance) anyerror!{s} {{\n", .{ sanitized_name, return_type });
+        }
 
         // Use caching for [SameObject] attributes (all attributes here are own)
         if (has_same_object) {
