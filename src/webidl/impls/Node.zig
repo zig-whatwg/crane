@@ -1063,3 +1063,10 @@ pub fn getNodeType(instance: *runtime.Instance) ?u16 {
     const internal = getInternal(instance) orelse return null;
     return internal.node_type;
 }
+
+/// Get the parent node (returns null if no parent or instance has no state)
+/// This is a convenience helper for Range and other impls that need nullable parent access
+pub fn getParent(instance: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(instance) orelse return null;
+    return internal.parent;
+}
