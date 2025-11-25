@@ -23,6 +23,8 @@ const std = @import("std");
 const v8 = @import("ffi.zig");
 const runtime = @import("runtime");
 const namespace = @import("namespace.zig");
+const interface_mod = @import("interface.zig");
+const dom_type_info = @import("dom_type_info.zig");
 
 /// Conversion errors that can occur during type conversion
 pub const ConversionError = error{
@@ -345,8 +347,31 @@ pub fn fromV8Value(
         if (!v8.v8_Value_IsObject(value)) {
             return ConversionError.TypeError;
         }
+
+        // Check if this is a function (callback interface like EventListener)
+        // Functions don't have internal fields, so we can't extract a *runtime.Instance
+        // TODO: The codegen should generate proper callback types instead of *runtime.Instance
+        // For now, return TypeError to avoid crash
+        if (v8.v8_Value_IsFunction(value)) {
+            return ConversionError.TypeError;
+        }
+
         const object = @as(*v8.Object, @ptrCast(value));
 
+        // First try to get stored WrapperTypeInfo for validation
+        if (interface_mod.getWrapperTypeInfo(object)) |wrapper_info| {
+            // We have type info - use type-safe unwrapping
+            // For generic *runtime.Instance, we accept any valid wrapped object
+            // by checking that it has a valid type tag (any tag is fine)
+            if (wrapper_info.this_tag > 0) {
+                // Valid type info, get instance from slot 0
+                return interface_mod.getInstance(runtime.Instance, object) orelse {
+                    return ConversionError.TypeError;
+                };
+            }
+        }
+
+        // Fall back to legacy extraction (no type info stored)
         // Get the instance pointer from internal field 0
         const internal_field = v8.v8_Object_GetAlignedPointerFromInternalField(object, 0) orelse {
             return ConversionError.TypeError;

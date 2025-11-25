@@ -666,9 +666,23 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Get 'this' object and extract the Zig instance
                     const this_obj = info.getThis();
-                    const instance = getInstance(runtime.Instance, this_obj) orelse {
-                        conv.throwError(isolate, "Invalid instance - no internal data");
-                        return;
+
+                    // Try type-safe unwrapping first if we have WrapperTypeInfo for this interface
+                    const dom_type_info_mod = @import("dom_type_info.zig");
+                    const instance = blk: {
+                        if (dom_type_info_mod.getTypeInfoByName(interface_name)) |expected_type| {
+                            // Type-safe unwrapping - validates the V8 object is the correct type
+                            break :blk getInstanceTypeSafe(runtime.Instance, this_obj, expected_type) orelse {
+                                conv.throwError(isolate, "Invalid instance - type mismatch or no internal data");
+                                return;
+                            };
+                        } else {
+                            // Fall back to legacy unwrapping (no type validation)
+                            break :blk getInstance(runtime.Instance, this_obj) orelse {
+                                conv.throwError(isolate, "Invalid instance - no internal data");
+                                return;
+                            };
+                        }
                     };
 
                     // Get the method function at comptime
@@ -1537,9 +1551,21 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get 'this' object (the instance)
             const this_obj = info.getThis();
-            const instance = getInstance(runtime.Instance, this_obj) orelse {
-                conv.throwError(isolate, "Invalid instance for async iterator");
-                return;
+
+            // Try type-safe unwrapping first
+            const dom_type_info_mod = @import("dom_type_info.zig");
+            const instance = blk: {
+                if (dom_type_info_mod.getTypeInfoByName(interface_name)) |expected_type| {
+                    break :blk getInstanceTypeSafe(runtime.Instance, this_obj, expected_type) orelse {
+                        conv.throwError(isolate, "Invalid instance for async iterator - type mismatch");
+                        return;
+                    };
+                } else {
+                    break :blk getInstance(runtime.Instance, this_obj) orelse {
+                        conv.throwError(isolate, "Invalid instance for async iterator");
+                        return;
+                    };
+                }
             };
 
             // Call interface's call_values() method to get the Zig iterator
