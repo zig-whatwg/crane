@@ -403,6 +403,10 @@ pub extern fn v8_Integer_New(isolate: *Isolate, value: i32) *Number;
 
 // FunctionTemplate (for namespace and interface bindings)
 pub extern fn v8_FunctionTemplate_New(isolate: *Isolate, callback: ?FunctionCallback, data: ?*Value) ?*FunctionTemplate;
+/// Create FunctionTemplate with Signature (receiver type checking)
+/// The signature ensures the callback is only called when 'this' is an instance
+/// of the receiver template (or a subclass via inheritance).
+pub extern fn v8_FunctionTemplate_NewWithSignature(isolate: *Isolate, callback: ?FunctionCallback, data: ?*Value, receiver: *FunctionTemplate) ?*FunctionTemplate;
 pub extern fn v8_FunctionTemplate_GetFunction(function_template: *FunctionTemplate, context: *Context) ?*Function;
 pub extern fn v8_FunctionTemplate_Dispose(tpl: *FunctionTemplate) void;
 pub extern fn v8_FunctionTemplate_SetClassName(tpl: *FunctionTemplate, name: *String) void;

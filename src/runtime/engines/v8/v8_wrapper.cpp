@@ -653,6 +653,31 @@ Global<FunctionTemplate>* v8_FunctionTemplate_New(
     return new Global<FunctionTemplate>(isolate, tpl);
 }
 
+// Create FunctionTemplate with Signature (receiver type checking)
+// The signature ensures the callback is only called when 'this' is an instance
+// of the receiver template (or a subclass via inheritance).
+Global<FunctionTemplate>* v8_FunctionTemplate_NewWithSignature(
+    Isolate* isolate,
+    ZigCallback callback,
+    Global<Value>* data,
+    Global<FunctionTemplate>* receiver
+) {
+    HandleScope handle_scope(isolate);
+    
+    // Create signature from receiver template
+    Local<FunctionTemplate> receiver_local = receiver->Get(isolate);
+    Local<Signature> signature = Signature::New(isolate, receiver_local);
+    
+    // Create function template with signature
+    Local<FunctionTemplate> tpl = FunctionTemplate::New(
+        isolate,
+        reinterpret_cast<FunctionCallback>(callback),
+        data ? data->Get(isolate) : Local<Value>(),
+        signature  // V8 will enforce receiver type
+    );
+    return new Global<FunctionTemplate>(isolate, tpl);
+}
+
 Global<Function>* v8_FunctionTemplate_GetFunction(Global<FunctionTemplate>* function_template, Global<Context>* context) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
