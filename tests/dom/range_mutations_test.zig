@@ -1,59 +1,22 @@
 //! Tests for Range Mutation Algorithms
 //! Spec: https://dom.spec.whatwg.org/#interface-range (§4.10)
 //!
-//! Note: These tests cover the simplified implementation that handles
-//! ranges within a single CharacterData node (the most common case).
+//! Note: Full Range mutation tests are now in tests/v8/dom_test.js since they
+//! require the complete runtime environment (Document, Text nodes, etc.)
+//! that the V8 integration provides.
+//!
+//! The implementation is in src/webidl/impls/Range.zig.
+//! The deprecated simplified version in src/dom/range_mutations.zig is no longer used.
 
 const std = @import("std");
 const dom = @import("dom");
-const infra = @import("infra");
-const webidl = @import("webidl");
-// Type aliases
-const CharacterData = dom.CharacterData;
-const Text = dom.TextWithBase;
 
-const Range = @import("dom").Range;
-const Document = @import("dom").Document;
-const Node = @import("dom").Node;
+// These tests verify only that the module compiles and types are accessible.
+// Functional tests are in tests/v8/dom_test.js
 
-test "Range.deleteContents - collapsed range does nothing" {
-    const allocator = std.testing.allocator;
-
-    // Create document and text node
-    const doc_ptr = try allocator.create(Node);
-    defer allocator.destroy(doc_ptr);
-
-    // TODO(DOM): Properly initialize document
-    // For now, skip this test due to initialization complexity
-    return error.SkipZigTest;
+test "Range - dom module accessible" {
+    // This test ensures the dom module is accessible from tests.
+    // Range mutations are tested via V8 integration tests since they
+    // require the complete runtime environment (Document, Text nodes, etc.)
+    _ = dom;
 }
-
-test "Range.deleteContents - simple text range" {
-    // TODO(DOM): Implement test once we have proper Document/Text setup
-    return error.SkipZigTest;
-}
-
-test "Range.extractContents - collapsed range returns empty fragment" {
-    // TODO(DOM): Implement test once we have proper Document/Text setup
-    return error.SkipZigTest;
-}
-
-test "Range.extractContents - extracts text content" {
-    // TODO(DOM): Implement test once we have proper Document/Text setup
-    return error.SkipZigTest;
-}
-
-test "Range.cloneContents - collapsed range returns empty fragment" {
-    // TODO(DOM): Implement test once we have proper Document/Text setup
-    return error.SkipZigTest;
-}
-
-test "Range.cloneContents - clones text content without modifying original" {
-    // TODO(DOM): Implement test once we have proper Document/Text setup
-    return error.SkipZigTest;
-}
-
-// Note: Full tests require proper Document and Text node initialization
-// which is complex due to WebIDL-generated interfaces.
-// The implementations are ready and will work when called from properly
-// initialized Range objects.
