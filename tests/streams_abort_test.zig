@@ -156,7 +156,7 @@ test "WritableStream.abort() - signals abort on controller's AbortController" {
     // Spec § 5.3.3 step 2: Signal abort should have been called
     // AbortSignal should now be aborted
     try testing.expect(stream.controller.abortController.signal.aborted);
-    
+
     // Abort reason should be set
     try testing.expect(stream.controller.abortController.signal.reason != null);
 }

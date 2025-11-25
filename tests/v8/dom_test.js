@@ -257,10 +257,9 @@ typeof NodeList.prototype.item === "function"
 // NodeList is iterable
 typeof NodeList.prototype[Symbol.iterator] === "function"
 typeof NodeList.prototype.forEach === "function"
-// TODO: entries/keys/values not yet implemented
-// typeof NodeList.prototype.entries === "function"
-// typeof NodeList.prototype.keys === "function"
-// typeof NodeList.prototype.values === "function"
+typeof NodeList.prototype.entries === "function"
+typeof NodeList.prototype.keys === "function"
+typeof NodeList.prototype.values === "function"
 
 // ============================================================================
 // HTMLCOLLECTION INTERFACE TESTS (DOM Standard Section 4.3.7)
@@ -369,9 +368,8 @@ AbortSignal.prototype !== undefined
 AbortSignal.prototype.__proto__ === EventTarget.prototype
 
 // AbortSignal static methods
-// TODO: static methods not yet implemented
-// typeof AbortSignal.abort === "function"
-// typeof AbortSignal.timeout === "function"
+typeof AbortSignal.abort === "function"
+typeof AbortSignal.timeout === "function"
 
 // AbortSignal properties and methods
 "aborted" in AbortSignal.prototype
@@ -732,19 +730,18 @@ AbortSignal.prototype.__proto__ === EventTarget.prototype
 // CONSTRUCTIBLE INTERFACE TESTS
 // ============================================================================
 
-// TODO: Constructors not yet fully implemented - these interfaces should be constructible
-// Once constructors are implemented, uncomment these tests:
-// (() => { try { new Event("test"); return true; } catch(e) { return false; } })()
-// (() => { try { new CustomEvent("test"); return true; } catch(e) { return false; } })()
-// (() => { try { new EventTarget(); return true; } catch(e) { return false; } })()
-// (() => { try { new AbortController(); return true; } catch(e) { return false; } })()
-// (() => { try { new MutationObserver(() => {}); return true; } catch(e) { return false; } })()
-// (() => { try { new Range(); return true; } catch(e) { return false; } })()
-// (() => { try { new Text(); return true; } catch(e) { return false; } })()
-// (() => { try { new Text("hello"); return true; } catch(e) { return false; } })()
-// (() => { try { new Comment(); return true; } catch(e) { return false; } })()
-// (() => { try { new Comment("comment"); return true; } catch(e) { return false; } })()
-// (() => { try { new DocumentFragment(); return true; } catch(e) { return false; } })()
+// These should be constructible
+(() => { try { new Event("test"); return true; } catch(e) { return false; } })()
+(() => { try { new CustomEvent("test"); return true; } catch(e) { return false; } })()
+(() => { try { new EventTarget(); return true; } catch(e) { return false; } })()
+(() => { try { new AbortController(); return true; } catch(e) { return false; } })()
+(() => { try { new MutationObserver(() => {}); return true; } catch(e) { return false; } })()
+(() => { try { new Range(); return true; } catch(e) { return false; } })()
+(() => { try { new Text(); return true; } catch(e) { return false; } })()
+(() => { try { new Text("hello"); return true; } catch(e) { return false; } })()
+(() => { try { new Comment(); return true; } catch(e) { return false; } })()
+(() => { try { new Comment("comment"); return true; } catch(e) { return false; } })()
+(() => { try { new DocumentFragment(); return true; } catch(e) { return false; } })()
 
 // ============================================================================
 // PROPERTY DESCRIPTOR TESTS
@@ -796,3 +793,66 @@ CharacterData.prototype.hasOwnProperty("appendData") === true
 Text.prototype.hasOwnProperty("appendData") === false
 Text.prototype.hasOwnProperty("splitText") === true
 CharacterData.prototype.hasOwnProperty("splitText") === false
+
+// ============================================================================
+// DOCUMENT CONSTRUCTOR TESTS
+// ============================================================================
+
+// Document can be constructed
+(() => { try { new Document(); return true; } catch(e) { return false; } })()
+
+// Document instance has expected methods
+(() => { try { var d = new Document(); return typeof d.createElement === "function"; } catch(e) { return false; } })()
+(() => { try { var d = new Document(); return typeof d.createTextNode === "function"; } catch(e) { return false; } })()
+(() => { try { var d = new Document(); return typeof d.createComment === "function"; } catch(e) { return false; } })()
+(() => { try { var d = new Document(); return typeof d.createDocumentFragment === "function"; } catch(e) { return false; } })()
+(() => { try { var d = new Document(); return typeof d.querySelector === "function"; } catch(e) { return false; } })()
+(() => { try { var d = new Document(); return typeof d.querySelectorAll === "function"; } catch(e) { return false; } })()
+(() => { try { var d = new Document(); return typeof d.getElementById === "function"; } catch(e) { return false; } })()
+(() => { try { var d = new Document(); return typeof d.getElementsByTagName === "function"; } catch(e) { return false; } })()
+(() => { try { var d = new Document(); return typeof d.getElementsByClassName === "function"; } catch(e) { return false; } })()
+
+// Document instance has expected properties
+(() => { try { var d = new Document(); return "URL" in d; } catch(e) { return false; } })()
+(() => { try { var d = new Document(); return "documentURI" in d; } catch(e) { return false; } })()
+(() => { try { var d = new Document(); return "compatMode" in d; } catch(e) { return false; } })()
+(() => { try { var d = new Document(); return "characterSet" in d; } catch(e) { return false; } })()
+(() => { try { var d = new Document(); return "contentType" in d; } catch(e) { return false; } })()
+(() => { try { var d = new Document(); return "doctype" in d; } catch(e) { return false; } })()
+(() => { try { var d = new Document(); return "documentElement" in d; } catch(e) { return false; } })()
+(() => { try { var d = new Document(); return "body" in d; } catch(e) { return false; } })()
+(() => { try { var d = new Document(); return "head" in d; } catch(e) { return false; } })()
+(() => { try { var d = new Document(); return "title" in d; } catch(e) { return false; } })()
+(() => { try { var d = new Document(); return "readyState" in d; } catch(e) { return false; } })()
+
+// Document prototype chain is correct
+Document.prototype.__proto__ === Node.prototype
+Node.prototype.__proto__ === EventTarget.prototype
+
+// ============================================================================
+// QUERYSELECTOR TESTS (DOM Standard - Selectors API)
+// ============================================================================
+//
+// NOTE: Full functional querySelector tests require V8 method binding completion.
+// Currently methods use placeholderMethodCallback which throws "Method not yet implemented".
+// These tests verify interface existence and will be expanded when methods are fully bound.
+
+// querySelector exists on Document
+typeof Document.prototype.querySelector === "function"
+typeof Document.prototype.querySelectorAll === "function"
+
+// querySelector exists on Element
+typeof Element.prototype.querySelector === "function"
+typeof Element.prototype.querySelectorAll === "function"
+
+// querySelector exists on DocumentFragment
+typeof DocumentFragment.prototype.querySelector === "function"
+typeof DocumentFragment.prototype.querySelectorAll === "function"
+
+// ParentNode mixin provides querySelector to Document, Element, DocumentFragment
+"querySelector" in Document.prototype
+"querySelectorAll" in Document.prototype
+"querySelector" in Element.prototype
+"querySelectorAll" in Element.prototype
+"querySelector" in DocumentFragment.prototype
+"querySelectorAll" in DocumentFragment.prototype

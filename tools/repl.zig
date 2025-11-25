@@ -9,6 +9,8 @@
 
 const std = @import("std");
 const v8 = @import("v8");
+const context_manager = @import("v8").context_manager;
+const runtime = @import("runtime");
 
 /// REPL state
 const Repl = struct {
@@ -21,6 +23,9 @@ const Repl = struct {
     const Self = @This();
 
     pub fn init(allocator: std.mem.Allocator) !Self {
+        // Initialize WebIDL runtime (SlabAllocator, ArenaAllocator)
+        runtime.initializeRuntime(allocator);
+
         // Initialize V8 platform
         v8.ffi.v8_Platform_Initialize();
 
@@ -35,6 +40,12 @@ const Repl = struct {
         errdefer v8.ffi.v8_Context_Dispose(context);
 
         v8.ffi.v8_Context_Enter(context);
+
+        // Initialize context manager for V8 callbacks
+        context_manager.init(allocator) catch |err| {
+            std.debug.print("Warning: Context manager init failed: {}\n", .{err});
+            // Continue anyway - some interfaces may not work properly
+        };
 
         // Register all interface bindings using comptime reflection
         // The @setEvalBranchQuota is needed because we iterate over 1231 declarations
@@ -203,11 +214,17 @@ const Repl = struct {
         self.history.deinit(self.allocator);
         self.input_buffer.deinit(self.allocator);
 
+        // Cleanup context manager
+        context_manager.deinit();
+
         // Cleanup V8
         v8.ffi.v8_Context_Exit(self.context);
         v8.ffi.v8_Context_Dispose(self.context);
         v8.ffi.v8_Isolate_Exit(self.isolate);
         v8.ffi.v8_Isolate_Dispose(self.isolate);
+
+        // Cleanup WebIDL runtime
+        runtime.deinitializeRuntime();
     }
 
     /// Execute JavaScript code and return result
