@@ -1206,3 +1206,9 @@ pub fn getChildCount(instance: *runtime.Instance) u32 {
     }
     return count;
 }
+
+/// Append a node as the last child
+/// This is a public helper for DOMImplementation and other impls
+pub fn appendChild(parent: *runtime.Instance, node: *runtime.Instance) !*runtime.Instance {
+    return call_appendChild(parent, node);
+}

@@ -18,6 +18,9 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const NodeIterator = interfaces.NodeIterator;
 
+// Import related impls
+const NodeImpl = @import("Node.zig");
+
 pub const State = NodeIterator.State;
 
 pub const ImplError = error{
@@ -27,6 +30,7 @@ pub const ImplError = error{
 };
 
 /// NodeFilter constants per DOM spec
+/// https://dom.spec.whatwg.org/#interface-nodefilter
 pub const NodeFilter = struct {
     // Filter return values
     pub const FILTER_ACCEPT: u16 = 1;
@@ -49,6 +53,7 @@ pub const NodeFilter = struct {
     pub const SHOW_NOTATION: u32 = 0x800; // Historical
 
     /// Check if a node type is shown according to whatToShow bitmask
+    /// node_type_minus_one is (nodeType - 1) to get the bit position
     pub fn isNodeTypeShown(what_to_show: u32, node_type_minus_one: u8) bool {
         const bit: u32 = @as(u32, 1) << @intCast(node_type_minus_one);
         return (what_to_show & bit) != 0;
@@ -76,7 +81,7 @@ pub const InternalState = struct {
     what_to_show: u32,
 
     /// Optional filter callback
-    /// TODO: Proper WebIDL callback support - for now store as opaque pointer
+    /// Stored as opaque to support WebIDL callback interface
     filter: ?*anyopaque,
 
     /// Active flag to prevent recursive invocations
@@ -104,6 +109,12 @@ pub const InternalState = struct {
 fn getInternal(instance: *runtime.Instance) *InternalState {
     const state = instance.getState(State);
     return @ptrCast(@alignCast(state.own._internal));
+}
+
+/// Helper to get NodeImpl internal state from a node instance
+fn getNodeInternal(node: *runtime.Instance) ?*NodeImpl.InternalState {
+    const state = node.getState(interfaces.Node.State);
+    return state.own._internal;
 }
 
 /// Initialize instance (creates the instance)
@@ -138,6 +149,23 @@ pub fn deinit(instance: *runtime.Instance) void {
     runtime.Instance.deinit(instance);
 }
 
+/// Initialize a NodeIterator with given parameters
+/// Called by Document.createNodeIterator
+pub fn initWithParams(
+    instance: *runtime.Instance,
+    root: *runtime.Instance,
+    what_to_show: u32,
+    filter: ?*anyopaque,
+) void {
+    const internal = getInternal(instance);
+    internal.root = root;
+    internal.reference = root; // Start at root
+    internal.pointer_before_reference = true; // Start before root
+    internal.what_to_show = what_to_show;
+    internal.filter = filter;
+    internal.active_flag = false;
+}
+
 // ============================================================================
 // Getters
 // ============================================================================
@@ -146,14 +174,14 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Returns the root node
 pub fn get_root(instance: *runtime.Instance) ImplError!*runtime.Instance {
     const internal = getInternal(instance);
-    return internal.root orelse return error.NotImplemented;
+    return internal.root orelse return error.InvalidStateError;
 }
 
 /// DOM §6.2 - NodeIterator.referenceNode
 /// Returns the current reference node
 pub fn get_referenceNode(instance: *runtime.Instance) ImplError!*runtime.Instance {
     const internal = getInternal(instance);
-    return internal.reference orelse return error.NotImplemented;
+    return internal.reference orelse return error.InvalidStateError;
 }
 
 /// DOM §6.2 - NodeIterator.pointerBeforeReferenceNode
@@ -172,13 +200,15 @@ pub fn get_whatToShow(instance: *runtime.Instance) ImplError!u32 {
 
 /// DOM §6.2 - NodeIterator.filter
 /// Returns the filter callback (may be null)
-/// Note: Generated interface expects non-nullable but WebIDL says nullable
+/// Note: WebIDL says nullable NodeFilter, returns null if no filter
 pub fn get_filter(instance: *runtime.Instance) ImplError!*runtime.Instance {
     const internal = getInternal(instance);
-    // TODO: Return proper NodeFilter interface
-    // For now, filter is stored as opaque pointer
-    _ = internal;
-    return error.NotImplemented;
+    // If filter is null, return NotImplemented (signals null in WebIDL)
+    if (internal.filter) |filter_ptr| {
+        // Cast opaque pointer back to Instance
+        return @ptrCast(@alignCast(filter_ptr));
+    }
+    return error.NotImplemented; // null
 }
 
 // ============================================================================
@@ -187,23 +217,24 @@ pub fn get_filter(instance: *runtime.Instance) ImplError!*runtime.Instance {
 
 /// DOM §6.2 - NodeIterator.nextNode()
 /// Returns the next node in the iteration, or null if none
-/// Note: WebIDL says nullable, but generated interface expects non-null - we throw NotImplemented for null
+/// Spec: https://dom.spec.whatwg.org/#dom-nodeiterator-nextnode
 pub fn call_nextNode(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    return try traverse(instance, .next) orelse return error.NotImplemented;
+    return try traverse(instance, .next) orelse return error.NotImplemented; // null
 }
 
 /// DOM §6.2 - NodeIterator.previousNode()
 /// Returns the previous node in the iteration, or null if none
-/// Note: WebIDL says nullable, but generated interface expects non-null - we throw NotImplemented for null
+/// Spec: https://dom.spec.whatwg.org/#dom-nodeiterator-previousnode
 pub fn call_previousNode(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    return try traverse(instance, .previous) orelse return error.NotImplemented;
+    return try traverse(instance, .previous) orelse return error.NotImplemented; // null
 }
 
 /// DOM §6.2 - NodeIterator.detach()
 /// Legacy method - does nothing (functionality removed, kept for compatibility)
+/// Spec: https://dom.spec.whatwg.org/#dom-nodeiterator-detach
 pub fn call_detach(instance: *runtime.Instance) ImplError!void {
     _ = instance;
-    // Do nothing per spec
+    // Do nothing per spec - method is a no-op for compatibility
 }
 
 // ============================================================================
@@ -212,6 +243,7 @@ pub fn call_detach(instance: *runtime.Instance) ImplError!void {
 
 /// DOM §6.2 - traverse algorithm
 /// Given a direction, traverse the tree and return the next accepted node
+/// Spec: https://dom.spec.whatwg.org/#nodeiterator-traverse
 fn traverse(instance: *runtime.Instance, direction: Direction) ImplError!?*runtime.Instance {
     const internal = getInternal(instance);
 
@@ -270,9 +302,9 @@ fn traverse(instance: *runtime.Instance, direction: Direction) ImplError!?*runti
 
 /// DOM §6 - filter algorithm
 /// Filter a node within this iterator
+/// Spec: https://dom.spec.whatwg.org/#concept-node-filter
 fn filterNode(instance: *runtime.Instance, node: *runtime.Instance) ImplError!u16 {
     const internal = getInternal(instance);
-    _ = node; // TODO: Use node to get nodeType once bridged
 
     // Step 1: If traverser's active flag is set, throw InvalidStateError
     if (internal.active_flag) {
@@ -280,10 +312,9 @@ fn filterNode(instance: *runtime.Instance, node: *runtime.Instance) ImplError!u1
     }
 
     // Step 2: Let n be node's nodeType attribute value − 1
-    // TODO: Get node_type from Node interface via NodeImpl
-    // For now, assume all nodes pass type check
-    const node_type: u8 = 1; // ELEMENT_NODE as default
-    const n = node_type - 1;
+    const node_internal = getNodeInternal(node) orelse return NodeFilter.FILTER_ACCEPT;
+    const node_type = node_internal.node_type;
+    const n: u8 = @intCast(node_type - 1);
 
     // Step 3: If the nth bit of whatToShow is not set, return FILTER_SKIP
     if (!NodeFilter.isNodeTypeShown(internal.what_to_show, n)) {
@@ -298,38 +329,99 @@ fn filterNode(instance: *runtime.Instance, node: *runtime.Instance) ImplError!u1
     // Step 5: Set traverser's active flag
     internal.active_flag = true;
 
-    // Step 6: Call filter callback
+    // Step 6: Let result be the return value of call a user object's operation
+    // with filter's callback, "acceptNode", and « node »
     // TODO: Implement proper WebIDL callback invocation
-    // For now, just accept all nodes when filter is set
+    // For now, accept all nodes when filter is present
     const result = NodeFilter.FILTER_ACCEPT;
 
     // Step 7: Unset traverser's active flag
     internal.active_flag = false;
 
-    // Step 8: Return result
+    // Step 8: If an exception was thrown, rethrow it
+    // (handled by error union in real callback)
+
+    // Step 9: Return result
     return result;
 }
 
 // ============================================================================
-// Tree traversal helpers (adapted for runtime.Instance)
+// Tree traversal helpers
 // ============================================================================
-// TODO: These should use DOM tree_helpers once Node bridging is complete
 
-/// Get the next node in tree order, constrained within a root
+/// Get the next node in tree order (preorder depth-first), constrained within root
+/// Returns null if no next node exists within root
 fn getNextNodeInTree(node: *runtime.Instance, root: ?*runtime.Instance) ?*runtime.Instance {
-    // TODO: Implement using DOM tree_helpers once bridged
-    // For now, return null to prevent infinite loops
-    _ = node;
-    _ = root;
-    return null;
+    const node_internal = getNodeInternal(node) orelse return null;
+
+    // If node has children, return first child
+    if (node_internal.first_child) |child| {
+        return child;
+    }
+
+    // Otherwise, find next sibling (or ancestor's next sibling)
+    var current = node;
+    var current_internal = node_internal;
+
+    while (true) {
+        // Don't go past root
+        if (root) |r| {
+            if (current == r) return null;
+        }
+
+        // Try next sibling
+        if (current_internal.next_sibling) |sibling| {
+            return sibling;
+        }
+
+        // Move up to parent
+        const parent = current_internal.parent orelse return null;
+
+        // Check if parent is root
+        if (root) |r| {
+            if (parent == r) return null;
+        }
+
+        current = parent;
+        current_internal = getNodeInternal(current) orelse return null;
+    }
 }
 
-/// Get the previous node in tree order, constrained within a root
+/// Get the previous node in tree order, constrained within root
+/// Returns null if no previous node exists within root
 fn getPreviousNodeInTree(node: *runtime.Instance, root: ?*runtime.Instance) ?*runtime.Instance {
-    // TODO: Implement using DOM tree_helpers once bridged
-    _ = node;
-    _ = root;
-    return null;
+    // Don't go before root
+    if (root) |r| {
+        if (node == r) return null;
+    }
+
+    const node_internal = getNodeInternal(node) orelse return null;
+
+    // If node has previous sibling, return its last descendant
+    if (node_internal.previous_sibling) |sibling| {
+        return getLastInclusiveDescendant(sibling);
+    }
+
+    // Otherwise return parent (if not root)
+    const parent = node_internal.parent orelse return null;
+
+    if (root) |r| {
+        if (parent == r) return null;
+    }
+
+    return parent;
+}
+
+/// Get the last inclusive descendant of a node
+/// (the node that appears last in tree order within its subtree)
+fn getLastInclusiveDescendant(node: *runtime.Instance) *runtime.Instance {
+    var current = node;
+
+    while (true) {
+        const current_internal = getNodeInternal(current) orelse return current;
+        const last_child = current_internal.last_child orelse return current;
+        current = last_child;
+    }
 }
 
 // ============================================================================
@@ -339,6 +431,7 @@ fn getPreviousNodeInTree(node: *runtime.Instance, root: ?*runtime.Instance) ?*ru
 /// DOM §6.2 - NodeIterator pre-remove steps
 /// Called when a node is about to be removed from the tree
 /// Updates iterator state to handle the removal gracefully
+/// Spec: https://dom.spec.whatwg.org/#nodeiterator-pre-removing-steps
 pub fn preRemoveSteps(instance: *runtime.Instance, to_be_removed: *runtime.Instance) void {
     const internal = getInternal(instance);
 
@@ -348,24 +441,87 @@ pub fn preRemoveSteps(instance: *runtime.Instance, to_be_removed: *runtime.Insta
         if (to_be_removed == root) return;
     }
 
-    // TODO: Check inclusive ancestor once DOM tree operations are bridged
-    // if (!isInclusiveAncestor(to_be_removed, internal.reference)) return;
-
-    // TODO: Check inclusive ancestor once DOM tree operations are bridged
-    // For now, use to_be_removed to silence unused parameter warning
-    if (to_be_removed == internal.reference) {
-        // Node being removed is the reference - need to update
-    }
+    // Check if to_be_removed is an inclusive ancestor of reference
+    const reference = internal.reference orelse return;
+    if (!isInclusiveAncestor(to_be_removed, reference)) return;
 
     // Step 2: If pointer before reference is true
     if (internal.pointer_before_reference) {
-        // Step 2.1: Let next be toBeRemovedNode's first following node
-        // TODO: Implement once tree operations are bridged
+        // Step 2.1: Let next be toBeRemovedNode's first following node that is
+        // an inclusive descendant of root and is not an inclusive descendant of toBeRemovedNode
+        const next = getNextNodeNotInSubtree(to_be_removed, internal.root);
+
+        // Step 2.2: If next is non-null, set reference to next and return
+        if (next) |next_node| {
+            internal.reference = next_node;
+            return;
+        }
 
         // Step 2.3: Otherwise, set pointer before reference to false
         internal.pointer_before_reference = false;
     }
 
-    // Step 3: Set reference appropriately
-    // TODO: Implement once tree operations are bridged
+    // Step 3: Set reference to the first preceding node of toBeRemovedNode
+    // that is an inclusive descendant of root and is not an inclusive descendant of toBeRemovedNode,
+    // or null if there is no such node
+    const to_be_removed_internal = getNodeInternal(to_be_removed) orelse return;
+
+    // Find previous sibling's last descendant, or parent
+    if (to_be_removed_internal.previous_sibling) |prev_sibling| {
+        internal.reference = getLastInclusiveDescendant(prev_sibling);
+    } else {
+        // Use parent if no previous sibling
+        internal.reference = to_be_removed_internal.parent;
+    }
+}
+
+/// Check if potential_ancestor is an inclusive ancestor of node
+fn isInclusiveAncestor(potential_ancestor: *runtime.Instance, node: *runtime.Instance) bool {
+    if (potential_ancestor == node) return true;
+
+    var current: ?*runtime.Instance = node;
+    while (current) |curr| {
+        if (curr == potential_ancestor) return true;
+        const curr_internal = getNodeInternal(curr) orelse break;
+        current = curr_internal.parent;
+    }
+
+    return false;
+}
+
+/// Check if node is an inclusive descendant of potential_ancestor
+fn isInclusiveDescendant(node: *runtime.Instance, potential_ancestor: *runtime.Instance) bool {
+    return isInclusiveAncestor(potential_ancestor, node);
+}
+
+/// Get the next node after to_be_removed that is an inclusive descendant of root
+/// but NOT an inclusive descendant of to_be_removed
+fn getNextNodeNotInSubtree(to_be_removed: *runtime.Instance, root: ?*runtime.Instance) ?*runtime.Instance {
+    var current: ?*runtime.Instance = to_be_removed;
+
+    // Skip the entire subtree of to_be_removed
+    while (current) |node| {
+        const node_internal = getNodeInternal(node) orelse return null;
+
+        // Try next sibling
+        if (node_internal.next_sibling) |sibling| {
+            // Check if sibling is within root
+            if (root) |r| {
+                if (!isInclusiveDescendant(sibling, r)) return null;
+            }
+            return sibling;
+        }
+
+        // Move up to parent
+        const parent = node_internal.parent orelse return null;
+
+        // Check if parent is root - if so, no more nodes
+        if (root) |r| {
+            if (parent == r) return null;
+        }
+
+        current = parent;
+    }
+
+    return null;
 }

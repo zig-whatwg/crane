@@ -22,14 +22,21 @@ const DocumentImpl = @import("Document.zig");
 const DocumentTypeImpl = @import("DocumentType.zig");
 const ElementImpl = @import("Element.zig");
 const TextImpl = @import("Text.zig");
+const NodeImpl = @import("Node.zig");
 
 pub const State = DOMImplementation.State;
 
 pub const ImplError = error{
     NotImplemented,
     InvalidCharacterError,
+    NamespaceError,
     OutOfMemory,
 };
+
+/// HTML namespace constant
+const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
+/// SVG namespace constant
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
 /// Internal state for DOMImplementation
 /// Spec: DOMImplementation is associated with a Document
@@ -69,7 +76,8 @@ pub fn init(
     errdefer runtime.Instance.deinit(instance);
 
     // Initialize internal state
-    const internal = try allocator.create(InternalState);
+    const ArenaAllocator = @import("runtime").ArenaAllocator;
+    const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
 
     // Store internal state in instance
@@ -90,8 +98,19 @@ pub fn deinit(instance: *runtime.Instance) void {
     runtime.Instance.deinit(instance);
 }
 
+/// Set the associated document for this DOMImplementation
+pub fn setDocument(instance: *runtime.Instance, document: *runtime.Instance) void {
+    const internal = getInternal(instance);
+    internal.document = document;
+}
+
+// ============================================================================
+// createDocumentType(name, publicId, systemId)
+// ============================================================================
+
 /// createDocumentType(name, publicId, systemId)
 /// DOM §4.5 - Creates a DocumentType node
+/// Spec: https://dom.spec.whatwg.org/#dom-domimplementation-createdocumenttype
 ///
 /// Spec algorithm:
 /// 1. If name is not a valid doctype name, then throw an "InvalidCharacterError" DOMException.
@@ -100,36 +119,42 @@ pub fn deinit(instance: *runtime.Instance) void {
 pub fn call_createDocumentType(instance: *runtime.Instance, name: runtime.DOMString, publicId: runtime.DOMString, systemId: runtime.DOMString) ImplError!*runtime.Instance {
     const internal = getInternal(instance);
     const allocator = internal.allocator;
+    const ctx = instance.context;
 
     // Step 1: Validate doctype name
-    const name_slice = if (name) |s| s.data else "";
+    const name_slice = name.asSlice();
     if (!isValidDoctypeName(name_slice)) {
         return error.InvalidCharacterError;
     }
 
-    // Step 2: Create and return new doctype
-    const ctx = instance.context;
-    const doctype = DocumentTypeImpl.init(
-        allocator,
-        interfaces.DocumentType.State,
-        &interfaces.DocumentType.vtable,
-        ctx,
-    ) catch return error.OutOfMemory;
+    const public_id_slice = publicId.asSlice();
+    const system_id_slice = systemId.asSlice();
 
-    // Initialize doctype with name, publicId, systemId
-    // TODO: Set doctype properties via DocumentTypeImpl
-    // For now, the doctype is created but needs DocumentType implementation to be complete
+    // Step 2: Create and return new doctype using helper
+    const doctype = try DocumentTypeImpl.createDocumentType(
+        allocator,
+        ctx,
+        name_slice,
+        public_id_slice,
+        system_id_slice,
+    );
+    errdefer DocumentTypeImpl.deinit(doctype);
 
     // Set node document to the associated document
-    // TODO: Set owner_document once we bridge Node properties
-    _ = publicId;
-    _ = systemId;
+    if (internal.document) |doc| {
+        try NodeImpl.setOwnerDocument(doctype, doc);
+    }
 
     return doctype;
 }
 
+// ============================================================================
+// createDocument(namespace, qualifiedName, doctype)
+// ============================================================================
+
 /// createDocument(namespace, qualifiedName, doctype)
 /// DOM §4.5 - Creates an XMLDocument
+/// Spec: https://dom.spec.whatwg.org/#dom-domimplementation-createdocument
 ///
 /// Spec algorithm:
 /// 1. Let document be a new XMLDocument.
@@ -151,44 +176,72 @@ pub fn call_createDocument(instance: *runtime.Instance, namespace: runtime.DOMSt
     const ctx = instance.context;
 
     // Step 1: Create new XMLDocument
-    const document = DocumentImpl.init(
+    const document = try DocumentImpl.init(
         allocator,
         interfaces.Document.State,
         &interfaces.Document.vtable,
         ctx,
-    ) catch return error.OutOfMemory;
+    );
+    errdefer DocumentImpl.deinit(document);
 
     // Set document type to XML
-    // TODO: Set doc_type = .xml via DocumentImpl
+    try DocumentImpl.setDocumentType(document, .xml);
 
-    // Step 3: If qualifiedName is not empty, create element
-    const qname_slice = if (qualifiedName) |s| s.data else "";
+    // Step 2-3: If qualifiedName is not empty, create element
+    const qname_slice = qualifiedName.asSlice();
+    var element: ?*runtime.Instance = null;
+
     if (qname_slice.len > 0) {
-        // TODO: Create element via document.createElementNS
-        // For now, skip element creation - needs Document.createElementNS
-        _ = namespace;
+        const ns_slice = namespace.asSlice();
+
+        // Validate namespace and qualified name per WebIDL
+        try validateNamespace(ns_slice, qname_slice);
+
+        // Create element via createElementNS
+        element = try createElementNS(allocator, ctx, document, ns_slice, qname_slice);
     }
 
-    // Step 4: If doctype is non-null, append to document
-    if (doctype) |_| {
-        // TODO: Append doctype to document via mutation algorithms
+    // Step 4: If doctype is non-null, append doctype to document
+    if (doctype) |dt| {
+        try NodeImpl.setOwnerDocument(dt, document);
+        try NodeImpl.appendChild(document, dt);
     }
 
-    // Step 5: If element is non-null, append to document
-    // (handled in step 3 TODO)
+    // Step 5: If element is non-null, append element to document
+    if (element) |elem| {
+        try NodeImpl.appendChild(document, elem);
+    }
 
-    // Step 6: Set document's origin
-    // TODO: Copy origin from associated document
+    // Step 6: Set document's origin from associated document
+    if (internal.document) |assoc_doc| {
+        try DocumentImpl.copyOrigin(document, assoc_doc);
+    }
 
     // Step 7: Set content type based on namespace
-    // TODO: Set content type via DocumentImpl
+    const ns_slice = namespace.asSlice();
+    const content_type = if (ns_slice.len > 0) blk: {
+        if (std.mem.eql(u8, ns_slice, HTML_NAMESPACE)) {
+            break :blk "application/xhtml+xml";
+        } else if (std.mem.eql(u8, ns_slice, SVG_NAMESPACE)) {
+            break :blk "image/svg+xml";
+        } else {
+            break :blk "application/xml";
+        }
+    } else "application/xml";
+
+    try DocumentImpl.setContentType(document, content_type);
 
     // Step 8: Return document
     return document;
 }
 
+// ============================================================================
+// createHTMLDocument(title)
+// ============================================================================
+
 /// createHTMLDocument(title)
 /// DOM §4.5 - Creates an HTML document
+/// Spec: https://dom.spec.whatwg.org/#dom-domimplementation-createhtmldocument
 ///
 /// Spec algorithm:
 /// 1. Let doc be a new document that is an HTML document.
@@ -208,42 +261,74 @@ pub fn call_createHTMLDocument(instance: *runtime.Instance, title: runtime.DOMSt
     const ctx = instance.context;
 
     // Step 1: Create new HTML document
-    const doc = DocumentImpl.init(
+    const doc = try DocumentImpl.init(
         allocator,
         interfaces.Document.State,
         &interfaces.Document.vtable,
         ctx,
-    ) catch return error.OutOfMemory;
+    );
+    errdefer DocumentImpl.deinit(doc);
+
+    // Set document type to HTML
+    try DocumentImpl.setDocumentType(doc, .html);
 
     // Step 2: Set content type to "text/html"
-    // TODO: Set content_type via DocumentImpl
+    try DocumentImpl.setContentType(doc, "text/html");
 
     // Step 3: Create and append doctype with name "html"
-    // TODO: Create doctype and append via mutation algorithms
+    const doctype = try DocumentTypeImpl.createDocumentType(allocator, ctx, "html", "", "");
+    errdefer DocumentTypeImpl.deinit(doctype);
+    try NodeImpl.setOwnerDocument(doctype, doc);
+    try NodeImpl.appendChild(doc, doctype);
 
-    // Step 4: Create and append html element
-    // TODO: Create <html> element in HTML namespace
+    // Step 4: Create and append <html> element
+    const html = try createElementNS(allocator, ctx, doc, HTML_NAMESPACE, "html");
+    errdefer ElementImpl.deinit(html);
+    try NodeImpl.appendChild(doc, html);
 
-    // Step 5: Create and append head element to html
-    // TODO: Create <head> element
+    // Step 5: Create and append <head> element to html
+    const head = try createElementNS(allocator, ctx, doc, HTML_NAMESPACE, "head");
+    errdefer ElementImpl.deinit(head);
+    try NodeImpl.appendChild(html, head);
 
-    // Step 6: If title is given, create title element with text
-    if (title) |_| {
-        // TODO: Create <title> element with text content
+    // Step 6: If title is given (non-null/non-empty check)
+    const title_slice = title.asSlice();
+    // Note: title is always given per WebIDL, but can be empty string
+    // Per spec, we create <title> element with whatever data is given (even empty)
+    if (title_slice.len > 0 or title.data != null) {
+        // Step 6.1: Create and append <title> element to head
+        const title_elem = try createElementNS(allocator, ctx, doc, HTML_NAMESPACE, "title");
+        errdefer ElementImpl.deinit(title_elem);
+        try NodeImpl.appendChild(head, title_elem);
+
+        // Step 6.2: Create Text node with title data and append to title element
+        const text_node = try TextImpl.call_constructor(allocator, ctx, title);
+        errdefer TextImpl.deinit(text_node);
+        try NodeImpl.setOwnerDocument(text_node, doc);
+        try NodeImpl.appendChild(title_elem, text_node);
     }
 
-    // Step 7: Create and append body element to html
-    // TODO: Create <body> element
+    // Step 7: Create and append <body> element to html
+    const body = try createElementNS(allocator, ctx, doc, HTML_NAMESPACE, "body");
+    errdefer ElementImpl.deinit(body);
+    try NodeImpl.appendChild(html, body);
 
     // Step 8: Set doc's origin from associated document
-    // TODO: Copy origin
+    if (internal.document) |assoc_doc| {
+        try DocumentImpl.copyOrigin(doc, assoc_doc);
+    }
 
     // Step 9: Return doc
     return doc;
 }
 
+// ============================================================================
+// hasFeature()
+// ============================================================================
+
 /// hasFeature()
 /// DOM §4.5 - Legacy method that always returns true
+/// Spec: https://dom.spec.whatwg.org/#dom-domimplementation-hasfeature
 ///
 /// Spec: hasFeature() originally would report whether the user agent claimed to support
 /// a given DOM feature, but experience proved it was not nearly as reliable or granular
@@ -260,14 +345,15 @@ pub fn call_hasFeature(instance: *runtime.Instance) bool {
 // ============================================================================
 
 /// Validates a doctype name per DOM spec
+/// Spec: https://dom.spec.whatwg.org/#dom-domimplementation-createdocumenttype
 ///
-/// A string is a valid doctype name if it does not contain:
-/// - ASCII whitespace (U+0009 TAB, U+000A LF, U+000C FF, U+000D CR, U+0020 SPACE)
-/// - U+0000 NULL
-/// - U+003E (>)
-///
-/// The empty string is a valid doctype name.
+/// A string is a valid doctype name if it matches the Name production
+/// per XML spec. Simplified validation:
+/// - Must not be empty
+/// - Must not contain ASCII whitespace, NULL, or '>'
 fn isValidDoctypeName(name: []const u8) bool {
+    if (name.len == 0) return false;
+
     for (name) |c| {
         // Check for ASCII whitespace
         if (c == 0x09 or c == 0x0A or c == 0x0C or c == 0x0D or c == 0x20) {
@@ -283,4 +369,89 @@ fn isValidDoctypeName(name: []const u8) bool {
         }
     }
     return true;
+}
+
+/// Validate namespace and qualified name
+/// Spec: https://dom.spec.whatwg.org/#validate-and-extract
+fn validateNamespace(namespace: []const u8, qualified_name: []const u8) ImplError!void {
+    // If qualifiedName is empty string, namespace must also be empty or null
+    if (qualified_name.len == 0 and namespace.len > 0) {
+        return error.NamespaceError;
+    }
+
+    // Check for invalid characters in qualified name
+    for (qualified_name) |c| {
+        if (c == 0x00) return error.InvalidCharacterError;
+    }
+
+    // Parse prefix and local name
+    var prefix: ?[]const u8 = null;
+    var local_name: []const u8 = qualified_name;
+
+    if (std.mem.indexOfScalar(u8, qualified_name, ':')) |colon_pos| {
+        prefix = qualified_name[0..colon_pos];
+        local_name = qualified_name[colon_pos + 1 ..];
+
+        // If prefix is non-null and namespace is empty, throw NamespaceError
+        if (namespace.len == 0) {
+            return error.NamespaceError;
+        }
+    }
+
+    // If prefix is "xml" and namespace is not XML namespace, throw NamespaceError
+    if (prefix) |p| {
+        if (std.mem.eql(u8, p, "xml") and !std.mem.eql(u8, namespace, "http://www.w3.org/XML/1998/namespace")) {
+            return error.NamespaceError;
+        }
+    }
+
+    // Local name must not be empty if we have a prefix
+    if (prefix != null and local_name.len == 0) {
+        return error.InvalidCharacterError;
+    }
+}
+
+/// Create an element with namespace
+/// Used by createDocument and createHTMLDocument
+fn createElementNS(
+    allocator: std.mem.Allocator,
+    ctx: runtime.Context,
+    document: *runtime.Instance,
+    namespace: []const u8,
+    qualified_name: []const u8,
+) !*runtime.Instance {
+    // Create element via Element impl
+    const element = try ElementImpl.init(
+        allocator,
+        interfaces.Element.State,
+        &interfaces.Element.vtable,
+        ctx,
+    );
+    errdefer ElementImpl.deinit(element);
+
+    // Set node type to ELEMENT_NODE
+    try NodeImpl.setNodeType(element, NodeImpl.NodeType.ELEMENT_NODE);
+
+    // Parse prefix and local name
+    var prefix: ?[]const u8 = null;
+    var local_name: []const u8 = qualified_name;
+
+    if (std.mem.indexOfScalar(u8, qualified_name, ':')) |colon_pos| {
+        prefix = qualified_name[0..colon_pos];
+        local_name = qualified_name[colon_pos + 1 ..];
+    }
+
+    // Set element properties
+    try ElementImpl.setLocalName(element, local_name);
+    if (namespace.len > 0) {
+        try ElementImpl.setNamespaceURI(element, namespace);
+    }
+    if (prefix) |p| {
+        try ElementImpl.setPrefix(element, p);
+    }
+
+    // Set owner document
+    try NodeImpl.setOwnerDocument(element, document);
+
+    return element;
 }

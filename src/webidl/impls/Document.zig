@@ -3619,3 +3619,29 @@ pub fn call_measureText(instance: *runtime.Instance, text: runtime.DOMString, st
     _ = styleMap;
     return error.NotImplemented;
 }
+
+// =============================================================================
+// Helper Functions for External Use (DOMImplementation, etc.)
+// =============================================================================
+
+/// Set the document type (html or xml)
+pub fn setDocumentType(instance: *runtime.Instance, doc_type: DocType) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    internal.doc_type = doc_type;
+}
+
+/// Set the content type (e.g., "text/html", "application/xml")
+pub fn setContentType(instance: *runtime.Instance, content_type: []const u8) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.content_type.data != null) {
+        internal.content_type.deinit(internal.allocator);
+    }
+    internal.content_type = try runtime.DOMString.initFromSlice(internal.allocator, content_type);
+}
+
+/// Copy origin from another document
+pub fn copyOrigin(instance: *runtime.Instance, source: *runtime.Instance) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const source_internal = getInternal(source) orelse return error.InvalidStateError;
+    internal.origin = source_internal.origin;
+}
