@@ -95,6 +95,46 @@ pub const InternalState = struct {
     /// Node iterators associated with this document
     node_iterators: std.ArrayList(*runtime.Instance),
 
+    // === HTML Document Properties ===
+
+    /// Document title (from <title> element or empty)
+    title: runtime.DOMString,
+
+    /// Document dir (text direction: "ltr", "rtl", or "")
+    dir: runtime.DOMString,
+
+    /// Document domain (for same-origin policy)
+    domain: []const u8,
+
+    /// Document referrer (the URI of the page that linked to this page)
+    referrer: []const u8,
+
+    /// Design mode ("on" or "off")
+    design_mode: runtime.DOMString,
+
+    /// Visibility state
+    visibility_state: enums.DocumentVisibilityState,
+
+    /// Whether document is hidden
+    hidden: bool,
+
+    // === Legacy color properties (deprecated but still supported) ===
+    fg_color: runtime.DOMString,
+    link_color: runtime.DOMString,
+    vlink_color: runtime.DOMString,
+    alink_color: runtime.DOMString,
+    bg_color: runtime.DOMString,
+
+    // === Fullscreen state ===
+    fullscreen_enabled: bool,
+    fullscreen_element: ?*runtime.Instance,
+
+    // === Pointer lock state ===
+    pointer_lock_element: ?*runtime.Instance,
+
+    // === Event handlers storage (using string keys for handler names) ===
+    event_handlers: std.StringHashMap(typedefs.EventHandler),
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -111,6 +151,27 @@ pub const InternalState = struct {
             .doctype = null,
             .ranges = .{},
             .node_iterators = .{},
+            // HTML properties
+            .title = runtime.DOMString.initEmpty(),
+            .dir = runtime.DOMString.initEmpty(),
+            .domain = "",
+            .referrer = "",
+            .design_mode = runtime.DOMString.initInterned("off"),
+            .visibility_state = ._visible_,
+            .hidden = false,
+            // Legacy colors (empty = not set)
+            .fg_color = runtime.DOMString.initEmpty(),
+            .link_color = runtime.DOMString.initEmpty(),
+            .vlink_color = runtime.DOMString.initEmpty(),
+            .alink_color = runtime.DOMString.initEmpty(),
+            .bg_color = runtime.DOMString.initEmpty(),
+            // Fullscreen
+            .fullscreen_enabled = true,
+            .fullscreen_element = null,
+            // Pointer lock
+            .pointer_lock_element = null,
+            // Event handlers
+            .event_handlers = std.StringHashMap(typedefs.EventHandler).init(allocator),
         };
     }
 
@@ -133,10 +194,27 @@ pub const InternalState = struct {
         if (self.url.len > 0) {
             self.allocator.free(self.url);
         }
+        if (self.domain.len > 0) {
+            self.allocator.free(self.domain);
+        }
+        if (self.referrer.len > 0) {
+            self.allocator.free(self.referrer);
+        }
 
         // Free DOMString storage
         self.content_type.deinit(self.allocator);
         self.encoding.deinit(self.allocator);
+        self.title.deinit(self.allocator);
+        self.dir.deinit(self.allocator);
+        self.design_mode.deinit(self.allocator);
+        self.fg_color.deinit(self.allocator);
+        self.link_color.deinit(self.allocator);
+        self.vlink_color.deinit(self.allocator);
+        self.alink_color.deinit(self.allocator);
+        self.bg_color.deinit(self.allocator);
+
+        // Event handlers
+        self.event_handlers.deinit();
     }
 };
 
@@ -354,15 +432,19 @@ pub fn get_onprerenderingchange(instance: *runtime.Instance) ImplError!typedefs.
 }
 
 /// Getter for fullscreenEnabled
+/// Fullscreen API - Returns whether fullscreen is enabled
+/// Spec: https://fullscreen.spec.whatwg.org/#dom-document-fullscreenenabled
 pub fn get_fullscreenEnabled(instance: *runtime.Instance) ImplError!bool {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.fullscreen_enabled;
 }
 
 /// Getter for fullscreen
+/// Fullscreen API (obsolete) - Returns true if fullscreen element exists
+/// Spec: https://fullscreen.spec.whatwg.org/#dom-document-fullscreen
 pub fn get_fullscreen(instance: *runtime.Instance) ImplError!bool {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.fullscreen_element != null;
 }
 
 /// Getter for onfullscreenchange
@@ -444,15 +526,19 @@ pub fn get_location(instance: *runtime.Instance) ImplError!*runtime.Instance {
 }
 
 /// Getter for domain
+/// HTML §7.5.2 - Returns the document's domain
+/// Spec: https://html.spec.whatwg.org/multipage/browsers.html#dom-document-domain
 pub fn get_domain(instance: *runtime.Instance) ImplError!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.domain;
 }
 
 /// Getter for referrer
+/// HTML §7.5.2 - Returns the document's referrer
+/// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-referrer
 pub fn get_referrer(instance: *runtime.Instance) ImplError!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.referrer;
 }
 
 /// Getter for cookie
@@ -475,27 +561,91 @@ pub fn get_readyState(instance: *runtime.Instance) ImplError!enums.DocumentReady
 }
 
 /// Getter for title
+/// HTML §3.1.3 - Returns the document's title
 pub fn get_title(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.title;
 }
 
 /// Getter for dir
+/// HTML §3.2.6 - Returns the document's text direction
 pub fn get_dir(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.dir;
 }
 
 /// Getter for body
+/// HTML §3.1.3 - Returns the body element (the first body or frameset child of html element)
+/// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-body
 pub fn get_body(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Get document element (should be <html>)
+    const doc_element = internal.document_element orelse return error.NotImplemented;
+
+    // Find first body or frameset child of the document element
+    const ElementImpl = @import("Element.zig");
+    var child = NodeImpl.getFirstChild(doc_element);
+    while (child) |c| {
+        const node_type = NodeImpl.getNodeType(c) orelse 0;
+        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+            if (ElementImpl.getInternal(c)) |elem_internal| {
+                const tag_name = elem_internal.local_name.asSlice();
+                // Check for body or frameset (case-insensitive for HTML)
+                if (internal.doc_type == .html) {
+                    if (std.ascii.eqlIgnoreCase(tag_name, "body") or
+                        std.ascii.eqlIgnoreCase(tag_name, "frameset"))
+                    {
+                        return c;
+                    }
+                } else {
+                    if (std.mem.eql(u8, tag_name, "body") or
+                        std.mem.eql(u8, tag_name, "frameset"))
+                    {
+                        return c;
+                    }
+                }
+            }
+        }
+        child = NodeImpl.getNextSibling(c);
+    }
+
+    return error.NotImplemented; // null
 }
 
 /// Getter for head
+/// HTML §3.1.3 - Returns the head element (the first head child of html element)
+/// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-head
 pub fn get_head(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Get document element (should be <html>)
+    const doc_element = internal.document_element orelse return error.NotImplemented;
+
+    // Find first head child of the document element
+    const ElementImpl = @import("Element.zig");
+    var child = NodeImpl.getFirstChild(doc_element);
+    while (child) |c| {
+        const node_type = NodeImpl.getNodeType(c) orelse 0;
+        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+            if (ElementImpl.getInternal(c)) |elem_internal| {
+                const tag_name = elem_internal.local_name.asSlice();
+                // Check for head (case-insensitive for HTML)
+                if (internal.doc_type == .html) {
+                    if (std.ascii.eqlIgnoreCase(tag_name, "head")) {
+                        return c;
+                    }
+                } else {
+                    if (std.mem.eql(u8, tag_name, "head")) {
+                        return c;
+                    }
+                }
+            }
+        }
+        child = NodeImpl.getNextSibling(c);
+    }
+
+    return error.NotImplemented; // null
 }
 
 /// Getter for images
@@ -547,21 +697,27 @@ pub fn get_defaultView(instance: *runtime.Instance) ImplError!typedefs.WindowPro
 }
 
 /// Getter for designMode
+/// HTML §6.5.1 - Returns "on" or "off" depending on design mode state
+/// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-document-designmode
 pub fn get_designMode(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.design_mode;
 }
 
 /// Getter for hidden
+/// Page Visibility - Returns true if document is hidden
+/// Spec: https://www.w3.org/TR/page-visibility/#dom-document-hidden
 pub fn get_hidden(instance: *runtime.Instance) ImplError!bool {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.hidden;
 }
 
 /// Getter for visibilityState
+/// Page Visibility - Returns current visibility state
+/// Spec: https://www.w3.org/TR/page-visibility/#dom-document-visibilitystate
 pub fn get_visibilityState(instance: *runtime.Instance) ImplError!enums.DocumentVisibilityState {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.visibility_state;
 }
 
 /// Getter for onreadystatechange
@@ -577,33 +733,38 @@ pub fn get_onvisibilitychange(instance: *runtime.Instance) ImplError!typedefs.Ev
 }
 
 /// Getter for fgColor
+/// HTML §14.3.11 (obsolete) - Returns document's text color
 pub fn get_fgColor(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.fg_color;
 }
 
 /// Getter for linkColor
+/// HTML §14.3.11 (obsolete) - Returns document's link color
 pub fn get_linkColor(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.link_color;
 }
 
 /// Getter for vlinkColor
+/// HTML §14.3.11 (obsolete) - Returns document's visited link color
 pub fn get_vlinkColor(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.vlink_color;
 }
 
 /// Getter for alinkColor
+/// HTML §14.3.11 (obsolete) - Returns document's active link color
 pub fn get_alinkColor(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.alink_color;
 }
 
 /// Getter for bgColor
+/// HTML §14.3.11 (obsolete) - Returns document's background color
 pub fn get_bgColor(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.bg_color;
 }
 
 /// Getter for anchors
@@ -649,9 +810,11 @@ pub fn get_customElementRegistry(instance: *runtime.Instance) ImplError!*runtime
 }
 
 /// Getter for fullscreenElement
+/// Fullscreen API - Returns the current fullscreen element
+/// Spec: https://fullscreen.spec.whatwg.org/#dom-document-fullscreenelement
 pub fn get_fullscreenElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.fullscreen_element orelse error.NotImplemented; // null
 }
 
 /// Getter for pictureInPictureElement
@@ -661,9 +824,11 @@ pub fn get_pictureInPictureElement(instance: *runtime.Instance) ImplError!*runti
 }
 
 /// Getter for pointerLockElement
+/// Pointer Lock API - Returns the element that has pointer lock
+/// Spec: https://w3c.github.io/pointerlock/#dom-documentorshadowroot-pointerlockelement
 pub fn get_pointerLockElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.pointer_lock_element orelse error.NotImplemented; // null
 }
 
 /// Getter for styleSheets
@@ -685,27 +850,84 @@ pub fn get_activeElement(instance: *runtime.Instance) ImplError!*runtime.Instanc
 }
 
 /// Getter for children
+/// ParentNode mixin - Returns an HTMLCollection of child elements
+/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-children
 pub fn get_children(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Create an HTMLCollection to hold direct child elements
+    const HTMLCollectionImpl = @import("HTMLCollection.zig");
+    const collection = try HTMLCollectionImpl.init(
+        internal.allocator,
+        interfaces.HTMLCollection.State,
+        &interfaces.HTMLCollection.vtable,
+        instance.ctx,
+    );
+    errdefer HTMLCollectionImpl.deinit(collection);
+
+    // Iterate direct children and add elements
+    var child = NodeImpl.getFirstChild(instance);
+    while (child) |c| {
+        const node_type = NodeImpl.getNodeType(c) orelse 0;
+        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+            HTMLCollectionImpl.addElement(collection, c) catch return error.OutOfMemory;
+        }
+        child = NodeImpl.getNextSibling(c);
+    }
+
+    return collection;
 }
 
 /// Getter for firstElementChild
+/// ParentNode mixin - Returns the first child that is an element
+/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-firstelementchild
 pub fn get_firstElementChild(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
+    var child = NodeImpl.getFirstChild(instance);
+    while (child) |c| {
+        const node_type = NodeImpl.getNodeType(c) orelse 0;
+        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+            return c;
+        }
+        child = NodeImpl.getNextSibling(c);
+    }
+    // No element child found - return "null" via error (need nullable return)
     return error.NotImplemented;
 }
 
 /// Getter for lastElementChild
+/// ParentNode mixin - Returns the last child that is an element
+/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-lastelementchild
 pub fn get_lastElementChild(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    var last_element: ?*runtime.Instance = null;
+
+    var child = NodeImpl.getFirstChild(instance);
+    while (child) |c| {
+        const node_type = NodeImpl.getNodeType(c) orelse 0;
+        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+            last_element = c;
+        }
+        child = NodeImpl.getNextSibling(c);
+    }
+
+    return last_element orelse error.NotImplemented;
 }
 
 /// Getter for childElementCount
+/// ParentNode mixin - Returns the number of child elements
+/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-childelementcount
 pub fn get_childElementCount(instance: *runtime.Instance) ImplError!u32 {
-    _ = instance;
-    return error.NotImplemented;
+    var count: u32 = 0;
+
+    var child = NodeImpl.getFirstChild(instance);
+    while (child) |c| {
+        const node_type = NodeImpl.getNodeType(c) orelse 0;
+        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+            count += 1;
+        }
+        child = NodeImpl.getNextSibling(c);
+    }
+
+    return count;
 }
 
 /// Getter for onabort
@@ -1388,10 +1610,19 @@ pub fn set_onresume(instance: *runtime.Instance, value: typedefs.EventHandler) I
 }
 
 /// Setter for domain
+/// HTML §7.5.2 - Sets the document's domain (for same-origin policy relaxation)
+/// Spec: https://html.spec.whatwg.org/multipage/browsers.html#dom-document-domain
+/// Note: This is deprecated and has security implications
 pub fn set_domain(instance: *runtime.Instance, value: runtime.USVString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Free old domain if it was allocated
+    if (internal.domain.len > 0) {
+        internal.allocator.free(internal.domain);
+    }
+
+    // Clone the new domain value
+    internal.domain = internal.allocator.dupe(u8, value) catch return error.OutOfMemory;
 }
 
 /// Setter for cookie
@@ -1402,17 +1633,23 @@ pub fn set_cookie(instance: *runtime.Instance, value: runtime.USVString) ImplErr
 }
 
 /// Setter for title
+/// HTML §3.1.3 - Sets the document's title
+/// Spec: https://html.spec.whatwg.org/multipage/dom.html#document.title
 pub fn set_title(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    internal.title.deinit(internal.allocator);
+    internal.title = value.clone(internal.allocator) catch return error.OutOfMemory;
+    // TODO: Update the <title> element in the DOM if it exists
 }
 
 /// Setter for dir
+/// HTML §3.2.6 - Sets the document's text direction ("ltr", "rtl", or "")
+/// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-dir
 pub fn set_dir(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    internal.dir.deinit(internal.allocator);
+    internal.dir = value.clone(internal.allocator) catch return error.OutOfMemory;
+    // TODO: Update the dir attribute on the html element if it exists
 }
 
 /// Setter for body
@@ -1423,10 +1660,21 @@ pub fn set_body(instance: *runtime.Instance, value: *runtime.Instance) ImplError
 }
 
 /// Setter for designMode
+/// HTML §6.5.1 - Sets design mode ("on" or "off")
+/// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-document-designmode
 pub fn set_designMode(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const val_slice = value.asSlice();
+
+    // Only "on" and "off" are valid values (case-insensitive)
+    if (std.ascii.eqlIgnoreCase(val_slice, "on")) {
+        internal.design_mode.deinit(internal.allocator);
+        internal.design_mode = runtime.DOMString.initInterned("on");
+    } else if (std.ascii.eqlIgnoreCase(val_slice, "off")) {
+        internal.design_mode.deinit(internal.allocator);
+        internal.design_mode = runtime.DOMString.initInterned("off");
+    }
+    // Invalid values are ignored per spec
 }
 
 /// Setter for onreadystatechange
@@ -1444,38 +1692,43 @@ pub fn set_onvisibilitychange(instance: *runtime.Instance, value: typedefs.Event
 }
 
 /// Setter for fgColor
+/// HTML §14.3.11 (obsolete) - Sets document's text color
 pub fn set_fgColor(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    internal.fg_color.deinit(internal.allocator);
+    internal.fg_color = value.clone(internal.allocator) catch return error.OutOfMemory;
 }
 
 /// Setter for linkColor
+/// HTML §14.3.11 (obsolete) - Sets document's link color
 pub fn set_linkColor(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    internal.link_color.deinit(internal.allocator);
+    internal.link_color = value.clone(internal.allocator) catch return error.OutOfMemory;
 }
 
 /// Setter for vlinkColor
+/// HTML §14.3.11 (obsolete) - Sets document's visited link color
 pub fn set_vlinkColor(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    internal.vlink_color.deinit(internal.allocator);
+    internal.vlink_color = value.clone(internal.allocator) catch return error.OutOfMemory;
 }
 
 /// Setter for alinkColor
+/// HTML §14.3.11 (obsolete) - Sets document's active link color
 pub fn set_alinkColor(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    internal.alink_color.deinit(internal.allocator);
+    internal.alink_color = value.clone(internal.allocator) catch return error.OutOfMemory;
 }
 
 /// Setter for bgColor
+/// HTML §14.3.11 (obsolete) - Sets document's background color
 pub fn set_bgColor(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    internal.bg_color.deinit(internal.allocator);
+    internal.bg_color = value.clone(internal.allocator) catch return error.OutOfMemory;
 }
 
 /// Setter for adoptedStyleSheets
