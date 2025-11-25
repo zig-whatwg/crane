@@ -1314,7 +1314,13 @@ pub fn build(b: *std.Build) void {
     run_dom_tests.addArtifactArg(repl_exe);
     run_dom_tests.addArg("tests/v8/dom_test.js");
 
-    test_v8_step.dependOn(&run_dom_tests.step);
+    // Run querySelector tests (basic version - full version requires property setters)
+    const run_querySelector_tests = b.addRunArtifact(test_runner_exe);
+    run_querySelector_tests.step.dependOn(&run_dom_tests.step);
+    run_querySelector_tests.addArtifactArg(repl_exe);
+    run_querySelector_tests.addArg("tests/v8/querySelector_basic_test.js");
+
+    test_v8_step.dependOn(&run_querySelector_tests.step);
 
     // Note: bindings_test_verbose.js and prototype_property_access_test.js use
     // console.log() format and are not compatible with the simple test runner.
