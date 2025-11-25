@@ -1,7 +1,22 @@
-//! Implementation for XRFrame interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
 //!
-//! This file is AUTO-GENERATED on first creation.
-//! Add your custom implementation here.
+//! Implementation stub for XRFrame interface
+//!
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Add your implementation logic
+//!   3. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -55,9 +70,9 @@ pub fn get_predictedDisplayTime(instance: *runtime.Instance) ImplError!typedefs.
 }
 
 /// Getter for body
-pub fn get_body(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_body(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for trackedAnchors
@@ -93,10 +108,10 @@ pub fn call_createAnchor(instance: *runtime.Instance, pose: *runtime.Instance, s
 }
 
 /// Operation: getViewerPose
-pub fn call_getViewerPose(instance: *runtime.Instance, referenceSpace: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_getViewerPose(instance: *runtime.Instance, referenceSpace: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
     _ = referenceSpace;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: getHitTestResults
@@ -107,18 +122,18 @@ pub fn call_getHitTestResults(instance: *runtime.Instance, hitTestSource: *runti
 }
 
 /// Operation: getLightEstimate
-pub fn call_getLightEstimate(instance: *runtime.Instance, lightProbe: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_getLightEstimate(instance: *runtime.Instance, lightProbe: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
     _ = lightProbe;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: getPose
-pub fn call_getPose(instance: *runtime.Instance, space: *runtime.Instance, baseSpace: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_getPose(instance: *runtime.Instance, space: *runtime.Instance, baseSpace: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
     _ = space;
     _ = baseSpace;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: getHitTestResultsForTransientInput
@@ -138,11 +153,11 @@ pub fn call_fillPoses(instance: *runtime.Instance, spaces: *const anyopaque, bas
 }
 
 /// Operation: getJointPose
-pub fn call_getJointPose(instance: *runtime.Instance, joint: *runtime.Instance, baseSpace: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_getJointPose(instance: *runtime.Instance, joint: *runtime.Instance, baseSpace: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
     _ = joint;
     _ = baseSpace;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: fillJointRadii
@@ -154,9 +169,9 @@ pub fn call_fillJointRadii(instance: *runtime.Instance, jointSpaces: *const anyo
 }
 
 /// Operation: getDepthInformation
-pub fn call_getDepthInformation(instance: *runtime.Instance, view: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_getDepthInformation(instance: *runtime.Instance, view: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
     _ = view;
-    return error.NotImplemented;
+    return null;
 }
 

@@ -1389,8 +1389,9 @@ fn setAriaAttribute(instance: *runtime.Instance, aria_name: []const u8, value: r
 fn getElementByIdFromDocument(instance: *runtime.Instance, id: []const u8) ?*runtime.Instance {
     if (id.len == 0) return null;
 
-    // Get the owner document
-    const owner_doc = NodeImpl.get_ownerDocument(instance) catch return null;
+    // Get the owner document (nullable return type now)
+    const owner_doc_opt = NodeImpl.get_ownerDocument(instance) catch return null;
+    const owner_doc = owner_doc_opt orelse return null;
 
     // Use document's getElementById
     const DocumentImpl = @import("Document.zig");

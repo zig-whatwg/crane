@@ -1,7 +1,22 @@
-//! Implementation for RTCRtpReceiver interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
 //!
-//! This file is AUTO-GENERATED on first creation.
-//! Add your custom implementation here.
+//! Implementation stub for RTCRtpReceiver interface
+//!
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Add your implementation logic
+//!   3. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -49,21 +64,21 @@ pub fn get_track(instance: *runtime.Instance) ImplError!*runtime.Instance {
 }
 
 /// Getter for transport
-pub fn get_transport(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_transport(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for jitterBufferTarget
-pub fn get_jitterBufferTarget(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_jitterBufferTarget(instance: *runtime.Instance) ImplError!?typedefs.DOMHighResTimeStamp {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for transform
-pub fn get_transform(instance: *runtime.Instance) ImplError!typedefs.RTCRtpTransform {
+pub fn get_transform(instance: *runtime.Instance) ImplError!?typedefs.RTCRtpTransform {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Setter for jitterBufferTarget
@@ -87,10 +102,10 @@ pub fn call_getContributingSources(instance: *runtime.Instance) ImplError!*const
 }
 
 /// Operation: getCapabilities
-pub fn call_getCapabilities(instance: *runtime.Instance, kind: runtime.DOMString) ImplError!dictionaries.RTCRtpCapabilities {
+pub fn call_getCapabilities(instance: *runtime.Instance, kind: runtime.DOMString) ImplError!?dictionaries.RTCRtpCapabilities {
     _ = instance;
     _ = kind;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: getStats

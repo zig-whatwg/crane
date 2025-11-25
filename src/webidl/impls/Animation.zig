@@ -1,7 +1,22 @@
-//! Implementation for Animation interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
 //!
-//! This file is AUTO-GENERATED on first creation.
-//! Add your custom implementation here.
+//! Implementation stub for Animation interface
+//!
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Add your implementation logic
+//!   3. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -63,27 +78,27 @@ pub fn get_id(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for effect
-pub fn get_effect(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_effect(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for timeline
-pub fn get_timeline(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_timeline(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for startTime
-pub fn get_startTime(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_startTime(instance: *runtime.Instance) ImplError!?f64 {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for currentTime
-pub fn get_currentTime(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_currentTime(instance: *runtime.Instance) ImplError!?f64 {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for playbackRate
@@ -141,9 +156,9 @@ pub fn get_onremove(instance: *runtime.Instance) ImplError!typedefs.EventHandler
 }
 
 /// Getter for trigger
-pub fn get_trigger(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_trigger(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for rangeStart
@@ -159,9 +174,9 @@ pub fn get_rangeEnd(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Getter for overallProgress
-pub fn get_overallProgress(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_overallProgress(instance: *runtime.Instance) ImplError!?f64 {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Setter for id

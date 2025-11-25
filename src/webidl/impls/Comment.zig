@@ -1,15 +1,22 @@
-//! Implementation for Comment interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
 //!
-//! Spec: https://dom.spec.whatwg.org/#interface-comment
-//! WHATWG DOM Standard §4.14
+//! Implementation stub for Comment interface
 //!
-//! Comment represents a comment in the document tree.
-//! It extends CharacterData and has node type COMMENT_NODE (8).
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
 //!
-//! Note: Comment has no own attributes beyond what it inherits from CharacterData,
-//! so it has no InternalState. All state is managed via inheritance.
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Add your implementation logic
+//!   3. The impls/ directory is the canonical location for implementations
 //!
-//! Migrated from: webidl/src/dom/Comment.zig
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -20,20 +27,16 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const Comment = interfaces.Comment;
 
-// Import related impls
-const CharacterDataImpl = @import("CharacterData.zig");
-const NodeImpl = @import("Node.zig");
-
 pub const State = Comment.State;
 
 pub const ImplError = error{
     NotImplemented,
-    InvalidStateError,
-    OutOfMemory,
 };
 
-/// Internal state for Comment implementation
-/// Comment has no own attributes - all state is inherited from CharacterData/Node
+/// Internal state for implementation-specific data
+/// Implementations can replace this with a real struct containing:
+/// - Private data not exposed via WebIDL attributes
+/// - Cached computations, buffers, etc.
 pub const InternalState = struct {};
 
 /// Initialize instance (creates the instance)
@@ -43,28 +46,27 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    // Comment has no own state to initialize
-    return runtime.Instance.init(allocator, StateType, vtable, ctx);
+    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    // TODO: Initialize your instance state here if needed
+    return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // Comment has no own state to clean up
+    // TODO: Clean up your instance resources here
     runtime.Instance.deinit(instance);
 }
 
 /// Constructor implementation
-/// DOM §4.14 - Comment(data)
-/// Creates a new Comment node with the given data (default empty string)
+/// This is called when the interface is constructed from JavaScript
 pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, data: runtime.DOMString) !*runtime.Instance {
+    // Create instance through init()
     const instance = try init(allocator, State, &Comment.vtable, ctx);
     errdefer deinit(instance);
 
-    // Set node type to COMMENT_NODE (8)
-    try NodeImpl.setNodeType(instance, NodeImpl.NodeType.COMMENT_NODE);
-
-    // Set the comment data via CharacterData
-    try CharacterDataImpl.setData(instance, data.asSlice());
+    _ = data;
+    // TODO: Implement constructor logic with parameters
 
     return instance;
 }
+

@@ -1,7 +1,22 @@
-//! Implementation for PushSubscription interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
 //!
-//! This file is AUTO-GENERATED on first creation.
-//! Add your custom implementation here.
+//! Implementation stub for PushSubscription interface
+//!
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Add your implementation logic
+//!   3. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -49,9 +64,9 @@ pub fn get_endpoint(instance: *runtime.Instance) ImplError!runtime.USVString {
 }
 
 /// Getter for expirationTime
-pub fn get_expirationTime(instance: *runtime.Instance) ImplError!typedefs.EpochTimeStamp {
+pub fn get_expirationTime(instance: *runtime.Instance) ImplError!?typedefs.EpochTimeStamp {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for options
@@ -73,9 +88,9 @@ pub fn call_toJSON(instance: *runtime.Instance) ImplError!dictionaries.PushSubsc
 }
 
 /// Operation: getKey
-pub fn call_getKey(instance: *runtime.Instance, name: enums.PushEncryptionKeyName) ImplError!*const anyopaque {
+pub fn call_getKey(instance: *runtime.Instance, name: enums.PushEncryptionKeyName) ImplError!?*const anyopaque {
     _ = instance;
     _ = name;
-    return error.NotImplemented;
+    return null;
 }
 

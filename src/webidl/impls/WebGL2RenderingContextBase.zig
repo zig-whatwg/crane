@@ -1,7 +1,22 @@
-//! Implementation for WebGL2RenderingContextBase interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
 //!
-//! This file is AUTO-GENERATED on first creation.
-//! Add your custom implementation here.
+//! Implementation stub for WebGL2RenderingContextBase interface
+//!
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Add your implementation logic
+//!   3. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -95,11 +110,11 @@ pub fn call_createTransformFeedback(instance: *runtime.Instance) ImplError!*runt
 }
 
 /// Operation: getQuery
-pub fn call_getQuery(instance: *runtime.Instance, target: typedefs.GLenum, pname: typedefs.GLenum) ImplError!*runtime.Instance {
+pub fn call_getQuery(instance: *runtime.Instance, target: typedefs.GLenum, pname: typedefs.GLenum) ImplError!?*runtime.Instance {
     _ = instance;
     _ = target;
     _ = pname;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: createVertexArray
@@ -132,11 +147,11 @@ pub fn call_clearBufferuiv(instance: *runtime.Instance, buffer: typedefs.GLenum,
 }
 
 /// Operation: getUniformIndices
-pub fn call_getUniformIndices(instance: *runtime.Instance, program: *runtime.Instance, uniformNames: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_getUniformIndices(instance: *runtime.Instance, program: *runtime.Instance, uniformNames: *const anyopaque) ImplError!?*const anyopaque {
     _ = instance;
     _ = program;
     _ = uniformNames;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: renderbufferStorageMultisample
@@ -228,11 +243,11 @@ pub fn call_invalidateSubFramebuffer(instance: *runtime.Instance, target: typede
 }
 
 /// Operation: fenceSync
-pub fn call_fenceSync(instance: *runtime.Instance, condition: typedefs.GLenum, flags: typedefs.GLbitfield) ImplError!*runtime.Instance {
+pub fn call_fenceSync(instance: *runtime.Instance, condition: typedefs.GLenum, flags: typedefs.GLbitfield) ImplError!?*runtime.Instance {
     _ = instance;
     _ = condition;
     _ = flags;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: deleteSampler
@@ -527,11 +542,11 @@ pub fn call_createQuery(instance: *runtime.Instance) ImplError!*runtime.Instance
 }
 
 /// Operation: getActiveUniformBlockName
-pub fn call_getActiveUniformBlockName(instance: *runtime.Instance, program: *runtime.Instance, uniformBlockIndex: typedefs.GLuint) ImplError!runtime.DOMString {
+pub fn call_getActiveUniformBlockName(instance: *runtime.Instance, program: *runtime.Instance, uniformBlockIndex: typedefs.GLuint) ImplError!?runtime.DOMString {
     _ = instance;
     _ = program;
     _ = uniformBlockIndex;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: drawBuffers
@@ -679,11 +694,11 @@ pub fn call_vertexAttribIPointer(instance: *runtime.Instance, index: typedefs.GL
 }
 
 /// Operation: getTransformFeedbackVarying
-pub fn call_getTransformFeedbackVarying(instance: *runtime.Instance, program: *runtime.Instance, index: typedefs.GLuint) ImplError!*runtime.Instance {
+pub fn call_getTransformFeedbackVarying(instance: *runtime.Instance, program: *runtime.Instance, index: typedefs.GLuint) ImplError!?*runtime.Instance {
     _ = instance;
     _ = program;
     _ = index;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: samplerParameteri

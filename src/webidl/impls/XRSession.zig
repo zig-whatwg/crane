@@ -1,7 +1,22 @@
-//! Implementation for XRSession interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
 //!
-//! This file is AUTO-GENERATED on first creation.
-//! Add your custom implementation here.
+//! Implementation stub for XRSession interface
+//!
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Add your implementation logic
+//!   3. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -49,15 +64,15 @@ pub fn get_visibilityState(instance: *runtime.Instance) ImplError!enums.XRVisibi
 }
 
 /// Getter for frameRate
-pub fn get_frameRate(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_frameRate(instance: *runtime.Instance) ImplError!?f32 {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for supportedFrameRates
-pub fn get_supportedFrameRates(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_supportedFrameRates(instance: *runtime.Instance) ImplError!?*const anyopaque {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for renderState
@@ -151,9 +166,9 @@ pub fn get_onframeratechange(instance: *runtime.Instance) ImplError!typedefs.Eve
 }
 
 /// Getter for domOverlayState
-pub fn get_domOverlayState(instance: *runtime.Instance) ImplError!dictionaries.XRDOMOverlayState {
+pub fn get_domOverlayState(instance: *runtime.Instance) ImplError!?dictionaries.XRDOMOverlayState {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for depthUsage
@@ -169,15 +184,15 @@ pub fn get_depthDataFormat(instance: *runtime.Instance) ImplError!enums.XRDepthD
 }
 
 /// Getter for depthType
-pub fn get_depthType(instance: *runtime.Instance) ImplError!enums.XRDepthType {
+pub fn get_depthType(instance: *runtime.Instance) ImplError!?enums.XRDepthType {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for depthActive
-pub fn get_depthActive(instance: *runtime.Instance) ImplError!bool {
+pub fn get_depthActive(instance: *runtime.Instance) ImplError!?bool {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for persistentAnchors

@@ -1,13 +1,22 @@
-//! Implementation for CDATASection interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
 //!
-//! Spec: https://dom.spec.whatwg.org/#interface-cdatasection
-//! WHATWG DOM Standard §4.12
+//! Implementation stub for CDATASection interface
 //!
-//! CDATASection extends Text but adds no additional members.
-//! It's used to represent CDATA sections in XML documents.
-//! Node type is CDATA_SECTION_NODE (4).
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
 //!
-//! Migrated from: webidl/src/dom/CDATASection.zig
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Add your implementation logic
+//!   3. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -18,20 +27,16 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const CDATASection = interfaces.CDATASection;
 
-// Import related impls
-const CharacterDataImpl = @import("CharacterData.zig");
-const NodeImpl = @import("Node.zig");
-
 pub const State = CDATASection.State;
 
 pub const ImplError = error{
     NotImplemented,
-    InvalidStateError,
-    OutOfMemory,
 };
 
-/// Internal state for CDATASection implementation
-/// CDATASection has no own attributes - all state is inherited from Text/CharacterData
+/// Internal state for implementation-specific data
+/// Implementations can replace this with a real struct containing:
+/// - Private data not exposed via WebIDL attributes
+/// - Cached computations, buffers, etc.
 pub const InternalState = struct {};
 
 /// Initialize instance (creates the instance)
@@ -41,34 +46,14 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    // CDATASection has no own state to initialize
-    return runtime.Instance.init(allocator, StateType, vtable, ctx);
+    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    // TODO: Initialize your instance state here if needed
+    return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // CDATASection has no own state to clean up
+    // TODO: Clean up your instance resources here
     runtime.Instance.deinit(instance);
 }
 
-// =============================================================================
-// Helper Functions
-// =============================================================================
-
-/// Create a CDATASection with the given data
-pub fn createCDATASection(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    data: []const u8,
-) !*runtime.Instance {
-    const instance = try init(allocator, State, &CDATASection.vtable, ctx);
-    errdefer deinit(instance);
-
-    // Set node type to CDATA_SECTION_NODE (4)
-    try NodeImpl.setNodeType(instance, NodeImpl.NodeType.CDATA_SECTION_NODE);
-
-    // Set the data via CharacterData
-    try CharacterDataImpl.setData(instance, data);
-
-    return instance;
-}

@@ -260,45 +260,38 @@ pub fn get_isConnected(instance: *runtime.Instance) !bool {
 /// Getter for ownerDocument
 /// https://dom.spec.whatwg.org/#dom-node-ownerdocument
 /// Returns the document that the node belongs to, or null for Document nodes
-pub fn get_ownerDocument(instance: *runtime.Instance) !*runtime.Instance {
+pub fn get_ownerDocument(instance: *runtime.Instance) !?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Document nodes return null
     if (internal.node_type == NodeType.DOCUMENT_NODE) {
-        return error.NotImplemented; // Return null via nullable mechanism
+        return null;
     }
 
-    if (internal.owner_document) |doc| {
-        return doc;
-    }
-
-    return error.NotImplemented; // Return null
+    return internal.owner_document;
 }
 
 /// Getter for parentNode
 /// https://dom.spec.whatwg.org/#dom-node-parentnode
-pub fn get_parentNode(instance: *runtime.Instance) !*runtime.Instance {
+pub fn get_parentNode(instance: *runtime.Instance) !?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.parent) |parent| {
-        return parent;
-    }
-    return error.NotImplemented; // Return null
+    return internal.parent;
 }
 
 /// Getter for parentElement
 /// https://dom.spec.whatwg.org/#dom-node-parentelement
 /// Returns parent if parent is an Element, otherwise null
-pub fn get_parentElement(instance: *runtime.Instance) !*runtime.Instance {
+pub fn get_parentElement(instance: *runtime.Instance) !?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     if (internal.parent) |parent| {
-        const parent_internal = getInternal(parent) orelse return error.NotImplemented;
+        const parent_internal = getInternal(parent) orelse return null;
         if (parent_internal.node_type == NodeType.ELEMENT_NODE) {
             return parent;
         }
     }
 
-    return error.NotImplemented; // Return null
+    return null;
 }
 
 /// Getter for childNodes
@@ -319,42 +312,30 @@ pub fn get_childNodes(instance: *runtime.Instance) !*runtime.Instance {
 
 /// Getter for firstChild
 /// https://dom.spec.whatwg.org/#dom-node-firstchild
-pub fn get_firstChild(instance: *runtime.Instance) !*runtime.Instance {
+pub fn get_firstChild(instance: *runtime.Instance) !?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.first_child) |child| {
-        return child;
-    }
-    return error.NotImplemented; // Return null
+    return internal.first_child;
 }
 
 /// Getter for lastChild
 /// https://dom.spec.whatwg.org/#dom-node-lastchild
-pub fn get_lastChild(instance: *runtime.Instance) !*runtime.Instance {
+pub fn get_lastChild(instance: *runtime.Instance) !?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.last_child) |child| {
-        return child;
-    }
-    return error.NotImplemented; // Return null
+    return internal.last_child;
 }
 
 /// Getter for previousSibling
 /// https://dom.spec.whatwg.org/#dom-node-previoussibling
-pub fn get_previousSibling(instance: *runtime.Instance) !*runtime.Instance {
+pub fn get_previousSibling(instance: *runtime.Instance) !?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.previous_sibling) |sibling| {
-        return sibling;
-    }
-    return error.NotImplemented; // Return null
+    return internal.previous_sibling;
 }
 
 /// Getter for nextSibling
 /// https://dom.spec.whatwg.org/#dom-node-nextsibling
-pub fn get_nextSibling(instance: *runtime.Instance) !*runtime.Instance {
+pub fn get_nextSibling(instance: *runtime.Instance) !?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.next_sibling) |sibling| {
-        return sibling;
-    }
-    return error.NotImplemented; // Return null
+    return internal.next_sibling;
 }
 
 /// Getter for nodeValue

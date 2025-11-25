@@ -1,7 +1,22 @@
-//! Implementation for SVGUseElement interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
 //!
-//! This file is AUTO-GENERATED on first creation.
-//! Add your custom implementation here.
+//! Implementation stub for SVGUseElement interface
+//!
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Add your implementation logic
+//!   3. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -67,15 +82,15 @@ pub fn get_height(instance: *runtime.Instance) ImplError!*runtime.Instance {
 }
 
 /// Getter for instanceRoot
-pub fn get_instanceRoot(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_instanceRoot(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for animatedInstanceRoot
-pub fn get_animatedInstanceRoot(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_animatedInstanceRoot(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for href

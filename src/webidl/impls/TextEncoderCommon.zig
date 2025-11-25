@@ -1,14 +1,30 @@
-//! Implementation for TextEncoderCommon interface mixin
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
 //!
-//! WHATWG Encoding Standard § 5.2.1
-//! https://encoding.spec.whatwg.org/#interface-mixin-textencodercommon
+//! Implementation stub for TextEncoderCommon interface
 //!
-//! This mixin defines the readonly encoding attribute shared by TextEncoder
-//! and TextEncoderStream. The encoding is always "utf-8" for these encoders.
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Add your implementation logic
+//!   3. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const callbacks = @import("callbacks");
 const TextEncoderCommon = interfaces.TextEncoderCommon;
 
 pub const State = TextEncoderCommon.State;
@@ -18,12 +34,12 @@ pub const ImplError = error{
 };
 
 /// Internal state for implementation-specific data
-/// For the mixin, this is empty - the main interface (TextEncoder/TextEncoderStream)
-/// stores the actual encoder state.
+/// Implementations can replace this with a real struct containing:
+/// - Private data not exposed via WebIDL attributes
+/// - Cached computations, buffers, etc.
 pub const InternalState = struct {};
 
 /// Initialize instance (creates the instance)
-/// Note: Mixins are typically not instantiated directly - this is provided for completeness.
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
@@ -31,18 +47,19 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    // TODO: Initialize your instance state here if needed
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
+    // TODO: Clean up your instance resources here
     runtime.Instance.deinit(instance);
 }
 
 /// Getter for encoding
-/// Returns the encoding name (always "utf-8" for TextEncoder/TextEncoderStream)
-/// Spec: https://encoding.spec.whatwg.org/#dom-textencodercommon-encoding
 pub fn get_encoding(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    const state = instance.getState(State);
-    return state.own.encoding;
+    _ = instance;
+    return error.NotImplemented;
 }
+

@@ -1,7 +1,22 @@
-//! Implementation for PerformanceLongAnimationFrameTiming interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
 //!
-//! This file is AUTO-GENERATED on first creation.
-//! Add your custom implementation here.
+//! Implementation stub for PerformanceLongAnimationFrameTiming interface
+//!
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Add your implementation logic
+//!   3. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -103,9 +118,9 @@ pub fn get_paintTime(instance: *runtime.Instance) ImplError!typedefs.DOMHighResT
 }
 
 /// Getter for presentationTime
-pub fn get_presentationTime(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_presentationTime(instance: *runtime.Instance) ImplError!?typedefs.DOMHighResTimeStamp {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: toJSON

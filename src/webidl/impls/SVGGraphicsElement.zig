@@ -1,7 +1,22 @@
-//! Implementation for SVGGraphicsElement interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
 //!
-//! This file is AUTO-GENERATED on first creation.
-//! Add your custom implementation here.
+//! Implementation stub for SVGGraphicsElement interface
+//!
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Add your implementation logic
+//!   3. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -61,15 +76,15 @@ pub fn get_systemLanguage(instance: *runtime.Instance) ImplError!*runtime.Instan
 }
 
 /// Operation: getScreenCTM
-pub fn call_getScreenCTM(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_getScreenCTM(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: getCTM
-pub fn call_getCTM(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_getCTM(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: getBBox

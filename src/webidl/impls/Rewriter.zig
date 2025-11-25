@@ -1,7 +1,22 @@
-//! Implementation for Rewriter interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
 //!
-//! This file is AUTO-GENERATED on first creation.
-//! Add your custom implementation here.
+//! Implementation stub for Rewriter interface
+//!
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Add your implementation logic
+//!   3. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -67,21 +82,21 @@ pub fn get_length(instance: *runtime.Instance) ImplError!enums.RewriterLength {
 }
 
 /// Getter for expectedInputLanguages
-pub fn get_expectedInputLanguages(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_expectedInputLanguages(instance: *runtime.Instance) ImplError!?*const anyopaque {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for expectedContextLanguages
-pub fn get_expectedContextLanguages(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_expectedContextLanguages(instance: *runtime.Instance) ImplError!?*const anyopaque {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for outputLanguage
-pub fn get_outputLanguage(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_outputLanguage(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for inputQuota

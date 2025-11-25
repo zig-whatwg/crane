@@ -1,7 +1,22 @@
-//! Implementation for FileSystemDirectoryHandle interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
 //!
-//! This file is AUTO-GENERATED on first creation.
-//! Add your custom implementation here.
+//! Implementation stub for FileSystemDirectoryHandle interface
+//!
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Add your implementation logic
+//!   3. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -73,20 +88,13 @@ pub fn call_removeEntry(instance: *runtime.Instance, name: runtime.USVString, op
     return error.NotImplemented;
 }
 
-/// Operation: forEach
-pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) ImplError!void {
-    _ = instance;
-    _ = callback;
-    return error.NotImplemented;
-}
-
-/// Operation: values (async iterator)
+/// Operation: values (iterable)
 pub fn call_values(instance: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
-/// Operation: getAsyncIterator (async iterator)
+/// Operation: getAsyncIterator (iterable)
 pub fn call_getAsyncIterator(instance: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     return error.NotImplemented;

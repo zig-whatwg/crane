@@ -1,7 +1,22 @@
-//! Implementation for ElementInternals interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
 //!
-//! This file is AUTO-GENERATED on first creation.
-//! Add your custom implementation here.
+//! Implementation stub for ElementInternals interface
+//!
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Add your implementation logic
+//!   3. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -43,15 +58,15 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for shadowRoot
-pub fn get_shadowRoot(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_shadowRoot(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for form
-pub fn get_form(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_form(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for willValidate
@@ -85,315 +100,315 @@ pub fn get_states(instance: *runtime.Instance) ImplError!*runtime.Instance {
 }
 
 /// Getter for role
-pub fn get_role(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_role(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaActiveDescendantElement
-pub fn get_ariaActiveDescendantElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_ariaActiveDescendantElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaAtomic
-pub fn get_ariaAtomic(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaAtomic(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaAutoComplete
-pub fn get_ariaAutoComplete(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaAutoComplete(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaBrailleLabel
-pub fn get_ariaBrailleLabel(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaBrailleLabel(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaBrailleRoleDescription
-pub fn get_ariaBrailleRoleDescription(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaBrailleRoleDescription(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaBusy
-pub fn get_ariaBusy(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaBusy(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaChecked
-pub fn get_ariaChecked(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaChecked(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaColCount
-pub fn get_ariaColCount(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaColCount(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaColIndex
-pub fn get_ariaColIndex(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaColIndex(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaColIndexText
-pub fn get_ariaColIndexText(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaColIndexText(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaColSpan
-pub fn get_ariaColSpan(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaColSpan(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaControlsElements
-pub fn get_ariaControlsElements(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_ariaControlsElements(instance: *runtime.Instance) ImplError!?*const anyopaque {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaCurrent
-pub fn get_ariaCurrent(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaCurrent(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaDescribedByElements
-pub fn get_ariaDescribedByElements(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_ariaDescribedByElements(instance: *runtime.Instance) ImplError!?*const anyopaque {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaDescription
-pub fn get_ariaDescription(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaDescription(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaDetailsElements
-pub fn get_ariaDetailsElements(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_ariaDetailsElements(instance: *runtime.Instance) ImplError!?*const anyopaque {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaDisabled
-pub fn get_ariaDisabled(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaDisabled(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaErrorMessageElements
-pub fn get_ariaErrorMessageElements(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_ariaErrorMessageElements(instance: *runtime.Instance) ImplError!?*const anyopaque {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaExpanded
-pub fn get_ariaExpanded(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaExpanded(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaFlowToElements
-pub fn get_ariaFlowToElements(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_ariaFlowToElements(instance: *runtime.Instance) ImplError!?*const anyopaque {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaHasPopup
-pub fn get_ariaHasPopup(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaHasPopup(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaHidden
-pub fn get_ariaHidden(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaHidden(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaInvalid
-pub fn get_ariaInvalid(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaInvalid(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaKeyShortcuts
-pub fn get_ariaKeyShortcuts(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaKeyShortcuts(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaLabel
-pub fn get_ariaLabel(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaLabel(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaLabelledByElements
-pub fn get_ariaLabelledByElements(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_ariaLabelledByElements(instance: *runtime.Instance) ImplError!?*const anyopaque {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaLevel
-pub fn get_ariaLevel(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaLevel(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaLive
-pub fn get_ariaLive(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaLive(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaModal
-pub fn get_ariaModal(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaModal(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaMultiLine
-pub fn get_ariaMultiLine(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaMultiLine(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaMultiSelectable
-pub fn get_ariaMultiSelectable(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaMultiSelectable(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaOrientation
-pub fn get_ariaOrientation(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaOrientation(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaOwnsElements
-pub fn get_ariaOwnsElements(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_ariaOwnsElements(instance: *runtime.Instance) ImplError!?*const anyopaque {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaPlaceholder
-pub fn get_ariaPlaceholder(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaPlaceholder(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaPosInSet
-pub fn get_ariaPosInSet(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaPosInSet(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaPressed
-pub fn get_ariaPressed(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaPressed(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaReadOnly
-pub fn get_ariaReadOnly(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaReadOnly(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaRelevant
-pub fn get_ariaRelevant(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaRelevant(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaRequired
-pub fn get_ariaRequired(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaRequired(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaRoleDescription
-pub fn get_ariaRoleDescription(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaRoleDescription(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaRowCount
-pub fn get_ariaRowCount(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaRowCount(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaRowIndex
-pub fn get_ariaRowIndex(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaRowIndex(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaRowIndexText
-pub fn get_ariaRowIndexText(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaRowIndexText(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaRowSpan
-pub fn get_ariaRowSpan(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaRowSpan(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaSelected
-pub fn get_ariaSelected(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaSelected(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaSetSize
-pub fn get_ariaSetSize(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaSetSize(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaSort
-pub fn get_ariaSort(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaSort(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaValueMax
-pub fn get_ariaValueMax(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaValueMax(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaValueMin
-pub fn get_ariaValueMin(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaValueMin(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaValueNow
-pub fn get_ariaValueNow(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaValueNow(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for ariaValueText
-pub fn get_ariaValueText(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaValueText(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Setter for role

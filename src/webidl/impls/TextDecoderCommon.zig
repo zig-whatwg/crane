@@ -1,14 +1,30 @@
-//! Implementation for TextDecoderCommon interface mixin
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
 //!
-//! WHATWG Encoding Standard § 5.1.1
-//! https://encoding.spec.whatwg.org/#interface-mixin-textdecodercommon
+//! Implementation stub for TextDecoderCommon interface
 //!
-//! This mixin defines readonly attributes shared by TextDecoder and TextDecoderStream.
-//! The attributes describe the decoder's configuration and cannot be changed after construction.
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Add your implementation logic
+//!   3. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const callbacks = @import("callbacks");
 const TextDecoderCommon = interfaces.TextDecoderCommon;
 
 pub const State = TextDecoderCommon.State;
@@ -18,12 +34,12 @@ pub const ImplError = error{
 };
 
 /// Internal state for implementation-specific data
-/// For the mixin, this is empty - the main interface (TextDecoder/TextDecoderStream)
-/// stores the actual decoder state.
+/// Implementations can replace this with a real struct containing:
+/// - Private data not exposed via WebIDL attributes
+/// - Cached computations, buffers, etc.
 pub const InternalState = struct {};
 
 /// Initialize instance (creates the instance)
-/// Note: Mixins are typically not instantiated directly - this is provided for completeness.
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
@@ -31,34 +47,31 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    // TODO: Initialize your instance state here if needed
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
+    // TODO: Clean up your instance resources here
     runtime.Instance.deinit(instance);
 }
 
 /// Getter for encoding
-/// Returns the encoding name (lowercase ASCII, e.g., "utf-8", "windows-1252")
-/// Spec: https://encoding.spec.whatwg.org/#dom-textdecodercommon-encoding
 pub fn get_encoding(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    const state = instance.getState(State);
-    return state.own.encoding;
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for fatal
-/// Returns true if decoder throws on errors, false if it uses replacement character
-/// Spec: https://encoding.spec.whatwg.org/#dom-textdecodercommon-fatal
 pub fn get_fatal(instance: *runtime.Instance) ImplError!bool {
-    const state = instance.getState(State);
-    return state.own.fatal;
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for ignoreBOM
-/// Returns true if BOM is kept in output, false if BOM is stripped
-/// Spec: https://encoding.spec.whatwg.org/#dom-textdecodercommon-ignorebom
 pub fn get_ignoreBOM(instance: *runtime.Instance) ImplError!bool {
-    const state = instance.getState(State);
-    return state.own.ignoreBOM;
+    _ = instance;
+    return error.NotImplemented;
 }
+

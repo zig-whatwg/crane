@@ -1,7 +1,22 @@
-//! Implementation for Window interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
 //!
-//! This file is AUTO-GENERATED on first creation.
-//! Add your custom implementation here.
+//! Implementation stub for Window interface
+//!
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Add your implementation logic
+//!   3. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -151,9 +166,9 @@ pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
 }
 
 /// Getter for top
-pub fn get_top(instance: *runtime.Instance) ImplError!typedefs.WindowProxy {
+pub fn get_top(instance: *runtime.Instance) ImplError!?typedefs.WindowProxy {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for opener
@@ -163,15 +178,15 @@ pub fn get_opener(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Getter for parent
-pub fn get_parent(instance: *runtime.Instance) ImplError!typedefs.WindowProxy {
+pub fn get_parent(instance: *runtime.Instance) ImplError!?typedefs.WindowProxy {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for frameElement
-pub fn get_frameElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_frameElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for navigator
@@ -235,9 +250,9 @@ pub fn get_speechSynthesis(instance: *runtime.Instance) ImplError!*runtime.Insta
 }
 
 /// Getter for fence
-pub fn get_fence(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_fence(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for documentPictureInPicture
@@ -265,9 +280,9 @@ pub fn get_onorientationchange(instance: *runtime.Instance) ImplError!typedefs.E
 }
 
 /// Getter for sharedStorage
-pub fn get_sharedStorage(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_sharedStorage(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for onappinstalled
@@ -295,9 +310,9 @@ pub fn get_screen(instance: *runtime.Instance) ImplError!*runtime.Instance {
 }
 
 /// Getter for visualViewport
-pub fn get_visualViewport(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_visualViewport(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for innerWidth
@@ -385,9 +400,9 @@ pub fn get_launchQueue(instance: *runtime.Instance) ImplError!*runtime.Instance 
 }
 
 /// Getter for portalHost
-pub fn get_portalHost(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_portalHost(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for pushManager
@@ -2342,9 +2357,9 @@ pub fn call_moveBy(instance: *runtime.Instance, x: i32, y: i32) ImplError!void {
 }
 
 /// Operation: getSelection
-pub fn call_getSelection(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_getSelection(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: stop
@@ -2362,12 +2377,12 @@ pub fn call_resizeBy(instance: *runtime.Instance, x: i32, y: i32) ImplError!void
 }
 
 /// Operation: open
-pub fn call_open(instance: *runtime.Instance, url: runtime.USVString, target: runtime.DOMString, features: runtime.DOMString) ImplError!typedefs.WindowProxy {
+pub fn call_open(instance: *runtime.Instance, url: runtime.USVString, target: runtime.DOMString, features: runtime.DOMString) ImplError!?typedefs.WindowProxy {
     _ = instance;
     _ = url;
     _ = target;
     _ = features;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: moveTo
@@ -2386,11 +2401,11 @@ pub fn call_scrollTo(instance: *runtime.Instance, options: dictionaries.ScrollTo
 }
 
 /// Operation: prompt
-pub fn call_prompt(instance: *runtime.Instance, message: runtime.DOMString, default: runtime.DOMString) ImplError!runtime.DOMString {
+pub fn call_prompt(instance: *runtime.Instance, message: runtime.DOMString, default: runtime.DOMString) ImplError!?runtime.DOMString {
     _ = instance;
     _ = message;
     _ = default;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: reportError

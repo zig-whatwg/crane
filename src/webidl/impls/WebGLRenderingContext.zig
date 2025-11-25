@@ -1,7 +1,22 @@
-//! Implementation for WebGLRenderingContext interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
 //!
-//! This file is AUTO-GENERATED on first creation.
-//! Add your custom implementation here.
+//! Implementation stub for WebGLRenderingContext interface
+//!
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Add your implementation logic
+//!   3. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -184,11 +199,11 @@ pub fn call_generateMipmap(instance: *runtime.Instance, target: typedefs.GLenum)
 }
 
 /// Operation: getActiveAttrib
-pub fn call_getActiveAttrib(instance: *runtime.Instance, program: *runtime.Instance, index: typedefs.GLuint) ImplError!*runtime.Instance {
+pub fn call_getActiveAttrib(instance: *runtime.Instance, program: *runtime.Instance, index: typedefs.GLuint) ImplError!?*runtime.Instance {
     _ = instance;
     _ = program;
     _ = index;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: texImage2D
@@ -253,9 +268,9 @@ pub fn call_uniform3fv(instance: *runtime.Instance, location: *runtime.Instance,
 }
 
 /// Operation: getContextAttributes
-pub fn call_getContextAttributes(instance: *runtime.Instance) ImplError!dictionaries.WebGLContextAttributes {
+pub fn call_getContextAttributes(instance: *runtime.Instance) ImplError!?dictionaries.WebGLContextAttributes {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: isRenderbuffer
@@ -306,10 +321,10 @@ pub fn call_deleteTexture(instance: *runtime.Instance, texture: *runtime.Instanc
 }
 
 /// Operation: getShaderSource
-pub fn call_getShaderSource(instance: *runtime.Instance, shader: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn call_getShaderSource(instance: *runtime.Instance, shader: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
     _ = shader;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: uniform2fv
@@ -404,9 +419,9 @@ pub fn call_makeXRCompatible(instance: *runtime.Instance) ImplError!*const anyop
 }
 
 /// Operation: getSupportedExtensions
-pub fn call_getSupportedExtensions(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getSupportedExtensions(instance: *runtime.Instance) ImplError!?*const anyopaque {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: compressedTexImage2D
@@ -592,17 +607,17 @@ pub fn call_uniform1fv(instance: *runtime.Instance, location: *runtime.Instance,
 }
 
 /// Operation: getProgramInfoLog
-pub fn call_getProgramInfoLog(instance: *runtime.Instance, program: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn call_getProgramInfoLog(instance: *runtime.Instance, program: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
     _ = program;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: createShader
-pub fn call_createShader(instance: *runtime.Instance, @"type": typedefs.GLenum) ImplError!*runtime.Instance {
+pub fn call_createShader(instance: *runtime.Instance, @"type": typedefs.GLenum) ImplError!?*runtime.Instance {
     _ = instance;
     _ = @"type";
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: deleteProgram
@@ -771,11 +786,11 @@ pub fn call_framebufferRenderbuffer(instance: *runtime.Instance, target: typedef
 }
 
 /// Operation: getActiveUniform
-pub fn call_getActiveUniform(instance: *runtime.Instance, program: *runtime.Instance, index: typedefs.GLuint) ImplError!*runtime.Instance {
+pub fn call_getActiveUniform(instance: *runtime.Instance, program: *runtime.Instance, index: typedefs.GLuint) ImplError!?*runtime.Instance {
     _ = instance;
     _ = program;
     _ = index;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: stencilOp
@@ -805,10 +820,10 @@ pub fn call_vertexAttrib1f(instance: *runtime.Instance, index: typedefs.GLuint, 
 }
 
 /// Operation: getShaderInfoLog
-pub fn call_getShaderInfoLog(instance: *runtime.Instance, shader: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn call_getShaderInfoLog(instance: *runtime.Instance, shader: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
     _ = shader;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: isContextLost
@@ -891,11 +906,11 @@ pub fn call_hint(instance: *runtime.Instance, target: typedefs.GLenum, mode: typ
 }
 
 /// Operation: getUniformLocation
-pub fn call_getUniformLocation(instance: *runtime.Instance, program: *runtime.Instance, name: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_getUniformLocation(instance: *runtime.Instance, program: *runtime.Instance, name: runtime.DOMString) ImplError!?*runtime.Instance {
     _ = instance;
     _ = program;
     _ = name;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: uniform4iv
@@ -924,10 +939,10 @@ pub fn call_uniformMatrix3fv(instance: *runtime.Instance, location: *runtime.Ins
 }
 
 /// Operation: getExtension
-pub fn call_getExtension(instance: *runtime.Instance, name: runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_getExtension(instance: *runtime.Instance, name: runtime.DOMString) ImplError!?*const anyopaque {
     _ = instance;
     _ = name;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: colorMask
@@ -1140,11 +1155,11 @@ pub fn call_uniform1i(instance: *runtime.Instance, location: *runtime.Instance, 
 }
 
 /// Operation: getShaderPrecisionFormat
-pub fn call_getShaderPrecisionFormat(instance: *runtime.Instance, shadertype: typedefs.GLenum, precisiontype: typedefs.GLenum) ImplError!*runtime.Instance {
+pub fn call_getShaderPrecisionFormat(instance: *runtime.Instance, shadertype: typedefs.GLenum, precisiontype: typedefs.GLenum) ImplError!?*runtime.Instance {
     _ = instance;
     _ = shadertype;
     _ = precisiontype;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: getBufferParameter
@@ -1227,9 +1242,9 @@ pub fn call_getUniform(instance: *runtime.Instance, program: *runtime.Instance, 
 }
 
 /// Operation: getAttachedShaders
-pub fn call_getAttachedShaders(instance: *runtime.Instance, program: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getAttachedShaders(instance: *runtime.Instance, program: *runtime.Instance) ImplError!?*const anyopaque {
     _ = instance;
     _ = program;
-    return error.NotImplemented;
+    return null;
 }
 

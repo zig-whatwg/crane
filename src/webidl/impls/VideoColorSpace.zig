@@ -1,7 +1,22 @@
-//! Implementation for VideoColorSpace interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
 //!
-//! This file is AUTO-GENERATED on first creation.
-//! Add your custom implementation here.
+//! Implementation stub for VideoColorSpace interface
+//!
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Add your implementation logic
+//!   3. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -56,27 +71,27 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init
 }
 
 /// Getter for primaries
-pub fn get_primaries(instance: *runtime.Instance) ImplError!enums.VideoColorPrimaries {
+pub fn get_primaries(instance: *runtime.Instance) ImplError!?enums.VideoColorPrimaries {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for transfer
-pub fn get_transfer(instance: *runtime.Instance) ImplError!enums.VideoTransferCharacteristics {
+pub fn get_transfer(instance: *runtime.Instance) ImplError!?enums.VideoTransferCharacteristics {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for matrix
-pub fn get_matrix(instance: *runtime.Instance) ImplError!enums.VideoMatrixCoefficients {
+pub fn get_matrix(instance: *runtime.Instance) ImplError!?enums.VideoMatrixCoefficients {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for fullRange
-pub fn get_fullRange(instance: *runtime.Instance) ImplError!bool {
+pub fn get_fullRange(instance: *runtime.Instance) ImplError!?bool {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: toJSON

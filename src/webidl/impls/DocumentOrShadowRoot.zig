@@ -1,7 +1,22 @@
-//! Implementation for DocumentOrShadowRoot interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
 //!
-//! This file is AUTO-GENERATED on first creation.
-//! Add your custom implementation here.
+//! Implementation stub for DocumentOrShadowRoot interface
+//!
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Add your implementation logic
+//!   3. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -43,27 +58,27 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for customElementRegistry
-pub fn get_customElementRegistry(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_customElementRegistry(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for fullscreenElement
-pub fn get_fullscreenElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_fullscreenElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for pictureInPictureElement
-pub fn get_pictureInPictureElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_pictureInPictureElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for pointerLockElement
-pub fn get_pointerLockElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_pointerLockElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for styleSheets
@@ -79,9 +94,9 @@ pub fn get_adoptedStyleSheets(instance: *runtime.Instance) ImplError!*const anyo
 }
 
 /// Getter for activeElement
-pub fn get_activeElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_activeElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Setter for adoptedStyleSheets

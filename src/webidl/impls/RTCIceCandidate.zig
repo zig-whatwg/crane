@@ -1,7 +1,22 @@
-//! Implementation for RTCIceCandidate interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
 //!
-//! This file is AUTO-GENERATED on first creation.
-//! Add your custom implementation here.
+//! Implementation stub for RTCIceCandidate interface
+//!
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Add your implementation logic
+//!   3. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -62,93 +77,93 @@ pub fn get_candidate(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for sdpMid
-pub fn get_sdpMid(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_sdpMid(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for sdpMLineIndex
-pub fn get_sdpMLineIndex(instance: *runtime.Instance) ImplError!u16 {
+pub fn get_sdpMLineIndex(instance: *runtime.Instance) ImplError!?u16 {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for foundation
-pub fn get_foundation(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_foundation(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for component
-pub fn get_component(instance: *runtime.Instance) ImplError!enums.RTCIceComponent {
+pub fn get_component(instance: *runtime.Instance) ImplError!?enums.RTCIceComponent {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for priority
-pub fn get_priority(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_priority(instance: *runtime.Instance) ImplError!?u32 {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for address
-pub fn get_address(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_address(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for protocol
-pub fn get_protocol(instance: *runtime.Instance) ImplError!enums.RTCIceProtocol {
+pub fn get_protocol(instance: *runtime.Instance) ImplError!?enums.RTCIceProtocol {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for port
-pub fn get_port(instance: *runtime.Instance) ImplError!u16 {
+pub fn get_port(instance: *runtime.Instance) ImplError!?u16 {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!enums.RTCIceCandidateType {
+pub fn get_type(instance: *runtime.Instance) ImplError!?enums.RTCIceCandidateType {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for tcpType
-pub fn get_tcpType(instance: *runtime.Instance) ImplError!enums.RTCIceTcpCandidateType {
+pub fn get_tcpType(instance: *runtime.Instance) ImplError!?enums.RTCIceTcpCandidateType {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for relatedAddress
-pub fn get_relatedAddress(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_relatedAddress(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for relatedPort
-pub fn get_relatedPort(instance: *runtime.Instance) ImplError!u16 {
+pub fn get_relatedPort(instance: *runtime.Instance) ImplError!?u16 {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for usernameFragment
-pub fn get_usernameFragment(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_usernameFragment(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for relayProtocol
-pub fn get_relayProtocol(instance: *runtime.Instance) ImplError!enums.RTCIceServerTransportProtocol {
+pub fn get_relayProtocol(instance: *runtime.Instance) ImplError!?enums.RTCIceServerTransportProtocol {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for url
-pub fn get_url(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_url(instance: *runtime.Instance) ImplError!?runtime.USVString {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: toJSON

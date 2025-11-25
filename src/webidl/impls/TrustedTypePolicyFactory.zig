@@ -1,7 +1,22 @@
-//! Implementation for TrustedTypePolicyFactory interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
 //!
-//! This file is AUTO-GENERATED on first creation.
-//! Add your custom implementation here.
+//! Implementation stub for TrustedTypePolicyFactory interface
+//!
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Add your implementation logic
+//!   3. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -55,9 +70,9 @@ pub fn get_emptyScript(instance: *runtime.Instance) ImplError!*runtime.Instance 
 }
 
 /// Getter for defaultPolicy
-pub fn get_defaultPolicy(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_defaultPolicy(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: createPolicy
@@ -83,12 +98,12 @@ pub fn call_isScriptURL(instance: *runtime.Instance, value: *const anyopaque) Im
 }
 
 /// Operation: getPropertyType
-pub fn call_getPropertyType(instance: *runtime.Instance, tagName: runtime.DOMString, property: runtime.DOMString, elementNs: runtime.DOMString) ImplError!runtime.DOMString {
+pub fn call_getPropertyType(instance: *runtime.Instance, tagName: runtime.DOMString, property: runtime.DOMString, elementNs: runtime.DOMString) ImplError!?runtime.DOMString {
     _ = instance;
     _ = tagName;
     _ = property;
     _ = elementNs;
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: isHTML
@@ -99,12 +114,12 @@ pub fn call_isHTML(instance: *runtime.Instance, value: *const anyopaque) ImplErr
 }
 
 /// Operation: getAttributeType
-pub fn call_getAttributeType(instance: *runtime.Instance, tagName: runtime.DOMString, attribute: runtime.DOMString, elementNs: runtime.DOMString, attrNs: runtime.DOMString) ImplError!runtime.DOMString {
+pub fn call_getAttributeType(instance: *runtime.Instance, tagName: runtime.DOMString, attribute: runtime.DOMString, elementNs: runtime.DOMString, attrNs: runtime.DOMString) ImplError!?runtime.DOMString {
     _ = instance;
     _ = tagName;
     _ = attribute;
     _ = elementNs;
     _ = attrNs;
-    return error.NotImplemented;
+    return null;
 }
 
