@@ -266,11 +266,14 @@ pub extern fn v8_ObjectTemplate_SetAccessor(
 /// Set an accessor property on the ObjectTemplate (creates visible descriptor)
 /// Unlike SetAccessor, this creates property descriptors visible to Object.getOwnPropertyDescriptor
 /// with { get: [Function], set: [Function] }
+///
+/// Uses FunctionCallback signatures (same as methods) - the getter receives no arguments,
+/// the setter receives the new value as first argument. Both can access 'this' via info.getThis().
 pub extern fn v8_ObjectTemplate_SetAccessorProperty(
     self: *ObjectTemplate,
     name: *String,
-    getter: ?AccessorGetterCallback,
-    setter: ?AccessorSetterCallback,
+    getter: ?FunctionCallback,
+    setter: ?FunctionCallback,
 ) void;
 
 /// Set a named property handler on the ObjectTemplate

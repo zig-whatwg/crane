@@ -868,66 +868,36 @@ void v8_ObjectTemplate_SetAccessor(
 // ObjectTemplate - set accessor property (creates visible accessor descriptor)
 // This version creates a FunctionTemplate for the getter/setter, making them
 // visible in Object.getOwnPropertyDescriptor as { get: [Function], set: [Function] }
+//
+// Uses FunctionCallback directly (same as methods) to avoid PropertyCallbackInfo issues.
+// Getter: receives no arguments, returns value via info.GetReturnValue()
+// Setter: receives new value as info[0], sets it on the object
 void v8_ObjectTemplate_SetAccessorProperty(
     Global<ObjectTemplate>* tpl,
     Global<String>* name,
-    AccessorNameGetterCallback getter,
-    AccessorNameSetterCallback setter
+    FunctionCallback getter,
+    FunctionCallback setter
 ) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<ObjectTemplate> local_tpl = tpl->Get(isolate);
     Local<Name> key = name->Get(isolate).As<Name>();
     
-    // Create a wrapper FunctionTemplate for the getter
-    // The wrapper converts FunctionCallbackInfo to PropertyCallbackInfo
-    auto getter_wrapper = [](const FunctionCallbackInfo<Value>& info) {
-        // Extract the actual getter callback from data
-        auto actual_getter = reinterpret_cast<AccessorNameGetterCallback>(
-            info.Data().As<v8::External>()->Value()
-        );
-        
-        // Create a PropertyCallbackInfo-like context
-        // V8 internally uses the same info structure for both
-        const PropertyCallbackInfo<Value>& prop_info =
-            *reinterpret_cast<const PropertyCallbackInfo<Value>*>(&info);
-        
-        // Call the actual getter with an empty property name
-        // (property name isn't used in our generated getters)
-        Local<String> empty_name = String::Empty(info.GetIsolate());
-        actual_getter(empty_name.As<Name>(), prop_info);
-    };
-    
-    // Wrap the getter callback pointer in External so we can pass it as data
-    Local<External> getter_data = External::New(isolate, reinterpret_cast<void*>(getter));
-    
+    // Create FunctionTemplate for getter using the callback directly
+    // No wrapping or casting needed - FunctionCallback is the native type
     Local<FunctionTemplate> getter_tpl = FunctionTemplate::New(
         isolate,
-        getter_wrapper,
-        getter_data
+        getter,
+        Local<Value>()  // No data needed
     );
     
     // Create FunctionTemplate for setter (if provided)
     Local<FunctionTemplate> setter_tpl;
     if (setter != nullptr) {
-        auto setter_wrapper = [](const FunctionCallbackInfo<Value>& info) {
-            auto actual_setter = reinterpret_cast<AccessorNameSetterCallback>(
-                info.Data().As<v8::External>()->Value()
-            );
-            
-            const PropertyCallbackInfo<void>& prop_info =
-                *reinterpret_cast<const PropertyCallbackInfo<void>*>(&info);
-            
-            Local<String> empty_name = String::Empty(info.GetIsolate());
-            Local<Value> value = info[0];  // First argument is the new value
-            actual_setter(empty_name.As<Name>(), value, prop_info);
-        };
-        
-        Local<External> setter_data = External::New(isolate, reinterpret_cast<void*>(setter));
         setter_tpl = FunctionTemplate::New(
             isolate,
-            setter_wrapper,
-            setter_data
+            setter,
+            Local<Value>()  // No data needed
         );
     }
     

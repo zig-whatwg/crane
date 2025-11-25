@@ -459,9 +459,9 @@ pub fn V8Interface(comptime Interface: type) type {
                 ).?;
 
                 // Generate getter callback that calls the actual Zig function
-                const getter_cb: v8.AccessorGetterCallback = struct {
-                    fn callback(property: *v8.Name, info: *const v8.PropertyCallbackInfo) callconv(.c) void {
-                        _ = property;
+                // Uses FunctionCallback signature (same as methods) to avoid PropertyCallbackInfo issues
+                const getter_cb: v8.FunctionCallback = struct {
+                    fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
                         const zig_getter = @field(Interface, getter_name);
                         const isolate_inner = info.getIsolate();
 
@@ -483,22 +483,19 @@ pub fn V8Interface(comptime Interface: type) type {
                             const v8_num = conv.toV8Long(isolate_inner, @intCast(result));
                             info.setReturnValue(@ptrCast(v8_num));
                         } else {
-                            // Instance getter - extract instance and call
-                            const holder = info.getHolder() orelse {
-                                // No holder available (accessing property on prototype without instance)
-                                // Return undefined to match browser behavior
-                                info.setUndefined();
-                                return;
-                            };
+                            // Instance getter - extract instance from 'this' and call
+                            const this_obj = info.getThis();
 
-                            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(holder, 0);
+                            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
 
                             // If instance_ptr is null, we're being called on the prototype, not an instance
                             // This happens when accessing properties via Object.getOwnPropertyDescriptor
                             // or when accessing properties on the prototype directly
                             if (instance_ptr == null) {
                                 // Return undefined for prototype access
-                                info.setUndefined();
+                                if (v8.v8_Undefined(isolate_inner)) |undef| {
+                                    info.setReturnValue(undef);
+                                }
                                 return;
                             }
 
@@ -555,7 +552,8 @@ pub fn V8Interface(comptime Interface: type) type {
                 }.callback;
 
                 // Generate setter callback that calls the actual Zig function
-                const setter_cb: ?v8.AccessorSetterCallback = if (setter_name != null) placeholderSetterCallback else null;
+                // Uses FunctionCallback signature - setter receives new value as info[0]
+                const setter_cb: ?v8.FunctionCallback = if (setter_name != null) placeholderSetterCallback else null;
 
                 // Use SetAccessorProperty instead of SetAccessor to create visible descriptors
                 // This makes the getter/setter appear in Object.getOwnPropertyDescriptor
@@ -1614,15 +1612,11 @@ pub fn V8Interface(comptime Interface: type) type {
             }
         }
 
-        /// Placeholder setter callback
-        fn placeholderSetterCallback(
-            property: *v8.Name,
-            value: *v8.Value,
-            info: *const v8.PropertyCallbackInfoVoid,
-        ) callconv(.c) void {
-            _ = property;
-            _ = value;
+        /// Placeholder setter callback (uses FunctionCallback signature)
+        /// Setter receives the new value as info.get(0)
+        fn placeholderSetterCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
             const isolate = info.getIsolate();
+            _ = info.get(0); // New value would be here
             conv.throwError(isolate, "Setter not yet implemented");
         }
 
