@@ -194,4 +194,57 @@ pub const ElementWithBase = struct {
             self.class_bloom_filter.add(class_name);
         }
     }
+
+    // ========================================================================
+    // Node interface methods (for test compatibility)
+    // ========================================================================
+
+    /// Append a child node
+    /// Simplified version for testing - doesn't implement full DOM spec
+    pub fn appendChild(self: *ElementWithBase, child: *NodeBase) !*NodeBase {
+        // Set parent relationship
+        child.parent_node = &self.base;
+
+        // Add to child list
+        try self.base.child_nodes.append(child);
+
+        return child;
+    }
+
+    /// Remove a child node
+    /// Simplified version for testing
+    pub fn removeChild(self: *ElementWithBase, child: *NodeBase) !*NodeBase {
+        // Find and remove from child list
+        const items = self.base.child_nodes.items();
+        for (items, 0..) |item, i| {
+            if (item == child) {
+                _ = self.base.child_nodes.remove(i) catch unreachable;
+                child.parent_node = null;
+                return child;
+            }
+        }
+        return error.NotFoundError;
+    }
+
+    /// Get first child
+    pub fn getFirstChild(self: *const ElementWithBase) ?*NodeBase {
+        return self.base.child_nodes.get(0);
+    }
+
+    /// Get last child
+    pub fn getLastChild(self: *const ElementWithBase) ?*NodeBase {
+        const size = self.base.child_nodes.size();
+        if (size == 0) return null;
+        return self.base.child_nodes.get(size - 1);
+    }
+
+    /// Check if element has children
+    pub fn hasChildNodes(self: *const ElementWithBase) bool {
+        return self.base.child_nodes.size() > 0;
+    }
+
+    /// Get child nodes count
+    pub fn getChildCount(self: *const ElementWithBase) usize {
+        return self.base.child_nodes.size();
+    }
 };
