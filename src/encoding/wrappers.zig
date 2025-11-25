@@ -130,6 +130,3 @@ pub fn encodeUtf8Slice(
 }
 
 // Tests
-
-
-

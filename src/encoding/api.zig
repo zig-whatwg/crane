@@ -103,15 +103,6 @@ pub fn encodeUtf8ToBuffer(code_units: []const u16, buffer: []u8) ![]const u8 {
 
 // Tests
 
-
-
-
-
-
-
-
-
-
 // ============================================================================
 // Arena Allocator Helpers (for batch operations)
 // ============================================================================
@@ -196,7 +187,3 @@ pub fn encodeUtf8Batch(
 }
 
 // Tests for arena helpers
-
-
-
-

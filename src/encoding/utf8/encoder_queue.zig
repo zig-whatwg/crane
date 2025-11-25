@@ -104,8 +104,3 @@ pub fn encode(
 }
 
 // Tests
-
-
-
-
-

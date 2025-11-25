@@ -114,6 +114,3 @@ pub fn decode(
         .code_units_written = out_pos,
     };
 }
-
-
-

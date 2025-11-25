@@ -100,7 +100,3 @@ pub fn decode(
 }
 
 // Tests
-
-
-
-

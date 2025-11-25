@@ -79,7 +79,3 @@ pub fn encode(
 }
 
 // Tests
-
-
-
-

@@ -840,17 +840,3 @@ pub fn getOutputEncoding(encoding: *const Encoding) *const Encoding {
 }
 
 // Tests
-
-
-
-
-
-
-
-
-
-
-
-
-
-

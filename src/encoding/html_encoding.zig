@@ -78,9 +78,3 @@ pub fn maxHtmlEntityBytes() usize {
 }
 
 // Tests
-
-
-
-
-
-

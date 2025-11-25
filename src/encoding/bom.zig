@@ -105,22 +105,3 @@ pub fn skipUtf16LeBom(bytes: []const u8) []const u8 {
 }
 
 // Tests
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

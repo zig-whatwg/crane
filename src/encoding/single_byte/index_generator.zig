@@ -82,6 +82,3 @@ pub fn getPointer(index: *const Index, code_point: u21) ?u8 {
 }
 
 // Tests
-
-
-

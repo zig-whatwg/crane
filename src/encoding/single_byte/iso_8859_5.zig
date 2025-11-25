@@ -30,4 +30,3 @@ pub const INDEX: index_gen.Index = index_gen.Index{
         0x0458, 0x0459, 0x045A, 0x045B, 0x045C, 0x00A7, 0x045E, 0x045F, // 120-127
     },
 };
-

@@ -193,6 +193,3 @@ pub fn processItem(
     // Spec step 8: Return continue
     return .continue_;
 }
-
-
-

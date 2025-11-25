@@ -292,6 +292,3 @@ pub const Encoder = struct {
 };
 
 // Tests
-
-
-

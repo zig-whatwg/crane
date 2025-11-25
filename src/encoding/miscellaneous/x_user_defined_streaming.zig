@@ -191,7 +191,3 @@ pub fn encode(
         .bytes_written = out_pos,
     };
 }
-
-
-
-

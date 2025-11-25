@@ -190,5 +190,3 @@ fn decode2ByteNeon(input: []const u8, output: []u16) DecodeResult {
 }
 
 // Tests
-
-

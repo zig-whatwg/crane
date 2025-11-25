@@ -168,10 +168,3 @@ pub fn countAsciiPrefixUtf16(code_units: []const u16) usize {
 }
 
 // Tests
-
-
-
-
-
-
-

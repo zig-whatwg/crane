@@ -299,11 +299,3 @@ pub fn encode(
 }
 
 // Tests
-
-
-
-
-
-
-
-
