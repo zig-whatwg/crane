@@ -25,6 +25,7 @@ const NodeImpl = @import("Node.zig");
 const mixins = @import("mixins");
 const ParentNode = mixins.ParentNode;
 const NonDocumentTypeChildNode = mixins.NonDocumentTypeChildNode;
+const ChildNode = mixins.ChildNode;
 
 pub const State = Element.State;
 
@@ -365,369 +366,396 @@ pub fn get_outerHTML(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Getter for scrollTop
+/// CSSOM View §3.1 - Returns scroll position from top
+/// Returns 0 for non-rendered elements (no layout engine)
 pub fn get_scrollTop(instance: *runtime.Instance) ImplError!f64 {
     _ = instance;
-    return error.NotImplemented;
+    return 0.0;
 }
 
 /// Getter for scrollLeft
+/// CSSOM View §3.1 - Returns scroll position from left
+/// Returns 0 for non-rendered elements (no layout engine)
 pub fn get_scrollLeft(instance: *runtime.Instance) ImplError!f64 {
     _ = instance;
-    return error.NotImplemented;
+    return 0.0;
 }
 
 /// Getter for scrollWidth
+/// CSSOM View §3.1 - Returns scroll width of element
+/// Returns 0 for non-rendered elements (no layout engine)
 pub fn get_scrollWidth(instance: *runtime.Instance) ImplError!i32 {
     _ = instance;
-    return error.NotImplemented;
+    return 0;
 }
 
 /// Getter for scrollHeight
+/// CSSOM View §3.1 - Returns scroll height of element
+/// Returns 0 for non-rendered elements (no layout engine)
 pub fn get_scrollHeight(instance: *runtime.Instance) ImplError!i32 {
     _ = instance;
-    return error.NotImplemented;
+    return 0;
 }
 
 /// Getter for clientTop
+/// CSSOM View §3.1 - Returns top border width
+/// Returns 0 for non-rendered elements (no layout engine)
 pub fn get_clientTop(instance: *runtime.Instance) ImplError!i32 {
     _ = instance;
-    return error.NotImplemented;
+    return 0;
 }
 
 /// Getter for clientLeft
+/// CSSOM View §3.1 - Returns left border width
+/// Returns 0 for non-rendered elements (no layout engine)
 pub fn get_clientLeft(instance: *runtime.Instance) ImplError!i32 {
     _ = instance;
-    return error.NotImplemented;
+    return 0;
 }
 
 /// Getter for clientWidth
+/// CSSOM View §3.1 - Returns inner width of element
+/// Returns 0 for non-rendered elements (no layout engine)
 pub fn get_clientWidth(instance: *runtime.Instance) ImplError!i32 {
     _ = instance;
-    return error.NotImplemented;
+    return 0;
 }
 
 /// Getter for clientHeight
+/// CSSOM View §3.1 - Returns inner height of element
+/// Returns 0 for non-rendered elements (no layout engine)
 pub fn get_clientHeight(instance: *runtime.Instance) ImplError!i32 {
     _ = instance;
-    return error.NotImplemented;
+    return 0;
 }
 
 /// Getter for currentCSSZoom
+/// CSSOM View - Returns current CSS zoom level
+/// Returns 1.0 (no zoom) for non-rendered elements
 pub fn get_currentCSSZoom(instance: *runtime.Instance) ImplError!f64 {
     _ = instance;
-    return error.NotImplemented;
+    return 1.0;
 }
 
 /// Getter for role
+/// ARIAMixin - Reflects the role attribute
 pub fn get_role(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "role");
 }
 
 /// Getter for ariaActiveDescendantElement
+/// ARIAMixin - Element reference (not a simple string attribute)
 pub fn get_ariaActiveDescendantElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
+    // Element reference attributes require document-level ID lookup
     return error.NotImplemented;
 }
 
 /// Getter for ariaAtomic
+/// ARIAMixin - Reflects the aria-atomic attribute
 pub fn get_ariaAtomic(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-atomic");
 }
 
 /// Getter for ariaAutoComplete
+/// ARIAMixin - Reflects the aria-autocomplete attribute
 pub fn get_ariaAutoComplete(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-autocomplete");
 }
 
 /// Getter for ariaBrailleLabel
+/// ARIAMixin - Reflects the aria-braillelabel attribute
 pub fn get_ariaBrailleLabel(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-braillelabel");
 }
 
 /// Getter for ariaBrailleRoleDescription
+/// ARIAMixin - Reflects the aria-brailleroledescription attribute
 pub fn get_ariaBrailleRoleDescription(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-brailleroledescription");
 }
 
 /// Getter for ariaBusy
+/// ARIAMixin - Reflects the aria-busy attribute
 pub fn get_ariaBusy(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-busy");
 }
 
 /// Getter for ariaChecked
+/// ARIAMixin - Reflects the aria-checked attribute
 pub fn get_ariaChecked(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-checked");
 }
 
 /// Getter for ariaColCount
+/// ARIAMixin - Reflects the aria-colcount attribute
 pub fn get_ariaColCount(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-colcount");
 }
 
 /// Getter for ariaColIndex
+/// ARIAMixin - Reflects the aria-colindex attribute
 pub fn get_ariaColIndex(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-colindex");
 }
 
 /// Getter for ariaColIndexText
+/// ARIAMixin - Reflects the aria-colindextext attribute
 pub fn get_ariaColIndexText(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-colindextext");
 }
 
 /// Getter for ariaColSpan
+/// ARIAMixin - Reflects the aria-colspan attribute
 pub fn get_ariaColSpan(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-colspan");
 }
 
 /// Getter for ariaControlsElements
+/// ARIAMixin - Element array reference (requires document-level ID lookup)
 pub fn get_ariaControlsElements(instance: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ariaCurrent
+/// ARIAMixin - Reflects the aria-current attribute
 pub fn get_ariaCurrent(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-current");
 }
 
 /// Getter for ariaDescribedByElements
+/// ARIAMixin - Element array reference (requires document-level ID lookup)
 pub fn get_ariaDescribedByElements(instance: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ariaDescription
+/// ARIAMixin - Reflects the aria-description attribute
 pub fn get_ariaDescription(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-description");
 }
 
 /// Getter for ariaDetailsElements
+/// ARIAMixin - Element array reference (requires document-level ID lookup)
 pub fn get_ariaDetailsElements(instance: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ariaDisabled
+/// ARIAMixin - Reflects the aria-disabled attribute
 pub fn get_ariaDisabled(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-disabled");
 }
 
 /// Getter for ariaErrorMessageElements
+/// ARIAMixin - Element array reference (requires document-level ID lookup)
 pub fn get_ariaErrorMessageElements(instance: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ariaExpanded
+/// ARIAMixin - Reflects the aria-expanded attribute
 pub fn get_ariaExpanded(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-expanded");
 }
 
 /// Getter for ariaFlowToElements
+/// ARIAMixin - Element array reference (requires document-level ID lookup)
 pub fn get_ariaFlowToElements(instance: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ariaHasPopup
+/// ARIAMixin - Reflects the aria-haspopup attribute
 pub fn get_ariaHasPopup(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-haspopup");
 }
 
 /// Getter for ariaHidden
+/// ARIAMixin - Reflects the aria-hidden attribute
 pub fn get_ariaHidden(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-hidden");
 }
 
 /// Getter for ariaInvalid
+/// ARIAMixin - Reflects the aria-invalid attribute
 pub fn get_ariaInvalid(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-invalid");
 }
 
 /// Getter for ariaKeyShortcuts
+/// ARIAMixin - Reflects the aria-keyshortcuts attribute
 pub fn get_ariaKeyShortcuts(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-keyshortcuts");
 }
 
 /// Getter for ariaLabel
+/// ARIAMixin - Reflects the aria-label attribute
 pub fn get_ariaLabel(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-label");
 }
 
 /// Getter for ariaLabelledByElements
+/// ARIAMixin - Element array reference (requires document-level ID lookup)
 pub fn get_ariaLabelledByElements(instance: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ariaLevel
+/// ARIAMixin - Reflects the aria-level attribute
 pub fn get_ariaLevel(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-level");
 }
 
 /// Getter for ariaLive
+/// ARIAMixin - Reflects the aria-live attribute
 pub fn get_ariaLive(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-live");
 }
 
 /// Getter for ariaModal
+/// ARIAMixin - Reflects the aria-modal attribute
 pub fn get_ariaModal(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-modal");
 }
 
 /// Getter for ariaMultiLine
+/// ARIAMixin - Reflects the aria-multiline attribute
 pub fn get_ariaMultiLine(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-multiline");
 }
 
 /// Getter for ariaMultiSelectable
+/// ARIAMixin - Reflects the aria-multiselectable attribute
 pub fn get_ariaMultiSelectable(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-multiselectable");
 }
 
 /// Getter for ariaOrientation
+/// ARIAMixin - Reflects the aria-orientation attribute
 pub fn get_ariaOrientation(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-orientation");
 }
 
 /// Getter for ariaOwnsElements
+/// ARIAMixin - Element array reference (requires document-level ID lookup)
 pub fn get_ariaOwnsElements(instance: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ariaPlaceholder
+/// ARIAMixin - Reflects the aria-placeholder attribute
 pub fn get_ariaPlaceholder(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-placeholder");
 }
 
 /// Getter for ariaPosInSet
+/// ARIAMixin - Reflects the aria-posinset attribute
 pub fn get_ariaPosInSet(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-posinset");
 }
 
 /// Getter for ariaPressed
+/// ARIAMixin - Reflects the aria-pressed attribute
 pub fn get_ariaPressed(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-pressed");
 }
 
 /// Getter for ariaReadOnly
+/// ARIAMixin - Reflects the aria-readonly attribute
 pub fn get_ariaReadOnly(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-readonly");
 }
 
 /// Getter for ariaRelevant
+/// ARIAMixin - Reflects the aria-relevant attribute
 pub fn get_ariaRelevant(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-relevant");
 }
 
 /// Getter for ariaRequired
+/// ARIAMixin - Reflects the aria-required attribute
 pub fn get_ariaRequired(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-required");
 }
 
 /// Getter for ariaRoleDescription
+/// ARIAMixin - Reflects the aria-roledescription attribute
 pub fn get_ariaRoleDescription(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-roledescription");
 }
 
 /// Getter for ariaRowCount
+/// ARIAMixin - Reflects the aria-rowcount attribute
 pub fn get_ariaRowCount(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-rowcount");
 }
 
 /// Getter for ariaRowIndex
+/// ARIAMixin - Reflects the aria-rowindex attribute
 pub fn get_ariaRowIndex(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-rowindex");
 }
 
 /// Getter for ariaRowIndexText
+/// ARIAMixin - Reflects the aria-rowindextext attribute
 pub fn get_ariaRowIndexText(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-rowindextext");
 }
 
 /// Getter for ariaRowSpan
+/// ARIAMixin - Reflects the aria-rowspan attribute
 pub fn get_ariaRowSpan(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-rowspan");
 }
 
 /// Getter for ariaSelected
+/// ARIAMixin - Reflects the aria-selected attribute
 pub fn get_ariaSelected(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-selected");
 }
 
 /// Getter for ariaSetSize
+/// ARIAMixin - Reflects the aria-setsize attribute
 pub fn get_ariaSetSize(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-setsize");
 }
 
 /// Getter for ariaSort
+/// ARIAMixin - Reflects the aria-sort attribute
 pub fn get_ariaSort(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-sort");
 }
 
 /// Getter for ariaValueMax
+/// ARIAMixin - Reflects the aria-valuemax attribute
 pub fn get_ariaValueMax(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-valuemax");
 }
 
 /// Getter for ariaValueMin
+/// ARIAMixin - Reflects the aria-valuemin attribute
 pub fn get_ariaValueMin(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-valuemin");
 }
 
 /// Getter for ariaValueNow
+/// ARIAMixin - Reflects the aria-valuenow attribute
 pub fn get_ariaValueNow(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-valuenow");
 }
 
 /// Getter for ariaValueText
+/// ARIAMixin - Reflects the aria-valuetext attribute
 pub fn get_ariaValueText(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getAriaAttribute(instance, "aria-valuetext");
 }
 
 /// Getter for regionOverset
@@ -737,27 +765,37 @@ pub fn get_regionOverset(instance: *runtime.Instance) ImplError!typedefs.CSSOMSt
 }
 
 /// Getter for children
+/// ParentNode mixin - Returns an HTMLCollection of child elements
+/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-children
 pub fn get_children(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return ParentNode.children(internal.allocator, instance, instance.ctx) catch |err| {
+        return switch (err) {
+            error.OutOfMemory => error.OutOfMemory,
+            else => error.NotImplemented,
+        };
+    };
 }
 
 /// Getter for firstElementChild
+/// ParentNode mixin - Returns the first child that is an element
+/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-firstelementchild
 pub fn get_firstElementChild(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return ParentNode.firstElementChild(instance) orelse error.NotImplemented;
 }
 
 /// Getter for lastElementChild
+/// ParentNode mixin - Returns the last child that is an element
+/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-lastelementchild
 pub fn get_lastElementChild(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return ParentNode.lastElementChild(instance) orelse error.NotImplemented;
 }
 
 /// Getter for childElementCount
+/// ParentNode mixin - Returns the number of child elements
+/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-childelementcount
 pub fn get_childElementCount(instance: *runtime.Instance) ImplError!u32 {
-    _ = instance;
-    return error.NotImplemented;
+    return ParentNode.childElementCount(instance);
 }
 
 /// Getter for previousElementSibling
@@ -913,6 +951,156 @@ fn setAttributeInternal(
     try internal.attributes.append(internal.allocator, entry);
 }
 
+// Note: matches(), closest(), and webkitMatchesSelector() delegate to ParentNode mixin
+// which has access to the selector module. Element.zig cannot access selector directly.
+
+// =============================================================================
+// ARIA Attribute Helpers
+// =============================================================================
+
+/// Get an ARIA attribute value (reflects aria-* attributes)
+fn getAriaAttribute(instance: *runtime.Instance, aria_name: []const u8) runtime.DOMString {
+    const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
+
+    // Look for aria-* attribute
+    for (internal.attributes.items) |entry| {
+        if (entry.namespace_uri == null and std.mem.eql(u8, entry.local_name, aria_name)) {
+            return runtime.DOMString.initInterned(entry.value);
+        }
+    }
+
+    return runtime.DOMString.initEmpty();
+}
+
+/// Set an ARIA attribute value
+fn setAriaAttribute(instance: *runtime.Instance, aria_name: []const u8, value: runtime.DOMString) ImplError!void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    try setAttributeInternal(internal, null, null, aria_name, value.asSlice());
+}
+
+// =============================================================================
+// Tree Traversal Helpers for getElementsBy* methods
+// =============================================================================
+
+/// Collect descendants matching tag name (tree order traversal)
+fn collectElementsByTagName(
+    root: *runtime.Instance,
+    qualified_name: []const u8,
+    collection: *runtime.Instance,
+) !void {
+    const HTMLCollectionImpl = @import("HTMLCollection.zig");
+
+    // Get first child
+    var child = NodeImpl.getFirstChild(root);
+    while (child) |c| {
+        const node_type = NodeImpl.getNodeType(c) orelse 0;
+        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+            // Check if matches
+            if (getInternal(c)) |child_internal| {
+                const local_name = child_internal.local_name.asSlice();
+                const matches = std.mem.eql(u8, qualified_name, "*") or
+                    std.ascii.eqlIgnoreCase(local_name, qualified_name);
+
+                if (matches) {
+                    try HTMLCollectionImpl.addElement(collection, c);
+                }
+            }
+
+            // Recurse into descendants
+            try collectElementsByTagName(c, qualified_name, collection);
+        }
+
+        child = NodeImpl.getNextSibling(c);
+    }
+}
+
+/// Collect descendants matching namespace and local name (tree order traversal)
+fn collectElementsByTagNameNS(
+    root: *runtime.Instance,
+    namespace: []const u8,
+    local_name: []const u8,
+    collection: *runtime.Instance,
+) !void {
+    const HTMLCollectionImpl = @import("HTMLCollection.zig");
+
+    var child = NodeImpl.getFirstChild(root);
+    while (child) |c| {
+        const node_type = NodeImpl.getNodeType(c) orelse 0;
+        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+            if (getInternal(c)) |child_internal| {
+                // Check namespace match ("*" matches any)
+                const ns_matches = std.mem.eql(u8, namespace, "*") or blk: {
+                    if (child_internal.namespace_uri) |ns| {
+                        break :blk std.mem.eql(u8, ns.asSlice(), namespace);
+                    }
+                    break :blk namespace.len == 0;
+                };
+
+                // Check local name match ("*" matches any)
+                const name_matches = std.mem.eql(u8, local_name, "*") or
+                    std.mem.eql(u8, child_internal.local_name.asSlice(), local_name);
+
+                if (ns_matches and name_matches) {
+                    try HTMLCollectionImpl.addElement(collection, c);
+                }
+            }
+
+            // Recurse into descendants
+            try collectElementsByTagNameNS(c, namespace, local_name, collection);
+        }
+
+        child = NodeImpl.getNextSibling(c);
+    }
+}
+
+/// Collect descendants with all specified class names (tree order traversal)
+fn collectElementsByClassName(
+    root: *runtime.Instance,
+    class_names: []const u8,
+    collection: *runtime.Instance,
+) !void {
+    const HTMLCollectionImpl = @import("HTMLCollection.zig");
+
+    var child = NodeImpl.getFirstChild(root);
+    while (child) |c| {
+        const node_type = NodeImpl.getNodeType(c) orelse 0;
+        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+            if (getInternal(c)) |child_internal| {
+                const class_attr = child_internal.class_name.asSlice();
+
+                // Check if element has ALL required classes
+                var all_found = true;
+                var required_iter = std.mem.tokenizeScalar(u8, class_names, ' ');
+                while (required_iter.next()) |required_class| {
+                    if (required_class.len == 0) continue;
+
+                    var found = false;
+                    var elem_iter = std.mem.tokenizeScalar(u8, class_attr, ' ');
+                    while (elem_iter.next()) |elem_class| {
+                        if (std.mem.eql(u8, elem_class, required_class)) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        all_found = false;
+                        break;
+                    }
+                }
+
+                if (all_found and class_names.len > 0) {
+                    try HTMLCollectionImpl.addElement(collection, c);
+                }
+            }
+
+            // Recurse into descendants
+            try collectElementsByClassName(c, class_names, collection);
+        }
+
+        child = NodeImpl.getNextSibling(c);
+    }
+}
+
 /// Setter for onfullscreenchange
 pub fn set_onfullscreenchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
     _ = instance;
@@ -949,104 +1137,100 @@ pub fn set_outerHTML(instance: *runtime.Instance, value: *const anyopaque) ImplE
 }
 
 /// Setter for scrollTop
+/// CSSOM View §3.1 - Sets scroll position from top
+/// No-op for non-rendered elements (no layout engine)
 pub fn set_scrollTop(instance: *runtime.Instance, value: f64) ImplError!void {
     _ = instance;
     _ = value;
-    return error.NotImplemented;
+    // No-op - would require layout engine to scroll
 }
 
 /// Setter for scrollLeft
+/// CSSOM View §3.1 - Sets scroll position from left
+/// No-op for non-rendered elements (no layout engine)
 pub fn set_scrollLeft(instance: *runtime.Instance, value: f64) ImplError!void {
     _ = instance;
     _ = value;
-    return error.NotImplemented;
+    // No-op - would require layout engine to scroll
 }
 
 /// Setter for role
+/// ARIAMixin - Sets the role attribute
 pub fn set_role(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "role", value);
 }
 
 /// Setter for ariaActiveDescendantElement
+/// ARIAMixin - Element reference setter (requires ID setting)
 pub fn set_ariaActiveDescendantElement(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = value;
+    // Element reference setters require setting aria-activedescendant to the ID
     return error.NotImplemented;
 }
 
 /// Setter for ariaAtomic
+/// ARIAMixin - Sets the aria-atomic attribute
 pub fn set_ariaAtomic(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-atomic", value);
 }
 
 /// Setter for ariaAutoComplete
+/// ARIAMixin - Sets the aria-autocomplete attribute
 pub fn set_ariaAutoComplete(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-autocomplete", value);
 }
 
 /// Setter for ariaBrailleLabel
+/// ARIAMixin - Sets the aria-braillelabel attribute
 pub fn set_ariaBrailleLabel(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-braillelabel", value);
 }
 
 /// Setter for ariaBrailleRoleDescription
+/// ARIAMixin - Sets the aria-brailleroledescription attribute
 pub fn set_ariaBrailleRoleDescription(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-brailleroledescription", value);
 }
 
 /// Setter for ariaBusy
+/// ARIAMixin - Sets the aria-busy attribute
 pub fn set_ariaBusy(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-busy", value);
 }
 
 /// Setter for ariaChecked
+/// ARIAMixin - Sets the aria-checked attribute
 pub fn set_ariaChecked(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-checked", value);
 }
 
 /// Setter for ariaColCount
+/// ARIAMixin - Sets the aria-colcount attribute
 pub fn set_ariaColCount(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-colcount", value);
 }
 
 /// Setter for ariaColIndex
+/// ARIAMixin - Sets the aria-colindex attribute
 pub fn set_ariaColIndex(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-colindex", value);
 }
 
 /// Setter for ariaColIndexText
+/// ARIAMixin - Sets the aria-colindextext attribute
 pub fn set_ariaColIndexText(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-colindextext", value);
 }
 
 /// Setter for ariaColSpan
+/// ARIAMixin - Sets the aria-colspan attribute
 pub fn set_ariaColSpan(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-colspan", value);
 }
 
 /// Setter for ariaControlsElements
+/// ARIAMixin - Element array reference (requires ID setting)
 pub fn set_ariaControlsElements(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
     _ = instance;
     _ = value;
@@ -1054,13 +1238,13 @@ pub fn set_ariaControlsElements(instance: *runtime.Instance, value: *const anyop
 }
 
 /// Setter for ariaCurrent
+/// ARIAMixin - Sets the aria-current attribute
 pub fn set_ariaCurrent(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-current", value);
 }
 
 /// Setter for ariaDescribedByElements
+/// ARIAMixin - Element array reference (requires ID setting)
 pub fn set_ariaDescribedByElements(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
     _ = instance;
     _ = value;
@@ -1068,13 +1252,13 @@ pub fn set_ariaDescribedByElements(instance: *runtime.Instance, value: *const an
 }
 
 /// Setter for ariaDescription
+/// ARIAMixin - Sets the aria-description attribute
 pub fn set_ariaDescription(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-description", value);
 }
 
 /// Setter for ariaDetailsElements
+/// ARIAMixin - Element array reference (requires ID setting)
 pub fn set_ariaDetailsElements(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
     _ = instance;
     _ = value;
@@ -1082,13 +1266,13 @@ pub fn set_ariaDetailsElements(instance: *runtime.Instance, value: *const anyopa
 }
 
 /// Setter for ariaDisabled
+/// ARIAMixin - Sets the aria-disabled attribute
 pub fn set_ariaDisabled(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-disabled", value);
 }
 
 /// Setter for ariaErrorMessageElements
+/// ARIAMixin - Element array reference (requires ID setting)
 pub fn set_ariaErrorMessageElements(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
     _ = instance;
     _ = value;
@@ -1096,13 +1280,13 @@ pub fn set_ariaErrorMessageElements(instance: *runtime.Instance, value: *const a
 }
 
 /// Setter for ariaExpanded
+/// ARIAMixin - Sets the aria-expanded attribute
 pub fn set_ariaExpanded(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-expanded", value);
 }
 
 /// Setter for ariaFlowToElements
+/// ARIAMixin - Element array reference (requires ID setting)
 pub fn set_ariaFlowToElements(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
     _ = instance;
     _ = value;
@@ -1110,41 +1294,37 @@ pub fn set_ariaFlowToElements(instance: *runtime.Instance, value: *const anyopaq
 }
 
 /// Setter for ariaHasPopup
+/// ARIAMixin - Sets the aria-haspopup attribute
 pub fn set_ariaHasPopup(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-haspopup", value);
 }
 
 /// Setter for ariaHidden
+/// ARIAMixin - Sets the aria-hidden attribute
 pub fn set_ariaHidden(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-hidden", value);
 }
 
 /// Setter for ariaInvalid
+/// ARIAMixin - Sets the aria-invalid attribute
 pub fn set_ariaInvalid(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-invalid", value);
 }
 
 /// Setter for ariaKeyShortcuts
+/// ARIAMixin - Sets the aria-keyshortcuts attribute
 pub fn set_ariaKeyShortcuts(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-keyshortcuts", value);
 }
 
 /// Setter for ariaLabel
+/// ARIAMixin - Sets the aria-label attribute
 pub fn set_ariaLabel(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-label", value);
 }
 
 /// Setter for ariaLabelledByElements
+/// ARIAMixin - Element array reference (requires ID setting)
 pub fn set_ariaLabelledByElements(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
     _ = instance;
     _ = value;
@@ -1152,48 +1332,43 @@ pub fn set_ariaLabelledByElements(instance: *runtime.Instance, value: *const any
 }
 
 /// Setter for ariaLevel
+/// ARIAMixin - Sets the aria-level attribute
 pub fn set_ariaLevel(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-level", value);
 }
 
 /// Setter for ariaLive
+/// ARIAMixin - Sets the aria-live attribute
 pub fn set_ariaLive(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-live", value);
 }
 
 /// Setter for ariaModal
+/// ARIAMixin - Sets the aria-modal attribute
 pub fn set_ariaModal(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-modal", value);
 }
 
 /// Setter for ariaMultiLine
+/// ARIAMixin - Sets the aria-multiline attribute
 pub fn set_ariaMultiLine(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-multiline", value);
 }
 
 /// Setter for ariaMultiSelectable
+/// ARIAMixin - Sets the aria-multiselectable attribute
 pub fn set_ariaMultiSelectable(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-multiselectable", value);
 }
 
 /// Setter for ariaOrientation
+/// ARIAMixin - Sets the aria-orientation attribute
 pub fn set_ariaOrientation(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-orientation", value);
 }
 
 /// Setter for ariaOwnsElements
+/// ARIAMixin - Element array reference (requires ID setting)
 pub fn set_ariaOwnsElements(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
     _ = instance;
     _ = value;
@@ -1201,129 +1376,111 @@ pub fn set_ariaOwnsElements(instance: *runtime.Instance, value: *const anyopaque
 }
 
 /// Setter for ariaPlaceholder
+/// ARIAMixin - Sets the aria-placeholder attribute
 pub fn set_ariaPlaceholder(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-placeholder", value);
 }
 
 /// Setter for ariaPosInSet
+/// ARIAMixin - Sets the aria-posinset attribute
 pub fn set_ariaPosInSet(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-posinset", value);
 }
 
 /// Setter for ariaPressed
+/// ARIAMixin - Sets the aria-pressed attribute
 pub fn set_ariaPressed(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-pressed", value);
 }
 
 /// Setter for ariaReadOnly
+/// ARIAMixin - Sets the aria-readonly attribute
 pub fn set_ariaReadOnly(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-readonly", value);
 }
 
 /// Setter for ariaRelevant
+/// ARIAMixin - Sets the aria-relevant attribute
 pub fn set_ariaRelevant(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-relevant", value);
 }
 
 /// Setter for ariaRequired
+/// ARIAMixin - Sets the aria-required attribute
 pub fn set_ariaRequired(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-required", value);
 }
 
 /// Setter for ariaRoleDescription
+/// ARIAMixin - Sets the aria-roledescription attribute
 pub fn set_ariaRoleDescription(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-roledescription", value);
 }
 
 /// Setter for ariaRowCount
+/// ARIAMixin - Sets the aria-rowcount attribute
 pub fn set_ariaRowCount(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-rowcount", value);
 }
 
 /// Setter for ariaRowIndex
+/// ARIAMixin - Sets the aria-rowindex attribute
 pub fn set_ariaRowIndex(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-rowindex", value);
 }
 
 /// Setter for ariaRowIndexText
+/// ARIAMixin - Sets the aria-rowindextext attribute
 pub fn set_ariaRowIndexText(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-rowindextext", value);
 }
 
 /// Setter for ariaRowSpan
+/// ARIAMixin - Sets the aria-rowspan attribute
 pub fn set_ariaRowSpan(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-rowspan", value);
 }
 
 /// Setter for ariaSelected
+/// ARIAMixin - Sets the aria-selected attribute
 pub fn set_ariaSelected(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-selected", value);
 }
 
 /// Setter for ariaSetSize
+/// ARIAMixin - Sets the aria-setsize attribute
 pub fn set_ariaSetSize(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-setsize", value);
 }
 
 /// Setter for ariaSort
+/// ARIAMixin - Sets the aria-sort attribute
 pub fn set_ariaSort(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-sort", value);
 }
 
 /// Setter for ariaValueMax
+/// ARIAMixin - Sets the aria-valuemax attribute
 pub fn set_ariaValueMax(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-valuemax", value);
 }
 
 /// Setter for ariaValueMin
+/// ARIAMixin - Sets the aria-valuemin attribute
 pub fn set_ariaValueMin(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-valuemin", value);
 }
 
 /// Setter for ariaValueNow
+/// ARIAMixin - Sets the aria-valuenow attribute
 pub fn set_ariaValueNow(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-valuenow", value);
 }
 
 /// Setter for ariaValueText
+/// ARIAMixin - Sets the aria-valuetext attribute
 pub fn set_ariaValueText(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return setAriaAttribute(instance, "aria-valuetext", value);
 }
 
 /// Operation: getAttributeNS
@@ -1380,10 +1537,20 @@ pub fn call_hasAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOM
 }
 
 /// Operation: matches
+/// DOM §4.10.4 - Returns true if element matches the given selector
+/// Spec: https://dom.spec.whatwg.org/#dom-element-matches
 pub fn call_matches(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!bool {
-    _ = instance;
-    _ = selectors;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const selectors_str = selectors.asSlice();
+
+    // Use ParentNode's selector matching infrastructure
+    return ParentNode.matches(internal.allocator, instance, selectors_str) catch |err| {
+        return switch (err) {
+            error.SyntaxError => error.SyntaxError,
+            error.OutOfMemory => error.OutOfMemory,
+            else => error.NotImplemented,
+        };
+    };
 }
 
 /// Operation: releasePointerCapture
@@ -1498,11 +1665,27 @@ pub fn call_scrollTo(instance: *runtime.Instance, options: dictionaries.ScrollTo
 }
 
 /// Operation: getElementsByTagNameNS
+/// DOM §4.10.5 - Returns HTMLCollection of descendants with matching namespace and local name
+/// Spec: https://dom.spec.whatwg.org/#dom-element-getelementsbytagnamens
 pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: runtime.DOMString, localName: runtime.DOMString) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = namespace;
-    _ = localName;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const ns_slice = namespace.asSlice();
+    const name_slice = localName.asSlice();
+
+    // Create HTMLCollection
+    const HTMLCollectionImpl = @import("HTMLCollection.zig");
+    const collection = HTMLCollectionImpl.init(
+        internal.allocator,
+        interfaces.HTMLCollection.State,
+        &interfaces.HTMLCollection.vtable,
+        instance.ctx,
+    ) catch return error.OutOfMemory;
+    errdefer HTMLCollectionImpl.deinit(collection);
+
+    // Collect matching descendants
+    collectElementsByTagNameNS(instance, ns_slice, name_slice, collection) catch return error.OutOfMemory;
+
+    return collection;
 }
 
 /// Operation: replaceChildren
@@ -1549,10 +1732,26 @@ pub fn call_getAnimations(instance: *runtime.Instance, options: dictionaries.Get
 }
 
 /// Operation: getElementsByClassName
+/// DOM §4.10.5 - Returns HTMLCollection of descendants with all given class names
+/// Spec: https://dom.spec.whatwg.org/#dom-element-getelementsbyclassname
 pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: runtime.DOMString) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = classNames;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const names_slice = classNames.asSlice();
+
+    // Create HTMLCollection
+    const HTMLCollectionImpl = @import("HTMLCollection.zig");
+    const collection = HTMLCollectionImpl.init(
+        internal.allocator,
+        interfaces.HTMLCollection.State,
+        &interfaces.HTMLCollection.vtable,
+        instance.ctx,
+    ) catch return error.OutOfMemory;
+    errdefer HTMLCollectionImpl.deinit(collection);
+
+    // Collect matching descendants
+    collectElementsByClassName(instance, names_slice, collection) catch return error.OutOfMemory;
+
+    return collection;
 }
 
 /// Operation: insertAdjacentElement
@@ -1564,10 +1763,11 @@ pub fn call_insertAdjacentElement(instance: *runtime.Instance, where: runtime.DO
 }
 
 /// Operation: webkitMatchesSelector
+/// Legacy alias for matches() - Returns true if element matches the given selector
+/// Spec: https://dom.spec.whatwg.org/#dom-element-webkitmatchesselector
 pub fn call_webkitMatchesSelector(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!bool {
-    _ = instance;
-    _ = selectors;
-    return error.NotImplemented;
+    // webkitMatchesSelector is an alias for matches()
+    return call_matches(instance, selectors);
 }
 
 /// Operation: spatialNavigationSearch
@@ -1579,10 +1779,26 @@ pub fn call_spatialNavigationSearch(instance: *runtime.Instance, dir: enums.Spat
 }
 
 /// Operation: getElementsByTagName
+/// DOM §4.10.5 - Returns HTMLCollection of descendants with matching tag name
+/// Spec: https://dom.spec.whatwg.org/#dom-element-getelementsbytagname
 pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: runtime.DOMString) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = qualifiedName;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const name_slice = qualifiedName.asSlice();
+
+    // Create HTMLCollection
+    const HTMLCollectionImpl = @import("HTMLCollection.zig");
+    const collection = HTMLCollectionImpl.init(
+        internal.allocator,
+        interfaces.HTMLCollection.State,
+        &interfaces.HTMLCollection.vtable,
+        instance.ctx,
+    ) catch return error.OutOfMemory;
+    errdefer HTMLCollectionImpl.deinit(collection);
+
+    // Collect matching descendants
+    collectElementsByTagName(instance, name_slice, collection) catch return error.OutOfMemory;
+
+    return collection;
 }
 
 /// Operation: querySelector
@@ -1605,10 +1821,22 @@ pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMStr
 }
 
 /// Operation: closest
+/// DOM §4.10.4 - Returns closest ancestor (or self) matching selector
+/// Spec: https://dom.spec.whatwg.org/#dom-element-closest
 pub fn call_closest(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = selectors;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const selectors_str = selectors.asSlice();
+
+    // Find closest matching ancestor (including self)
+    const result = ParentNode.closest(internal.allocator, instance, selectors_str) catch |err| {
+        return switch (err) {
+            error.SyntaxError => error.SyntaxError,
+            error.OutOfMemory => error.OutOfMemory,
+            else => error.NotImplemented,
+        };
+    };
+
+    return result orelse error.NotImplemented; // null case
 }
 
 /// Operation: getSpatialNavigationContainer
@@ -1618,9 +1846,15 @@ pub fn call_getSpatialNavigationContainer(instance: *runtime.Instance) ImplError
 }
 
 /// Operation: remove
+/// ChildNode mixin - Removes this element from its parent
+/// Spec: https://dom.spec.whatwg.org/#dom-childnode-remove
 pub fn call_remove(instance: *runtime.Instance) ImplError!void {
-    _ = instance;
-    return error.NotImplemented;
+    ChildNode.remove(instance) catch |err| {
+        return switch (err) {
+            error.HierarchyRequestError => error.InvalidStateError,
+            else => error.NotImplemented,
+        };
+    };
 }
 
 /// Operation: removeAttribute

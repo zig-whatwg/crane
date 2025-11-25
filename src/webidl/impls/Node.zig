@@ -897,7 +897,8 @@ fn insertNode(node: *runtime.Instance, parent: *runtime.Instance, child: ?*runti
 }
 
 /// Internal helper: Remove node from parent
-fn removeNodeFromParent(node: *runtime.Instance, parent: *runtime.Instance) !void {
+/// Note: This is public so ChildNode mixin can use it
+pub fn removeNodeFromParent(node: *runtime.Instance, parent: *runtime.Instance) !void {
     const node_internal = getInternal(node) orelse return error.InvalidStateError;
     const parent_internal = getInternal(parent) orelse return error.InvalidStateError;
 

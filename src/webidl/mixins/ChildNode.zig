@@ -120,8 +120,8 @@ pub fn remove(node: *runtime.Instance) MixinError!void {
     const parent = NodeImpl.getParent(node) orelse return;
 
     // Step 2: Remove this node from parent
-    // Use the Node's removeChild which handles all the tree mutation
-    NodeImpl.removeChildInternal(parent, node) catch return error.HierarchyRequestError;
+    // Use the Node's removeNodeFromParent which handles all the tree mutation
+    NodeImpl.removeNodeFromParent(node, parent) catch return error.HierarchyRequestError;
 }
 
 // =============================================================================

@@ -281,6 +281,20 @@ pub fn build(b: *std.Build) void {
     // Add unified interfaces module
     dom_mod.addImport("interfaces", interfaces_mod);
 
+    // MIXINS MODULE (Shared WebIDL mixin implementations)
+    // ========================================================================
+    const mixins_mod = b.addModule("mixins", .{
+        .root_source_file = b.path("src/webidl/mixins/root.zig"),
+        .target = target,
+    });
+    mixins_mod.addImport("runtime", runtime_mod);
+    mixins_mod.addImport("interfaces", interfaces_mod);
+    mixins_mod.addImport("impls", impls_mod);
+    mixins_mod.addImport("selector", selector_mod);
+
+    // Add mixins to impls (so impls can use shared mixin code)
+    impls_mod.addImport("mixins", mixins_mod);
+
     const encoding_mod = b.addModule("encoding", .{
         .root_source_file = b.path("src/encoding/root.zig"),
         .target = target,

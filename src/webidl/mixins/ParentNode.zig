@@ -801,6 +801,69 @@ fn matchesNthPattern(index: u32, nth: selector_mod.NthPattern) bool {
 }
 
 // =============================================================================
+// Public Selector Matching API (for Element.matches and Element.closest)
+// =============================================================================
+
+/// Check if an element matches a selector string
+/// Spec: https://dom.spec.whatwg.org/#dom-element-matches
+/// Used by Element.matches() and Element.webkitMatchesSelector()
+pub fn matches(
+    allocator: std.mem.Allocator,
+    element: *runtime.Instance,
+    selectors: []const u8,
+) MixinError!bool {
+    // Step 1: Parse selector
+    var tokenizer = Tokenizer.init(allocator, selectors);
+    var parser = Parser.init(allocator, &tokenizer) catch {
+        return error.SyntaxError;
+    };
+    defer parser.deinit();
+
+    var selector_list = parser.parse() catch {
+        return error.SyntaxError;
+    };
+    defer selector_list.deinit();
+
+    // Step 2: Return true if element matches selector list
+    return elementMatchesSelectorList(element, &selector_list);
+}
+
+/// Find closest ancestor (or self) matching a selector string
+/// Spec: https://dom.spec.whatwg.org/#dom-element-closest
+/// Used by Element.closest()
+pub fn closest(
+    allocator: std.mem.Allocator,
+    element: *runtime.Instance,
+    selectors: []const u8,
+) MixinError!?*runtime.Instance {
+    // Step 1: Parse selector
+    var tokenizer = Tokenizer.init(allocator, selectors);
+    var parser = Parser.init(allocator, &tokenizer) catch {
+        return error.SyntaxError;
+    };
+    defer parser.deinit();
+
+    var selector_list = parser.parse() catch {
+        return error.SyntaxError;
+    };
+    defer selector_list.deinit();
+
+    // Step 2: Walk up the tree from element (including self)
+    var current: ?*runtime.Instance = element;
+    while (current) |node| {
+        const node_type = NodeImpl.getNodeType(node) orelse 0;
+        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+            if (elementMatchesSelectorList(node, &selector_list)) {
+                return node;
+            }
+        }
+        current = NodeImpl.getParent(node);
+    }
+
+    return null;
+}
+
+// =============================================================================
 // Tests
 // =============================================================================
 
