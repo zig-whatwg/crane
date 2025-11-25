@@ -16,14 +16,14 @@ test "TreeWalker - parentNode moves to filtered parent" {
     const allocator = std.testing.allocator;
 
     // Create tree: root -> child -> grandchild
-    var root = try Element.init(allocator, "element");
+    var root = Element.init(allocator, "element");
     defer root.deinit();
 
-    var child = try Element.init(allocator, "element");
+    var child = Element.init(allocator, "element");
     defer child.deinit();
     _ = try root.call_appendChild(@ptrCast(&child));
 
-    var grandchild = try Text.init(allocator);
+    var grandchild = Text.init(allocator);
     defer grandchild.deinit();
     _ = try child.call_appendChild(@ptrCast(&grandchild));
 
@@ -42,14 +42,14 @@ test "TreeWalker - firstChild moves to first filtered child" {
     const allocator = std.testing.allocator;
 
     // Create tree: root -> [child1, child2]
-    var root = try Element.init(allocator, "element");
+    var root = Element.init(allocator, "element");
     defer root.deinit();
 
-    var child1 = try Element.init(allocator, "element");
+    var child1 = Element.init(allocator, "element");
     defer child1.deinit();
     _ = try root.call_appendChild(@ptrCast(&child1));
 
-    var child2 = try Text.init(allocator);
+    var child2 = Text.init(allocator);
     defer child2.deinit();
     _ = try root.call_appendChild(@ptrCast(&child2));
 
@@ -64,14 +64,14 @@ test "TreeWalker - lastChild moves to last filtered child" {
     const allocator = std.testing.allocator;
 
     // Create tree: root -> [child1, child2]
-    var root = try Element.init(allocator, "element");
+    var root = Element.init(allocator, "element");
     defer root.deinit();
 
-    var child1 = try Element.init(allocator, "element");
+    var child1 = Element.init(allocator, "element");
     defer child1.deinit();
     _ = try root.call_appendChild(@ptrCast(&child1));
 
-    var child2 = try Text.init(allocator);
+    var child2 = Text.init(allocator);
     defer child2.deinit();
     _ = try root.call_appendChild(@ptrCast(&child2));
 
@@ -86,18 +86,18 @@ test "TreeWalker - nextSibling moves to next filtered sibling" {
     const allocator = std.testing.allocator;
 
     // Create tree: root -> [child1, child2, child3]
-    var root = try Element.init(allocator, "element");
+    var root = Element.init(allocator, "element");
     defer root.deinit();
 
-    var child1 = try Element.init(allocator, "element");
+    var child1 = Element.init(allocator, "element");
     defer child1.deinit();
     _ = try root.call_appendChild(@ptrCast(&child1));
 
-    var child2 = try Text.init(allocator);
+    var child2 = Text.init(allocator);
     defer child2.deinit();
     _ = try root.call_appendChild(@ptrCast(&child2));
 
-    var child3 = try Element.init(allocator, "element");
+    var child3 = Element.init(allocator, "element");
     defer child3.deinit();
     _ = try root.call_appendChild(@ptrCast(&child3));
 
@@ -113,14 +113,14 @@ test "TreeWalker - previousSibling moves to previous filtered sibling" {
     const allocator = std.testing.allocator;
 
     // Create tree: root -> [child1, child2]
-    var root = try Element.init(allocator, "element");
+    var root = Element.init(allocator, "element");
     defer root.deinit();
 
-    var child1 = try Element.init(allocator, "element");
+    var child1 = Element.init(allocator, "element");
     defer child1.deinit();
     _ = try root.call_appendChild(@ptrCast(&child1));
 
-    var child2 = try Text.init(allocator);
+    var child2 = Text.init(allocator);
     defer child2.deinit();
     _ = try root.call_appendChild(@ptrCast(&child2));
 
@@ -136,18 +136,18 @@ test "TreeWalker - nextNode traverses in tree order" {
     const allocator = std.testing.allocator;
 
     // Create tree: root -> [child1 -> [grandchild], child2]
-    var root = try Element.init(allocator, "element");
+    var root = Element.init(allocator, "element");
     defer root.deinit();
 
-    var child1 = try Element.init(allocator, "element");
+    var child1 = Element.init(allocator, "element");
     defer child1.deinit();
     _ = try root.call_appendChild(@ptrCast(&child1));
 
-    var grandchild = try Text.init(allocator);
+    var grandchild = Text.init(allocator);
     defer grandchild.deinit();
     _ = try child1.call_appendChild(@ptrCast(&grandchild));
 
-    var child2 = try Element.init(allocator, "element");
+    var child2 = Element.init(allocator, "element");
     defer child2.deinit();
     _ = try root.call_appendChild(@ptrCast(&child2));
 
@@ -172,14 +172,14 @@ test "TreeWalker - previousNode traverses in reverse order" {
     const allocator = std.testing.allocator;
 
     // Create tree: root -> [child1, child2]
-    var root = try Element.init(allocator, "element");
+    var root = Element.init(allocator, "element");
     defer root.deinit();
 
-    var child1 = try Element.init(allocator, "element");
+    var child1 = Element.init(allocator, "element");
     defer child1.deinit();
     _ = try root.call_appendChild(@ptrCast(&child1));
 
-    var child2 = try Text.init(allocator);
+    var child2 = Text.init(allocator);
     defer child2.deinit();
     _ = try root.call_appendChild(@ptrCast(&child2));
 
@@ -201,18 +201,18 @@ test "TreeWalker - whatToShow filters by node type" {
     const allocator = std.testing.allocator;
 
     // Create tree: root(element) -> [element, text, element]
-    var root = try Element.init(allocator, "element");
+    var root = Element.init(allocator, "element");
     defer root.deinit();
 
-    var element1 = try Element.init(allocator, "element");
+    var element1 = Element.init(allocator, "element");
     defer element1.deinit();
     _ = try root.call_appendChild(@ptrCast(&element1));
 
-    var text = try Text.init(allocator);
+    var text = Text.init(allocator);
     defer text.deinit();
     _ = try root.call_appendChild(@ptrCast(&text));
 
-    var element2 = try Element.init(allocator, "element");
+    var element2 = Element.init(allocator, "element");
     defer element2.deinit();
     _ = try root.call_appendChild(@ptrCast(&element2));
 
@@ -243,14 +243,14 @@ test "TreeWalker - filter callback with FILTER_SKIP descends" {
         }
     }.callback;
 
-    var root = try Element.init(allocator, "element");
+    var root = Element.init(allocator, "element");
     defer root.deinit();
 
-    var text1 = try Text.init(allocator);
+    var text1 = Text.init(allocator);
     defer text1.deinit();
     _ = try root.call_appendChild(@ptrCast(&text1));
 
-    var element = try Element.init(allocator, "element");
+    var element = Element.init(allocator, "element");
     defer element.deinit();
     _ = try root.call_appendChild(@ptrCast(&element));
 
@@ -278,19 +278,19 @@ test "TreeWalker - filter callback with FILTER_REJECT skips subtree" {
         }
     }.callback;
 
-    var root = try Element.init(allocator, "element");
+    var root = Element.init(allocator, "element");
     defer root.deinit();
 
-    var text = try Text.init(allocator);
+    var text = Text.init(allocator);
     defer text.deinit();
     _ = try root.call_appendChild(@ptrCast(&text));
 
     // Add child to text (would be visited if SKIP, not if REJECT)
-    var textChild = try Element.init(allocator, "element");
+    var textChild = Element.init(allocator, "element");
     defer textChild.deinit();
     _ = try text.call_appendChild(@ptrCast(&textChild));
 
-    var element = try Element.init(allocator, "element");
+    var element = Element.init(allocator, "element");
     defer element.deinit();
     _ = try root.call_appendChild(@ptrCast(&element));
 
@@ -305,14 +305,14 @@ test "TreeWalker - filter callback with FILTER_REJECT skips subtree" {
 test "TreeWalker - currentNode setter changes position" {
     const allocator = std.testing.allocator;
 
-    var root = try Element.init(allocator, "element");
+    var root = Element.init(allocator, "element");
     defer root.deinit();
 
-    var child1 = try Element.init(allocator, "element");
+    var child1 = Element.init(allocator, "element");
     defer child1.deinit();
     _ = try root.call_appendChild(@ptrCast(&child1));
 
-    var child2 = try Element.init(allocator, "element");
+    var child2 = Element.init(allocator, "element");
     defer child2.deinit();
     _ = try root.call_appendChild(@ptrCast(&child2));
 
@@ -334,7 +334,7 @@ test "TreeWalker - currentNode setter changes position" {
 test "TreeWalker - attributes return correct values" {
     const allocator = std.testing.allocator;
 
-    var root = try Element.init(allocator, "element");
+    var root = Element.init(allocator, "element");
     defer root.deinit();
 
     const filter = struct {
@@ -356,7 +356,7 @@ test "TreeWalker - attributes return correct values" {
 test "TreeWalker - parentNode at root returns null" {
     const allocator = std.testing.allocator;
 
-    var root = try Element.init(allocator, "element");
+    var root = Element.init(allocator, "element");
     defer root.deinit();
 
     var walker = try TreeWalker.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null);
@@ -370,7 +370,7 @@ test "TreeWalker - parentNode at root returns null" {
 test "TreeWalker - nextSibling at root returns null" {
     const allocator = std.testing.allocator;
 
-    var root = try Element.init(allocator, "element");
+    var root = Element.init(allocator, "element");
     defer root.deinit();
 
     var walker = try TreeWalker.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null);
@@ -385,26 +385,26 @@ test "TreeWalker - complex nested traversal" {
     const allocator = std.testing.allocator;
 
     // Create complex tree: root -> [a -> [a1, a2], b -> [b1]]
-    var root = try Element.init(allocator, "element");
+    var root = Element.init(allocator, "element");
     defer root.deinit();
 
-    var a = try Element.init(allocator, "element");
+    var a = Element.init(allocator, "element");
     defer a.deinit();
     _ = try root.call_appendChild(@ptrCast(&a));
 
-    var a1 = try Text.init(allocator);
+    var a1 = Text.init(allocator);
     defer a1.deinit();
     _ = try a.call_appendChild(@ptrCast(&a1));
 
-    var a2 = try Text.init(allocator);
+    var a2 = Text.init(allocator);
     defer a2.deinit();
     _ = try a.call_appendChild(@ptrCast(&a2));
 
-    var b = try Element.init(allocator, "element");
+    var b = Element.init(allocator, "element");
     defer b.deinit();
     _ = try root.call_appendChild(@ptrCast(&b));
 
-    var b1 = try Text.init(allocator);
+    var b1 = Text.init(allocator);
     defer b1.deinit();
     _ = try b.call_appendChild(@ptrCast(&b1));
 

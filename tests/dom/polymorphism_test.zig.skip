@@ -12,7 +12,7 @@ const Element = dom.ElementWithBase;
 test "dom.NodeBase.tryCast - successful downcast to Element with auto-initialized type_tag" {
     const allocator = std.testing.allocator;
 
-    var element = try Element.init(allocator, "div");
+    var element = Element.init(allocator, "div");
     defer element.deinit();
 
     // Verify type_tag is automatically set
@@ -31,7 +31,7 @@ test "dom.NodeBase.tryCast - successful downcast to Element with auto-initialize
 test "dom.NodeBase.tryCast - failed downcast to wrong type" {
     const allocator = std.testing.allocator;
 
-    var element = try Element.init(allocator, "div");
+    var element = Element.init(allocator, "div");
     defer element.deinit();
 
     const node_base: *dom.NodeBase = element.toBase();
@@ -44,7 +44,7 @@ test "dom.NodeBase.tryCast - failed downcast to wrong type" {
 test "dom.NodeBase type tag is correctly set" {
     const allocator = std.testing.allocator;
 
-    var element = try Element.init(allocator, "div");
+    var element = Element.init(allocator, "div");
     defer element.deinit();
 
     const node_base: *dom.NodeBase = element.toBase();
@@ -56,7 +56,7 @@ test "dom.NodeBase type tag is correctly set" {
 test "tryCastConst works with const pointers" {
     const allocator = std.testing.allocator;
 
-    var element = try Element.init(allocator, "div");
+    var element = Element.init(allocator, "div");
     defer element.deinit();
 
     const node_base: *const dom.NodeBase = element.toBase();
