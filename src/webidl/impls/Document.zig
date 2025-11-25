@@ -648,40 +648,132 @@ pub fn get_head(instance: *runtime.Instance) ImplError!*runtime.Instance {
     return error.NotImplemented; // null
 }
 
+/// Helper: Create an HTMLCollection containing elements matching a single tag name
+fn createCollectionByTagName(instance: *runtime.Instance, tag_name: []const u8) ImplError!*runtime.Instance {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    const HTMLCollectionImpl = @import("HTMLCollection.zig");
+    const collection = try HTMLCollectionImpl.init(
+        internal.allocator,
+        interfaces.HTMLCollection.State,
+        &interfaces.HTMLCollection.vtable,
+        instance.ctx,
+    );
+    errdefer HTMLCollectionImpl.deinit(collection);
+
+    // Traverse tree and collect matching elements
+    try collectElementsByTagName(instance, tag_name, internal.doc_type == .html, collection);
+
+    return collection;
+}
+
+/// Helper: Create an HTMLCollection containing elements matching multiple tag names
+fn createCollectionByTagNames(instance: *runtime.Instance, tag_names: []const []const u8) ImplError!*runtime.Instance {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    const HTMLCollectionImpl = @import("HTMLCollection.zig");
+    const collection = try HTMLCollectionImpl.init(
+        internal.allocator,
+        interfaces.HTMLCollection.State,
+        &interfaces.HTMLCollection.vtable,
+        instance.ctx,
+    );
+    errdefer HTMLCollectionImpl.deinit(collection);
+
+    // Traverse tree and collect matching elements
+    try collectElementsByTagNames(instance, tag_names, internal.doc_type == .html, collection);
+
+    return collection;
+}
+
+/// Helper: Recursively collect elements by multiple tag names
+fn collectElementsByTagNames(
+    node: *runtime.Instance,
+    target_names: []const []const u8,
+    is_html: bool,
+    collection: *runtime.Instance,
+) ImplError!void {
+    const HTMLCollectionImpl = @import("HTMLCollection.zig");
+    const ElementImpl = @import("Element.zig");
+
+    var child = NodeImpl.getFirstChild(node);
+    while (child) |c| {
+        const node_type = NodeImpl.getNodeType(c) orelse 0;
+        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+            // Get element's tag name and compare with each target
+            if (ElementImpl.getInternal(c)) |elem_internal| {
+                const elem_name = elem_internal.local_name.asSlice();
+                var matches = false;
+
+                for (target_names) |target_name| {
+                    if (is_html) {
+                        if (std.ascii.eqlIgnoreCase(elem_name, target_name)) {
+                            matches = true;
+                            break;
+                        }
+                    } else {
+                        if (std.mem.eql(u8, elem_name, target_name)) {
+                            matches = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (matches) {
+                    HTMLCollectionImpl.addElement(collection, c) catch return error.OutOfMemory;
+                }
+            }
+        }
+
+        // Recursively search descendants
+        try collectElementsByTagNames(c, target_names, is_html, collection);
+
+        child = NodeImpl.getNextSibling(c);
+    }
+}
+
 /// Getter for images
+/// HTML §4.8.4 - Returns an HTMLCollection of all img elements
+/// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-images
 pub fn get_images(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return createCollectionByTagName(instance, "img");
 }
 
 /// Getter for embeds
+/// HTML §4.8.6 - Returns an HTMLCollection of all embed elements
+/// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-embeds
 pub fn get_embeds(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return createCollectionByTagName(instance, "embed");
 }
 
 /// Getter for plugins
+/// HTML §4.8.6 - Returns the same as embeds (alias)
+/// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-plugins
 pub fn get_plugins(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return get_embeds(instance);
 }
 
 /// Getter for links
+/// HTML §4.8.2 - Returns an HTMLCollection of all a and area elements with href attribute
+/// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-links
+/// Note: This is a simplified implementation - full spec requires filtering by href presence
 pub fn get_links(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const tag_names = &[_][]const u8{ "a", "area" };
+    return createCollectionByTagNames(instance, tag_names);
 }
 
 /// Getter for forms
+/// HTML §4.10.3 - Returns an HTMLCollection of all form elements
+/// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-forms
 pub fn get_forms(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return createCollectionByTagName(instance, "form");
 }
 
 /// Getter for scripts
+/// HTML §4.12.1 - Returns an HTMLCollection of all script elements
+/// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-scripts
 pub fn get_scripts(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return createCollectionByTagName(instance, "script");
 }
 
 /// Getter for currentScript
@@ -768,15 +860,27 @@ pub fn get_bgColor(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for anchors
+/// HTML (obsolete) - Returns an HTMLCollection of all a elements with name attribute
+/// Spec: https://html.spec.whatwg.org/multipage/obsolete.html#dom-document-anchors
+/// Note: Simplified - returns all 'a' elements (full spec requires name attribute)
 pub fn get_anchors(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return createCollectionByTagName(instance, "a");
 }
 
 /// Getter for applets
+/// HTML (obsolete) - Returns an empty HTMLCollection (applet element is obsolete)
+/// Spec: https://html.spec.whatwg.org/multipage/obsolete.html#dom-document-applets
 pub fn get_applets(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Return empty collection since applet is obsolete
+    const HTMLCollectionImpl = @import("HTMLCollection.zig");
+    return try HTMLCollectionImpl.init(
+        internal.allocator,
+        interfaces.HTMLCollection.State,
+        &interfaces.HTMLCollection.vtable,
+        instance.ctx,
+    );
 }
 
 /// Getter for all
