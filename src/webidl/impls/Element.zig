@@ -20,6 +20,10 @@ const Element = interfaces.Element;
 
 // Import related impls
 const NodeImpl = @import("Node.zig");
+const AttrImpl = @import("Attr.zig");
+const DOMTokenListImpl = @import("DOMTokenList.zig");
+const TextImpl = @import("Text.zig");
+const CharacterDataImpl = @import("CharacterData.zig");
 
 // Import mixins for shared interface methods
 const mixins = @import("mixins");
@@ -285,10 +289,29 @@ pub fn get_className(instance: *runtime.Instance) ImplError!runtime.DOMString {
 
 /// Getter for classList
 /// DOM §4.8 - Returns a DOMTokenList for the class attribute
-/// TODO: Implement DOMTokenList interface
+/// Spec: https://dom.spec.whatwg.org/#dom-element-classlist
+///
+/// The classList getter steps are to return a DOMTokenList object whose
+/// associated element is this and whose associated attribute's local name is class.
 pub fn get_classList(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Create a new DOMTokenList
+    const token_list = DOMTokenListImpl.init(
+        internal.allocator,
+        interfaces.DOMTokenList.State,
+        &interfaces.DOMTokenList.vtable,
+        instance.ctx,
+    ) catch return error.OutOfMemory;
+    errdefer DOMTokenListImpl.deinit(token_list);
+
+    // Initialize with current class attribute value
+    DOMTokenListImpl.set_value(token_list, internal.class_name) catch return error.OutOfMemory;
+
+    // Associate with this element and the "class" attribute
+    DOMTokenListImpl.setElement(token_list, instance, runtime.DOMString.initInterned("class"));
+
+    return token_list;
 }
 
 /// Getter for slot
@@ -1732,14 +1755,30 @@ pub fn call_setAttributeNodeNS(instance: *runtime.Instance, attr: *runtime.Insta
 /// Operation: getAttributeNodeNS
 /// DOM §4.8 - Returns the Attr node with the given namespace and local name
 /// Spec: https://dom.spec.whatwg.org/#dom-element-getattributenodens
-///
-/// Note: Full implementation requires Attr interface to support mutation.
-/// For now, returns NotImplemented. Use getAttributeNS() instead.
 pub fn call_getAttributeNodeNS(instance: *runtime.Instance, namespace: runtime.DOMString, localName: runtime.DOMString) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = namespace;
-    _ = localName;
-    // TODO: Implement when Attr interface supports proper initialization
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const ns_slice = namespace.asSlice();
+    const name_slice = localName.asSlice();
+
+    // Get attribute by namespace and local name
+    if (getAttributeByNS(internal, if (ns_slice.len > 0) ns_slice else null, name_slice)) |entry| {
+        // Create Attr node for this attribute
+        const attr = AttrImpl.createAttr(
+            internal.allocator,
+            instance.ctx,
+            entry.namespace_uri,
+            entry.prefix,
+            entry.local_name,
+            entry.value,
+        ) catch return error.OutOfMemory;
+
+        // Set owner element
+        AttrImpl.setOwnerElement(attr, instance) catch return error.InvalidStateError;
+
+        return attr;
+    }
+
+    // Return null (not found)
     return error.NotImplemented;
 }
 
@@ -1773,13 +1812,41 @@ pub fn call_setAttributeNS(instance: *runtime.Instance, namespace: runtime.DOMSt
 /// DOM §4.8 - Adds or replaces the Attr node
 /// Spec: https://dom.spec.whatwg.org/#dom-element-setattributenode
 ///
-/// Note: Full implementation requires Attr interface to support getName/getValue accessors.
-/// For now, returns NotImplemented. Use setAttribute() instead.
+/// The setAttributeNode(attr) method steps are to return the result of
+/// setting an attribute given attr and this.
 pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = attr;
-    // TODO: Implement when Attr interface supports proper accessors
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Get attribute properties from the Attr node
+    const namespace_uri = AttrImpl.get_namespaceURI(attr) catch return error.InvalidStateError;
+    const prefix = AttrImpl.get_prefix(attr) catch return error.InvalidStateError;
+    const local_name = AttrImpl.get_localName(attr) catch return error.InvalidStateError;
+    const value = AttrImpl.get_value(attr) catch return error.InvalidStateError;
+
+    const ns_slice = namespace_uri.asSlice();
+    const prefix_slice = prefix.asSlice();
+    const name_slice = local_name.asSlice();
+    const value_slice = value.asSlice();
+
+    // Check if an attribute with same namespace and local name already exists
+    const ns = if (ns_slice.len > 0) ns_slice else null;
+    const pfx = if (prefix_slice.len > 0) prefix_slice else null;
+
+    var old_attr: ?*runtime.Instance = null;
+
+    if (getAttributeByNS(internal, ns, name_slice)) |_| {
+        // Get old attribute node before replacing
+        old_attr = call_getAttributeNodeNS(instance, namespace_uri, local_name) catch null;
+    }
+
+    // Set the attribute value (this will add or update)
+    setAttributeInternal(internal, ns, pfx, name_slice, value_slice) catch return error.OutOfMemory;
+
+    // Set owner element on the new attr
+    AttrImpl.setOwnerElement(attr, instance) catch return error.InvalidStateError;
+
+    // Return old attribute if it existed, otherwise return null (NotImplemented)
+    return old_attr orelse error.NotImplemented;
 }
 
 /// Operation: scrollTo
@@ -2074,13 +2141,48 @@ pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Inst
 /// DOM §4.8 - Removes the given Attr node from this element
 /// Spec: https://dom.spec.whatwg.org/#dom-element-removeattributenode
 ///
-/// Note: Full implementation requires Attr interface to support getName accessor.
-/// For now, returns NotImplemented. Use removeAttribute() instead.
+/// The removeAttributeNode(attr) method steps are:
+/// 1. If this's attribute list does not contain attr, then throw a "NotFoundError" DOMException.
+/// 2. Remove attr.
+/// 3. Return attr.
 pub fn call_removeAttributeNode(instance: *runtime.Instance, attr: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = attr;
-    // TODO: Implement when Attr interface supports proper accessors
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Get attribute properties from the Attr node
+    const namespace_uri = AttrImpl.get_namespaceURI(attr) catch return error.InvalidStateError;
+    const local_name = AttrImpl.get_localName(attr) catch return error.InvalidStateError;
+
+    const ns_slice = namespace_uri.asSlice();
+    const name_slice = local_name.asSlice();
+    const ns = if (ns_slice.len > 0) ns_slice else null;
+
+    // Step 1: Check if attribute exists
+    if (getAttributeByNS(internal, ns, name_slice) == null) {
+        return error.NotFoundError;
+    }
+
+    // Step 2: Remove the attribute
+    removeAttributeByNS(internal, ns, name_slice);
+
+    // Clear owner element on the removed attr
+    AttrImpl.setOwnerElement(attr, null) catch {};
+
+    // Update cached values if needed
+    if (ns == null) {
+        if (std.mem.eql(u8, name_slice, "id")) {
+            internal.id.deinit(internal.allocator);
+            internal.id = runtime.DOMString.initEmpty();
+        } else if (std.mem.eql(u8, name_slice, "class")) {
+            internal.class_name.deinit(internal.allocator);
+            internal.class_name = runtime.DOMString.initEmpty();
+        } else if (std.mem.eql(u8, name_slice, "slot")) {
+            internal.slot.deinit(internal.allocator);
+            internal.slot = runtime.DOMString.initEmpty();
+        }
+    }
+
+    // Step 3: Return attr
+    return attr;
 }
 
 /// Operation: removeAttributeNS
@@ -2099,14 +2201,23 @@ pub fn call_removeAttributeNS(instance: *runtime.Instance, namespace: runtime.DO
 /// DOM §4.10.7 - Creates a Text node and inserts it at specified position
 /// Spec: https://dom.spec.whatwg.org/#dom-element-insertadjacenttext
 ///
-/// Note: Full implementation requires Text interface to support data setting.
-/// For now, returns NotImplemented. Use insertAdjacentElement with a Text node instead.
+/// The insertAdjacentText(where, data) method steps are:
+/// 1. Let text be a new Text node whose data is data and node document is this's node document.
+/// 2. Run the insert adjacent algorithm given this, where, and text.
 pub fn call_insertAdjacentText(instance: *runtime.Instance, where: runtime.DOMString, data: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = where;
-    _ = data;
-    // TODO: Implement when Text interface supports setData
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Step 1: Create a new Text node with the given data
+    const text_node = TextImpl.call_constructor(internal.allocator, instance.ctx, data) catch return error.OutOfMemory;
+    errdefer TextImpl.deinit(text_node);
+
+    // Step 2: Run insert adjacent algorithm
+    _ = insertAdjacent(instance, where.asSlice(), text_node) catch |err| {
+        return switch (err) {
+            error.SyntaxError => error.SyntaxError,
+            error.InvalidStateError => error.InvalidStateError,
+        };
+    };
 }
 
 /// Operation: requestFullscreen
@@ -2160,14 +2271,33 @@ pub fn call_getHTML(instance: *runtime.Instance, options: dictionaries.GetHTMLOp
 ///
 /// The getAttributeNode(qualifiedName) method steps are to return the result of
 /// getting an attribute given qualifiedName and this.
-///
-/// Note: Full implementation requires Attr interface to support mutation.
-/// For now, returns NotImplemented. Use getAttribute() instead.
 pub fn call_getAttributeNode(instance: *runtime.Instance, qualifiedName: runtime.DOMString) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = qualifiedName;
-    // TODO: Implement when Attr interface supports proper initialization
-    // This requires creating an Attr node that reflects the element's attribute
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const name = qualifiedName.asSlice();
+
+    // TODO: Lowercase name for HTML elements in HTML documents
+
+    // Search for attribute by qualified name (no namespace)
+    for (internal.attributes.items) |entry| {
+        if (entry.namespace_uri == null and std.mem.eql(u8, entry.local_name, name)) {
+            // Create Attr node for this attribute
+            const attr = AttrImpl.createAttr(
+                internal.allocator,
+                instance.ctx,
+                entry.namespace_uri,
+                entry.prefix,
+                entry.local_name,
+                entry.value,
+            ) catch return error.OutOfMemory;
+
+            // Set owner element
+            AttrImpl.setOwnerElement(attr, instance) catch return error.InvalidStateError;
+
+            return attr;
+        }
+    }
+
+    // Return null (not found) - mapped to NotImplemented for nullable return
     return error.NotImplemented;
 }
 
