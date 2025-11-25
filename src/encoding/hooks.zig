@@ -177,13 +177,6 @@ fn isAsciiOnlyUtf16(code_units: []const u16) bool {
 
 // Tests
 
-
-
-
-
-
-
-
 // ============================================================================
 // LEGACY HOOKS FOR STANDARDS
 // ============================================================================
@@ -254,6 +247,11 @@ pub fn decode(
 /// 3. Return output
 ///
 /// This is used by HTML forms. The HTML error mode emits &#NNNN; for unmappable characters.
+///
+/// WHATWG Encoding Standard § 4.1.3 (process an item, "html" mode):
+/// "Push 0x26 (&), 0x23 (#), followed by the shortest sequence of 0x30 (0) to
+/// 0x39 (9), inclusive, representing result's code point's value in base ten,
+/// followed by 0x3B (;) to output."
 pub fn encode(
     allocator: std.mem.Allocator,
     code_units: []const u16,
@@ -262,19 +260,110 @@ pub fn encode(
     // Step 1: Get encoder
     var encoder = getEncoder(encoding) orelse return EncodeError.OutOfMemory;
 
-    // Allocate output buffer (worst case: 4 bytes per code unit)
-    var output_buf = try allocator.alloc(u8, code_units.len * 4);
-    defer allocator.free(output_buf);
+    // Build output using List for dynamic sizing (HTML escapes can be longer than input)
+    var output = infra.List(u8).init(allocator);
+    errdefer output.deinit();
 
-    // Step 2: Encode with HTML error mode
-    // Note: HTML error mode is currently not implemented in the encoder
-    // For now, we use the standard encoder (matches TextEncoder behavior)
-    const result = encoder.encode(code_units, output_buf, true);
+    // Process code units one at a time to handle HTML error mode
+    var i: usize = 0;
+    while (i < code_units.len) {
+        // Handle surrogate pairs
+        var code_point: u21 = undefined;
+        var units_consumed: usize = 1;
 
-    // Step 3: Return output
-    const final_output = try allocator.alloc(u8, result.bytes_written);
-    @memcpy(final_output, output_buf[0..result.bytes_written]);
-    return final_output;
+        const cu = code_units[i];
+        if (code_points.isLeadSurrogate(cu) and i + 1 < code_units.len) {
+            const low = code_units[i + 1];
+            if (code_points.isTrailSurrogate(low)) {
+                // Decode surrogate pair
+                code_point = code_points.decodeSurrogatePair(cu, low) catch {
+                    // Invalid pair - emit &#FFFD; for each
+                    try appendHtmlNumericReference(&output, 0xFFFD);
+                    try appendHtmlNumericReference(&output, 0xFFFD);
+                    i += 2;
+                    continue;
+                };
+                units_consumed = 2;
+            } else {
+                // Unpaired lead surrogate - emit replacement
+                try appendHtmlNumericReference(&output, 0xFFFD);
+                i += 1;
+                continue;
+            }
+        } else if (code_points.isSurrogate(cu)) {
+            // Unpaired surrogate - emit replacement
+            try appendHtmlNumericReference(&output, 0xFFFD);
+            i += 1;
+            continue;
+        } else {
+            code_point = @as(u21, cu);
+        }
+
+        // Try to encode this code point
+        var temp_buf: [4]u8 = undefined;
+        const cu_slice: []const u16 = if (units_consumed == 2)
+            code_units[i .. i + 2]
+        else
+            code_units[i .. i + 1];
+
+        const result = encoder.encode(cu_slice, &temp_buf, true);
+
+        if (result.status == streaming.EncodeResult.Status.unmappable) {
+            // Step 2 (html mode): Emit &#NNNN; for unmappable code point
+            try appendHtmlNumericReference(&output, code_point);
+        } else {
+            // Successfully encoded - append bytes
+            try output.appendSlice(temp_buf[0..result.bytes_written]);
+        }
+
+        i += units_consumed;
+    }
+
+    return output.toOwnedSlice();
+}
+
+/// Append an HTML numeric character reference (&#NNNN;) to output
+///
+/// WHATWG Encoding Standard § 4.1.3
+/// "Push 0x26 (&), 0x23 (#), followed by the shortest sequence of 0x30 (0) to
+/// 0x39 (9), inclusive, representing result's code point's value in base ten,
+/// followed by 0x3B (;) to output."
+fn appendHtmlNumericReference(output: *infra.List(u8), code_point: u21) !void {
+    // &# prefix
+    try output.append('&');
+    try output.append('#');
+
+    // Convert code point to decimal string (shortest representation)
+    var buf: [10]u8 = undefined; // Max 10 digits for u21 (max 1114111 = 7 digits)
+    var len: usize = 0;
+    var value = code_point;
+
+    if (value == 0) {
+        buf[0] = '0';
+        len = 1;
+    } else {
+        // Build digits in reverse
+        while (value > 0) : (len += 1) {
+            buf[len] = @intCast('0' + @as(u8, @intCast(value % 10)));
+            value /= 10;
+        }
+        // Reverse the digits
+        var left: usize = 0;
+        var right: usize = len - 1;
+        while (left < right) {
+            const tmp = buf[left];
+            buf[left] = buf[right];
+            buf[right] = tmp;
+            left += 1;
+            right -= 1;
+        }
+    }
+
+    // Append decimal digits
+    try output.appendSlice(buf[0..len]);
+
+    // ; suffix
+    try output.append(';');
 }
 
 /// get an encoder - returns an encoder for the given encoding.
@@ -358,11 +447,3 @@ pub fn encodeOrFail(
 // ============================================================================
 // TESTS - Legacy Hooks
 // ============================================================================
-
-
-
-
-
-
-
-

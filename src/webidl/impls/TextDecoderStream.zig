@@ -1,9 +1,17 @@
 //! Implementation for TextDecoderStream interface
 //!
-//! Spec: https://encoding.spec.whatwg.org/#interface-textdecoderstream
+//! WHATWG Encoding Standard § 5.3
+//! https://encoding.spec.whatwg.org/#interface-textdecoderstream
 //!
 //! TextDecoderStream takes a stream of bytes and emits decoded strings.
 //! It's a transform stream that uses the TextDecoder algorithm.
+//!
+//! ## Features
+//!
+//! - **39 Encodings**: Supports all WHATWG encodings (UTF-8, UTF-16, legacy single-byte, CJK, etc.)
+//! - **BOM Handling**: Strips byte order marks by default (configurable)
+//! - **Error Modes**: Fatal (throws) or replacement (U+FFFD)
+//! - **Streaming**: Handles multi-byte sequences split across chunks
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -13,6 +21,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const infra = @import("infra");
+const encoding_mod = @import("encoding");
 const TextDecoderStream = interfaces.TextDecoderStream;
 
 pub const State = TextDecoderStream.State;
@@ -26,31 +35,49 @@ pub const ImplError = error{
 
 /// Internal state for TextDecoderStream
 ///
-/// Spec: https://encoding.spec.whatwg.org/#textdecoderstream
+/// WHATWG Encoding Standard § 5.3
+/// https://encoding.spec.whatwg.org/#textdecoderstream
+///
+/// Associated state:
+/// - encoding: An encoding
+/// - decoder: A decoder instance
+/// - I/O queue: An I/O queue of bytes
+/// - ignore BOM: A boolean, initially false
+/// - BOM seen: A boolean, initially false
+/// - error mode: An error mode, initially "replacement"
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
     /// The underlying transform stream
     transform: *runtime.Instance,
 
-    /// The encoding label (normalized)
-    encoding: []const u8,
+    /// The encoding (pointer to static Encoding instance)
+    enc: *const encoding_mod.Encoding,
 
-    /// Whether to throw on decoding errors
+    /// The decoder instance for this encoding
+    decoder: encoding_mod.Decoder,
+
+    /// Whether to throw on decoding errors (error mode is "fatal")
     fatal: bool,
 
-    /// Whether to ignore BOM
+    /// Whether to ignore BOM (keep it in output)
     ignore_bom: bool,
 
-    /// Pending bytes from previous chunk (for multi-byte sequences)
+    /// Pending bytes from previous chunk (I/O queue of bytes)
     pending_bytes: infra.List(u8),
 
-    /// Whether BOM has been seen
+    /// Whether BOM has been seen (for BOM stripping in serialize)
     bom_seen: bool,
+
+    /// Reusable UTF-16 buffer for decoding
+    utf16_buffer: ?[]u16,
 
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
         _ = allocator;
         self.pending_bytes.deinit();
+        if (self.utf16_buffer) |buf| {
+            self.allocator.free(buf);
+        }
     }
 };
 
@@ -70,11 +97,13 @@ pub fn init(
 
     const internal = state.own._internal.?;
     internal.allocator = allocator;
-    internal.encoding = "utf-8";
+    internal.enc = &encoding_mod.UTF_8; // Default, will be set in constructor
+    internal.decoder = encoding_mod.UTF_8.newDecoder();
     internal.fatal = false;
     internal.ignore_bom = false;
     internal.pending_bytes = infra.List(u8).init(allocator);
     internal.bom_seen = false;
+    internal.utf16_buffer = null;
 
     return instance;
 }
@@ -92,33 +121,63 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 ///
-/// Spec: § 8.1.1 "The TextDecoderStream(label, options) constructor steps are:"
-/// 1. Let encoding be the result of getting an encoding from label
-/// 2. If encoding is failure or replacement, throw RangeError
-/// 3. Set this's encoding to encoding
-/// 4. If options's fatal is true, set this's error mode to fatal
-/// 5. Set this's ignore BOM to options's ignoreBOM
-/// 6. Set this's transform to a new TransformStream
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, label: runtime.DOMString, options: dictionaries.TextDecoderOptions) !*runtime.Instance {
+/// WHATWG Encoding Standard § 5.3.1
+/// https://encoding.spec.whatwg.org/#dom-textdecoderstream
+///
+/// The new TextDecoderStream(label, options) constructor steps are:
+/// 1. Let encoding be the result of getting an encoding from label.
+/// 2. If encoding is failure or replacement, then throw a RangeError.
+/// 3. Set this's encoding to encoding.
+/// 4. If options["fatal"] is true, then set this's error mode to "fatal".
+/// 5. Set this's ignore BOM to options["ignoreBOM"].
+/// 6. Set this's decoder to a new instance of this's encoding's decoder,
+///    and set this's I/O queue to a new I/O queue.
+/// 7. Let transformAlgorithm be an algorithm which takes a chunk argument
+///    and runs the decode and enqueue a chunk algorithm with this and chunk.
+/// 8. Let flushAlgorithm be an algorithm which takes no arguments and runs
+///    the flush and enqueue algorithm with this.
+/// 9. Let transformStream be a new TransformStream.
+/// 10. Set up transformStream with transformAlgorithm set to transformAlgorithm
+///     and flushAlgorithm set to flushAlgorithm.
+/// 11. Set this's transform to transformStream.
+pub fn call_constructor(
+    allocator: std.mem.Allocator,
+    ctx: runtime.Context,
+    label: runtime.DOMString,
+    options: dictionaries.TextDecoderOptions,
+) !*runtime.Instance {
     const instance = try init(allocator, State, &TextDecoderStream.vtable, ctx);
     errdefer deinit(instance);
 
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
-    // Step 1-3: Get encoding from label (normalize to lowercase)
-    // For now, we only support UTF-8
-    const encoding = normalizeEncodingLabel(label) orelse return error.RangeError;
-    internal.encoding = encoding;
+    // Step 1: Get encoding from label
+    const label_str = label.asSlice();
+    const enc = encoding_mod.getEncoding(label_str) orelse {
+        // Step 2: If encoding is failure, throw RangeError
+        return error.RangeError;
+    };
 
-    // Step 4: Set fatal mode
+    // Step 2: If encoding is replacement, throw RangeError
+    if (std.mem.eql(u8, enc.whatwg_name, "replacement")) {
+        return error.RangeError;
+    }
+
+    // Step 3: Set this's encoding to encoding
+    internal.enc = enc;
+
+    // Step 4: If options["fatal"] is true, set error mode to "fatal"
     internal.fatal = options.fatal orelse false;
 
-    // Step 5: Set ignore BOM
+    // Step 5: Set this's ignore BOM to options["ignoreBOM"]
     internal.ignore_bom = options.ignoreBOM orelse false;
 
-    // Step 6: Create the underlying transform stream
-    // Use empty transformer and default strategies
+    // Step 6: Set this's decoder to a new instance of encoding's decoder
+    internal.decoder = enc.newDecoder();
+
+    // Step 7-11: Create the underlying transform stream
+    // The transform and flush algorithms are implemented in decodeChunk and flush
     var empty_transformer: u8 = 0; // Placeholder for null transformer
     const writable_strategy = dictionaries.QueuingStrategy{};
     const readable_strategy = dictionaries.QueuingStrategy{};
@@ -136,43 +195,21 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, labe
     return instance;
 }
 
-/// Normalize encoding label
-///
-/// Spec: https://encoding.spec.whatwg.org/#concept-encoding-get
-fn normalizeEncodingLabel(label: runtime.DOMString) ?[]const u8 {
-    // Get the raw string from DOMString union
-    const label_str = label.asSlice();
-
-    // Simple check for UTF-8 variants (case-insensitive)
-    // In production would use full encoding label table
-    if (label_str.len == 0) return null;
-
-    // Check common UTF-8 labels
-    if (std.ascii.eqlIgnoreCase(label_str, "utf-8") or
-        std.ascii.eqlIgnoreCase(label_str, "utf8") or
-        std.ascii.eqlIgnoreCase(label_str, "unicode-1-1-utf-8"))
-    {
-        return "utf-8";
-    }
-
-    // For now, only UTF-8 is fully supported
-    // Return null for unsupported encodings
-    return null;
-}
-
 /// Getter for encoding
 ///
-/// Spec: § 8.1.2 "The encoding getter steps are to return this's encoding's name"
+/// Spec: § 5.1.1 "The encoding getter steps are to return this's encoding's name,
+/// ASCII lowercased."
 pub fn get_encoding(instance: *runtime.Instance) ImplError!runtime.DOMString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
-    // Return as interned string since encoding names are fixed
-    return runtime.DOMString.initInterned(internal.encoding);
+    // Return the WHATWG canonical name (already lowercase)
+    return runtime.DOMString.initInterned(internal.enc.whatwg_name);
 }
 
 /// Getter for fatal
 ///
-/// Spec: § 8.1.2 "The fatal getter steps are to return true if this's error mode is fatal"
+/// Spec: § 5.1.1 "The fatal getter steps are to return true if this's error mode
+/// is "fatal"; otherwise false."
 pub fn get_fatal(instance: *runtime.Instance) ImplError!bool {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
@@ -181,7 +218,7 @@ pub fn get_fatal(instance: *runtime.Instance) ImplError!bool {
 
 /// Getter for ignoreBOM
 ///
-/// Spec: § 8.1.2 "The ignoreBOM getter steps are to return this's ignore BOM"
+/// Spec: § 5.1.1 "The ignoreBOM getter steps are to return this's ignore BOM."
 pub fn get_ignoreBOM(instance: *runtime.Instance) ImplError!bool {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
@@ -190,7 +227,7 @@ pub fn get_ignoreBOM(instance: *runtime.Instance) ImplError!bool {
 
 /// Getter for readable
 ///
-/// Spec: § 8.1.2 "The readable getter steps are to return this's transform.[[readable]]"
+/// Spec: "The readable getter steps are to return this's transform.[[readable]]"
 pub fn get_readable(instance: *runtime.Instance) ImplError!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
@@ -201,7 +238,7 @@ pub fn get_readable(instance: *runtime.Instance) ImplError!*runtime.Instance {
 
 /// Getter for writable
 ///
-/// Spec: § 8.1.2 "The writable getter steps are to return this's transform.[[writable]]"
+/// Spec: "The writable getter steps are to return this's transform.[[writable]]"
 pub fn get_writable(instance: *runtime.Instance) ImplError!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
@@ -211,65 +248,248 @@ pub fn get_writable(instance: *runtime.Instance) ImplError!*runtime.Instance {
 }
 
 // ============================================================================
-// Internal Transform Algorithm
+// Internal Transform Algorithms
 // ============================================================================
 
-/// Decode a byte chunk to string
+/// Decode and enqueue a chunk algorithm
 ///
-/// This is the transform algorithm used by the underlying TransformStream.
-/// It converts bytes to UTF-8 decoded strings.
+/// WHATWG Encoding Standard § 5.3.2
+/// https://encoding.spec.whatwg.org/#decode-and-enqueue-a-chunk
+///
+/// The decode and enqueue a chunk algorithm, given a TextDecoderStream object
+/// decoder and a chunk, runs these steps:
+/// 1. Let bufferSource be the result of converting chunk to an AllowSharedBufferSource.
+/// 2. Push a copy of bufferSource to decoder's I/O queue.
+/// 3. Let output be the I/O queue of scalar values « end-of-queue ».
+/// 4. While true:
+///    a. Let item be the result of reading from decoder's I/O queue.
+///    b. If item is end-of-queue:
+///       i.   Let outputChunk be the result of running serialize I/O queue
+///            with decoder and output.
+///       ii.  If outputChunk is not the empty string, then enqueue outputChunk
+///            in decoder's transform.
+///       iii. Return.
+///    c. Let result be the result of processing an item with item, decoder's decoder,
+///       decoder's I/O queue, output, and decoder's error mode.
+///    d. If result is error, then throw a TypeError.
 pub fn decodeChunk(internal: *InternalState, input: []const u8) ![]u8 {
-    // Combine pending bytes with new input
-    var combined = infra.List(u8).init(internal.allocator);
+    const allocator = internal.allocator;
+
+    // Step 2: Push copy of input to I/O queue (combine with pending bytes)
+    var combined = infra.List(u8).init(allocator);
     defer combined.deinit();
 
     try combined.appendSlice(internal.pending_bytes.slice());
     try combined.appendSlice(input);
 
-    // For UTF-8, we need to handle incomplete sequences at the end
     const bytes = combined.slice();
-    var valid_end: usize = bytes.len;
 
-    // Check for incomplete UTF-8 sequence at end
-    if (bytes.len > 0) {
-        var i = bytes.len - 1;
-        while (i > 0 and (bytes[i] & 0xC0) == 0x80) : (i -= 1) {}
-
-        const lead = bytes[i];
-        const expected_len: usize = if ((lead & 0x80) == 0) 1 else if ((lead & 0xE0) == 0xC0) 2 else if ((lead & 0xF0) == 0xE0) 3 else if ((lead & 0xF8) == 0xF0) 4 else 1;
-
-        const actual_len = bytes.len - i;
-        if (actual_len < expected_len) {
-            valid_end = i;
-        }
+    // Handle empty input
+    if (bytes.len == 0) {
+        return try allocator.alloc(u8, 0);
     }
 
-    // Store incomplete bytes for next chunk
+    // Allocate UTF-16 output buffer for decoder
+    const max_utf16_len = internal.enc.maxUtf16Length(bytes.len);
+    const utf16_buf = try getOrAllocUtf16Buffer(internal, max_utf16_len);
+
+    // Step 3-4: Decode bytes through the encoding's decoder
+    // The decoder handles the "process an item" algorithm internally
+    const result = internal.decoder.decode(bytes, utf16_buf, false); // not last chunk
+
+    // Step 4d: Check for errors in fatal mode
+    if (internal.fatal and result.status == .malformed) {
+        return error.TypeError;
+    }
+
+    // Store incomplete bytes for next chunk (bytes not consumed)
     internal.pending_bytes.clear();
-    if (valid_end < bytes.len) {
-        try internal.pending_bytes.appendSlice(bytes[valid_end..]);
+    if (result.bytes_consumed < bytes.len) {
+        try internal.pending_bytes.appendSlice(bytes[result.bytes_consumed..]);
     }
 
-    // Return valid UTF-8 portion
-    if (valid_end > 0) {
-        return try internal.allocator.dupe(u8, bytes[0..valid_end]);
-    }
-    return try internal.allocator.alloc(u8, 0);
+    // Step 4b.i: Run serialize I/O queue algorithm
+    const utf16_output = utf16_buf[0..result.code_units_written];
+    return try serializeIoQueue(internal, utf16_output);
 }
 
-/// Flush any pending state
+/// Flush and enqueue algorithm
 ///
-/// This is the flush algorithm used by the underlying TransformStream.
+/// WHATWG Encoding Standard § 5.3.3
+/// https://encoding.spec.whatwg.org/#flush-and-enqueue
+///
+/// The flush and enqueue algorithm, which handles the end of data from the input
+/// ReadableStream object, given a TextDecoderStream object decoder, runs these steps:
+/// 1. Let output be the I/O queue of scalar values « end-of-queue ».
+/// 2. While true:
+///    a. Let item be the result of reading from decoder's I/O queue.
+///    b. Let result be the result of processing an item with item, decoder's decoder,
+///       decoder's I/O queue, output, and decoder's error mode.
+///    c. If result is finished:
+///       i.   Let outputChunk be the result of running serialize I/O queue
+///            with decoder and output.
+///       ii.  If outputChunk is not the empty string, then enqueue outputChunk
+///            in decoder's transform.
+///       iii. Return.
+///    d. Otherwise, if result is error, throw a TypeError.
 pub fn flush(internal: *InternalState) !?[]u8 {
-    if (internal.pending_bytes.len > 0) {
-        if (internal.fatal) {
-            // Fatal mode: incomplete sequence is an error
-            return error.TypeError;
-        }
-        // Replacement mode: emit U+FFFD for incomplete sequence
-        internal.pending_bytes.clear();
-        const replacement = [_]u8{ 0xEF, 0xBF, 0xBD }; // U+FFFD in UTF-8
-        return try internal.allocator.dupe(u8, &replacement);
+    const allocator = internal.allocator;
+
+    // If no pending bytes, nothing to flush
+    if (internal.pending_bytes.len == 0) {
+        return null;
     }
-    return null;
+
+    const bytes = internal.pending_bytes.slice();
+
+    // Allocate UTF-16 buffer for final decode
+    const max_utf16_len = internal.enc.maxUtf16Length(bytes.len);
+    const utf16_buf = try getOrAllocUtf16Buffer(internal, max_utf16_len);
+
+    // Process remaining bytes with is_last=true
+    const result = internal.decoder.decode(bytes, utf16_buf, true);
+
+    // Step 2d: Check for errors in fatal mode
+    if (internal.fatal and result.status == .malformed) {
+        return error.TypeError;
+    }
+
+    // Clear pending bytes
+    internal.pending_bytes.clear();
+
+    // Step 2c.i: Serialize the output
+    const utf16_output = utf16_buf[0..result.code_units_written];
+
+    // If malformed in replacement mode, the decoder should have emitted U+FFFD
+    // We just need to serialize the output
+    const output = try serializeIoQueue(internal, utf16_output);
+
+    // Step 2c.ii: Only return non-empty output
+    if (output.len == 0) {
+        allocator.free(output);
+        return null;
+    }
+
+    return output;
+}
+
+/// Serialize I/O queue algorithm
+///
+/// WHATWG Encoding Standard § 5.1.1
+/// https://encoding.spec.whatwg.org/#serialize-i/o-queue
+///
+/// The serialize I/O queue algorithm, given a TextDecoderCommon decoder and
+/// an I/O queue of scalar values ioQueue, runs these steps:
+/// 1. Let output be the empty string.
+/// 2. While true:
+///    a. Let item be the result of reading from ioQueue.
+///    b. If item is end-of-queue, then return output.
+///    c. If decoder's encoding is UTF-8 or UTF-16BE/LE, and decoder's ignore BOM
+///       and BOM seen are false:
+///       i.  Set decoder's BOM seen to true.
+///       ii. If item is U+FEFF BOM, then continue.
+///    d. Append item to output.
+fn serializeIoQueue(internal: *InternalState, utf16_output: []const u16) ![]u8 {
+    const allocator = internal.allocator;
+
+    // Fast path: empty output
+    if (utf16_output.len == 0) {
+        return try allocator.alloc(u8, 0);
+    }
+
+    // Check if we need BOM handling
+    const needs_bom_check = !internal.ignore_bom and !internal.bom_seen and
+        (std.mem.eql(u8, internal.enc.whatwg_name, "utf-8") or
+            std.mem.eql(u8, internal.enc.whatwg_name, "utf-16be") or
+            std.mem.eql(u8, internal.enc.whatwg_name, "utf-16le"));
+
+    var start_idx: usize = 0;
+
+    // Step 2c: BOM handling for UTF-8 and UTF-16BE/LE
+    if (needs_bom_check and utf16_output.len > 0) {
+        // Step 2c.i: Set BOM seen to true
+        internal.bom_seen = true;
+
+        // Step 2c.ii: If first item is U+FEFF (BOM), skip it
+        if (utf16_output[0] == 0xFEFF) {
+            start_idx = 1;
+        }
+    }
+
+    // Convert UTF-16 to UTF-8
+    const output_slice = utf16_output[start_idx..];
+
+    // Calculate UTF-8 length
+    var utf8_len: usize = 0;
+    for (output_slice) |cu| {
+        if (cu < 0x80) {
+            utf8_len += 1;
+        } else if (cu < 0x800) {
+            utf8_len += 2;
+        } else {
+            utf8_len += 3;
+        }
+    }
+
+    // Allocate and convert to UTF-8
+    const utf8_output = try allocator.alloc(u8, utf8_len);
+    errdefer allocator.free(utf8_output);
+
+    var idx: usize = 0;
+    var i: usize = 0;
+    while (i < output_slice.len) {
+        const cu = output_slice[i];
+
+        // Handle surrogate pairs
+        if (cu >= 0xD800 and cu <= 0xDBFF and i + 1 < output_slice.len) {
+            const low = output_slice[i + 1];
+            if (low >= 0xDC00 and low <= 0xDFFF) {
+                // Decode surrogate pair to code point
+                const cp: u21 = 0x10000 + (@as(u21, cu - 0xD800) << 10) + (low - 0xDC00);
+                // Encode as 4-byte UTF-8
+                utf8_output[idx] = @intCast(0xF0 | (cp >> 18));
+                utf8_output[idx + 1] = @intCast(0x80 | ((cp >> 12) & 0x3F));
+                utf8_output[idx + 2] = @intCast(0x80 | ((cp >> 6) & 0x3F));
+                utf8_output[idx + 3] = @intCast(0x80 | (cp & 0x3F));
+                idx += 4;
+                i += 2;
+                continue;
+            }
+        }
+
+        // Single code unit
+        if (cu < 0x80) {
+            utf8_output[idx] = @intCast(cu);
+            idx += 1;
+        } else if (cu < 0x800) {
+            utf8_output[idx] = @intCast(0xC0 | (cu >> 6));
+            utf8_output[idx + 1] = @intCast(0x80 | (cu & 0x3F));
+            idx += 2;
+        } else {
+            utf8_output[idx] = @intCast(0xE0 | (cu >> 12));
+            utf8_output[idx + 1] = @intCast(0x80 | ((cu >> 6) & 0x3F));
+            utf8_output[idx + 2] = @intCast(0x80 | (cu & 0x3F));
+            idx += 3;
+        }
+        i += 1;
+    }
+
+    return utf8_output[0..idx];
+}
+
+/// Get or allocate UTF-16 buffer for decoding
+fn getOrAllocUtf16Buffer(internal: *InternalState, min_len: usize) ![]u16 {
+    if (internal.utf16_buffer) |buf| {
+        if (buf.len >= min_len) {
+            return buf;
+        }
+        // Buffer too small, free it
+        internal.allocator.free(buf);
+        internal.utf16_buffer = null;
+    }
+
+    // Allocate new buffer
+    const new_buf = try internal.allocator.alloc(u16, min_len);
+    internal.utf16_buffer = new_buf;
+    return new_buf;
 }

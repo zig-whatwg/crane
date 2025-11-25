@@ -148,10 +148,28 @@ pub fn call_encode(instance: *runtime.Instance, input: runtime.USVString) ImplEr
 ///
 /// Encodes the source string into the destination buffer (zero-copy, no allocation).
 ///
+/// IMPORTANT: The `read` return value counts UTF-16 code units, NOT UTF-8 bytes.
+/// This is because JavaScript strings are UTF-16 encoded internally.
+/// For code points > U+FFFF (supplementary plane), read increments by 2 (surrogate pair).
+///
 /// The encodeInto(source, destination) method steps are:
-/// 1. Convert source to scalar values
-/// 2. Encode with UTF-8 encoder into destination
-/// 3. Return read/written counts
+/// 1. Let read be 0.
+/// 2. Let written be 0.
+/// 3. Let encoder be an instance of the UTF-8 encoder.
+/// 4. Let unused be the I/O queue of scalar values « end-of-queue ».
+/// 5. Convert source to an I/O queue of scalar values.
+/// 6. While true:
+///    a. Let item be the result of reading from source.
+///    b. Let result be the result of running encoder's handler on unused and item.
+///    c. If result is finished, then break.
+///    d. Otherwise:
+///       i.   If destination's byte length − written >= number of bytes in result:
+///            1. If item is greater than U+FFFF, then increment read by 2.
+///            2. Otherwise, increment read by 1.
+///            3. Write the bytes in result into destination, with startingOffset set to written.
+///            4. Increment written by the number of bytes in result.
+///       ii.  Otherwise, break.
+/// 7. Return «[ "read" → read, "written" → written ]».
 pub fn call_encodeInto(
     instance: *runtime.Instance,
     source: runtime.USVString,
@@ -163,41 +181,75 @@ pub fn call_encodeInto(
     // The V8 bindings layer should have passed a Uint8Array that we can write to
     const dest_buf = extractUint8ArrayBuffer(destination);
 
+    // Step 1-2: Initialize counters
     var read: u64 = 0;
     var written: u64 = 0;
 
-    // Process UTF-8 input
+    // Step 5-6: Process each scalar value (code point) from source
+    // Source is USVString (UTF-8 encoded), we decode to code points then encode back
     var i: usize = 0;
-    while (i < source.len and written < dest_buf.len) {
-        // Get UTF-8 code point length
+    while (i < source.len) {
+        // Step 6a: Read next scalar value (code point) from source
         const cp_len = std.unicode.utf8ByteSequenceLength(source[i]) catch {
-            // Invalid UTF-8 start byte - skip
+            // Invalid UTF-8 start byte - this shouldn't happen with valid USVString
+            // Skip this byte (it won't be encoded)
             i += 1;
-            read += 1;
             continue;
         };
 
-        // Check if we have enough space in destination
-        if (written + cp_len > dest_buf.len) {
-            // Not enough space for this code point - stop here
-            // (don't partially write multibyte characters)
-            break;
-        }
-
-        // Check if we have enough input bytes
+        // Check if we have complete UTF-8 sequence
         if (i + cp_len > source.len) {
-            // Incomplete code point at end of input
+            // Incomplete UTF-8 sequence at end - stop processing
             break;
         }
 
-        // Copy code point bytes to destination
-        @memcpy(dest_buf[written .. written + cp_len], source[i .. i + cp_len]);
+        // Decode the code point
+        const code_point = std.unicode.utf8Decode(source[i .. i + cp_len]) catch {
+            // Invalid UTF-8 sequence - skip
+            i += cp_len;
+            continue;
+        };
 
-        written += cp_len;
-        read += cp_len;
+        // Step 6b: Run UTF-8 encoder's handler
+        // UTF-8 encoding of a code point produces 1-4 bytes
+        var encoded_bytes: [4]u8 = undefined;
+        const bytes_needed = std.unicode.utf8Encode(code_point, &encoded_bytes) catch {
+            // This shouldn't happen for valid scalar values
+            i += cp_len;
+            continue;
+        };
+
+        // Step 6c: If result is finished (end-of-queue), break
+        // (We check this implicitly by the while loop condition)
+
+        // Step 6d: Check if we have enough space in destination
+        if (written + bytes_needed > dest_buf.len) {
+            // Step 6d.ii: Not enough space - break without writing
+            break;
+        }
+
+        // Step 6d.i: We have enough space - write and update counters
+
+        // Step 6d.i.1-2: Update read counter based on UTF-16 representation
+        // Code points > U+FFFF require a surrogate pair (2 code units) in UTF-16
+        // Code points <= U+FFFF require 1 code unit in UTF-16
+        if (code_point > 0xFFFF) {
+            read += 2; // Surrogate pair in UTF-16
+        } else {
+            read += 1; // Single code unit in UTF-16
+        }
+
+        // Step 6d.i.3: Write the encoded bytes to destination
+        @memcpy(dest_buf[written .. written + bytes_needed], encoded_bytes[0..bytes_needed]);
+
+        // Step 6d.i.4: Increment written by number of bytes
+        written += bytes_needed;
+
+        // Move to next code point in source
         i += cp_len;
     }
 
+    // Step 7: Return result
     return .{
         .read = read,
         .written = written,

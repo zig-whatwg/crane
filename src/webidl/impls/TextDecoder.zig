@@ -7,11 +7,23 @@
 //!
 //! ## Features
 //!
-//! - **88 Encoding Labels**: Supports UTF-8, UTF-16LE/BE, and all legacy encodings
-//! - **BOM Handling**: Strips byte order marks by default (configurable)
+//! - **39 Encodings**: Supports UTF-8, UTF-16LE/BE, and all legacy encodings
+//! - **BOM Handling**: Strips byte order marks by default (configurable via ignoreBOM)
 //! - **Error Modes**: Fatal (throws) or replacement (U+FFFD)
 //! - **Streaming**: Process fragmented input with stream option
 //! - **Performance**: ASCII and UTF-8 fast paths for common cases
+//!
+//! ## Spec Compliance Notes
+//!
+//! The decode() method follows the spec exactly:
+//! 1. Reset state when not in streaming mode (do not flush = false)
+//! 2. Process bytes through encoding's decoder
+//! 3. Run "serialize I/O queue" algorithm which handles BOM stripping
+//!
+//! BOM handling is done in the serialize step, not during decoding:
+//! - For UTF-8 and UTF-16BE/LE encodings
+//! - If ignore BOM is false and BOM seen is false
+//! - First U+FEFF in decoded output is stripped (not passed through)
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -49,21 +61,33 @@ pub const ImplError = error{
 };
 
 /// Internal state for TextDecoder implementation
-/// Stores decoder configuration and streaming state
+///
+/// WHATWG Encoding Standard § 5.1.1 TextDecoderCommon
+/// Associated state:
+/// - encoding: An encoding
+/// - decoder: A decoder instance
+/// - I/O queue: An I/O queue of bytes
+/// - ignore BOM: A boolean, initially false
+/// - BOM seen: A boolean, initially false
+/// - error mode: An error mode, initially "replacement"
 pub const InternalState = struct {
     /// The encoding used by this decoder
     enc: *const Encoding,
 
     /// do not flush flag (true when stream mode is active)
+    /// Spec: "A TextDecoder object has an associated do not flush, which is a boolean, initially false."
     do_not_flush: bool,
 
-    /// Whether BOM has been seen in the stream (for ignoreBOM handling)
+    /// Whether BOM has been seen in the stream (for serialize I/O queue algorithm)
+    /// Spec: "BOM seen: A boolean, initially false"
     bom_seen: bool,
 
-    /// Decoder state for streaming operations
+    /// Decoder instance for streaming operations
+    /// Spec: "decoder: A decoder instance"
     decoder: ?Decoder,
 
-    /// Pending bytes from incomplete multi-byte sequences (for streaming)
+    /// I/O queue of bytes - pending bytes from incomplete multi-byte sequences
+    /// Spec: "I/O queue: An I/O queue of bytes"
     pending_bytes: [4]u8,
     pending_len: u8,
 
@@ -102,10 +126,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Constructor implementation
+///
 /// WHATWG Encoding Standard § 5.1.3
 /// https://encoding.spec.whatwg.org/#dom-textdecoder
-///
-/// Creates a decoder for the specified encoding label with optional configuration.
 ///
 /// The new TextDecoder(label, options) constructor steps are:
 /// 1. Let encoding be the result of getting an encoding from label.
@@ -129,7 +152,6 @@ pub fn call_constructor(
     const label_str = label.asSlice();
 
     // Step 1: Get encoding from label (§4.2 get an encoding)
-    // https://encoding.spec.whatwg.org/#concept-encoding-get
     const enc = encoding_mod.getEncoding(label_str) orelse {
         // Step 2: If encoding is failure, throw RangeError
         return ImplError.InvalidEncoding;
@@ -157,8 +179,7 @@ pub fn call_constructor(
 
     state.own._internal = internal;
 
-    // Step 3: Set this's encoding to encoding (store WHATWG canonical name)
-    // The encoding name is a static string from the encoding module, so we can use interned
+    // Step 3: Set this's encoding to encoding
     state.own.encoding = runtime.DOMString.initInterned(enc.whatwg_name);
 
     // Step 4: If options["fatal"] is true, set error mode to "fatal"
@@ -171,44 +192,48 @@ pub fn call_constructor(
 }
 
 /// Getter for encoding
-/// Returns the encoding name (lowercase ASCII, e.g., "utf-8", "windows-1252")
-/// Spec: https://encoding.spec.whatwg.org/#dom-textdecodercommon-encoding
+/// Spec: "The encoding getter steps are to return this's encoding's name, ASCII lowercased."
 pub fn get_encoding(instance: *runtime.Instance) ImplError!runtime.DOMString {
     const state = instance.getState(State);
     return state.own.encoding;
 }
 
 /// Getter for fatal
-/// Returns true if decoder throws on errors, false if it uses replacement character
-/// Spec: https://encoding.spec.whatwg.org/#dom-textdecodercommon-fatal
+/// Spec: "The fatal getter steps are to return true if this's error mode is "fatal"; otherwise false."
 pub fn get_fatal(instance: *runtime.Instance) ImplError!bool {
     const state = instance.getState(State);
     return state.own.fatal;
 }
 
 /// Getter for ignoreBOM
-/// Returns true if BOM is kept in output, false if BOM is stripped
-/// Spec: https://encoding.spec.whatwg.org/#dom-textdecodercommon-ignorebom
+/// Spec: "The ignoreBOM getter steps are to return this's ignore BOM."
 pub fn get_ignoreBOM(instance: *runtime.Instance) ImplError!bool {
     const state = instance.getState(State);
     return state.own.ignoreBOM;
 }
 
 /// decode() operation
+///
 /// WHATWG Encoding Standard § 5.1.4
 /// https://encoding.spec.whatwg.org/#dom-textdecoder-decode
 ///
-/// Decodes a byte sequence using the configured encoding and returns a USVString.
-///
 /// The decode(input, options) method steps are:
-/// 1. If this's do not flush is false, then set this's decoder to a new decoder
-///    for this's encoding's decoder, this's error mode, and this's I/O queue.
+/// 1. If this's do not flush is false, then set this's decoder to a new instance of
+///    this's encoding's decoder, this's I/O queue to the I/O queue of bytes
+///    « end-of-queue », and this's BOM seen to false.
 /// 2. Set this's do not flush to options["stream"].
-/// 3. Let chunk be the result of reading all bytes from input.
-/// 4. Let output be the I/O queue of scalar values << output >>.
-/// 5. Let result be the result of pushing chunk to this's decoder.
-/// 6. If result is error, throw a TypeError.
-/// 7. Return output serialized.
+/// 3. If input is given, then push a copy of input to this's I/O queue.
+/// 4. Let output be the I/O queue of scalar values « end-of-queue ».
+/// 5. While true:
+///    a. Let item be the result of reading from this's I/O queue.
+///    b. If item is end-of-queue and this's do not flush is true, then return
+///       the result of running serialize I/O queue with this and output.
+///    c. Otherwise:
+///       i.   Let result be the result of processing an item with item, this's
+///            decoder, this's I/O queue, output, and this's error mode.
+///       ii.  If result is finished, then return the result of running
+///            serialize I/O queue with this and output.
+///       iii. Otherwise, if result is error, throw a TypeError.
 pub fn call_decode(
     instance: *runtime.Instance,
     input: typedefs.AllowSharedBufferSource,
@@ -223,130 +248,81 @@ pub fn call_decode(
     // Step 1: If do not flush is false, reset decoder state
     if (!internal.do_not_flush) {
         internal.bom_seen = false;
-        internal.decoder = null;
+        internal.decoder = internal.enc.newDecoder();
         internal.pending_len = 0;
     }
 
     // Step 2: Set do not flush to options["stream"]
     internal.do_not_flush = stream;
 
-    // Get bytes from input
-    // AllowSharedBufferSource is an opaque pointer that V8 bindings will have populated
-    // For now, we interpret it as a pointer to a byte slice descriptor
-    // In practice, the V8 binding layer will extract the actual bytes before calling this
-    const bytes = extractBytesFromBufferSource(input);
+    // Step 3: Get bytes from input and add to I/O queue
+    const input_bytes = extractBytesFromBufferSource(input);
 
-    // Handle empty input (common case for final flush)
-    if (bytes.len == 0 and internal.pending_len == 0) {
-        // Return empty string
-        return "";
-    }
-
-    // Process bytes through decoder
-    return try decodeBytes(internal, bytes, state.own.fatal, state.own.ignoreBOM, !stream);
-}
-
-/// Extract bytes from AllowSharedBufferSource
-/// In the actual V8 binding, this would extract bytes from ArrayBuffer/TypedArray
-/// For now, we handle it as an opaque pointer that could be:
-/// - A direct pointer to bytes with length encoded
-/// - A slice descriptor struct
-fn extractBytesFromBufferSource(source: typedefs.AllowSharedBufferSource) []const u8 {
-    // AllowSharedBufferSource is *const anyopaque
-    // The V8 binding layer should have converted the JS typed array to a byte slice
-    // and passed it as a pointer to a ByteSlice struct or similar
-    //
-    // For safety, check for null-like patterns
-    // Note: In Zig 0.15+, we can't directly compare pointers to address 0
-    // Instead, we check by converting to an integer
-    const source_addr = @intFromPtr(source);
-    if (source_addr == 0) {
-        return "";
-    }
-
-    // In a real implementation, the V8 bindings would pass a struct like:
-    // struct { ptr: [*]const u8, len: usize }
-    // For now, we'll need to handle this based on how the V8 layer passes data
-    //
-    // Temporary implementation: treat as empty until V8 binding is implemented
-    // TODO: Properly extract bytes when V8 TypedArray binding is complete
-    //
-    // When V8 bindings are implemented, this function should:
-    // 1. Check if source is an ArrayBuffer, SharedArrayBuffer, or TypedArray view
-    // 2. Extract the underlying byte data and length
-    // 3. Return the byte slice
-    //
-    // The source pointer could be interpreted as:
-    // - A V8 persistent handle to a TypedArray
-    // - A struct containing { data: [*]const u8, len: usize }
-    // - A runtime.Uint8Array or similar wrapper type
-    //
-    // For now, we attempt to interpret it as a simple pointer to a length-prefixed buffer
-    // This is a placeholder that will need to be updated based on actual V8 integration
-    const ByteSliceHeader = extern struct {
-        len: usize,
-        // data follows immediately after
-    };
-
-    // Try to interpret as a byte slice header
-    // This is unsafe and assumes a specific memory layout from the V8 bindings
-    const header: *const ByteSliceHeader = @ptrCast(@alignCast(source));
-    if (header.len == 0) {
-        return "";
-    }
-
-    // Get pointer to data (immediately after header)
-    const data_ptr: [*]const u8 = @ptrCast(@as([*]const u8, @ptrCast(source)) + @sizeOf(ByteSliceHeader));
-    return data_ptr[0..header.len];
-}
-
-/// Decode bytes using the internal decoder state
-fn decodeBytes(
-    internal: *InternalState,
-    input_bytes: []const u8,
-    fatal: bool,
-    ignoreBOM: bool,
-    is_last: bool,
-) ImplError!runtime.USVString {
-    const allocator = internal.allocator;
-
-    // Combine pending bytes with new input
+    // Combine pending bytes (I/O queue) with new input
     var bytes: []const u8 = input_bytes;
     var combined_buffer: ?[]u8 = null;
-    defer if (combined_buffer) |buf| allocator.free(buf);
+    defer if (combined_buffer) |buf| internal.allocator.free(buf);
 
     if (internal.pending_len > 0) {
-        combined_buffer = try allocator.alloc(u8, internal.pending_len + input_bytes.len);
+        combined_buffer = try internal.allocator.alloc(u8, internal.pending_len + input_bytes.len);
         @memcpy(combined_buffer.?[0..internal.pending_len], internal.pending_bytes[0..internal.pending_len]);
         @memcpy(combined_buffer.?[internal.pending_len..], input_bytes);
         bytes = combined_buffer.?;
         internal.pending_len = 0;
     }
 
-    // Handle empty input after combining
+    // Handle empty input (common case for final flush)
     if (bytes.len == 0) {
+        if (stream) {
+            // Step 5a-b: End-of-queue with do not flush = true
+            return "";
+        }
+        // Final decode with no input - serialize empty output
         return "";
     }
 
-    // Step 4: Handle BOM (if not ignoreBOM and not seen yet)
-    if (!ignoreBOM and !internal.bom_seen) {
-        bytes = stripBOM(internal, bytes);
+    // Step 4-5: Process bytes through decoder and serialize
+    const is_last = !stream;
+    return try processAndSerialize(internal, bytes, state.own.fatal, state.own.ignoreBOM, is_last);
+}
+
+/// Extract bytes from AllowSharedBufferSource
+fn extractBytesFromBufferSource(source: typedefs.AllowSharedBufferSource) []const u8 {
+    const source_addr = @intFromPtr(source);
+    if (source_addr == 0) {
+        return "";
     }
 
-    // ASCII FAST PATH: For ASCII-only input with UTF-8 encoding, return as-is
-    if (std.mem.eql(u8, internal.enc.whatwg_name, "utf-8") and isAscii(bytes)) {
-        // Allocate and copy (caller owns the result)
-        const result = try allocator.dupe(u8, bytes);
-        return result;
+    const ByteSliceHeader = extern struct {
+        len: usize,
+    };
+
+    const header: *const ByteSliceHeader = @ptrCast(@alignCast(source));
+    if (header.len == 0) {
+        return "";
     }
 
-    // UTF-8 FAST PATH: For UTF-8 encoding, validate and return
-    if (std.mem.eql(u8, internal.enc.whatwg_name, "utf-8")) {
-        return try decodeUtf8(allocator, bytes, fatal, is_last, internal);
+    const data_ptr: [*]const u8 = @ptrCast(@as([*]const u8, @ptrCast(source)) + @sizeOf(ByteSliceHeader));
+    return data_ptr[0..header.len];
+}
+
+/// Process bytes through decoder and run serialize I/O queue algorithm
+fn processAndSerialize(
+    internal: *InternalState,
+    bytes: []const u8,
+    fatal: bool,
+    ignore_bom: bool,
+    is_last: bool,
+) ImplError!runtime.USVString {
+    const allocator = internal.allocator;
+
+    // ASCII FAST PATH: For ASCII-only input with UTF-8 encoding
+    if (std.mem.eql(u8, internal.enc.whatwg_name, "utf-8") and infra.string.isAscii(bytes)) {
+        // ASCII can't contain BOM, so just return as-is
+        return allocator.dupe(u8, bytes) catch return ImplError.OutOfMemory;
     }
 
-    // GENERAL PATH: Use encoding infrastructure to decode
-    // Create or reuse decoder
+    // Get or create decoder
     if (internal.decoder == null) {
         internal.decoder = internal.enc.newDecoder();
     }
@@ -355,17 +331,16 @@ fn decodeBytes(
     const max_utf16_len = internal.enc.maxUtf16Length(bytes.len);
     const utf16_buf = try getOrAllocUtf16Buffer(internal, max_utf16_len);
 
-    // Decode bytes → UTF-16
+    // Step 5c.i: Process bytes through decoder (process an item algorithm)
     const result = internal.decoder.?.decode(bytes, utf16_buf, is_last);
 
-    // Handle decoding errors in fatal mode
+    // Step 5c.iii: Handle decoding errors in fatal mode
     if (fatal and result.status == .malformed) {
         return ImplError.DecodingError;
     }
 
     // Handle incomplete sequences in streaming mode
-    if (!is_last and result.status == .input_empty and result.bytes_consumed < bytes.len) {
-        // Save remaining bytes for next call
+    if (!is_last and result.bytes_consumed < bytes.len) {
         const remaining = bytes.len - result.bytes_consumed;
         if (remaining <= 4) {
             @memcpy(internal.pending_bytes[0..remaining], bytes[result.bytes_consumed..]);
@@ -373,151 +348,143 @@ fn decodeBytes(
         }
     }
 
-    // Convert UTF-16 → UTF-8 for output
+    // Step 5b/5c.ii: Run serialize I/O queue algorithm
     const utf16_output = utf16_buf[0..result.code_units_written];
-    const utf8_output = try infra.string.utf16ToUtf8(allocator, utf16_output);
-
-    return utf8_output;
+    return try serializeIoQueue(internal, utf16_output, ignore_bom);
 }
 
-/// Check if byte slice is ASCII-only (fast path optimization)
-fn isAscii(bytes: []const u8) bool {
-    // Use SIMD-optimized version from infra
-    return infra.string.isAscii(bytes);
-}
-
-/// Strip BOM (Byte Order Mark) from input bytes
-/// WHATWG Encoding Standard § 5.1.4 step 4
-fn stripBOM(internal: *InternalState, bytes: []const u8) []const u8 {
-    // UTF-8 BOM: EF BB BF (3 bytes)
-    if (std.mem.eql(u8, internal.enc.whatwg_name, "utf-8")) {
-        if (bytes.len >= 3 and bytes[0] == 0xEF and bytes[1] == 0xBB and bytes[2] == 0xBF) {
-            internal.bom_seen = true;
-            return bytes[3..];
-        }
-    }
-    // UTF-16LE BOM: FF FE (2 bytes)
-    else if (std.mem.eql(u8, internal.enc.whatwg_name, "utf-16le")) {
-        if (bytes.len >= 2 and bytes[0] == 0xFF and bytes[1] == 0xFE) {
-            internal.bom_seen = true;
-            return bytes[2..];
-        }
-    }
-    // UTF-16BE BOM: FE FF (2 bytes)
-    else if (std.mem.eql(u8, internal.enc.whatwg_name, "utf-16be")) {
-        if (bytes.len >= 2 and bytes[0] == 0xFE and bytes[1] == 0xFF) {
-            internal.bom_seen = true;
-            return bytes[2..];
-        }
-    }
-
-    // No BOM found or encoding doesn't use BOM
-    return bytes;
-}
-
-/// Decode UTF-8 bytes with validation
-/// WHATWG Encoding Standard § 5.1.4 step 5 (UTF-8 fast path)
-fn decodeUtf8(
-    allocator: std.mem.Allocator,
-    bytes: []const u8,
-    fatal: bool,
-    is_last: bool,
+/// Serialize I/O queue algorithm
+///
+/// WHATWG Encoding Standard § 5.1.1
+/// https://encoding.spec.whatwg.org/#serialize-i/o-queue
+///
+/// The serialize I/O queue algorithm, given a TextDecoderCommon decoder and
+/// an I/O queue of scalar values ioQueue, runs these steps:
+/// 1. Let output be the empty string.
+/// 2. While true:
+///    a. Let item be the result of reading from ioQueue.
+///    b. If item is end-of-queue, then return output.
+///    c. If decoder's encoding is UTF-8 or UTF-16BE/LE, and decoder's ignore BOM
+///       and BOM seen are false:
+///       i.  Set decoder's BOM seen to true.
+///       ii. If item is U+FEFF BOM, then continue.
+///    d. Append item to output.
+fn serializeIoQueue(
     internal: *InternalState,
-) ImplError![]const u8 {
-    // Validate UTF-8 encoding
-    if (std.unicode.utf8ValidateSlice(bytes)) {
-        // Valid UTF-8 - return a copy
-        return allocator.dupe(u8, bytes) catch return ImplError.OutOfMemory;
+    utf16_output: []const u16,
+    ignore_bom: bool,
+) ImplError![]u8 {
+    const allocator = internal.allocator;
+
+    // Fast path: empty output
+    if (utf16_output.len == 0) {
+        return allocator.alloc(u8, 0) catch return ImplError.OutOfMemory;
     }
 
-    // Find where validation fails for streaming support
-    if (!is_last) {
-        // In streaming mode, check if failure is due to incomplete sequence at end
-        var i: usize = 0;
-        while (i < bytes.len) {
-            const len = std.unicode.utf8ByteSequenceLength(bytes[i]) catch {
-                // Invalid start byte
-                break;
-            };
+    // Step 2c: Check if we need BOM handling
+    // Only for UTF-8 and UTF-16BE/LE encodings
+    const needs_bom_check = !ignore_bom and !internal.bom_seen and
+        (std.mem.eql(u8, internal.enc.whatwg_name, "utf-8") or
+            std.mem.eql(u8, internal.enc.whatwg_name, "utf-16be") or
+            std.mem.eql(u8, internal.enc.whatwg_name, "utf-16le"));
 
-            if (i + len > bytes.len) {
-                // Incomplete sequence at end - save for next call
-                const remaining = bytes.len - i;
-                if (remaining <= 4) {
-                    @memcpy(internal.pending_bytes[0..remaining], bytes[i..]);
-                    internal.pending_len = @intCast(remaining);
-                    // Return valid portion
-                    if (i > 0) {
-                        return allocator.dupe(u8, bytes[0..i]) catch return ImplError.OutOfMemory;
-                    }
-                    return "";
-                }
-                break;
-            }
+    var start_idx: usize = 0;
 
-            // Validate the sequence
-            _ = std.unicode.utf8Decode(bytes[i .. i + len]) catch {
-                break;
-            };
+    if (needs_bom_check and utf16_output.len > 0) {
+        // Step 2c.i: Set BOM seen to true (for first scalar value)
+        internal.bom_seen = true;
 
-            i += len;
+        // Step 2c.ii: If first item is U+FEFF (BOM), skip it
+        if (utf16_output[0] == 0xFEFF) {
+            start_idx = 1;
         }
     }
 
-    // Invalid UTF-8
-    if (fatal) {
-        return ImplError.DecodingError;
+    // Step 1 & 2d: Build output string
+    const output_slice = utf16_output[start_idx..];
+
+    // Convert UTF-16 to UTF-8
+    return utf16ToUtf8(allocator, output_slice) catch return ImplError.OutOfMemory;
+}
+
+/// Convert UTF-16 code units to UTF-8 bytes
+fn utf16ToUtf8(allocator: std.mem.Allocator, utf16: []const u16) ![]u8 {
+    if (utf16.len == 0) {
+        return allocator.alloc(u8, 0);
     }
 
-    // Non-fatal mode: Replace invalid sequences with U+FFFD (replacement character)
-    // U+FFFD in UTF-8 is: EF BF BD
-    const replacement = "\u{FFFD}";
-
-    // Allocate output buffer using infra.List (worst case: every byte is invalid = 3x size)
-    var output = infra.List(u8).init(allocator);
-    errdefer output.deinit();
-
+    // Calculate UTF-8 length (including surrogate pairs)
+    var utf8_len: usize = 0;
     var i: usize = 0;
-    while (i < bytes.len) {
-        // Try to decode one codepoint
-        const cp_len = std.unicode.utf8ByteSequenceLength(bytes[i]) catch {
-            // Invalid start byte - replace with U+FFFD
-            output.appendSlice(replacement) catch return ImplError.OutOfMemory;
-            i += 1;
-            continue;
-        };
+    while (i < utf16.len) {
+        const cu = utf16[i];
 
-        // Check if we have enough bytes
-        if (i + cp_len > bytes.len) {
-            if (!is_last) {
-                // Save incomplete sequence for next call
-                const remaining = bytes.len - i;
-                if (remaining <= 4) {
-                    @memcpy(internal.pending_bytes[0..remaining], bytes[i..]);
-                    internal.pending_len = @intCast(remaining);
-                    break;
-                }
+        // Check for surrogate pair
+        if (cu >= 0xD800 and cu <= 0xDBFF and i + 1 < utf16.len) {
+            const low = utf16[i + 1];
+            if (low >= 0xDC00 and low <= 0xDFFF) {
+                // Surrogate pair -> 4-byte UTF-8
+                utf8_len += 4;
+                i += 2;
+                continue;
             }
-            // In final mode or too many pending bytes - replace with U+FFFD
-            output.appendSlice(replacement) catch return ImplError.OutOfMemory;
-            i += 1;
-            continue;
         }
 
-        // Validate the sequence
-        _ = std.unicode.utf8Decode(bytes[i .. i + cp_len]) catch {
-            // Invalid sequence - replace with U+FFFD
-            output.appendSlice(replacement) catch return ImplError.OutOfMemory;
-            i += 1;
-            continue;
-        };
-
-        // Valid codepoint - copy the bytes
-        output.appendSlice(bytes[i .. i + cp_len]) catch return ImplError.OutOfMemory;
-        i += cp_len;
+        // Single code unit
+        if (cu < 0x80) {
+            utf8_len += 1;
+        } else if (cu < 0x800) {
+            utf8_len += 2;
+        } else {
+            utf8_len += 3;
+        }
+        i += 1;
     }
 
-    return output.toOwnedSlice() catch return ImplError.OutOfMemory;
+    // Allocate and convert
+    const output = try allocator.alloc(u8, utf8_len);
+    errdefer allocator.free(output);
+
+    var idx: usize = 0;
+    i = 0;
+    while (i < utf16.len) {
+        const cu = utf16[i];
+
+        // Handle surrogate pairs
+        if (cu >= 0xD800 and cu <= 0xDBFF and i + 1 < utf16.len) {
+            const low = utf16[i + 1];
+            if (low >= 0xDC00 and low <= 0xDFFF) {
+                // Decode surrogate pair to code point
+                const cp: u21 = 0x10000 + (@as(u21, cu - 0xD800) << 10) + (low - 0xDC00);
+                // Encode as 4-byte UTF-8
+                output[idx] = @intCast(0xF0 | (cp >> 18));
+                output[idx + 1] = @intCast(0x80 | ((cp >> 12) & 0x3F));
+                output[idx + 2] = @intCast(0x80 | ((cp >> 6) & 0x3F));
+                output[idx + 3] = @intCast(0x80 | (cp & 0x3F));
+                idx += 4;
+                i += 2;
+                continue;
+            }
+        }
+
+        // Single code unit
+        if (cu < 0x80) {
+            output[idx] = @intCast(cu);
+            idx += 1;
+        } else if (cu < 0x800) {
+            output[idx] = @intCast(0xC0 | (cu >> 6));
+            output[idx + 1] = @intCast(0x80 | (cu & 0x3F));
+            idx += 2;
+        } else {
+            output[idx] = @intCast(0xE0 | (cu >> 12));
+            output[idx + 1] = @intCast(0x80 | ((cu >> 6) & 0x3F));
+            output[idx + 2] = @intCast(0x80 | (cu & 0x3F));
+            idx += 3;
+        }
+        i += 1;
+    }
+
+    return output[0..idx];
 }
 
 /// Get or allocate UTF-16 buffer for decoding
@@ -526,12 +493,10 @@ fn getOrAllocUtf16Buffer(internal: *InternalState, min_len: usize) ![]u16 {
         if (buf.len >= min_len) {
             return buf;
         }
-        // Buffer too small, free it
         internal.allocator.free(buf);
         internal.reusable_utf16_buffer = null;
     }
 
-    // Allocate new buffer
     const new_buf = try internal.allocator.alloc(u16, min_len);
     internal.reusable_utf16_buffer = new_buf;
     return new_buf;
