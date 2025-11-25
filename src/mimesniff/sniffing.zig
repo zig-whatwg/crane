@@ -619,43 +619,6 @@ pub fn sniffInCacheManifestContext(allocator: std.mem.Allocator) !?MimeType {
 // Tests
 // ============================================================================
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 // Context-specific sniffing tests
 
-
-
-
-
-
-
-
-
-
-
 // Tests for new HTML patterns
-
-
-
-
-
-
-
-
-
-
-
-
-
-

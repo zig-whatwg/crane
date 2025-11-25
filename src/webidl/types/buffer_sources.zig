@@ -221,18 +221,6 @@ pub const DataView = struct {
 
 const testing = std.testing;
 
-
-
-
-
-
-
-
-
-
-
-
-
 // BigInt Typed Arrays
 
 const bigint_mod = @import("bigint.zig");
@@ -320,10 +308,6 @@ pub const BigUint64Array = struct {
         std.mem.writeInt(u64, bytes, int_value, .little);
     }
 };
-
-
-
-
 
 // BufferSource and AllowSharedBufferSource typedefs
 // Spec: https://webidl.spec.whatwg.org/#BufferSource
@@ -953,60 +937,8 @@ pub const AllowSharedBufferSource = union(enum) {
 
 // Tests for BufferSource and AllowSharedBufferSource
 
-
-
-
-
-
-
-
-
-
-
 // ArrayBufferView Introspection API Tests
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // ============================================================================
 // SharedArrayBuffer Tests
 // ============================================================================
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

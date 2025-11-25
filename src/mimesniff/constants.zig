@@ -88,13 +88,3 @@ pub fn isTagTerminatingByte(b: u8) bool {
 }
 
 // Tests
-
-
-
-
-
-
-
-
-
-

@@ -126,22 +126,6 @@ pub fn toBigIntClamped(allocator: std.mem.Allocator, value: primitives.JSValue) 
 
 const testing = std.testing;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // ============================================================================
 // WebIDL Type Alias
 // ============================================================================

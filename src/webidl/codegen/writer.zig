@@ -340,11 +340,15 @@ pub fn writeMetadata(
     try writer.writeAll("        };\n");
 
     // Generate method hints - ONLY for own operations (not inherited)
+    // Separate static methods from instance methods
     try writer.writeAll("        \n");
-    try writer.writeAll("        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods\n");
+    try writer.writeAll("        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods\n");
     try writer.writeAll("        pub const methods = .{\n");
     for (own_operations) |op| {
         if (op.name) |name| {
+            // Skip static methods - they go in static_methods
+            if (op.static) continue;
+
             // Include regular operations AND named special operations (like getter item())
             // Named special operations should be exposed as methods per WebIDL spec
             const should_include = op.special == null or
@@ -373,6 +377,39 @@ pub fn writeMetadata(
     }
 
     try writer.writeAll("        };\n");
+
+    // Generate static methods hints
+    var has_static_methods = false;
+    for (own_operations) |op| {
+        if (op.static and op.name != null) {
+            has_static_methods = true;
+            break;
+        }
+    }
+
+    if (has_static_methods) {
+        try writer.writeAll("        \n");
+        try writer.writeAll("        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)\n");
+        try writer.writeAll("        pub const static_methods = .{\n");
+        for (own_operations) |op| {
+            if (op.static) {
+                if (op.name) |name| {
+                    // Count required (non-optional) parameters for arity
+                    var arity: usize = 0;
+                    for (op.arguments) |arg| {
+                        if (!arg.optional) {
+                            arity += 1;
+                        }
+                    }
+
+                    try writer.print("            .{{ \"{s}\", \"call_", .{name});
+                    try writeSanitizedName(writer, name);
+                    try writer.print("\", {d} }},\n", .{arity});
+                }
+            }
+        }
+        try writer.writeAll("        };\n");
+    }
 
     // Generate constants metadata for V8 bindings
     // Filter out _skipped constants (these are placeholders for unsupported types)

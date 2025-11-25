@@ -179,15 +179,3 @@ pub fn utf16ToByteString(allocator: Allocator, string: strings.DOMString) !ByteS
 // ============================================================================
 
 const testing = std.testing;
-
-
-
-
-
-
-
-
-
-
-
-

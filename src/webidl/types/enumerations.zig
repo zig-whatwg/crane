@@ -52,6 +52,3 @@ pub fn Enumeration(comptime values: []const []const u8) type {
 }
 
 const testing = std.testing;
-
-
-

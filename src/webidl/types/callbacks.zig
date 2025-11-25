@@ -158,12 +158,3 @@ pub fn treatAsFunction(callback_interface: CallbackInterface, comptime ReturnTyp
 }
 
 const testing = std.testing;
-
-
-
-
-
-
-
-
-
