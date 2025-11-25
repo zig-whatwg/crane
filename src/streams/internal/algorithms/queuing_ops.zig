@@ -98,11 +98,3 @@ pub fn validateAndNormalizeHighWaterMark(high_water_mark: f64) !f64 {
 }
 
 // Tests
-
-
-
-
-
-
-
-

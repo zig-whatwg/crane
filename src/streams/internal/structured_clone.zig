@@ -180,14 +180,6 @@ pub fn freeClonedValue(allocator: std.mem.Allocator, value: common.JSValue) void
 
 // ===== TESTS =====
 
-
-
-
-
-
-
-
-
 // ============================================================================
 // Transfer Serialization for MessagePort
 // ============================================================================
@@ -292,6 +284,3 @@ pub fn structuredDeserializeWithTransfer(
 // ============================================================================
 // Tests for Transfer Serialization
 // ============================================================================
-
-
-

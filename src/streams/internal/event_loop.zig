@@ -137,7 +137,7 @@ pub const EventLoop = struct {
         /// This implements a simplified event loop iteration:
         /// https://html.spec.whatwg.org/#event-loop-processing-model
         runOnce: *const fn (ptr: *anyopaque) bool,
-        
+
         /// Get allocator for promise creation
         ///
         /// Returns an allocator for creating promises. Promises allocated from
@@ -204,7 +204,7 @@ pub const EventLoop = struct {
     pub fn runOnce(self: EventLoop) bool {
         return self.vtable.runOnce(self.ptr);
     }
-    
+
     /// Get allocator for promise creation
     ///
     /// Returns an allocator for creating promises. Promises allocated from
@@ -249,5 +249,3 @@ pub const EventLoop = struct {
 // ============================================================================
 
 const testing = std.testing;
-
-
