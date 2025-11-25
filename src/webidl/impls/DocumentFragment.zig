@@ -1,7 +1,12 @@
 //! Implementation for DocumentFragment interface
 //!
-//! This file is AUTO-GENERATED on first creation.
-//! Add your custom implementation here.
+//! Spec: https://dom.spec.whatwg.org/#interface-documentfragment
+//! WHATWG DOM Standard §4.8
+//!
+//! DocumentFragment is a lightweight container for DOM nodes.
+//! It's commonly used to build up DOM structures before inserting them.
+//!
+//! Migrated from: webidl/src/dom/DocumentFragment.zig
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -12,17 +17,42 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const DocumentFragment = interfaces.DocumentFragment;
 
+// Import related impls
+const NodeImpl = @import("Node.zig");
+
 pub const State = DocumentFragment.State;
 
 pub const ImplError = error{
     NotImplemented,
+    InvalidStateError,
+    OutOfMemory,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Internal state for DocumentFragment implementation
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+
+    /// Host element for shadow roots (null for regular document fragments)
+    /// Per DOM spec: A shadow root's host is always non-null
+    host: ?*runtime.Instance,
+
+    pub fn init(allocator: std.mem.Allocator) InternalState {
+        return .{
+            .allocator = allocator,
+            .host = null,
+        };
+    }
+
+    pub fn deinit(self: *InternalState) void {
+        _ = self;
+    }
+};
+
+/// Get the internal state from an instance
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    const state = instance.getState(State);
+    return state.own._internal;
+}
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -32,99 +62,128 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    errdefer runtime.Instance.deinit(instance);
+
+    // Initialize DocumentFragment internal state
+    const state = instance.getState(StateType);
+    const ArenaAllocator = @import("runtime").ArenaAllocator;
+    const internal = try ArenaAllocator.get().create(InternalState);
+    internal.* = InternalState.init(allocator);
+    state.own._internal = internal;
+
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.deinit();
+    }
     runtime.Instance.deinit(instance);
 }
 
 /// Constructor implementation
-/// This is called when the interface is constructed from JavaScript
+/// DOM §4.8 - DocumentFragment()
 pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-    // Create instance through init()
     const instance = try init(allocator, State, &DocumentFragment.vtable, ctx);
     errdefer deinit(instance);
 
-    // TODO: Implement constructor logic with parameters
+    // Set node type to DOCUMENT_FRAGMENT_NODE (11)
+    try NodeImpl.setNodeType(instance, NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE);
 
     return instance;
 }
 
-/// Getter for children
-pub fn get_children(instance: *runtime.Instance) ImplError!*runtime.Instance {
+// =============================================================================
+// ParentNode Mixin Getters
+// =============================================================================
+
+/// Getter for children (from ParentNode mixin)
+/// Returns a live HTMLCollection of element children
+pub fn get_children(instance: *runtime.Instance) !*runtime.Instance {
     _ = instance;
+    // TODO: Return live HTMLCollection of element children
     return error.NotImplemented;
 }
 
-/// Getter for firstElementChild
-pub fn get_firstElementChild(instance: *runtime.Instance) ImplError!*runtime.Instance {
+/// Getter for firstElementChild (from ParentNode mixin)
+pub fn get_firstElementChild(instance: *runtime.Instance) !*runtime.Instance {
     _ = instance;
+    // TODO: Walk children to find first Element
     return error.NotImplemented;
 }
 
-/// Getter for lastElementChild
-pub fn get_lastElementChild(instance: *runtime.Instance) ImplError!*runtime.Instance {
+/// Getter for lastElementChild (from ParentNode mixin)
+pub fn get_lastElementChild(instance: *runtime.Instance) !*runtime.Instance {
     _ = instance;
+    // TODO: Walk children backwards to find last Element
     return error.NotImplemented;
 }
 
-/// Getter for childElementCount
-pub fn get_childElementCount(instance: *runtime.Instance) ImplError!u32 {
+/// Getter for childElementCount (from ParentNode mixin)
+pub fn get_childElementCount(instance: *runtime.Instance) !u32 {
     _ = instance;
+    // TODO: Count element children
     return error.NotImplemented;
 }
 
-/// Operation: append
-pub fn call_append(instance: *runtime.Instance, nodes: *const anyopaque) ImplError!void {
+// =============================================================================
+// ParentNode Mixin Operations
+// =============================================================================
+
+/// Operation: prepend (from ParentNode mixin)
+pub fn call_prepend(instance: *runtime.Instance, nodes: *const anyopaque) !void {
     _ = instance;
     _ = nodes;
     return error.NotImplemented;
 }
 
-/// Operation: replaceChildren
-pub fn call_replaceChildren(instance: *runtime.Instance, nodes: *const anyopaque) ImplError!void {
+/// Operation: append (from ParentNode mixin)
+pub fn call_append(instance: *runtime.Instance, nodes: *const anyopaque) !void {
     _ = instance;
     _ = nodes;
     return error.NotImplemented;
 }
 
-/// Operation: moveBefore
-pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) ImplError!void {
+/// Operation: replaceChildren (from ParentNode mixin)
+pub fn call_replaceChildren(instance: *runtime.Instance, nodes: *const anyopaque) !void {
+    _ = instance;
+    _ = nodes;
+    return error.NotImplemented;
+}
+
+/// Operation: moveBefore (from ParentNode mixin)
+pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) !void {
     _ = instance;
     _ = node;
     _ = child;
     return error.NotImplemented;
 }
 
-/// Operation: prepend
-pub fn call_prepend(instance: *runtime.Instance, nodes: *const anyopaque) ImplError!void {
+/// Operation: querySelector (from ParentNode mixin)
+pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMString) !*runtime.Instance {
     _ = instance;
-    _ = nodes;
+    _ = selectors;
+    // TODO: Use selector parser/matcher from src/selector/
     return error.NotImplemented;
 }
 
-/// Operation: querySelector
-pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!*runtime.Instance {
+/// Operation: querySelectorAll (from ParentNode mixin)
+pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOMString) !*runtime.Instance {
     _ = instance;
     _ = selectors;
     return error.NotImplemented;
 }
 
-/// Operation: querySelectorAll
-pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = selectors;
-    return error.NotImplemented;
-}
+// =============================================================================
+// NonElementParentNode Mixin Operations
+// =============================================================================
 
-/// Operation: getElementById
-pub fn call_getElementById(instance: *runtime.Instance, elementId: runtime.DOMString) ImplError!*runtime.Instance {
+/// Operation: getElementById (from NonElementParentNode mixin)
+pub fn call_getElementById(instance: *runtime.Instance, elementId: runtime.DOMString) !*runtime.Instance {
     _ = instance;
     _ = elementId;
+    // TODO: Search descendants for element with matching id
     return error.NotImplemented;
 }
-
