@@ -1,5 +1,5 @@
 //! Generated from: uievents.idl
-//! Generated at: 2025-11-25T14:21:39Z
+//! Generated at: 2025-11-25T19:42:24Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -22,6 +22,7 @@ pub const CompositionEvent = struct {
     pub const Meta = struct {
         pub const name = "CompositionEvent";
         pub const is_mixin = false;
+        pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = *UIEvent;
         pub const MixinTypes = &.{};
@@ -37,7 +38,7 @@ pub const CompositionEvent = struct {
             .{ "data", "get_data", null },
         };
         
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "initCompositionEvent", "call_initCompositionEvent", 1 },
         };

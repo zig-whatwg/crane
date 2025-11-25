@@ -1,5 +1,5 @@
 //! Generated from: webrtc-encoded-transform.idl
-//! Generated at: 2025-11-25T14:21:38Z
+//! Generated at: 2025-11-25T19:42:23Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -24,6 +24,7 @@ pub const SFrameTransform = struct {
     pub const Meta = struct {
         pub const name = "SFrameTransform";
         pub const is_mixin = false;
+        pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = *EventTarget;
         pub const MixinTypes = &.{
@@ -41,7 +42,7 @@ pub const SFrameTransform = struct {
             .{ "onerror", "get_onerror", "set_onerror" },
         };
         
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setEncryptionKey", "call_setEncryptionKey", 1 },
         };

@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-25T14:21:39Z
+//! Generated at: 2025-11-25T19:42:24Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -18,6 +18,7 @@ pub const CSSNumericValue = struct {
     pub const Meta = struct {
         pub const name = "CSSNumericValue";
         pub const is_mixin = false;
+        pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = *CSSStyleValue;
         pub const MixinTypes = &.{};
@@ -37,7 +38,7 @@ pub const CSSNumericValue = struct {
         pub const properties = .{
         };
         
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "add", "call_add", 1 },
             .{ "sub", "call_sub", 1 },
@@ -49,6 +50,10 @@ pub const CSSNumericValue = struct {
             .{ "to", "call_to", 1 },
             .{ "toSum", "call_toSum", 1 },
             .{ "type", "call_type", 0 },
+        };
+        
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
             .{ "parse", "call_parse", 1 },
         };
         

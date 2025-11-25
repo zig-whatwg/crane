@@ -1,5 +1,5 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-11-25T14:21:38Z
+//! Generated at: 2025-11-25T19:42:23Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -17,6 +17,7 @@ pub const DOMMatrixReadOnly = struct {
     pub const Meta = struct {
         pub const name = "DOMMatrixReadOnly";
         pub const is_mixin = false;
+        pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = ?*anyopaque;
         pub const MixinTypes = &.{};
@@ -59,11 +60,8 @@ pub const DOMMatrixReadOnly = struct {
             .{ "isIdentity", "get_isIdentity", null },
         };
         
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
-            .{ "fromMatrix", "call_fromMatrix", 0 },
-            .{ "fromFloat32Array", "call_fromFloat32Array", 1 },
-            .{ "fromFloat64Array", "call_fromFloat64Array", 1 },
             .{ "translate", "call_translate", 0 },
             .{ "scale", "call_scale", 0 },
             .{ "scaleNonUniform", "call_scaleNonUniform", 0 },
@@ -81,6 +79,13 @@ pub const DOMMatrixReadOnly = struct {
             .{ "toFloat32Array", "call_toFloat32Array", 0 },
             .{ "toFloat64Array", "call_toFloat64Array", 0 },
             .{ "toJSON", "call_toJSON", 0 },
+        };
+        
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "fromMatrix", "call_fromMatrix", 0 },
+            .{ "fromFloat32Array", "call_fromFloat32Array", 1 },
+            .{ "fromFloat64Array", "call_fromFloat64Array", 1 },
         };
         
         /// Methods defined/overridden by this interface

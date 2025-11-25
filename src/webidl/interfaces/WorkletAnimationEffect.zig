@@ -1,5 +1,5 @@
 //! Generated from: css-animation-worklet.idl
-//! Generated at: 2025-11-25T14:21:37Z
+//! Generated at: 2025-11-25T19:42:23Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -13,6 +13,7 @@ pub const WorkletAnimationEffect = struct {
     pub const Meta = struct {
         pub const name = "WorkletAnimationEffect";
         pub const is_mixin = false;
+        pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = ?*anyopaque;
         pub const MixinTypes = &.{};
@@ -28,7 +29,7 @@ pub const WorkletAnimationEffect = struct {
             .{ "localTime", "get_localTime", "set_localTime" },
         };
         
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getTiming", "call_getTiming", 0 },
             .{ "getComputedTiming", "call_getComputedTiming", 0 },

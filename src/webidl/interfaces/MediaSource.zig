@@ -1,5 +1,5 @@
 //! Generated from: media-source.idl
-//! Generated at: 2025-11-25T14:21:38Z
+//! Generated at: 2025-11-25T19:42:23Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -25,6 +25,7 @@ pub const MediaSource = struct {
     pub const Meta = struct {
         pub const name = "MediaSource";
         pub const is_mixin = false;
+        pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = *EventTarget;
         pub const MixinTypes = &.{};
@@ -51,13 +52,17 @@ pub const MediaSource = struct {
             .{ "canConstructInDedicatedWorker", "get_canConstructInDedicatedWorker", null },
         };
         
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "addSourceBuffer", "call_addSourceBuffer", 1 },
             .{ "removeSourceBuffer", "call_removeSourceBuffer", 1 },
             .{ "endOfStream", "call_endOfStream", 0 },
             .{ "setLiveSeekableRange", "call_setLiveSeekableRange", 2 },
             .{ "clearLiveSeekableRange", "call_clearLiveSeekableRange", 0 },
+        };
+        
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
             .{ "isTypeSupported", "call_isTypeSupported", 1 },
         };
         

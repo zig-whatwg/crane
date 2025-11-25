@@ -1,5 +1,5 @@
 //! Generated from: encoding.idl
-//! Generated at: 2025-11-25T14:21:38Z
+//! Generated at: 2025-11-25T19:42:23Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -17,6 +17,7 @@ pub const TextDecoder = struct {
     pub const Meta = struct {
         pub const name = "TextDecoder";
         pub const is_mixin = false;
+        pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = ?*anyopaque;
         pub const MixinTypes = &.{
@@ -36,7 +37,7 @@ pub const TextDecoder = struct {
             .{ "ignoreBOM", "get_ignoreBOM", null },
         };
         
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "decode", "call_decode", 0 },
         };

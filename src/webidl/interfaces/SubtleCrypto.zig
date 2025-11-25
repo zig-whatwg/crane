@@ -1,5 +1,5 @@
 //! Generated from: webcrypto.idl
-//! Generated at: 2025-11-25T14:21:38Z
+//! Generated at: 2025-11-25T19:42:23Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -20,6 +20,7 @@ pub const SubtleCrypto = struct {
     pub const Meta = struct {
         pub const name = "SubtleCrypto";
         pub const is_mixin = false;
+        pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = ?*anyopaque;
         pub const MixinTypes = &.{};
@@ -38,7 +39,7 @@ pub const SubtleCrypto = struct {
         pub const properties = .{
         };
         
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "encrypt", "call_encrypt", 3 },
             .{ "decrypt", "call_decrypt", 3 },
@@ -57,6 +58,10 @@ pub const SubtleCrypto = struct {
             .{ "decapsulateKey", "call_decapsulateKey", 6 },
             .{ "decapsulateBits", "call_decapsulateBits", 3 },
             .{ "getPublicKey", "call_getPublicKey", 2 },
+        };
+        
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
             .{ "supports", "call_supports", 2 },
             .{ "supports", "call_supports", 3 },
         };

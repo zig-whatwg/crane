@@ -1,5 +1,5 @@
 //! Generated from: mediacapture-streams.idl
-//! Generated at: 2025-11-25T14:21:40Z
+//! Generated at: 2025-11-25T19:42:24Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -27,6 +27,7 @@ pub const MediaDevices = struct {
     pub const Meta = struct {
         pub const name = "MediaDevices";
         pub const is_mixin = false;
+        pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = *EventTarget;
         pub const MixinTypes = &.{};
@@ -44,7 +45,7 @@ pub const MediaDevices = struct {
             .{ "oncaptureaction", "get_oncaptureaction", "set_oncaptureaction" },
         };
         
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "enumerateDevices", "call_enumerateDevices", 0 },
             .{ "selectAudioOutput", "call_selectAudioOutput", 0 },

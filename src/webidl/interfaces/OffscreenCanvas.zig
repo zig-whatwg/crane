@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-25T14:21:39Z
+//! Generated at: 2025-11-25T19:42:24Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -25,6 +25,7 @@ pub const OffscreenCanvas = struct {
     pub const Meta = struct {
         pub const name = "OffscreenCanvas";
         pub const is_mixin = false;
+        pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = *EventTarget;
         pub const MixinTypes = &.{};
@@ -47,7 +48,7 @@ pub const OffscreenCanvas = struct {
             .{ "oncontextrestored", "get_oncontextrestored", "set_oncontextrestored" },
         };
         
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getContext", "call_getContext", 1 },
             .{ "transferToImageBitmap", "call_transferToImageBitmap", 0 },

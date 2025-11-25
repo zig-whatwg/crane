@@ -1,5 +1,5 @@
 //! Generated from: webauthn.idl
-//! Generated at: 2025-11-25T14:21:39Z
+//! Generated at: 2025-11-25T19:42:24Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -25,6 +25,7 @@ pub const PublicKeyCredential = struct {
     pub const Meta = struct {
         pub const name = "PublicKeyCredential";
         pub const is_mixin = false;
+        pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = *Credential;
         pub const MixinTypes = &.{};
@@ -43,11 +44,15 @@ pub const PublicKeyCredential = struct {
             .{ "authenticatorAttachment", "get_authenticatorAttachment", null },
         };
         
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getClientExtensionResults", "call_getClientExtensionResults", 0 },
-            .{ "isConditionalMediationAvailable", "call_isConditionalMediationAvailable", 0 },
             .{ "toJSON", "call_toJSON", 0 },
+        };
+        
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "isConditionalMediationAvailable", "call_isConditionalMediationAvailable", 0 },
             .{ "isUserVerifyingPlatformAuthenticatorAvailable", "call_isUserVerifyingPlatformAuthenticatorAvailable", 0 },
             .{ "getClientCapabilities", "call_getClientCapabilities", 0 },
             .{ "parseCreationOptionsFromJSON", "call_parseCreationOptionsFromJSON", 1 },

@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-25T14:21:39Z
+//! Generated at: 2025-11-25T19:42:23Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -88,6 +88,7 @@ pub const Document = struct {
     pub const Meta = struct {
         pub const name = "Document";
         pub const is_mixin = false;
+        pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = *Node;
         pub const MixinTypes = &.{
@@ -288,7 +289,7 @@ pub const Document = struct {
             .{ "onsnapchanging", "get_onsnapchanging", "set_onsnapchanging" },
         };
         
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getElementsByTagName", "call_getElementsByTagName", 1 },
             .{ "getElementsByTagNameNS", "call_getElementsByTagNameNS", 2 },
@@ -321,7 +322,6 @@ pub const Document = struct {
             .{ "measureText", "call_measureText", 2 },
             .{ "hasUnpartitionedCookieAccess", "call_hasUnpartitionedCookieAccess", 0 },
             .{ "requestStorageAccess", "call_requestStorageAccess", 0 },
-            .{ "parseHTMLUnsafe", "call_parseHTMLUnsafe", 1 },
             .{ "getElementsByName", "call_getElementsByName", 1 },
             .{ "open", "call_open", 0 },
             .{ "open", "call_open", 3 },
@@ -358,6 +358,11 @@ pub const Document = struct {
             .{ "convertQuadFromNode", "call_convertQuadFromNode", 2 },
             .{ "convertRectFromNode", "call_convertRectFromNode", 2 },
             .{ "convertPointFromNode", "call_convertPointFromNode", 2 },
+        };
+        
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "parseHTMLUnsafe", "call_parseHTMLUnsafe", 1 },
         };
         
         /// Methods defined/overridden by this interface

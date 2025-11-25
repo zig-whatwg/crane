@@ -1,5 +1,5 @@
 //! Generated from: virtual-keyboard.idl
-//! Generated at: 2025-11-25T14:21:40Z
+//! Generated at: 2025-11-25T19:42:24Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -21,6 +21,7 @@ pub const VirtualKeyboard = struct {
     pub const Meta = struct {
         pub const name = "VirtualKeyboard";
         pub const is_mixin = false;
+        pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = *EventTarget;
         pub const MixinTypes = &.{};
@@ -39,7 +40,7 @@ pub const VirtualKeyboard = struct {
             .{ "ongeometrychange", "get_ongeometrychange", "set_ongeometrychange" },
         };
         
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "show", "call_show", 0 },
             .{ "hide", "call_hide", 0 },

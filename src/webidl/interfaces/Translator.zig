@@ -1,5 +1,5 @@
 //! Generated from: translation-api.idl
-//! Generated at: 2025-11-25T14:21:39Z
+//! Generated at: 2025-11-25T19:42:24Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -18,6 +18,7 @@ pub const Translator = struct {
     pub const Meta = struct {
         pub const name = "Translator";
         pub const is_mixin = false;
+        pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = ?*anyopaque;
         pub const MixinTypes = &.{
@@ -38,14 +39,18 @@ pub const Translator = struct {
             .{ "inputQuota", "get_inputQuota", null },
         };
         
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
-            .{ "create", "call_create", 1 },
-            .{ "availability", "call_availability", 1 },
             .{ "translate", "call_translate", 1 },
             .{ "translateStreaming", "call_translateStreaming", 1 },
             .{ "measureInputUsage", "call_measureInputUsage", 1 },
             .{ "destroy", "call_destroy", 0 },
+        };
+        
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "create", "call_create", 1 },
+            .{ "availability", "call_availability", 1 },
         };
         
         /// Methods defined/overridden by this interface

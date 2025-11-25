@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-25T14:21:40Z
+//! Generated at: 2025-11-25T19:42:24Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -13,6 +13,7 @@ pub const MimeTypeArray = struct {
     pub const Meta = struct {
         pub const name = "MimeTypeArray";
         pub const is_mixin = false;
+        pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = ?*anyopaque;
         pub const MixinTypes = &.{};
@@ -29,7 +30,7 @@ pub const MimeTypeArray = struct {
             .{ "length", "get_length", null },
         };
         
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "item", "call_item", 1 },
             .{ "namedItem", "call_namedItem", 1 },

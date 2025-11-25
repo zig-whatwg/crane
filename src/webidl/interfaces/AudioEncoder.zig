@@ -1,5 +1,5 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-25T14:21:38Z
+//! Generated at: 2025-11-25T19:42:23Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -25,6 +25,7 @@ pub const AudioEncoder = struct {
     pub const Meta = struct {
         pub const name = "AudioEncoder";
         pub const is_mixin = false;
+        pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = *EventTarget;
         pub const MixinTypes = &.{};
@@ -46,13 +47,17 @@ pub const AudioEncoder = struct {
             .{ "ondequeue", "get_ondequeue", "set_ondequeue" },
         };
         
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "configure", "call_configure", 1 },
             .{ "encode", "call_encode", 1 },
             .{ "flush", "call_flush", 0 },
             .{ "reset", "call_reset", 0 },
             .{ "close", "call_close", 0 },
+        };
+        
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
             .{ "isConfigSupported", "call_isConfigSupported", 1 },
         };
         

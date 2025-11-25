@@ -1,5 +1,5 @@
 //! Generated from: webtransport.idl
-//! Generated at: 2025-11-25T14:21:39Z
+//! Generated at: 2025-11-25T19:42:24Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -20,6 +20,7 @@ pub const WebTransportReceiveStream = struct {
     pub const Meta = struct {
         pub const name = "WebTransportReceiveStream";
         pub const is_mixin = false;
+        pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = *ReadableStream;
         pub const MixinTypes = &.{};
@@ -39,7 +40,7 @@ pub const WebTransportReceiveStream = struct {
         pub const properties = .{
         };
         
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getStats", "call_getStats", 0 },
         };

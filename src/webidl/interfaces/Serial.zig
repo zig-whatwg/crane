@@ -1,5 +1,5 @@
 //! Generated from: serial.idl
-//! Generated at: 2025-11-25T14:21:38Z
+//! Generated at: 2025-11-25T19:42:23Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -22,6 +22,7 @@ pub const Serial = struct {
     pub const Meta = struct {
         pub const name = "Serial";
         pub const is_mixin = false;
+        pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = *EventTarget;
         pub const MixinTypes = &.{};
@@ -42,7 +43,7 @@ pub const Serial = struct {
             .{ "ondisconnect", "get_ondisconnect", "set_ondisconnect" },
         };
         
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getPorts", "call_getPorts", 0 },
             .{ "requestPort", "call_requestPort", 0 },

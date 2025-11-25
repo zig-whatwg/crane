@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-25T14:21:39Z
+//! Generated at: 2025-11-25T19:42:23Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -20,41 +20,44 @@ pub const AbortSignal = struct {
     pub const Meta = struct {
         pub const name = "AbortSignal";
         pub const is_mixin = false;
+        pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = *EventTarget;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in_all_contexts = true;
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "aborted", "get_aborted", null },
             .{ "reason", "get_reason", null },
             .{ "onabort", "get_onabort", "set_onabort" },
         };
-
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
-        /// Instance methods (non-static)
+        
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "throwIfAborted", "call_throwIfAborted", 0 },
         };
-
-        /// Static methods (factory methods on constructor)
+        
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "abort", "call_abort", 0 },
             .{ "timeout", "call_timeout", 1 },
             .{ "_any", "call__any", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
+            "abort",
+            "timeout",
+            "_any",
             "throwIfAborted",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -62,17 +65,18 @@ pub const AbortSignal = struct {
             "dispatchEvent",
             "when",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "aborted", "get_aborted", null },
             .{ "reason", "get_reason", null },
             .{ "onabort", "get_onabort", "set_onabort" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -88,6 +92,7 @@ pub const AbortSignal = struct {
     );
 
     const delegates = .{
+
         .get_aborted = &get_aborted,
         .get_onabort = &get_onabort,
         .get_reason = &get_reason,
@@ -130,14 +135,14 @@ pub const AbortSignal = struct {
     /// Extended attributes: [NewObject]
     pub fn call__any(instance: *runtime.Instance, signals: *const anyopaque) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try AbortSignalImpl.call__any(instance, signals);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_abort(instance: *runtime.Instance, reason: *const anyopaque) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try AbortSignalImpl.call_abort(instance, reason);
     }
 
@@ -146,11 +151,12 @@ pub const AbortSignal = struct {
         // [NewObject] - Caller owns the returned object
         // [EnforceRange] on milliseconds
         if (!runtime.isInRange(u64, milliseconds)) return error.TypeError;
-
+        
         return try AbortSignalImpl.call_timeout(instance, milliseconds);
     }
 
     pub fn call_throwIfAborted(instance: *runtime.Instance) anyerror!void {
         return try AbortSignalImpl.call_throwIfAborted(instance);
     }
+
 };

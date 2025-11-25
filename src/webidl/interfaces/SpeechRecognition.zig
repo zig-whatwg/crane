@@ -1,5 +1,5 @@
 //! Generated from: speech-api.idl
-//! Generated at: 2025-11-25T14:21:37Z
+//! Generated at: 2025-11-25T19:42:23Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -25,6 +25,7 @@ pub const SpeechRecognition = struct {
     pub const Meta = struct {
         pub const name = "SpeechRecognition";
         pub const is_mixin = false;
+        pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = *EventTarget;
         pub const MixinTypes = &.{};
@@ -58,12 +59,16 @@ pub const SpeechRecognition = struct {
             .{ "onend", "get_onend", "set_onend" },
         };
         
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "start", "call_start", 0 },
             .{ "start", "call_start", 1 },
             .{ "stop", "call_stop", 0 },
             .{ "abort", "call_abort", 0 },
+        };
+        
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
             .{ "available", "call_available", 1 },
             .{ "install", "call_install", 1 },
         };

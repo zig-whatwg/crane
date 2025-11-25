@@ -1,5 +1,5 @@
 //! Generated from: observable.idl
-//! Generated at: 2025-11-25T14:21:38Z
+//! Generated at: 2025-11-25T19:42:23Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -21,6 +21,7 @@ pub const Observable = struct {
     pub const Meta = struct {
         pub const name = "Observable";
         pub const is_mixin = false;
+        pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = ?*anyopaque;
         pub const MixinTypes = &.{};
@@ -35,10 +36,9 @@ pub const Observable = struct {
         pub const properties = .{
         };
         
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "subscribe", "call_subscribe", 0 },
-            .{ "from", "call_from", 1 },
             .{ "takeUntil", "call_takeUntil", 1 },
             .{ "map", "call_map", 1 },
             .{ "filter", "call_filter", 1 },
@@ -57,6 +57,11 @@ pub const Observable = struct {
             .{ "find", "call_find", 1 },
             .{ "some", "call_some", 1 },
             .{ "reduce", "call_reduce", 1 },
+        };
+        
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "from", "call_from", 1 },
         };
         
         /// Methods defined/overridden by this interface

@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-25T14:21:37Z
+//! Generated at: 2025-11-25T19:42:23Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -49,6 +49,7 @@ pub const RTCPeerConnection = struct {
     pub const Meta = struct {
         pub const name = "RTCPeerConnection";
         pub const is_mixin = false;
+        pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = *EventTarget;
         pub const MixinTypes = &.{};
@@ -87,7 +88,7 @@ pub const RTCPeerConnection = struct {
             .{ "idpErrorInfo", "get_idpErrorInfo", null },
         };
         
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "createOffer", "call_createOffer", 0 },
             .{ "createAnswer", "call_createAnswer", 0 },
@@ -103,7 +104,6 @@ pub const RTCPeerConnection = struct {
             .{ "createAnswer", "call_createAnswer", 2 },
             .{ "setRemoteDescription", "call_setRemoteDescription", 3 },
             .{ "addIceCandidate", "call_addIceCandidate", 3 },
-            .{ "generateCertificate", "call_generateCertificate", 1 },
             .{ "getSenders", "call_getSenders", 0 },
             .{ "getReceivers", "call_getReceivers", 0 },
             .{ "getTransceivers", "call_getTransceivers", 0 },
@@ -114,6 +114,11 @@ pub const RTCPeerConnection = struct {
             .{ "getStats", "call_getStats", 0 },
             .{ "setIdentityProvider", "call_setIdentityProvider", 1 },
             .{ "getIdentityAssertion", "call_getIdentityAssertion", 0 },
+        };
+        
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "generateCertificate", "call_generateCertificate", 1 },
         };
         
         /// Methods defined/overridden by this interface

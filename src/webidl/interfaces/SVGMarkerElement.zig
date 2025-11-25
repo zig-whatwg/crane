@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-25T14:21:39Z
+//! Generated at: 2025-11-25T19:42:24Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -81,6 +81,7 @@ pub const SVGMarkerElement = struct {
     pub const Meta = struct {
         pub const name = "SVGMarkerElement";
         pub const is_mixin = false;
+        pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = *SVGElement;
         pub const MixinTypes = &.{
@@ -107,7 +108,7 @@ pub const SVGMarkerElement = struct {
             .{ "preserveAspectRatio", "get_preserveAspectRatio", null },
         };
         
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setOrientToAuto", "call_setOrientToAuto", 0 },
             .{ "setOrientToAngle", "call_setOrientToAngle", 1 },

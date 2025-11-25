@@ -1,5 +1,5 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-11-25T14:21:37Z
+//! Generated at: 2025-11-25T19:42:23Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -17,6 +17,7 @@ pub const DOMMatrix = struct {
     pub const Meta = struct {
         pub const name = "DOMMatrix";
         pub const is_mixin = false;
+        pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = *DOMMatrixReadOnly;
         pub const MixinTypes = &.{};
@@ -58,11 +59,8 @@ pub const DOMMatrix = struct {
             .{ "m44", "get_m44", null },
         };
         
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
-            .{ "fromMatrix", "call_fromMatrix", 0 },
-            .{ "fromFloat32Array", "call_fromFloat32Array", 1 },
-            .{ "fromFloat64Array", "call_fromFloat64Array", 1 },
             .{ "multiplySelf", "call_multiplySelf", 0 },
             .{ "preMultiplySelf", "call_preMultiplySelf", 0 },
             .{ "translateSelf", "call_translateSelf", 0 },
@@ -75,6 +73,13 @@ pub const DOMMatrix = struct {
             .{ "skewYSelf", "call_skewYSelf", 0 },
             .{ "invertSelf", "call_invertSelf", 0 },
             .{ "setMatrixValue", "call_setMatrixValue", 1 },
+        };
+        
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "fromMatrix", "call_fromMatrix", 0 },
+            .{ "fromFloat32Array", "call_fromFloat32Array", 1 },
+            .{ "fromFloat64Array", "call_fromFloat64Array", 1 },
         };
         
         /// Methods defined/overridden by this interface

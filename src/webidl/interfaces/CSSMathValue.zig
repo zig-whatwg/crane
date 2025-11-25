@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-25T14:21:40Z
+//! Generated at: 2025-11-25T19:42:24Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -20,6 +20,7 @@ pub const CSSMathValue = struct {
     pub const Meta = struct {
         pub const name = "CSSMathValue";
         pub const is_mixin = false;
+        pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = *CSSNumericValue;
         pub const MixinTypes = &.{};
@@ -40,7 +41,7 @@ pub const CSSMathValue = struct {
             .{ "operator", "get_operator", null },
         };
         
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
         };
         

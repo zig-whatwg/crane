@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-25T14:21:39Z
+//! Generated at: 2025-11-25T19:42:24Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -21,6 +21,7 @@ pub const RTCRtpReceiver = struct {
     pub const Meta = struct {
         pub const name = "RTCRtpReceiver";
         pub const is_mixin = false;
+        pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = ?*anyopaque;
         pub const MixinTypes = &.{};
@@ -39,13 +40,17 @@ pub const RTCRtpReceiver = struct {
             .{ "transform", "get_transform", "set_transform" },
         };
         
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
-            .{ "getCapabilities", "call_getCapabilities", 1 },
             .{ "getParameters", "call_getParameters", 0 },
             .{ "getContributingSources", "call_getContributingSources", 0 },
             .{ "getSynchronizationSources", "call_getSynchronizationSources", 0 },
             .{ "getStats", "call_getStats", 0 },
+        };
+        
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "getCapabilities", "call_getCapabilities", 1 },
         };
         
         /// Methods defined/overridden by this interface

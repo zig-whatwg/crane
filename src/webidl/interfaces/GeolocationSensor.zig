@@ -1,5 +1,5 @@
 //! Generated from: geolocation-sensor.idl
-//! Generated at: 2025-11-25T14:21:38Z
+//! Generated at: 2025-11-25T19:42:23Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -24,6 +24,7 @@ pub const GeolocationSensor = struct {
     pub const Meta = struct {
         pub const name = "GeolocationSensor";
         pub const is_mixin = false;
+        pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = *Sensor;
         pub const MixinTypes = &.{};
@@ -49,8 +50,12 @@ pub const GeolocationSensor = struct {
             .{ "speed", "get_speed", null },
         };
         
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
+        };
+        
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
             .{ "read", "call_read", 0 },
         };
         

@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-25T14:21:38Z
+//! Generated at: 2025-11-25T19:42:23Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -27,6 +27,7 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
     pub const Meta = struct {
         pub const name = "BluetoothRemoteGATTCharacteristic";
         pub const is_mixin = false;
+        pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = *EventTarget;
         pub const MixinTypes = &.{
@@ -49,7 +50,7 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
             .{ "oncharacteristicvaluechanged", "get_oncharacteristicvaluechanged", "set_oncharacteristicvaluechanged" },
         };
         
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getDescriptor", "call_getDescriptor", 1 },
             .{ "getDescriptors", "call_getDescriptors", 0 },
