@@ -579,9 +579,10 @@ fn writeTypeSimple(w: anytype, webidl_type: types.IDLType, type_registry: ?*cons
         if (type_registry) |reg| {
             if (reg.lookup(type_str)) |kind| {
                 switch (kind) {
-                    .interface => {
+                    .interface, .callback_interface => {
                         // For impl files, interface parameters should be *runtime.Instance
                         // so they can access the runtime object's internal state
+                        // TODO: Callback interfaces should use engine-agnostic wrapper
                         try w.writeAll("*runtime.Instance");
                     },
                     .typedef => {

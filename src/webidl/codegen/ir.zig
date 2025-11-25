@@ -125,8 +125,9 @@ pub const IR = struct {
         if (!iface_gop.found_existing) {
             // First time seeing this interface - add it (partial or not)
             iface_gop.value_ptr.* = try Interface.fromTypes(self.allocator, iface, shared_key, source_index);
-            // Register interface type
-            try self.type_registry.register(shared_key, .interface);
+            // Register interface type - distinguish callback interfaces
+            const type_kind: TypeKind = if (iface.callback) .callback_interface else .interface;
+            try self.type_registry.register(shared_key, type_kind);
         } else if (iface.partial) {
             // Partial interface - merge with existing (which might also be partial-only so far)
             try iface_gop.value_ptr.mergePartial(self.allocator, iface);
@@ -458,10 +459,11 @@ pub const Interface = struct {
 /// Type kind for the type registry
 pub const TypeKind = enum {
     interface,
+    callback_interface, // Callback interfaces like EventListener, NodeFilter
     typedef,
     dictionary,
     enum_type,
-    callback,
+    callback, // Callback function types (callback X = ...)
     namespace,
     primitive,
 };

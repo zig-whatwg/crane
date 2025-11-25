@@ -119,6 +119,7 @@ pub fn writeImports(
                 if (r.lookup(type_name)) |kind| {
                     return switch (kind) {
                         .interface => "interfaces",
+                        .callback_interface => "interfaces", // Callback interfaces are still interfaces
                         .typedef => "typedefs",
                         .dictionary => "dictionaries",
                         .enum_type => "enums",
@@ -1195,10 +1196,9 @@ pub fn writeGeneratedState(
                 try writeUnionTypeFromStrings(writer, union_members);
             } else {
                 // Check if it's an interface type - if so, use *runtime.Instance
-                const is_interface_type = if (type_registry) |reg|
-                    reg.lookup(attr.idlType.type) != null and reg.lookup(attr.idlType.type).? == .interface
-                else
-                    false;
+                // TODO: Callback interfaces should use engine-agnostic wrapper
+                const type_kind = if (type_registry) |reg| reg.lookup(attr.idlType.type) else null;
+                const is_interface_type = type_kind != null and (type_kind.? == .interface or type_kind.? == .callback_interface);
 
                 if (is_interface_type) {
                     // Interface types use *runtime.Instance
@@ -1261,10 +1261,9 @@ pub fn writeGeneratedState(
                 try writeUnionTypeFromStrings(writer, union_members);
             } else {
                 // Regular type - check if it's an interface type
-                const is_interface_type = if (type_registry) |reg|
-                    reg.lookup(attr.idlType.type) != null and reg.lookup(attr.idlType.type).? == .interface
-                else
-                    false;
+                // TODO: Callback interfaces should use engine-agnostic wrapper
+                const type_kind = if (type_registry) |reg| reg.lookup(attr.idlType.type) else null;
+                const is_interface_type = type_kind != null and (type_kind.? == .interface or type_kind.? == .callback_interface);
 
                 if (is_interface_type) {
                     // Interface types use *runtime.Instance
@@ -1714,10 +1713,9 @@ pub fn writeConstructor(
         var arg_type = type_mapping.type_name;
 
         // Check if this is an interface type - if so, use *runtime.Instance
-        const is_interface = if (type_registry) |reg|
-            reg.lookup(arg.idlType.type) != null and reg.lookup(arg.idlType.type).? == .interface
-        else
-            false;
+        // TODO: Callback interfaces should use engine-agnostic wrapper
+        const type_kind = if (type_registry) |reg| reg.lookup(arg.idlType.type) else null;
+        const is_interface = type_kind != null and (type_kind.? == .interface or type_kind.? == .callback_interface);
 
         // If we got anyopaque (union type or unknown), make it a pointer
         if (std.mem.eql(u8, arg_type, "anyopaque")) {
@@ -1896,10 +1894,9 @@ fn writeSingleOperation(
     const name = op.name orelse return; // Skip unnamed operations
 
     // Check if return type is an interface - if so, use *runtime.Instance
-    const is_interface_return = if (type_registry) |reg|
-        reg.lookup(op.idlType.type) != null and reg.lookup(op.idlType.type).? == .interface
-    else
-        false;
+    // TODO: Callback interfaces should use engine-agnostic wrapper
+    const return_type_kind = if (type_registry) |reg| reg.lookup(op.idlType.type) else null;
+    const is_interface_return = return_type_kind != null and (return_type_kind.? == .interface or return_type_kind.? == .callback_interface);
 
     var return_type = if (is_interface_return)
         "*runtime.Instance"
@@ -1928,10 +1925,11 @@ fn writeSingleOperation(
     // Write parameters
     for (op.arguments) |arg| {
         // Check if parameter type is an interface - if so, use *runtime.Instance
-        const is_interface_param = if (type_registry) |reg|
-            reg.lookup(arg.idlType.type) != null and reg.lookup(arg.idlType.type).? == .interface
-        else
-            false;
+        // TODO: Callback interfaces (like EventListener) should use engine-agnostic
+        // callback wrapper through EngineInterface, not direct V8 types.
+        // For now, we use *runtime.Instance and let the impl handle conversion.
+        const type_kind = if (type_registry) |reg| reg.lookup(arg.idlType.type) else null;
+        const is_interface_param = type_kind != null and (type_kind.? == .interface or type_kind.? == .callback_interface);
 
         var arg_type = if (is_interface_param)
             "*runtime.Instance"
@@ -2143,10 +2141,9 @@ pub fn writeDelegateFunctions(
     // Write attribute getters - ONLY for own attributes (not inherited)
     for (own_attributes) |attr| {
         // Check if this is an interface type - if so, use *runtime.Instance
-        const is_interface_type = if (type_registry) |reg|
-            reg.lookup(attr.idlType.type) != null and reg.lookup(attr.idlType.type).? == .interface
-        else
-            false;
+        // TODO: Callback interfaces should use engine-agnostic wrapper
+        const attr_type_kind = if (type_registry) |reg| reg.lookup(attr.idlType.type) else null;
+        const is_interface_type = attr_type_kind != null and (attr_type_kind.? == .interface or attr_type_kind.? == .callback_interface);
 
         var return_type = if (is_interface_type)
             "*runtime.Instance"
@@ -2436,6 +2433,7 @@ fn mapWebIDLTypeWithRegistry(idl_type: types.IDLType, type_registry: *const @imp
     if (type_registry.lookup(idl_type.type)) |kind| {
         const import_module = switch (kind) {
             .interface => "interfaces",
+            .callback_interface => "interfaces", // Callback interfaces are still in interfaces/
             .typedef => "typedefs",
             .dictionary => "dictionaries",
             .enum_type => "enums",

@@ -26,6 +26,13 @@
 //! This is different from regular interfaces which store a pointer to a Zig struct.
 
 const std = @import("std");
+// NOTE: This file uses V8-specific types directly. It should only be used
+// from V8 binding code, not from engine-agnostic WebIDL impls.
+// TODO: Create engine-agnostic callback wrapper in EngineInterface
+//
+// WARNING: This import path is currently broken. This file needs to be moved
+// to src/runtime/engines/v8/ or the v8 module needs to be added as a dependency
+// of the webidl module in build.zig when this code is actually needed.
 const v8 = @import("../runtime/engines/v8/ffi.zig");
 const runtime = @import("runtime");
 

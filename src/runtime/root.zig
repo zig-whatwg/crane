@@ -37,6 +37,10 @@ pub const Logger = @import("logger.zig").Logger;
 pub const LogLevel = @import("logger.zig").LogLevel;
 pub const ConsoleValue = @import("console_value.zig").ConsoleValue;
 
+// TODO: Add engine-agnostic callback wrapper for callback interfaces
+// (EventListener, NodeFilter, XPathNSResolver) through EngineInterface
+// For now, callback interfaces use *runtime.Instance like regular interfaces
+
 // WebIDL type system
 pub const types = @import("types.zig");
 pub const DOMString = types.DOMString;
