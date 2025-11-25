@@ -14,7 +14,16 @@ zig build test-v8
 
 ## Test Files
 
-- **`bindings_test.js`** - Main test suite (36 tests)
+- **`dom_test.js`** - Comprehensive DOM Standard tests (400+ tests)
+  - Tests all DOM interfaces (Document, Node, Element, Text, etc.)
+  - Tests prototype chains and inheritance
+  - Tests interface methods and properties
+  - Tests constructible vs non-constructible interfaces
+  - Tests property descriptors
+  - Tests method identity through inheritance
+  - Consolidates all previously skipped Zig DOM tests
+
+- **`bindings_test.js`** - Main WebIDL bindings test suite (36 tests)
   - Tests interface constructors
   - Tests prototype chains
   - Tests namespaces and LegacyNamespace pattern
@@ -44,11 +53,37 @@ zig build test-v8
 
 ## Current Results
 
-- **Total Tests**: 76+
+- **Total Tests**: 500+
 - **Passing**: Expected when V8 integration complete
 - **Status**: ✅ Test infrastructure ready
 
 **Note**: Async iteration tests require full ReadableStream implementation with V8 integration.
+
+## DOM Tests Coverage
+
+The `dom_test.js` file provides comprehensive coverage of the DOM Standard:
+
+- **Document** (Section 4.6) - Creation methods, query methods, import/adopt
+- **Node** (Section 4.5) - Type constants, traversal, manipulation
+- **Element** (Section 4.10) - Attributes, queries, insertion
+- **Text/CharacterData** (Section 4.11-4.12) - Text manipulation
+- **Comment/CDATASection/ProcessingInstruction** (Section 4.13-4.15)
+- **DocumentFragment/DocumentType** (Section 4.7-4.8)
+- **Attr** (Section 4.10.2) - Attribute nodes
+- **NodeList/HTMLCollection/NamedNodeMap** (Section 4.3.6-4.10.3)
+- **DOMTokenList** (Section 7.1) - classList support
+- **Event/CustomEvent** (Section 2) - Event system
+- **EventTarget** (Section 2.8) - Event handling
+- **AbortSignal/AbortController** (Section 3) - Abort handling
+- **Range** (Section 5) - Range selection
+- **NodeIterator/TreeWalker** (Section 6) - Tree traversal
+- **NodeFilter** (Section 6.1) - Filtering constants
+- **MutationObserver/MutationRecord** (Section 4.4) - DOM mutations
+- **ShadowRoot/HTMLSlotElement** - Shadow DOM
+- **DOMImplementation** (Section 4.6.2)
+- **Mixins** - ParentNode, ChildNode, NonDocumentTypeChildNode, Slottable
+- **HTMLElement** - HTML-specific features
+- **XPath** - XPath evaluation
 
 ## What These Tests Validate
 
