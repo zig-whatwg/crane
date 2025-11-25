@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -1338,7 +1338,7 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [LegacyUnforgeable]
-    pub fn get_top(instance: *runtime.Instance) anyerror!WindowProxy {
+    pub fn get_top(instance: *runtime.Instance) anyerror!?WindowProxy {
         return try WindowImpl.get_top(instance);
     }
 
@@ -1351,11 +1351,11 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [Replaceable]
-    pub fn get_parent(instance: *runtime.Instance) anyerror!WindowProxy {
+    pub fn get_parent(instance: *runtime.Instance) anyerror!?WindowProxy {
         return try WindowImpl.get_parent(instance);
     }
 
-    pub fn get_frameElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_frameElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try WindowImpl.get_frameElement(instance);
     }
 
@@ -1442,7 +1442,7 @@ pub const Window = struct {
         return value;
     }
 
-    pub fn get_fence(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_fence(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try WindowImpl.get_fence(instance);
     }
 
@@ -1476,7 +1476,7 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn get_sharedStorage(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_sharedStorage(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try WindowImpl.get_sharedStorage(instance);
     }
 
@@ -1521,7 +1521,7 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [SameObject], [Replaceable]
-    pub fn get_visualViewport(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_visualViewport(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_visualViewport) |cached| {
@@ -1601,7 +1601,7 @@ pub const Window = struct {
         return try WindowImpl.get_launchQueue(instance);
     }
 
-    pub fn get_portalHost(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_portalHost(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try WindowImpl.get_portalHost(instance);
     }
 
@@ -2818,7 +2818,7 @@ pub const Window = struct {
         return try WindowImpl.call_moveBy(instance, x, y);
     }
 
-    pub fn call_getSelection(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_getSelection(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try WindowImpl.call_getSelection(instance);
     }
 
@@ -2831,7 +2831,7 @@ pub const Window = struct {
         return try WindowImpl.call_resizeBy(instance, x, y);
     }
 
-    pub fn call_open(instance: *runtime.Instance, url: runtime.USVString, target: DOMString, features: DOMString) anyerror!WindowProxy {
+    pub fn call_open(instance: *runtime.Instance, url: runtime.USVString, target: DOMString, features: DOMString) anyerror!?WindowProxy {
         
         return try WindowImpl.call_open(instance, url, target, features);
     }
@@ -2846,7 +2846,7 @@ pub const Window = struct {
         return try WindowImpl.call_scrollTo(instance, options);
     }
 
-    pub fn call_prompt(instance: *runtime.Instance, message: DOMString, default: DOMString) anyerror!DOMString {
+    pub fn call_prompt(instance: *runtime.Instance, message: DOMString, default: DOMString) anyerror!?DOMString {
         
         return try WindowImpl.call_prompt(instance, message, default);
     }

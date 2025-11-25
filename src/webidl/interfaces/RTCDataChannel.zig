@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -196,11 +196,11 @@ pub const RTCDataChannel = struct {
         return try RTCDataChannelImpl.get_ordered(instance);
     }
 
-    pub fn get_maxPacketLifeTime(instance: *runtime.Instance) anyerror!u16 {
+    pub fn get_maxPacketLifeTime(instance: *runtime.Instance) anyerror!?u16 {
         return try RTCDataChannelImpl.get_maxPacketLifeTime(instance);
     }
 
-    pub fn get_maxRetransmits(instance: *runtime.Instance) anyerror!u16 {
+    pub fn get_maxRetransmits(instance: *runtime.Instance) anyerror!?u16 {
         return try RTCDataChannelImpl.get_maxRetransmits(instance);
     }
 
@@ -212,7 +212,7 @@ pub const RTCDataChannel = struct {
         return try RTCDataChannelImpl.get_negotiated(instance);
     }
 
-    pub fn get_id(instance: *runtime.Instance) anyerror!u16 {
+    pub fn get_id(instance: *runtime.Instance) anyerror!?u16 {
         return try RTCDataChannelImpl.get_id(instance);
     }
 

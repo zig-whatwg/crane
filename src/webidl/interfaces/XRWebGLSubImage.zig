@@ -1,5 +1,5 @@
 //! Generated from: webxrlayers.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -130,7 +130,7 @@ pub const XRWebGLSubImage = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_depthStencilTexture(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_depthStencilTexture(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_depthStencilTexture) |cached| {
@@ -142,7 +142,7 @@ pub const XRWebGLSubImage = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_motionVectorTexture(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_motionVectorTexture(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_motionVectorTexture) |cached| {
@@ -153,7 +153,7 @@ pub const XRWebGLSubImage = struct {
         return value;
     }
 
-    pub fn get_imageIndex(instance: *runtime.Instance) anyerror!u32 {
+    pub fn get_imageIndex(instance: *runtime.Instance) anyerror!?u32 {
         return try XRWebGLSubImageImpl.get_imageIndex(instance);
     }
 
@@ -165,19 +165,19 @@ pub const XRWebGLSubImage = struct {
         return try XRWebGLSubImageImpl.get_colorTextureHeight(instance);
     }
 
-    pub fn get_depthStencilTextureWidth(instance: *runtime.Instance) anyerror!u32 {
+    pub fn get_depthStencilTextureWidth(instance: *runtime.Instance) anyerror!?u32 {
         return try XRWebGLSubImageImpl.get_depthStencilTextureWidth(instance);
     }
 
-    pub fn get_depthStencilTextureHeight(instance: *runtime.Instance) anyerror!u32 {
+    pub fn get_depthStencilTextureHeight(instance: *runtime.Instance) anyerror!?u32 {
         return try XRWebGLSubImageImpl.get_depthStencilTextureHeight(instance);
     }
 
-    pub fn get_motionVectorTextureWidth(instance: *runtime.Instance) anyerror!u32 {
+    pub fn get_motionVectorTextureWidth(instance: *runtime.Instance) anyerror!?u32 {
         return try XRWebGLSubImageImpl.get_motionVectorTextureWidth(instance);
     }
 
-    pub fn get_motionVectorTextureHeight(instance: *runtime.Instance) anyerror!u32 {
+    pub fn get_motionVectorTextureHeight(instance: *runtime.Instance) anyerror!?u32 {
         return try XRWebGLSubImageImpl.get_motionVectorTextureHeight(instance);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: webmidi.idl
-//! Generated at: 2025-11-24T18:47:06Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -136,11 +136,11 @@ pub const MIDIPort = struct {
         return try MIDIPortImpl.get_id(instance);
     }
 
-    pub fn get_manufacturer(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_manufacturer(instance: *runtime.Instance) anyerror!?DOMString {
         return try MIDIPortImpl.get_manufacturer(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!?DOMString {
         return try MIDIPortImpl.get_name(instance);
     }
 
@@ -148,7 +148,7 @@ pub const MIDIPort = struct {
         return try MIDIPortImpl.get_type(instance);
     }
 
-    pub fn get_version(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_version(instance: *runtime.Instance) anyerror!?DOMString {
         return try MIDIPortImpl.get_version(instance);
     }
 

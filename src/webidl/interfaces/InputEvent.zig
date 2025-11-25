@@ -1,5 +1,5 @@
 //! Generated from: uievents.idl
-//! Generated at: 2025-11-24T18:47:08Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -115,7 +115,7 @@ pub const InputEvent = struct {
         return try InputEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
-    pub fn get_data(instance: *runtime.Instance) anyerror!runtime.USVString {
+    pub fn get_data(instance: *runtime.Instance) anyerror!?runtime.USVString {
         return try InputEventImpl.get_data(instance);
     }
 
@@ -127,7 +127,7 @@ pub const InputEvent = struct {
         return try InputEventImpl.get_inputType(instance);
     }
 
-    pub fn get_dataTransfer(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_dataTransfer(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try InputEventImpl.get_dataTransfer(instance);
     }
 

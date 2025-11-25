@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -151,7 +151,7 @@ pub const SVGTransformList = struct {
         return try SVGTransformListImpl.call_initialize(instance, newItem);
     }
 
-    pub fn call_consolidate(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_consolidate(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try SVGTransformListImpl.call_consolidate(instance);
     }
 

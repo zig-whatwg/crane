@@ -1,5 +1,5 @@
 //! Generated from: long-animation-frames.idl
-//! Generated at: 2025-11-24T18:47:08Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -175,7 +175,7 @@ pub const PerformanceLongAnimationFrameTiming = struct {
         return try PerformanceLongAnimationFrameTimingImpl.get_paintTime(instance);
     }
 
-    pub fn get_presentationTime(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
+    pub fn get_presentationTime(instance: *runtime.Instance) anyerror!?DOMHighResTimeStamp {
         return try PerformanceLongAnimationFrameTimingImpl.get_presentationTime(instance);
     }
 

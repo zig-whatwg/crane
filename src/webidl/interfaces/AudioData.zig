@@ -1,5 +1,5 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -123,7 +123,7 @@ pub const AudioData = struct {
         return try AudioDataImpl.call_constructor(allocator, ctx, init_data);
     }
 
-    pub fn get_format(instance: *runtime.Instance) anyerror!AudioSampleFormat {
+    pub fn get_format(instance: *runtime.Instance) anyerror!?AudioSampleFormat {
         return try AudioDataImpl.get_format(instance);
     }
 

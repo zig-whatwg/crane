@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -289,11 +289,11 @@ pub const SVGGraphicsElement = struct {
         return value;
     }
 
-    pub fn call_getScreenCTM(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_getScreenCTM(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try SVGGraphicsElementImpl.call_getScreenCTM(instance);
     }
 
-    pub fn call_getCTM(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_getCTM(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try SVGGraphicsElementImpl.call_getCTM(instance);
     }
 

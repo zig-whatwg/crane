@@ -1,5 +1,5 @@
 //! Generated from: css-paint-api.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -515,7 +515,7 @@ pub const PaintRenderingContext2D = struct {
         return try PaintRenderingContext2DImpl.call_roundRect(instance, x, y, w, h, radii);
     }
 
-    pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: DOMString) anyerror!*runtime.Instance {
+    pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: DOMString) anyerror!?*runtime.Instance {
         
         return try PaintRenderingContext2DImpl.call_createPattern(instance, image, repetition);
     }

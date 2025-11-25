@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -248,20 +248,20 @@ pub const ShadowRoot = struct {
         try ShadowRootImpl.set_innerHTML(instance, value);
     }
 
-    pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try ShadowRootImpl.get_customElementRegistry(instance);
     }
 
     /// Extended attributes: [LegacyLenientSetter]
-    pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try ShadowRootImpl.get_fullscreenElement(instance);
     }
 
-    pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try ShadowRootImpl.get_pictureInPictureElement(instance);
     }
 
-    pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try ShadowRootImpl.get_pointerLockElement(instance);
     }
 
@@ -285,7 +285,7 @@ pub const ShadowRoot = struct {
         try ShadowRootImpl.set_adoptedStyleSheets(instance, value);
     }
 
-    pub fn get_activeElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_activeElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try ShadowRootImpl.get_activeElement(instance);
     }
 

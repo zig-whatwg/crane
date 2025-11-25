@@ -1,5 +1,5 @@
 //! Generated from: FileAPI.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -88,7 +88,7 @@ pub const FileList = struct {
         return try FileListImpl.get_length(instance);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
         
         return try FileListImpl.call_item(instance, index);
     }

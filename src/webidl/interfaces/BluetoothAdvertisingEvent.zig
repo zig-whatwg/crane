@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -144,19 +144,19 @@ pub const BluetoothAdvertisingEvent = struct {
         return try BluetoothAdvertisingEventImpl.get_uuids(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!?DOMString {
         return try BluetoothAdvertisingEventImpl.get_name(instance);
     }
 
-    pub fn get_appearance(instance: *runtime.Instance) anyerror!u16 {
+    pub fn get_appearance(instance: *runtime.Instance) anyerror!?u16 {
         return try BluetoothAdvertisingEventImpl.get_appearance(instance);
     }
 
-    pub fn get_txPower(instance: *runtime.Instance) anyerror!i8 {
+    pub fn get_txPower(instance: *runtime.Instance) anyerror!?i8 {
         return try BluetoothAdvertisingEventImpl.get_txPower(instance);
     }
 
-    pub fn get_rssi(instance: *runtime.Instance) anyerror!i8 {
+    pub fn get_rssi(instance: *runtime.Instance) anyerror!?i8 {
         return try BluetoothAdvertisingEventImpl.get_rssi(instance);
     }
 

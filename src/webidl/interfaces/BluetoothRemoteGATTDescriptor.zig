@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-24T18:47:06Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -111,7 +111,7 @@ pub const BluetoothRemoteGATTDescriptor = struct {
         return try BluetoothRemoteGATTDescriptorImpl.get_uuid(instance);
     }
 
-    pub fn get_value(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_value(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try BluetoothRemoteGATTDescriptorImpl.get_value(instance);
     }
 

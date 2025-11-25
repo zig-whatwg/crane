@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-24T18:47:08Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -507,11 +507,11 @@ pub const HTMLIFrameElement = struct {
         try HTMLIFrameElementImpl.set_loading(instance, value);
     }
 
-    pub fn get_contentDocument(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_contentDocument(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLIFrameElementImpl.get_contentDocument(instance);
     }
 
-    pub fn get_contentWindow(instance: *runtime.Instance) anyerror!WindowProxy {
+    pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?WindowProxy {
         return try HTMLIFrameElementImpl.get_contentWindow(instance);
     }
 
@@ -685,7 +685,7 @@ pub const HTMLIFrameElement = struct {
         try HTMLIFrameElementImpl.set_sharedStorageWritable(instance, value);
     }
 
-    pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLIFrameElementImpl.call_getSVGDocument(instance);
     }
 

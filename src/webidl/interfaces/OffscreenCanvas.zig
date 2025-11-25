@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -166,7 +166,7 @@ pub const OffscreenCanvas = struct {
         try OffscreenCanvasImpl.set_oncontextrestored(instance, value);
     }
 
-    pub fn call_getContext(instance: *runtime.Instance, contextId: OffscreenRenderingContextId, options: *const anyopaque) anyerror!OffscreenRenderingContext {
+    pub fn call_getContext(instance: *runtime.Instance, contextId: OffscreenRenderingContextId, options: *const anyopaque) anyerror!?OffscreenRenderingContext {
         
         return try OffscreenCanvasImpl.call_getContext(instance, contextId, options);
     }

@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -248,7 +248,7 @@ pub const SVGScriptElement = struct {
         try SVGScriptElementImpl.set_type(instance, value);
     }
 
-    pub fn get_crossOrigin(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_crossOrigin(instance: *runtime.Instance) anyerror!?DOMString {
         return try SVGScriptElementImpl.get_crossOrigin(instance);
     }
 

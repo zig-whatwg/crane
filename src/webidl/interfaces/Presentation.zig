@@ -1,5 +1,5 @@
 //! Generated from: presentation-api.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -84,7 +84,7 @@ pub const Presentation = struct {
         PresentationImpl.deinit(instance);
     }
 
-    pub fn get_defaultRequest(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_defaultRequest(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try PresentationImpl.get_defaultRequest(instance);
     }
 
@@ -92,7 +92,7 @@ pub const Presentation = struct {
         try PresentationImpl.set_defaultRequest(instance, value);
     }
 
-    pub fn get_receiver(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_receiver(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try PresentationImpl.get_receiver(instance);
     }
 

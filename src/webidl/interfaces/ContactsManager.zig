@@ -1,5 +1,5 @@
 //! Generated from: contact-picker.idl
-//! Generated at: 2025-11-24T18:47:06Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -58,7 +58,9 @@ pub const ContactsManager = struct {
     pub const State = runtime.FlattenedState(
         Meta.BaseType,
         Meta.MixinTypes,
-        struct {},
+        struct {
+            _internal: ?*ContactsManagerImpl.InternalState = null,
+        },
     );
 
     const delegates = .{

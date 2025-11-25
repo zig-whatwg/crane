@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -119,11 +119,11 @@ pub const ParentNode = struct {
         return value;
     }
 
-    pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try ParentNodeImpl.get_firstElementChild(instance);
     }
 
-    pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try ParentNodeImpl.get_lastElementChild(instance);
     }
 
@@ -178,7 +178,7 @@ pub const ParentNode = struct {
         return try ParentNodeImpl.call_prepend(instance, nodes);
     }
 
-    pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!*runtime.Instance {
+    pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!?*runtime.Instance {
         
         return try ParentNodeImpl.call_querySelector(instance, selectors);
     }

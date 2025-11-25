@@ -1,5 +1,5 @@
 //! Generated from: webrtc-encoded-transform.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -109,7 +109,7 @@ pub const SFrameTransformErrorEvent = struct {
         return try SFrameTransformErrorEventImpl.get_errorType(instance);
     }
 
-    pub fn get_keyID(instance: *runtime.Instance) anyerror!CryptoKeyID {
+    pub fn get_keyID(instance: *runtime.Instance) anyerror!?CryptoKeyID {
         return try SFrameTransformErrorEventImpl.get_keyID(instance);
     }
 

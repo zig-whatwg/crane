@@ -1,5 +1,5 @@
 //! Generated from: css-animation-worklet.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -86,7 +86,7 @@ pub const WorkletAnimationEffect = struct {
         WorkletAnimationEffectImpl.deinit(instance);
     }
 
-    pub fn get_localTime(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_localTime(instance: *runtime.Instance) anyerror!?f64 {
         return try WorkletAnimationEffectImpl.get_localTime(instance);
     }
 

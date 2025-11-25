@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -114,15 +114,15 @@ pub const StorageEvent = struct {
         return try StorageEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
-    pub fn get_key(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_key(instance: *runtime.Instance) anyerror!?DOMString {
         return try StorageEventImpl.get_key(instance);
     }
 
-    pub fn get_oldValue(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_oldValue(instance: *runtime.Instance) anyerror!?DOMString {
         return try StorageEventImpl.get_oldValue(instance);
     }
 
-    pub fn get_newValue(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_newValue(instance: *runtime.Instance) anyerror!?DOMString {
         return try StorageEventImpl.get_newValue(instance);
     }
 
@@ -130,7 +130,7 @@ pub const StorageEvent = struct {
         return try StorageEventImpl.get_url(instance);
     }
 
-    pub fn get_storageArea(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_storageArea(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try StorageEventImpl.get_storageArea(instance);
     }
 

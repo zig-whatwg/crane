@@ -1,5 +1,5 @@
 //! Generated from: WEBGL_draw_instanced_base_vertex_base_instance.idl
-//! Generated at: 2025-11-24T18:47:08Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -64,7 +64,9 @@ pub const WEBGL_draw_instanced_base_vertex_base_instance = struct {
     pub const State = runtime.FlattenedState(
         Meta.BaseType,
         Meta.MixinTypes,
-        struct {},
+        struct {
+            _internal: ?*WEBGL_draw_instanced_base_vertex_base_instanceImpl.InternalState = null,
+        },
     );
 
     const delegates = .{

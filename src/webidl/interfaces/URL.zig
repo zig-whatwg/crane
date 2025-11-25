@@ -1,5 +1,5 @@
 //! Generated from: url.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -273,7 +273,7 @@ pub const URL = struct {
         return try URLImpl.call_canParse(instance, url, base);
     }
 
-    pub fn call_parse(instance: *runtime.Instance, url: runtime.USVString, base: runtime.USVString) anyerror!*runtime.Instance {
+    pub fn call_parse(instance: *runtime.Instance, url: runtime.USVString, base: runtime.USVString) anyerror!?*runtime.Instance {
         
         return try URLImpl.call_parse(instance, url, base);
     }

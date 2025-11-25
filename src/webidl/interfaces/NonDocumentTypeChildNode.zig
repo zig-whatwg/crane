@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -75,11 +75,11 @@ pub const NonDocumentTypeChildNode = struct {
         NonDocumentTypeChildNodeImpl.deinit(instance);
     }
 
-    pub fn get_previousElementSibling(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_previousElementSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try NonDocumentTypeChildNodeImpl.get_previousElementSibling(instance);
     }
 
-    pub fn get_nextElementSibling(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_nextElementSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try NonDocumentTypeChildNodeImpl.get_nextElementSibling(instance);
     }
 

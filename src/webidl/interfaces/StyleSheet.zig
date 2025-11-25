@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -131,7 +131,7 @@ pub const StyleSheet = struct {
         return try StyleSheetImpl.get_type(instance);
     }
 
-    pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
+    pub fn get_href(instance: *runtime.Instance) anyerror!?runtime.USVString {
         return try StyleSheetImpl.get_href(instance);
     }
 
@@ -139,11 +139,11 @@ pub const StyleSheet = struct {
         return try StyleSheetImpl.get_ownerNode(instance);
     }
 
-    pub fn get_parentStyleSheet(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_parentStyleSheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try StyleSheetImpl.get_parentStyleSheet(instance);
     }
 
-    pub fn get_title(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_title(instance: *runtime.Instance) anyerror!?DOMString {
         return try StyleSheetImpl.get_title(instance);
     }
 

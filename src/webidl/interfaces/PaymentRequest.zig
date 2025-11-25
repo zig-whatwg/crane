@@ -1,5 +1,5 @@
 //! Generated from: payment-request.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -148,15 +148,15 @@ pub const PaymentRequest = struct {
         return try PaymentRequestImpl.get_id(instance);
     }
 
-    pub fn get_shippingAddress(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_shippingAddress(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try PaymentRequestImpl.get_shippingAddress(instance);
     }
 
-    pub fn get_shippingOption(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_shippingOption(instance: *runtime.Instance) anyerror!?DOMString {
         return try PaymentRequestImpl.get_shippingOption(instance);
     }
 
-    pub fn get_shippingType(instance: *runtime.Instance) anyerror!PaymentShippingType {
+    pub fn get_shippingType(instance: *runtime.Instance) anyerror!?PaymentShippingType {
         return try PaymentRequestImpl.get_shippingType(instance);
     }
 

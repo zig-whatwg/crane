@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -67,7 +67,9 @@ pub const CustomElementRegistry = struct {
     pub const State = runtime.FlattenedState(
         Meta.BaseType,
         Meta.MixinTypes,
-        struct {},
+        struct {
+            _internal: ?*CustomElementRegistryImpl.InternalState = null,
+        },
     );
 
     const delegates = .{
@@ -112,7 +114,7 @@ pub const CustomElementRegistry = struct {
         return try CustomElementRegistryImpl.call_get(instance, name);
     }
 
-    pub fn call_getName(instance: *runtime.Instance, constructor: CustomElementConstructor) anyerror!DOMString {
+    pub fn call_getName(instance: *runtime.Instance, constructor: CustomElementConstructor) anyerror!?DOMString {
         
         return try CustomElementRegistryImpl.call_getName(instance, constructor);
     }

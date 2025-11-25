@@ -1,5 +1,5 @@
 //! Generated from: deprecation-reporting.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -108,7 +108,7 @@ pub const DeprecationReportBody = struct {
         return try DeprecationReportBodyImpl.get_id(instance);
     }
 
-    pub fn get_anticipatedRemoval(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_anticipatedRemoval(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try DeprecationReportBodyImpl.get_anticipatedRemoval(instance);
     }
 
@@ -116,15 +116,15 @@ pub const DeprecationReportBody = struct {
         return try DeprecationReportBodyImpl.get_message(instance);
     }
 
-    pub fn get_sourceFile(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_sourceFile(instance: *runtime.Instance) anyerror!?DOMString {
         return try DeprecationReportBodyImpl.get_sourceFile(instance);
     }
 
-    pub fn get_lineNumber(instance: *runtime.Instance) anyerror!u32 {
+    pub fn get_lineNumber(instance: *runtime.Instance) anyerror!?u32 {
         return try DeprecationReportBodyImpl.get_lineNumber(instance);
     }
 
-    pub fn get_columnNumber(instance: *runtime.Instance) anyerror!u32 {
+    pub fn get_columnNumber(instance: *runtime.Instance) anyerror!?u32 {
         return try DeprecationReportBodyImpl.get_columnNumber(instance);
     }
 

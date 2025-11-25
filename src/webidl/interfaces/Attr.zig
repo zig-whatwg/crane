@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -133,11 +133,11 @@ pub const Attr = struct {
         AttrImpl.deinit(instance);
     }
 
-    pub fn get_namespaceURI(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_namespaceURI(instance: *runtime.Instance) anyerror!?DOMString {
         return try AttrImpl.get_namespaceURI(instance);
     }
 
-    pub fn get_prefix(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_prefix(instance: *runtime.Instance) anyerror!?DOMString {
         return try AttrImpl.get_prefix(instance);
     }
 
@@ -163,7 +163,7 @@ pub const Attr = struct {
         try AttrImpl.set_value(instance, value);
     }
 
-    pub fn get_ownerElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_ownerElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try AttrImpl.get_ownerElement(instance);
     }
 

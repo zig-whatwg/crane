@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-24T18:47:08Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -109,23 +109,23 @@ pub const RTCError = struct {
         return try RTCErrorImpl.get_errorDetail(instance);
     }
 
-    pub fn get_sdpLineNumber(instance: *runtime.Instance) anyerror!i32 {
+    pub fn get_sdpLineNumber(instance: *runtime.Instance) anyerror!?i32 {
         return try RTCErrorImpl.get_sdpLineNumber(instance);
     }
 
-    pub fn get_sctpCauseCode(instance: *runtime.Instance) anyerror!i32 {
+    pub fn get_sctpCauseCode(instance: *runtime.Instance) anyerror!?i32 {
         return try RTCErrorImpl.get_sctpCauseCode(instance);
     }
 
-    pub fn get_receivedAlert(instance: *runtime.Instance) anyerror!u32 {
+    pub fn get_receivedAlert(instance: *runtime.Instance) anyerror!?u32 {
         return try RTCErrorImpl.get_receivedAlert(instance);
     }
 
-    pub fn get_sentAlert(instance: *runtime.Instance) anyerror!u32 {
+    pub fn get_sentAlert(instance: *runtime.Instance) anyerror!?u32 {
         return try RTCErrorImpl.get_sentAlert(instance);
     }
 
-    pub fn get_httpRequestStatusCode(instance: *runtime.Instance) anyerror!i32 {
+    pub fn get_httpRequestStatusCode(instance: *runtime.Instance) anyerror!?i32 {
         return try RTCErrorImpl.get_httpRequestStatusCode(instance);
     }
 

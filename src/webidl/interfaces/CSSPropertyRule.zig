@@ -1,5 +1,5 @@
 //! Generated from: css-properties-values-api.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -103,7 +103,7 @@ pub const CSSPropertyRule = struct {
         return try CSSPropertyRuleImpl.get_inherits(instance);
     }
 
-    pub fn get_initialValue(instance: *runtime.Instance) anyerror!CSSOMString {
+    pub fn get_initialValue(instance: *runtime.Instance) anyerror!?CSSOMString {
         return try CSSPropertyRuleImpl.get_initialValue(instance);
     }
 

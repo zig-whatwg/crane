@@ -1,5 +1,5 @@
 //! Generated from: intervention-reporting.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -108,15 +108,15 @@ pub const InterventionReportBody = struct {
         return try InterventionReportBodyImpl.get_message(instance);
     }
 
-    pub fn get_sourceFile(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_sourceFile(instance: *runtime.Instance) anyerror!?DOMString {
         return try InterventionReportBodyImpl.get_sourceFile(instance);
     }
 
-    pub fn get_lineNumber(instance: *runtime.Instance) anyerror!u32 {
+    pub fn get_lineNumber(instance: *runtime.Instance) anyerror!?u32 {
         return try InterventionReportBodyImpl.get_lineNumber(instance);
     }
 
-    pub fn get_columnNumber(instance: *runtime.Instance) anyerror!u32 {
+    pub fn get_columnNumber(instance: *runtime.Instance) anyerror!?u32 {
         return try InterventionReportBodyImpl.get_columnNumber(instance);
     }
 

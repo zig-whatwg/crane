@@ -1,5 +1,5 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -91,11 +91,11 @@ pub const ReadableByteStreamController = struct {
         ReadableByteStreamControllerImpl.deinit(instance);
     }
 
-    pub fn get_byobRequest(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_byobRequest(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try ReadableByteStreamControllerImpl.get_byobRequest(instance);
     }
 
-    pub fn get_desiredSize(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_desiredSize(instance: *runtime.Instance) anyerror!?f64 {
         return try ReadableByteStreamControllerImpl.get_desiredSize(instance);
     }
 

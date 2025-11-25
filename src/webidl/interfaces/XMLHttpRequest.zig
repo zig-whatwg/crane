@@ -1,5 +1,5 @@
 //! Generated from: xhr.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -298,7 +298,7 @@ pub const XMLHttpRequest = struct {
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn get_responseXML(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_responseXML(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try XMLHttpRequestImpl.get_responseXML(instance);
     }
 
@@ -332,7 +332,7 @@ pub const XMLHttpRequest = struct {
         return try XMLHttpRequestImpl.call_setRequestHeader(instance, name, value);
     }
 
-    pub fn call_getResponseHeader(instance: *runtime.Instance, name: runtime.ByteString) anyerror!runtime.ByteString {
+    pub fn call_getResponseHeader(instance: *runtime.Instance, name: runtime.ByteString) anyerror!?runtime.ByteString {
         
         return try XMLHttpRequestImpl.call_getResponseHeader(instance, name);
     }

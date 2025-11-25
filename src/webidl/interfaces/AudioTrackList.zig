@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -137,7 +137,7 @@ pub const AudioTrackList = struct {
         try AudioTrackListImpl.set_onremovetrack(instance, value);
     }
 
-    pub fn call_getTrackById(instance: *runtime.Instance, id: DOMString) anyerror!*runtime.Instance {
+    pub fn call_getTrackById(instance: *runtime.Instance, id: DOMString) anyerror!?*runtime.Instance {
         
         return try AudioTrackListImpl.call_getTrackById(instance, id);
     }

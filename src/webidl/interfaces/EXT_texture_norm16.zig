@@ -1,5 +1,5 @@
 //! Generated from: EXT_texture_norm16.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -68,7 +68,9 @@ pub const EXT_texture_norm16 = struct {
     pub const State = runtime.FlattenedState(
         Meta.BaseType,
         Meta.MixinTypes,
-        struct {},
+        struct {
+            _internal: ?*EXT_texture_norm16Impl.InternalState = null,
+        },
     );
 
     // ========================================

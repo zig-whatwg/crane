@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -499,7 +499,7 @@ pub const HTMLMediaElement = struct {
         HTMLMediaElementImpl.deinit(instance);
     }
 
-    pub fn get_error(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_error(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLMediaElementImpl.get_error(instance);
     }
 
@@ -517,7 +517,7 @@ pub const HTMLMediaElement = struct {
         try HTMLMediaElementImpl.set_src(instance, value);
     }
 
-    pub fn get_srcObject(instance: *runtime.Instance) anyerror!MediaProvider {
+    pub fn get_srcObject(instance: *runtime.Instance) anyerror!?MediaProvider {
         return try HTMLMediaElementImpl.get_srcObject(instance);
     }
 
@@ -530,7 +530,7 @@ pub const HTMLMediaElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_crossOrigin(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_crossOrigin(instance: *runtime.Instance) anyerror!?DOMString {
         return try HTMLMediaElementImpl.get_crossOrigin(instance);
     }
 
@@ -765,7 +765,7 @@ pub const HTMLMediaElement = struct {
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn get_mediaKeys(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_mediaKeys(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLMediaElementImpl.get_mediaKeys(instance);
     }
 

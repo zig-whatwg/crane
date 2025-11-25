@@ -1,5 +1,5 @@
 //! Generated from: css-regions.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -80,7 +80,7 @@ pub const Region = struct {
         return try RegionImpl.get_regionOverset(instance);
     }
 
-    pub fn call_getRegionFlowRanges(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getRegionFlowRanges(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try RegionImpl.call_getRegionFlowRanges(instance);
     }
 

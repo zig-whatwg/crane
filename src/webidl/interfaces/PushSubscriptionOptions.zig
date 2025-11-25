@@ -1,5 +1,5 @@
 //! Generated from: push-api.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -89,7 +89,7 @@ pub const PushSubscriptionOptions = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_applicationServerKey(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_applicationServerKey(instance: *runtime.Instance) anyerror!?*const anyopaque {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_applicationServerKey) |cached| {

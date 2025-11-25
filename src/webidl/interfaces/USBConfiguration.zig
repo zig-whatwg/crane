@@ -1,5 +1,5 @@
 //! Generated from: webusb.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -100,7 +100,7 @@ pub const USBConfiguration = struct {
         return try USBConfigurationImpl.get_configurationValue(instance);
     }
 
-    pub fn get_configurationName(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_configurationName(instance: *runtime.Instance) anyerror!?DOMString {
         return try USBConfigurationImpl.get_configurationName(instance);
     }
 

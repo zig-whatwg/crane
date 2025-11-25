@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -316,7 +316,7 @@ pub const SVGUseElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_instanceRoot(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_instanceRoot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_instanceRoot) |cached| {
@@ -328,7 +328,7 @@ pub const SVGUseElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_animatedInstanceRoot(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_animatedInstanceRoot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_animatedInstanceRoot) |cached| {

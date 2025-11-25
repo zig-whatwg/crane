@@ -1,5 +1,5 @@
 //! Generated from: webxrlayers.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -149,7 +149,7 @@ pub const XRWebGLBinding = struct {
         return try XRWebGLBindingImpl.get_usesDepthValues(instance);
     }
 
-    pub fn call_getCameraImage(instance: *runtime.Instance, camera: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_getCameraImage(instance: *runtime.Instance, camera: *runtime.Instance) anyerror!?*runtime.Instance {
         
         return try XRWebGLBindingImpl.call_getCameraImage(instance, camera);
     }
@@ -179,7 +179,7 @@ pub const XRWebGLBinding = struct {
         return try XRWebGLBindingImpl.call_getViewSubImage(instance, layer, view);
     }
 
-    pub fn call_getReflectionCubeMap(instance: *runtime.Instance, lightProbe: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_getReflectionCubeMap(instance: *runtime.Instance, lightProbe: *runtime.Instance) anyerror!?*runtime.Instance {
         
         return try XRWebGLBindingImpl.call_getReflectionCubeMap(instance, lightProbe);
     }
@@ -199,7 +199,7 @@ pub const XRWebGLBinding = struct {
         return try XRWebGLBindingImpl.call_foveateBoundTexture(instance, target, fixed_foveation);
     }
 
-    pub fn call_getDepthInformation(instance: *runtime.Instance, view: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_getDepthInformation(instance: *runtime.Instance, view: *runtime.Instance) anyerror!?*runtime.Instance {
         
         return try XRWebGLBindingImpl.call_getDepthInformation(instance, view);
     }

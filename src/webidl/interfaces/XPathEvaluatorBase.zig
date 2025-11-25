@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -57,7 +57,9 @@ pub const XPathEvaluatorBase = struct {
     pub const State = runtime.FlattenedState(
         Meta.BaseType,
         Meta.MixinTypes,
-        struct {},
+        struct {
+            _internal: ?*XPathEvaluatorBaseImpl.InternalState = null,
+        },
     );
 
     const delegates = .{

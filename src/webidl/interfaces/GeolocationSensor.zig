@@ -1,5 +1,5 @@
 //! Generated from: geolocation-sensor.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -132,31 +132,31 @@ pub const GeolocationSensor = struct {
         return try GeolocationSensorImpl.call_constructor(allocator, ctx, options);
     }
 
-    pub fn get_latitude(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_latitude(instance: *runtime.Instance) anyerror!?f64 {
         return try GeolocationSensorImpl.get_latitude(instance);
     }
 
-    pub fn get_longitude(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_longitude(instance: *runtime.Instance) anyerror!?f64 {
         return try GeolocationSensorImpl.get_longitude(instance);
     }
 
-    pub fn get_altitude(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_altitude(instance: *runtime.Instance) anyerror!?f64 {
         return try GeolocationSensorImpl.get_altitude(instance);
     }
 
-    pub fn get_accuracy(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_accuracy(instance: *runtime.Instance) anyerror!?f64 {
         return try GeolocationSensorImpl.get_accuracy(instance);
     }
 
-    pub fn get_altitudeAccuracy(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_altitudeAccuracy(instance: *runtime.Instance) anyerror!?f64 {
         return try GeolocationSensorImpl.get_altitudeAccuracy(instance);
     }
 
-    pub fn get_heading(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_heading(instance: *runtime.Instance) anyerror!?f64 {
         return try GeolocationSensorImpl.get_heading(instance);
     }
 
-    pub fn get_speed(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_speed(instance: *runtime.Instance) anyerror!?f64 {
         return try GeolocationSensorImpl.get_speed(instance);
     }
 

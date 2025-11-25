@@ -1,5 +1,5 @@
 //! Generated from: csp-next.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -106,11 +106,11 @@ pub const ScriptingPolicyReportBody = struct {
         return try ScriptingPolicyReportBodyImpl.get_violationType(instance);
     }
 
-    pub fn get_violationURL(instance: *runtime.Instance) anyerror!runtime.USVString {
+    pub fn get_violationURL(instance: *runtime.Instance) anyerror!?runtime.USVString {
         return try ScriptingPolicyReportBodyImpl.get_violationURL(instance);
     }
 
-    pub fn get_violationSample(instance: *runtime.Instance) anyerror!runtime.USVString {
+    pub fn get_violationSample(instance: *runtime.Instance) anyerror!?runtime.USVString {
         return try ScriptingPolicyReportBodyImpl.get_violationSample(instance);
     }
 

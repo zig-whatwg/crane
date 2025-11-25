@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -248,7 +248,7 @@ pub const HTMLLabelElement = struct {
         return try HTMLLabelElementImpl.call_constructor(allocator, ctx);
     }
 
-    pub fn get_form(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLLabelElementImpl.get_form(instance);
     }
 
@@ -266,7 +266,7 @@ pub const HTMLLabelElement = struct {
         try HTMLLabelElementImpl.set_htmlFor(instance, value);
     }
 
-    pub fn get_control(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_control(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLLabelElementImpl.get_control(instance);
     }
 

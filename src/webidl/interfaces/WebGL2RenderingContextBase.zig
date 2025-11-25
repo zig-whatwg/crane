@@ -1,5 +1,5 @@
 //! Generated from: webgl2.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -529,7 +529,9 @@ pub const WebGL2RenderingContextBase = struct {
     pub const State = runtime.FlattenedState(
         Meta.BaseType,
         Meta.MixinTypes,
-        struct {},
+        struct {
+            _internal: ?*WebGL2RenderingContextBaseImpl.InternalState = null,
+        },
     );
 
     // ========================================
@@ -2240,7 +2242,7 @@ pub const WebGL2RenderingContextBase = struct {
         return try WebGL2RenderingContextBaseImpl.call_createTransformFeedback(instance);
     }
 
-    pub fn call_getQuery(instance: *runtime.Instance, target: GLenum, pname: GLenum) anyerror!*runtime.Instance {
+    pub fn call_getQuery(instance: *runtime.Instance, target: GLenum, pname: GLenum) anyerror!?*runtime.Instance {
         
         return try WebGL2RenderingContextBaseImpl.call_getQuery(instance, target, pname);
     }
@@ -2263,7 +2265,7 @@ pub const WebGL2RenderingContextBase = struct {
         return try WebGL2RenderingContextBaseImpl.call_clearBufferuiv(instance, buffer, drawbuffer, values, srcOffset);
     }
 
-    pub fn call_getUniformIndices(instance: *runtime.Instance, program: *runtime.Instance, uniformNames: *const anyopaque) anyerror!*const anyopaque {
+    pub fn call_getUniformIndices(instance: *runtime.Instance, program: *runtime.Instance, uniformNames: *const anyopaque) anyerror!?*const anyopaque {
         
         return try WebGL2RenderingContextBaseImpl.call_getUniformIndices(instance, program, uniformNames);
     }
@@ -2308,7 +2310,7 @@ pub const WebGL2RenderingContextBase = struct {
         return try WebGL2RenderingContextBaseImpl.call_invalidateSubFramebuffer(instance, target, attachments, x, y, width, height);
     }
 
-    pub fn call_fenceSync(instance: *runtime.Instance, condition: GLenum, flags: GLbitfield) anyerror!*runtime.Instance {
+    pub fn call_fenceSync(instance: *runtime.Instance, condition: GLenum, flags: GLbitfield) anyerror!?*runtime.Instance {
         
         return try WebGL2RenderingContextBaseImpl.call_fenceSync(instance, condition, flags);
     }
@@ -2463,7 +2465,7 @@ pub const WebGL2RenderingContextBase = struct {
         return try WebGL2RenderingContextBaseImpl.call_createQuery(instance);
     }
 
-    pub fn call_getActiveUniformBlockName(instance: *runtime.Instance, program: *runtime.Instance, uniformBlockIndex: GLuint) anyerror!DOMString {
+    pub fn call_getActiveUniformBlockName(instance: *runtime.Instance, program: *runtime.Instance, uniformBlockIndex: GLuint) anyerror!?DOMString {
         
         return try WebGL2RenderingContextBaseImpl.call_getActiveUniformBlockName(instance, program, uniformBlockIndex);
     }
@@ -2551,7 +2553,7 @@ pub const WebGL2RenderingContextBase = struct {
         return try WebGL2RenderingContextBaseImpl.call_vertexAttribIPointer(instance, index, size, @"type", stride, offset);
     }
 
-    pub fn call_getTransformFeedbackVarying(instance: *runtime.Instance, program: *runtime.Instance, index: GLuint) anyerror!*runtime.Instance {
+    pub fn call_getTransformFeedbackVarying(instance: *runtime.Instance, program: *runtime.Instance, index: GLuint) anyerror!?*runtime.Instance {
         
         return try WebGL2RenderingContextBaseImpl.call_getTransformFeedbackVarying(instance, program, index);
     }

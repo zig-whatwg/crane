@@ -1,5 +1,5 @@
 //! Generated from: writing-assistance-apis.idl
-//! Generated at: 2025-11-24T18:47:06Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -151,15 +151,15 @@ pub const Writer = struct {
         return try WriterImpl.get_length(instance);
     }
 
-    pub fn get_expectedInputLanguages(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_expectedInputLanguages(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try WriterImpl.get_expectedInputLanguages(instance);
     }
 
-    pub fn get_expectedContextLanguages(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_expectedContextLanguages(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try WriterImpl.get_expectedContextLanguages(instance);
     }
 
-    pub fn get_outputLanguage(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_outputLanguage(instance: *runtime.Instance) anyerror!?DOMString {
         return try WriterImpl.get_outputLanguage(instance);
     }
 

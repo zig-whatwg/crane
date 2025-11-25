@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -159,7 +159,7 @@ pub const Bluetooth = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_referringDevice(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_referringDevice(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_referringDevice) |cached| {

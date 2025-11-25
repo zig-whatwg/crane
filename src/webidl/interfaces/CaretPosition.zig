@@ -1,5 +1,5 @@
 //! Generated from: cssom-view.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -94,7 +94,7 @@ pub const CaretPosition = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getClientRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_getClientRect(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         return try CaretPositionImpl.call_getClientRect(instance);
     }

@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -120,11 +120,11 @@ pub const RTCRtpReceiver = struct {
         return try RTCRtpReceiverImpl.get_track(instance);
     }
 
-    pub fn get_transport(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_transport(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try RTCRtpReceiverImpl.get_transport(instance);
     }
 
-    pub fn get_jitterBufferTarget(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
+    pub fn get_jitterBufferTarget(instance: *runtime.Instance) anyerror!?DOMHighResTimeStamp {
         return try RTCRtpReceiverImpl.get_jitterBufferTarget(instance);
     }
 
@@ -132,7 +132,7 @@ pub const RTCRtpReceiver = struct {
         try RTCRtpReceiverImpl.set_jitterBufferTarget(instance, value);
     }
 
-    pub fn get_transform(instance: *runtime.Instance) anyerror!RTCRtpTransform {
+    pub fn get_transform(instance: *runtime.Instance) anyerror!?RTCRtpTransform {
         return try RTCRtpReceiverImpl.get_transform(instance);
     }
 
@@ -144,7 +144,7 @@ pub const RTCRtpReceiver = struct {
         return try RTCRtpReceiverImpl.call_getContributingSources(instance);
     }
 
-    pub fn call_getCapabilities(instance: *runtime.Instance, kind: DOMString) anyerror!RTCRtpCapabilities {
+    pub fn call_getCapabilities(instance: *runtime.Instance, kind: DOMString) anyerror!?RTCRtpCapabilities {
         
         return try RTCRtpReceiverImpl.call_getCapabilities(instance, kind);
     }

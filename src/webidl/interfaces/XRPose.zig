@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -106,7 +106,7 @@ pub const XRPose = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_linearVelocity(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_linearVelocity(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_linearVelocity) |cached| {
@@ -118,7 +118,7 @@ pub const XRPose = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_angularVelocity(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_angularVelocity(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_angularVelocity) |cached| {

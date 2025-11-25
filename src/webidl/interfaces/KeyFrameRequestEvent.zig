@@ -1,5 +1,5 @@
 //! Generated from: webrtc-encoded-transform.idl
-//! Generated at: 2025-11-24T18:47:06Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -91,7 +91,7 @@ pub const KeyFrameRequestEvent = struct {
         return try KeyFrameRequestEventImpl.call_constructor(allocator, ctx, @"type", rid);
     }
 
-    pub fn get_rid(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_rid(instance: *runtime.Instance) anyerror!?DOMString {
         return try KeyFrameRequestEventImpl.get_rid(instance);
     }
 

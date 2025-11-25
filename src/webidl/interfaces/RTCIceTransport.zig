@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-24T18:47:08Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -239,15 +239,15 @@ pub const RTCIceTransport = struct {
         return try RTCIceTransportImpl.call_addRemoteCandidate(instance, remoteCandidate);
     }
 
-    pub fn call_getRemoteParameters(instance: *runtime.Instance) anyerror!RTCIceParameters {
+    pub fn call_getRemoteParameters(instance: *runtime.Instance) anyerror!?RTCIceParameters {
         return try RTCIceTransportImpl.call_getRemoteParameters(instance);
     }
 
-    pub fn call_getLocalParameters(instance: *runtime.Instance) anyerror!RTCIceParameters {
+    pub fn call_getLocalParameters(instance: *runtime.Instance) anyerror!?RTCIceParameters {
         return try RTCIceTransportImpl.call_getLocalParameters(instance);
     }
 
-    pub fn call_getSelectedCandidatePair(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_getSelectedCandidatePair(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try RTCIceTransportImpl.call_getSelectedCandidatePair(instance);
     }
 

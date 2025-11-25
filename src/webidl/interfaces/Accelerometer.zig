@@ -1,5 +1,5 @@
 //! Generated from: accelerometer.idl
-//! Generated at: 2025-11-24T18:47:06Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -107,15 +107,15 @@ pub const Accelerometer = struct {
         return try AccelerometerImpl.call_constructor(allocator, ctx, options);
     }
 
-    pub fn get_x(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_x(instance: *runtime.Instance) anyerror!?f64 {
         return try AccelerometerImpl.get_x(instance);
     }
 
-    pub fn get_y(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_y(instance: *runtime.Instance) anyerror!?f64 {
         return try AccelerometerImpl.get_y(instance);
     }
 
-    pub fn get_z(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_z(instance: *runtime.Instance) anyerror!?f64 {
         return try AccelerometerImpl.get_z(instance);
     }
 

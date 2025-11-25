@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -49,7 +49,9 @@ pub const XPathNSResolver = struct {
     pub const State = runtime.FlattenedState(
         Meta.BaseType,
         Meta.MixinTypes,
-        struct {},
+        struct {
+            _internal: ?*XPathNSResolverImpl.InternalState = null,
+        },
     );
 
     const delegates = .{
@@ -68,7 +70,7 @@ pub const XPathNSResolver = struct {
         XPathNSResolverImpl.deinit(instance);
     }
 
-    pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: DOMString) anyerror!DOMString {
+    pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: DOMString) anyerror!?DOMString {
         
         return try XPathNSResolverImpl.call_lookupNamespaceURI(instance, prefix);
     }

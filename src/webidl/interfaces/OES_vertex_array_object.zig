@@ -1,5 +1,5 @@
 //! Generated from: OES_vertex_array_object.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -71,7 +71,9 @@ pub const OES_vertex_array_object = struct {
     pub const State = runtime.FlattenedState(
         Meta.BaseType,
         Meta.MixinTypes,
-        struct {},
+        struct {
+            _internal: ?*OES_vertex_array_objectImpl.InternalState = null,
+        },
     );
 
     // ========================================

@@ -1,5 +1,5 @@
 //! Generated from: webtransport.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -177,7 +177,7 @@ pub const WebTransport = struct {
     }
 
     /// Extended attributes: [EnforceRange]
-    pub fn get_anticipatedConcurrentIncomingUnidirectionalStreams(instance: *runtime.Instance) anyerror!u16 {
+    pub fn get_anticipatedConcurrentIncomingUnidirectionalStreams(instance: *runtime.Instance) anyerror!?u16 {
         return try WebTransportImpl.get_anticipatedConcurrentIncomingUnidirectionalStreams(instance);
     }
 
@@ -187,7 +187,7 @@ pub const WebTransport = struct {
     }
 
     /// Extended attributes: [EnforceRange]
-    pub fn get_anticipatedConcurrentIncomingBidirectionalStreams(instance: *runtime.Instance) anyerror!u16 {
+    pub fn get_anticipatedConcurrentIncomingBidirectionalStreams(instance: *runtime.Instance) anyerror!?u16 {
         return try WebTransportImpl.get_anticipatedConcurrentIncomingBidirectionalStreams(instance);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: webxr-plane-detection.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -108,7 +108,7 @@ pub const XRPlane = struct {
         return try XRPlaneImpl.get_polygon(instance);
     }
 
-    pub fn get_orientation(instance: *runtime.Instance) anyerror!XRPlaneOrientation {
+    pub fn get_orientation(instance: *runtime.Instance) anyerror!?XRPlaneOrientation {
         return try XRPlaneImpl.get_orientation(instance);
     }
 
@@ -116,7 +116,7 @@ pub const XRPlane = struct {
         return try XRPlaneImpl.get_lastChangedTime(instance);
     }
 
-    pub fn get_semanticLabel(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_semanticLabel(instance: *runtime.Instance) anyerror!?DOMString {
         return try XRPlaneImpl.get_semanticLabel(instance);
     }
 

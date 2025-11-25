@@ -1,5 +1,5 @@
 //! Generated from: orientation-event.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -84,15 +84,15 @@ pub const DeviceMotionEventRotationRate = struct {
         DeviceMotionEventRotationRateImpl.deinit(instance);
     }
 
-    pub fn get_alpha(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_alpha(instance: *runtime.Instance) anyerror!?f64 {
         return try DeviceMotionEventRotationRateImpl.get_alpha(instance);
     }
 
-    pub fn get_beta(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_beta(instance: *runtime.Instance) anyerror!?f64 {
         return try DeviceMotionEventRotationRateImpl.get_beta(instance);
     }
 
-    pub fn get_gamma(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_gamma(instance: *runtime.Instance) anyerror!?f64 {
         return try DeviceMotionEventRotationRateImpl.get_gamma(instance);
     }
 

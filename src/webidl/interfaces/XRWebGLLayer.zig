@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-24T18:47:08Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -138,7 +138,7 @@ pub const XRWebGLLayer = struct {
         return try XRWebGLLayerImpl.get_ignoreDepthValues(instance);
     }
 
-    pub fn get_fixedFoveation(instance: *runtime.Instance) anyerror!f32 {
+    pub fn get_fixedFoveation(instance: *runtime.Instance) anyerror!?f32 {
         return try XRWebGLLayerImpl.get_fixedFoveation(instance);
     }
 
@@ -147,7 +147,7 @@ pub const XRWebGLLayer = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_framebuffer(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_framebuffer(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_framebuffer) |cached| {
@@ -171,7 +171,7 @@ pub const XRWebGLLayer = struct {
         return try XRWebGLLayerImpl.call_getNativeFramebufferScaleFactor(instance, session);
     }
 
-    pub fn call_getViewport(instance: *runtime.Instance, view: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_getViewport(instance: *runtime.Instance, view: *runtime.Instance) anyerror!?*runtime.Instance {
         
         return try XRWebGLLayerImpl.call_getViewport(instance, view);
     }

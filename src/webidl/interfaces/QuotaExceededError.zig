@@ -1,5 +1,5 @@
 //! Generated from: webidl.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -89,11 +89,11 @@ pub const QuotaExceededError = struct {
         return try QuotaExceededErrorImpl.call_constructor(allocator, ctx, message, options);
     }
 
-    pub fn get_quota(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_quota(instance: *runtime.Instance) anyerror!?f64 {
         return try QuotaExceededErrorImpl.get_quota(instance);
     }
 
-    pub fn get_requested(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_requested(instance: *runtime.Instance) anyerror!?f64 {
         return try QuotaExceededErrorImpl.get_requested(instance);
     }
 

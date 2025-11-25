@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -313,7 +313,7 @@ pub const HTMLStyleElement = struct {
         try HTMLStyleElementImpl.set_type(instance, value);
     }
 
-    pub fn get_sheet(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLStyleElementImpl.get_sheet(instance);
     }
 

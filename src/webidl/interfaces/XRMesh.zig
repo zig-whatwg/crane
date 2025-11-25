@@ -1,5 +1,5 @@
 //! Generated from: real-world-meshing.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -119,7 +119,7 @@ pub const XRMesh = struct {
         return try XRMeshImpl.get_lastChangedTime(instance);
     }
 
-    pub fn get_semanticLabel(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_semanticLabel(instance: *runtime.Instance) anyerror!?DOMString {
         return try XRMeshImpl.get_semanticLabel(instance);
     }
 

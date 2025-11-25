@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -128,11 +128,11 @@ pub const NodeIterator = struct {
         return try NodeIteratorImpl.get_whatToShow(instance);
     }
 
-    pub fn get_filter(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_filter(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try NodeIteratorImpl.get_filter(instance);
     }
 
-    pub fn call_nextNode(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_nextNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try NodeIteratorImpl.call_nextNode(instance);
     }
 
@@ -140,7 +140,7 @@ pub const NodeIterator = struct {
         return try NodeIteratorImpl.call_detach(instance);
     }
 
-    pub fn call_previousNode(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_previousNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try NodeIteratorImpl.call_previousNode(instance);
     }
 

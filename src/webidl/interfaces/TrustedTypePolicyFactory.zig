@@ -1,5 +1,5 @@
 //! Generated from: trusted-types.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -118,7 +118,7 @@ pub const TrustedTypePolicyFactory = struct {
         return try TrustedTypePolicyFactoryImpl.get_emptyScript(instance);
     }
 
-    pub fn get_defaultPolicy(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_defaultPolicy(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try TrustedTypePolicyFactoryImpl.get_defaultPolicy(instance);
     }
 
@@ -137,7 +137,7 @@ pub const TrustedTypePolicyFactory = struct {
         return try TrustedTypePolicyFactoryImpl.call_isScriptURL(instance, value);
     }
 
-    pub fn call_getPropertyType(instance: *runtime.Instance, tagName: DOMString, property: DOMString, elementNs: DOMString) anyerror!DOMString {
+    pub fn call_getPropertyType(instance: *runtime.Instance, tagName: DOMString, property: DOMString, elementNs: DOMString) anyerror!?DOMString {
         
         return try TrustedTypePolicyFactoryImpl.call_getPropertyType(instance, tagName, property, elementNs);
     }
@@ -147,7 +147,7 @@ pub const TrustedTypePolicyFactory = struct {
         return try TrustedTypePolicyFactoryImpl.call_isHTML(instance, value);
     }
 
-    pub fn call_getAttributeType(instance: *runtime.Instance, tagName: DOMString, attribute: DOMString, elementNs: DOMString, attrNs: DOMString) anyerror!DOMString {
+    pub fn call_getAttributeType(instance: *runtime.Instance, tagName: DOMString, attribute: DOMString, elementNs: DOMString, attrNs: DOMString) anyerror!?DOMString {
         
         return try TrustedTypePolicyFactoryImpl.call_getAttributeType(instance, tagName, attribute, elementNs, attrNs);
     }

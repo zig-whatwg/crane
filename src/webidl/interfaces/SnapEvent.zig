@@ -1,5 +1,5 @@
 //! Generated from: css-scroll-snap-2.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -97,11 +97,11 @@ pub const SnapEvent = struct {
         return try SnapEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
-    pub fn get_snapTargetBlock(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_snapTargetBlock(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try SnapEventImpl.get_snapTargetBlock(instance);
     }
 
-    pub fn get_snapTargetInline(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_snapTargetInline(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try SnapEventImpl.get_snapTargetInline(instance);
     }
 

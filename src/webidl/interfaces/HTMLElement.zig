@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -1161,7 +1161,7 @@ pub const HTMLElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_popover(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_popover(instance: *runtime.Instance) anyerror!?DOMString {
         return try HTMLElementImpl.get_popover(instance);
     }
 
@@ -1202,7 +1202,7 @@ pub const HTMLElement = struct {
         try HTMLElementImpl.set_headingReset(instance, value);
     }
 
-    pub fn get_editContext(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_editContext(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLElementImpl.get_editContext(instance);
     }
 
@@ -1210,11 +1210,11 @@ pub const HTMLElement = struct {
         try HTMLElementImpl.set_editContext(instance, value);
     }
 
-    pub fn get_scrollParent(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_scrollParent(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLElementImpl.get_scrollParent(instance);
     }
 
-    pub fn get_offsetParent(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_offsetParent(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLElementImpl.get_offsetParent(instance);
     }
 

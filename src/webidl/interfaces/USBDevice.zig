@@ -1,5 +1,5 @@
 //! Generated from: webusb.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -242,19 +242,19 @@ pub const USBDevice = struct {
         return try USBDeviceImpl.get_deviceVersionSubminor(instance);
     }
 
-    pub fn get_manufacturerName(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_manufacturerName(instance: *runtime.Instance) anyerror!?DOMString {
         return try USBDeviceImpl.get_manufacturerName(instance);
     }
 
-    pub fn get_productName(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_productName(instance: *runtime.Instance) anyerror!?DOMString {
         return try USBDeviceImpl.get_productName(instance);
     }
 
-    pub fn get_serialNumber(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_serialNumber(instance: *runtime.Instance) anyerror!?DOMString {
         return try USBDeviceImpl.get_serialNumber(instance);
     }
 
-    pub fn get_configuration(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_configuration(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try USBDeviceImpl.get_configuration(instance);
     }
 

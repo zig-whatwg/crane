@@ -1,5 +1,5 @@
 //! Generated from: permissions-policy.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -109,15 +109,15 @@ pub const PermissionsPolicyViolationReportBody = struct {
         return try PermissionsPolicyViolationReportBodyImpl.get_featureId(instance);
     }
 
-    pub fn get_sourceFile(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_sourceFile(instance: *runtime.Instance) anyerror!?DOMString {
         return try PermissionsPolicyViolationReportBodyImpl.get_sourceFile(instance);
     }
 
-    pub fn get_lineNumber(instance: *runtime.Instance) anyerror!i32 {
+    pub fn get_lineNumber(instance: *runtime.Instance) anyerror!?i32 {
         return try PermissionsPolicyViolationReportBodyImpl.get_lineNumber(instance);
     }
 
-    pub fn get_columnNumber(instance: *runtime.Instance) anyerror!i32 {
+    pub fn get_columnNumber(instance: *runtime.Instance) anyerror!?i32 {
         return try PermissionsPolicyViolationReportBodyImpl.get_columnNumber(instance);
     }
 
@@ -125,11 +125,11 @@ pub const PermissionsPolicyViolationReportBody = struct {
         return try PermissionsPolicyViolationReportBodyImpl.get_disposition(instance);
     }
 
-    pub fn get_allowAttribute(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_allowAttribute(instance: *runtime.Instance) anyerror!?DOMString {
         return try PermissionsPolicyViolationReportBodyImpl.get_allowAttribute(instance);
     }
 
-    pub fn get_srcAttribute(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_srcAttribute(instance: *runtime.Instance) anyerror!?DOMString {
         return try PermissionsPolicyViolationReportBodyImpl.get_srcAttribute(instance);
     }
 

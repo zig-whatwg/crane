@@ -1,5 +1,5 @@
 //! Generated from: KHR_parallel_shader_compile.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -61,7 +61,9 @@ pub const KHR_parallel_shader_compile = struct {
     pub const State = runtime.FlattenedState(
         Meta.BaseType,
         Meta.MixinTypes,
-        struct {},
+        struct {
+            _internal: ?*KHR_parallel_shader_compileImpl.InternalState = null,
+        },
     );
 
     // ========================================

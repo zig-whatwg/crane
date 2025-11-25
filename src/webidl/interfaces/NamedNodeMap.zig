@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-24T18:47:08Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -104,23 +104,23 @@ pub const NamedNodeMap = struct {
         return try NamedNodeMapImpl.get_length(instance);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
         
         return try NamedNodeMapImpl.call_item(instance, index);
     }
 
-    pub fn call_getNamedItemNS(instance: *runtime.Instance, namespace: DOMString, localName: DOMString) anyerror!*runtime.Instance {
+    pub fn call_getNamedItemNS(instance: *runtime.Instance, namespace: DOMString, localName: DOMString) anyerror!?*runtime.Instance {
         
         return try NamedNodeMapImpl.call_getNamedItemNS(instance, namespace, localName);
     }
 
-    pub fn call_getNamedItem(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!*runtime.Instance {
+    pub fn call_getNamedItem(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!?*runtime.Instance {
         
         return try NamedNodeMapImpl.call_getNamedItem(instance, qualifiedName);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_setNamedItemNS(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_setNamedItemNS(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!?*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -150,7 +150,7 @@ pub const NamedNodeMap = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_setNamedItem(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_setNamedItem(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!?*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

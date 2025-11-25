@@ -1,5 +1,5 @@
 //! Generated from: webtransport.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -119,7 +119,7 @@ pub const WebTransportDatagramDuplexStream = struct {
         return try WebTransportDatagramDuplexStreamImpl.get_maxDatagramSize(instance);
     }
 
-    pub fn get_incomingMaxAge(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_incomingMaxAge(instance: *runtime.Instance) anyerror!?f64 {
         return try WebTransportDatagramDuplexStreamImpl.get_incomingMaxAge(instance);
     }
 
@@ -127,7 +127,7 @@ pub const WebTransportDatagramDuplexStream = struct {
         try WebTransportDatagramDuplexStreamImpl.set_incomingMaxAge(instance, value);
     }
 
-    pub fn get_outgoingMaxAge(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_outgoingMaxAge(instance: *runtime.Instance) anyerror!?f64 {
         return try WebTransportDatagramDuplexStreamImpl.get_outgoingMaxAge(instance);
     }
 

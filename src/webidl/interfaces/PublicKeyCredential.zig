@@ -1,5 +1,5 @@
 //! Generated from: webauthn.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -156,7 +156,7 @@ pub const PublicKeyCredential = struct {
         return value;
     }
 
-    pub fn get_authenticatorAttachment(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_authenticatorAttachment(instance: *runtime.Instance) anyerror!?DOMString {
         return try PublicKeyCredentialImpl.get_authenticatorAttachment(instance);
     }
 

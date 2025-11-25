@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -389,11 +389,11 @@ pub const ElementInternals = struct {
         ElementInternalsImpl.deinit(instance);
     }
 
-    pub fn get_shadowRoot(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_shadowRoot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try ElementInternalsImpl.get_shadowRoot(instance);
     }
 
-    pub fn get_form(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try ElementInternalsImpl.get_form(instance);
     }
 
@@ -426,7 +426,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_role(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_role(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_role(instance);
     }
 
@@ -440,7 +440,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-activedescendant"]
-    pub fn get_ariaActiveDescendantElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_ariaActiveDescendantElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try ElementInternalsImpl.get_ariaActiveDescendantElement(instance);
     }
 
@@ -454,7 +454,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-atomic"]
-    pub fn get_ariaAtomic(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaAtomic(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaAtomic(instance);
     }
 
@@ -468,7 +468,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-autocomplete"]
-    pub fn get_ariaAutoComplete(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaAutoComplete(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaAutoComplete(instance);
     }
 
@@ -482,7 +482,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-braillelabel"]
-    pub fn get_ariaBrailleLabel(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaBrailleLabel(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaBrailleLabel(instance);
     }
 
@@ -496,7 +496,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-brailleroledescription"]
-    pub fn get_ariaBrailleRoleDescription(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaBrailleRoleDescription(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaBrailleRoleDescription(instance);
     }
 
@@ -510,7 +510,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-busy"]
-    pub fn get_ariaBusy(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaBusy(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaBusy(instance);
     }
 
@@ -524,7 +524,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-checked"]
-    pub fn get_ariaChecked(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaChecked(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaChecked(instance);
     }
 
@@ -538,7 +538,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colcount"]
-    pub fn get_ariaColCount(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaColCount(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaColCount(instance);
     }
 
@@ -552,7 +552,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colindex"]
-    pub fn get_ariaColIndex(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaColIndex(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaColIndex(instance);
     }
 
@@ -566,7 +566,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colindextext"]
-    pub fn get_ariaColIndexText(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaColIndexText(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaColIndexText(instance);
     }
 
@@ -580,7 +580,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colspan"]
-    pub fn get_ariaColSpan(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaColSpan(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaColSpan(instance);
     }
 
@@ -594,7 +594,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-controls"]
-    pub fn get_ariaControlsElements(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_ariaControlsElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try ElementInternalsImpl.get_ariaControlsElements(instance);
     }
 
@@ -608,7 +608,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-current"]
-    pub fn get_ariaCurrent(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaCurrent(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaCurrent(instance);
     }
 
@@ -622,7 +622,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-describedby"]
-    pub fn get_ariaDescribedByElements(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_ariaDescribedByElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try ElementInternalsImpl.get_ariaDescribedByElements(instance);
     }
 
@@ -636,7 +636,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-description"]
-    pub fn get_ariaDescription(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaDescription(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaDescription(instance);
     }
 
@@ -650,7 +650,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-details"]
-    pub fn get_ariaDetailsElements(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_ariaDetailsElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try ElementInternalsImpl.get_ariaDetailsElements(instance);
     }
 
@@ -664,7 +664,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-disabled"]
-    pub fn get_ariaDisabled(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaDisabled(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaDisabled(instance);
     }
 
@@ -678,7 +678,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-errormessage"]
-    pub fn get_ariaErrorMessageElements(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_ariaErrorMessageElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try ElementInternalsImpl.get_ariaErrorMessageElements(instance);
     }
 
@@ -692,7 +692,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-expanded"]
-    pub fn get_ariaExpanded(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaExpanded(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaExpanded(instance);
     }
 
@@ -706,7 +706,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-flowto"]
-    pub fn get_ariaFlowToElements(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_ariaFlowToElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try ElementInternalsImpl.get_ariaFlowToElements(instance);
     }
 
@@ -720,7 +720,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-haspopup"]
-    pub fn get_ariaHasPopup(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaHasPopup(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaHasPopup(instance);
     }
 
@@ -734,7 +734,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-hidden"]
-    pub fn get_ariaHidden(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaHidden(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaHidden(instance);
     }
 
@@ -748,7 +748,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-invalid"]
-    pub fn get_ariaInvalid(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaInvalid(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaInvalid(instance);
     }
 
@@ -762,7 +762,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-keyshortcuts"]
-    pub fn get_ariaKeyShortcuts(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaKeyShortcuts(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaKeyShortcuts(instance);
     }
 
@@ -776,7 +776,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-label"]
-    pub fn get_ariaLabel(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaLabel(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaLabel(instance);
     }
 
@@ -790,7 +790,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-labelledby"]
-    pub fn get_ariaLabelledByElements(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_ariaLabelledByElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try ElementInternalsImpl.get_ariaLabelledByElements(instance);
     }
 
@@ -804,7 +804,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-level"]
-    pub fn get_ariaLevel(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaLevel(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaLevel(instance);
     }
 
@@ -818,7 +818,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-live"]
-    pub fn get_ariaLive(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaLive(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaLive(instance);
     }
 
@@ -832,7 +832,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-modal"]
-    pub fn get_ariaModal(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaModal(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaModal(instance);
     }
 
@@ -846,7 +846,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-multiline"]
-    pub fn get_ariaMultiLine(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaMultiLine(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaMultiLine(instance);
     }
 
@@ -860,7 +860,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-multiselectable"]
-    pub fn get_ariaMultiSelectable(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaMultiSelectable(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaMultiSelectable(instance);
     }
 
@@ -874,7 +874,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-orientation"]
-    pub fn get_ariaOrientation(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaOrientation(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaOrientation(instance);
     }
 
@@ -888,7 +888,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-owns"]
-    pub fn get_ariaOwnsElements(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_ariaOwnsElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try ElementInternalsImpl.get_ariaOwnsElements(instance);
     }
 
@@ -902,7 +902,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-placeholder"]
-    pub fn get_ariaPlaceholder(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaPlaceholder(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaPlaceholder(instance);
     }
 
@@ -916,7 +916,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-posinset"]
-    pub fn get_ariaPosInSet(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaPosInSet(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaPosInSet(instance);
     }
 
@@ -930,7 +930,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-pressed"]
-    pub fn get_ariaPressed(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaPressed(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaPressed(instance);
     }
 
@@ -944,7 +944,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-readonly"]
-    pub fn get_ariaReadOnly(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaReadOnly(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaReadOnly(instance);
     }
 
@@ -958,7 +958,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-relevant"]
-    pub fn get_ariaRelevant(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaRelevant(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaRelevant(instance);
     }
 
@@ -972,7 +972,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-required"]
-    pub fn get_ariaRequired(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaRequired(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaRequired(instance);
     }
 
@@ -986,7 +986,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-roledescription"]
-    pub fn get_ariaRoleDescription(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaRoleDescription(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaRoleDescription(instance);
     }
 
@@ -1000,7 +1000,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowcount"]
-    pub fn get_ariaRowCount(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaRowCount(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaRowCount(instance);
     }
 
@@ -1014,7 +1014,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowindex"]
-    pub fn get_ariaRowIndex(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaRowIndex(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaRowIndex(instance);
     }
 
@@ -1028,7 +1028,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowindextext"]
-    pub fn get_ariaRowIndexText(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaRowIndexText(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaRowIndexText(instance);
     }
 
@@ -1042,7 +1042,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowspan"]
-    pub fn get_ariaRowSpan(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaRowSpan(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaRowSpan(instance);
     }
 
@@ -1056,7 +1056,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-selected"]
-    pub fn get_ariaSelected(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaSelected(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaSelected(instance);
     }
 
@@ -1070,7 +1070,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-setsize"]
-    pub fn get_ariaSetSize(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaSetSize(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaSetSize(instance);
     }
 
@@ -1084,7 +1084,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-sort"]
-    pub fn get_ariaSort(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaSort(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaSort(instance);
     }
 
@@ -1098,7 +1098,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuemax"]
-    pub fn get_ariaValueMax(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaValueMax(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaValueMax(instance);
     }
 
@@ -1112,7 +1112,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuemin"]
-    pub fn get_ariaValueMin(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaValueMin(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaValueMin(instance);
     }
 
@@ -1126,7 +1126,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuenow"]
-    pub fn get_ariaValueNow(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaValueNow(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaValueNow(instance);
     }
 
@@ -1140,7 +1140,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuetext"]
-    pub fn get_ariaValueText(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaValueText(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementInternalsImpl.get_ariaValueText(instance);
     }
 

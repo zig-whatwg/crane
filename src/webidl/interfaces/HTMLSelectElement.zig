@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -372,7 +372,7 @@ pub const HTMLSelectElement = struct {
         try HTMLSelectElementImpl.set_disabled(instance, value);
     }
 
-    pub fn get_form(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLSelectElementImpl.get_form(instance);
     }
 
@@ -506,12 +506,12 @@ pub const HTMLSelectElement = struct {
         return try HTMLSelectElementImpl.get_labels(instance);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
         
         return try HTMLSelectElementImpl.call_item(instance, index);
     }
 
-    pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!*runtime.Instance {
+    pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!?*runtime.Instance {
         
         return try HTMLSelectElementImpl.call_namedItem(instance, name);
     }

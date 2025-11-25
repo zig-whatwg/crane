@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -153,23 +153,23 @@ pub const MutationRecord = struct {
         return value;
     }
 
-    pub fn get_previousSibling(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_previousSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try MutationRecordImpl.get_previousSibling(instance);
     }
 
-    pub fn get_nextSibling(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_nextSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try MutationRecordImpl.get_nextSibling(instance);
     }
 
-    pub fn get_attributeName(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_attributeName(instance: *runtime.Instance) anyerror!?DOMString {
         return try MutationRecordImpl.get_attributeName(instance);
     }
 
-    pub fn get_attributeNamespace(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_attributeNamespace(instance: *runtime.Instance) anyerror!?DOMString {
         return try MutationRecordImpl.get_attributeNamespace(instance);
     }
 
-    pub fn get_oldValue(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_oldValue(instance: *runtime.Instance) anyerror!?DOMString {
         return try MutationRecordImpl.get_oldValue(instance);
     }
 

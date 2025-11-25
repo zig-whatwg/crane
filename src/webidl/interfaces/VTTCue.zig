@@ -1,5 +1,5 @@
 //! Generated from: webvtt.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -153,7 +153,7 @@ pub const VTTCue = struct {
         return try VTTCueImpl.call_constructor(allocator, ctx, startTime, endTime, text);
     }
 
-    pub fn get_region(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_region(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try VTTCueImpl.get_region(instance);
     }
 

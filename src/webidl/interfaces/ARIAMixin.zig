@@ -1,5 +1,5 @@
 //! Generated from: wai-aria.idl
-//! Generated at: 2025-11-24T18:47:06Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -330,7 +330,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_role(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_role(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_role(instance);
     }
 
@@ -344,7 +344,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-activedescendant"]
-    pub fn get_ariaActiveDescendantElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_ariaActiveDescendantElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try ARIAMixinImpl.get_ariaActiveDescendantElement(instance);
     }
 
@@ -358,7 +358,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-atomic"]
-    pub fn get_ariaAtomic(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaAtomic(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaAtomic(instance);
     }
 
@@ -372,7 +372,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-autocomplete"]
-    pub fn get_ariaAutoComplete(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaAutoComplete(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaAutoComplete(instance);
     }
 
@@ -386,7 +386,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-braillelabel"]
-    pub fn get_ariaBrailleLabel(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaBrailleLabel(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaBrailleLabel(instance);
     }
 
@@ -400,7 +400,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-brailleroledescription"]
-    pub fn get_ariaBrailleRoleDescription(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaBrailleRoleDescription(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaBrailleRoleDescription(instance);
     }
 
@@ -414,7 +414,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-busy"]
-    pub fn get_ariaBusy(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaBusy(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaBusy(instance);
     }
 
@@ -428,7 +428,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-checked"]
-    pub fn get_ariaChecked(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaChecked(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaChecked(instance);
     }
 
@@ -442,7 +442,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colcount"]
-    pub fn get_ariaColCount(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaColCount(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaColCount(instance);
     }
 
@@ -456,7 +456,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colindex"]
-    pub fn get_ariaColIndex(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaColIndex(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaColIndex(instance);
     }
 
@@ -470,7 +470,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colindextext"]
-    pub fn get_ariaColIndexText(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaColIndexText(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaColIndexText(instance);
     }
 
@@ -484,7 +484,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colspan"]
-    pub fn get_ariaColSpan(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaColSpan(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaColSpan(instance);
     }
 
@@ -498,7 +498,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-controls"]
-    pub fn get_ariaControlsElements(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_ariaControlsElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try ARIAMixinImpl.get_ariaControlsElements(instance);
     }
 
@@ -512,7 +512,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-current"]
-    pub fn get_ariaCurrent(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaCurrent(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaCurrent(instance);
     }
 
@@ -526,7 +526,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-describedby"]
-    pub fn get_ariaDescribedByElements(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_ariaDescribedByElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try ARIAMixinImpl.get_ariaDescribedByElements(instance);
     }
 
@@ -540,7 +540,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-description"]
-    pub fn get_ariaDescription(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaDescription(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaDescription(instance);
     }
 
@@ -554,7 +554,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-details"]
-    pub fn get_ariaDetailsElements(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_ariaDetailsElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try ARIAMixinImpl.get_ariaDetailsElements(instance);
     }
 
@@ -568,7 +568,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-disabled"]
-    pub fn get_ariaDisabled(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaDisabled(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaDisabled(instance);
     }
 
@@ -582,7 +582,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-errormessage"]
-    pub fn get_ariaErrorMessageElements(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_ariaErrorMessageElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try ARIAMixinImpl.get_ariaErrorMessageElements(instance);
     }
 
@@ -596,7 +596,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-expanded"]
-    pub fn get_ariaExpanded(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaExpanded(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaExpanded(instance);
     }
 
@@ -610,7 +610,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-flowto"]
-    pub fn get_ariaFlowToElements(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_ariaFlowToElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try ARIAMixinImpl.get_ariaFlowToElements(instance);
     }
 
@@ -624,7 +624,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-haspopup"]
-    pub fn get_ariaHasPopup(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaHasPopup(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaHasPopup(instance);
     }
 
@@ -638,7 +638,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-hidden"]
-    pub fn get_ariaHidden(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaHidden(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaHidden(instance);
     }
 
@@ -652,7 +652,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-invalid"]
-    pub fn get_ariaInvalid(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaInvalid(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaInvalid(instance);
     }
 
@@ -666,7 +666,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-keyshortcuts"]
-    pub fn get_ariaKeyShortcuts(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaKeyShortcuts(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaKeyShortcuts(instance);
     }
 
@@ -680,7 +680,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-label"]
-    pub fn get_ariaLabel(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaLabel(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaLabel(instance);
     }
 
@@ -694,7 +694,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-labelledby"]
-    pub fn get_ariaLabelledByElements(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_ariaLabelledByElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try ARIAMixinImpl.get_ariaLabelledByElements(instance);
     }
 
@@ -708,7 +708,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-level"]
-    pub fn get_ariaLevel(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaLevel(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaLevel(instance);
     }
 
@@ -722,7 +722,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-live"]
-    pub fn get_ariaLive(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaLive(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaLive(instance);
     }
 
@@ -736,7 +736,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-modal"]
-    pub fn get_ariaModal(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaModal(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaModal(instance);
     }
 
@@ -750,7 +750,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-multiline"]
-    pub fn get_ariaMultiLine(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaMultiLine(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaMultiLine(instance);
     }
 
@@ -764,7 +764,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-multiselectable"]
-    pub fn get_ariaMultiSelectable(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaMultiSelectable(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaMultiSelectable(instance);
     }
 
@@ -778,7 +778,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-orientation"]
-    pub fn get_ariaOrientation(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaOrientation(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaOrientation(instance);
     }
 
@@ -792,7 +792,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-owns"]
-    pub fn get_ariaOwnsElements(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_ariaOwnsElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try ARIAMixinImpl.get_ariaOwnsElements(instance);
     }
 
@@ -806,7 +806,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-placeholder"]
-    pub fn get_ariaPlaceholder(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaPlaceholder(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaPlaceholder(instance);
     }
 
@@ -820,7 +820,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-posinset"]
-    pub fn get_ariaPosInSet(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaPosInSet(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaPosInSet(instance);
     }
 
@@ -834,7 +834,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-pressed"]
-    pub fn get_ariaPressed(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaPressed(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaPressed(instance);
     }
 
@@ -848,7 +848,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-readonly"]
-    pub fn get_ariaReadOnly(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaReadOnly(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaReadOnly(instance);
     }
 
@@ -862,7 +862,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-relevant"]
-    pub fn get_ariaRelevant(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaRelevant(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaRelevant(instance);
     }
 
@@ -876,7 +876,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-required"]
-    pub fn get_ariaRequired(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaRequired(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaRequired(instance);
     }
 
@@ -890,7 +890,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-roledescription"]
-    pub fn get_ariaRoleDescription(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaRoleDescription(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaRoleDescription(instance);
     }
 
@@ -904,7 +904,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowcount"]
-    pub fn get_ariaRowCount(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaRowCount(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaRowCount(instance);
     }
 
@@ -918,7 +918,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowindex"]
-    pub fn get_ariaRowIndex(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaRowIndex(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaRowIndex(instance);
     }
 
@@ -932,7 +932,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowindextext"]
-    pub fn get_ariaRowIndexText(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaRowIndexText(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaRowIndexText(instance);
     }
 
@@ -946,7 +946,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowspan"]
-    pub fn get_ariaRowSpan(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaRowSpan(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaRowSpan(instance);
     }
 
@@ -960,7 +960,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-selected"]
-    pub fn get_ariaSelected(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaSelected(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaSelected(instance);
     }
 
@@ -974,7 +974,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-setsize"]
-    pub fn get_ariaSetSize(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaSetSize(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaSetSize(instance);
     }
 
@@ -988,7 +988,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-sort"]
-    pub fn get_ariaSort(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaSort(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaSort(instance);
     }
 
@@ -1002,7 +1002,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuemax"]
-    pub fn get_ariaValueMax(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaValueMax(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaValueMax(instance);
     }
 
@@ -1016,7 +1016,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuemin"]
-    pub fn get_ariaValueMin(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaValueMin(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaValueMin(instance);
     }
 
@@ -1030,7 +1030,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuenow"]
-    pub fn get_ariaValueNow(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaValueNow(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaValueNow(instance);
     }
 
@@ -1044,7 +1044,7 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuetext"]
-    pub fn get_ariaValueText(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ariaValueText(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_ariaValueText(instance);
     }
 

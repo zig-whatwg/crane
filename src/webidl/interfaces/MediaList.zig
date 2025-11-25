@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -117,7 +117,7 @@ pub const MediaList = struct {
         return try MediaListImpl.get_length(instance);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!CSSOMString {
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?CSSOMString {
         
         return try MediaListImpl.call_item(instance, index);
     }

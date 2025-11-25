@@ -1,5 +1,5 @@
 //! Generated from: idle-detection.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -119,11 +119,11 @@ pub const IdleDetector = struct {
         return try IdleDetectorImpl.call_constructor(allocator, ctx);
     }
 
-    pub fn get_userState(instance: *runtime.Instance) anyerror!UserIdleState {
+    pub fn get_userState(instance: *runtime.Instance) anyerror!?UserIdleState {
         return try IdleDetectorImpl.get_userState(instance);
     }
 
-    pub fn get_screenState(instance: *runtime.Instance) anyerror!ScreenIdleState {
+    pub fn get_screenState(instance: *runtime.Instance) anyerror!?ScreenIdleState {
         return try IdleDetectorImpl.get_screenState(instance);
     }
 

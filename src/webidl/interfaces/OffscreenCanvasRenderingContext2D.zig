@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-24T18:47:08Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -752,7 +752,7 @@ pub const OffscreenCanvasRenderingContext2D = struct {
         return try OffscreenCanvasRenderingContext2DImpl.call_roundRect(instance, x, y, w, h, radii);
     }
 
-    pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: DOMString) anyerror!*runtime.Instance {
+    pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: DOMString) anyerror!?*runtime.Instance {
         
         return try OffscreenCanvasRenderingContext2DImpl.call_createPattern(instance, image, repetition);
     }

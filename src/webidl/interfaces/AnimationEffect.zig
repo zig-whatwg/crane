@@ -1,5 +1,5 @@
 //! Generated from: web-animations.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -109,15 +109,15 @@ pub const AnimationEffect = struct {
         AnimationEffectImpl.deinit(instance);
     }
 
-    pub fn get_parent(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_parent(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try AnimationEffectImpl.get_parent(instance);
     }
 
-    pub fn get_previousSibling(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_previousSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try AnimationEffectImpl.get_previousSibling(instance);
     }
 
-    pub fn get_nextSibling(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_nextSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try AnimationEffectImpl.get_nextSibling(instance);
     }
 

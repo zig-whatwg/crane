@@ -1,5 +1,5 @@
 //! Generated from: json-ld-api.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -98,7 +98,7 @@ pub const RdfLiteral = struct {
         return try RdfLiteralImpl.get_datatype(instance);
     }
 
-    pub fn get_language(instance: *runtime.Instance) anyerror!runtime.USVString {
+    pub fn get_language(instance: *runtime.Instance) anyerror!?runtime.USVString {
         return try RdfLiteralImpl.get_language(instance);
     }
 

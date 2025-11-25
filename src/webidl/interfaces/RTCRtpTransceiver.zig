@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-24T18:47:08Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -107,7 +107,7 @@ pub const RTCRtpTransceiver = struct {
         RTCRtpTransceiverImpl.deinit(instance);
     }
 
-    pub fn get_mid(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_mid(instance: *runtime.Instance) anyerror!?DOMString {
         return try RTCRtpTransceiverImpl.get_mid(instance);
     }
 
@@ -143,7 +143,7 @@ pub const RTCRtpTransceiver = struct {
         try RTCRtpTransceiverImpl.set_direction(instance, value);
     }
 
-    pub fn get_currentDirection(instance: *runtime.Instance) anyerror!RTCRtpTransceiverDirection {
+    pub fn get_currentDirection(instance: *runtime.Instance) anyerror!?RTCRtpTransceiverDirection {
         return try RTCRtpTransceiverImpl.get_currentDirection(instance);
     }
 

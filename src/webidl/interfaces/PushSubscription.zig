@@ -1,5 +1,5 @@
 //! Generated from: push-api.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -107,7 +107,7 @@ pub const PushSubscription = struct {
         return try PushSubscriptionImpl.get_endpoint(instance);
     }
 
-    pub fn get_expirationTime(instance: *runtime.Instance) anyerror!EpochTimeStamp {
+    pub fn get_expirationTime(instance: *runtime.Instance) anyerror!?EpochTimeStamp {
         return try PushSubscriptionImpl.get_expirationTime(instance);
     }
 
@@ -131,7 +131,7 @@ pub const PushSubscription = struct {
         return try PushSubscriptionImpl.call_toJSON(instance);
     }
 
-    pub fn call_getKey(instance: *runtime.Instance, name: PushEncryptionKeyName) anyerror!*const anyopaque {
+    pub fn call_getKey(instance: *runtime.Instance, name: PushEncryptionKeyName) anyerror!?*const anyopaque {
         
         return try PushSubscriptionImpl.call_getKey(instance, name);
     }

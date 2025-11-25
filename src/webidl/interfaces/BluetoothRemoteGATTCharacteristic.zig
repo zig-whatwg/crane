@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -162,7 +162,7 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
         return try BluetoothRemoteGATTCharacteristicImpl.get_properties(instance);
     }
 
-    pub fn get_value(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_value(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try BluetoothRemoteGATTCharacteristicImpl.get_value(instance);
     }
 

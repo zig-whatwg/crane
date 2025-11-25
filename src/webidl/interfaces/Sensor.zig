@@ -1,5 +1,5 @@
 //! Generated from: generic-sensor.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -132,7 +132,7 @@ pub const Sensor = struct {
         return try SensorImpl.get_hasReading(instance);
     }
 
-    pub fn get_timestamp(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
+    pub fn get_timestamp(instance: *runtime.Instance) anyerror!?DOMHighResTimeStamp {
         return try SensorImpl.get_timestamp(instance);
     }
 

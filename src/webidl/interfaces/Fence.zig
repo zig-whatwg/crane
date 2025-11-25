@@ -1,5 +1,5 @@
 //! Generated from: fenced-frame.idl
-//! Generated at: 2025-11-24T18:47:08Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -65,7 +65,9 @@ pub const Fence = struct {
     pub const State = runtime.FlattenedState(
         Meta.BaseType,
         Meta.MixinTypes,
-        struct {},
+        struct {
+            _internal: ?*FenceImpl.InternalState = null,
+        },
     );
 
     const delegates = .{

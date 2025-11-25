@@ -1,5 +1,5 @@
 //! Generated from: navigation-timing.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -179,7 +179,7 @@ pub const PerformanceNavigationTiming = struct {
         return try PerformanceNavigationTimingImpl.get_criticalCHRestart(instance);
     }
 
-    pub fn get_notRestoredReasons(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_notRestoredReasons(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try PerformanceNavigationTimingImpl.get_notRestoredReasons(instance);
     }
 

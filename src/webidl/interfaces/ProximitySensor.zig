@@ -1,5 +1,5 @@
 //! Generated from: proximity.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -107,15 +107,15 @@ pub const ProximitySensor = struct {
         return try ProximitySensorImpl.call_constructor(allocator, ctx, sensorOptions);
     }
 
-    pub fn get_distance(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_distance(instance: *runtime.Instance) anyerror!?f64 {
         return try ProximitySensorImpl.get_distance(instance);
     }
 
-    pub fn get_max(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_max(instance: *runtime.Instance) anyerror!?f64 {
         return try ProximitySensorImpl.get_max(instance);
     }
 
-    pub fn get_near(instance: *runtime.Instance) anyerror!bool {
+    pub fn get_near(instance: *runtime.Instance) anyerror!?bool {
         return try ProximitySensorImpl.get_near(instance);
     }
 

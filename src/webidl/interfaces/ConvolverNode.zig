@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -115,7 +115,7 @@ pub const ConvolverNode = struct {
         return try ConvolverNodeImpl.call_constructor(allocator, ctx, context, options);
     }
 
-    pub fn get_buffer(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_buffer(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try ConvolverNodeImpl.get_buffer(instance);
     }
 

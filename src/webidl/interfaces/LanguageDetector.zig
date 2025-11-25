@@ -1,5 +1,5 @@
 //! Generated from: translation-api.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -104,7 +104,7 @@ pub const LanguageDetector = struct {
         LanguageDetectorImpl.deinit(instance);
     }
 
-    pub fn get_expectedInputLanguages(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_expectedInputLanguages(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try LanguageDetectorImpl.get_expectedInputLanguages(instance);
     }
 

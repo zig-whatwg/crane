@@ -1,5 +1,5 @@
 //! Generated from: orientation-event.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -110,15 +110,15 @@ pub const DeviceOrientationEvent = struct {
         return try DeviceOrientationEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
-    pub fn get_alpha(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_alpha(instance: *runtime.Instance) anyerror!?f64 {
         return try DeviceOrientationEventImpl.get_alpha(instance);
     }
 
-    pub fn get_beta(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_beta(instance: *runtime.Instance) anyerror!?f64 {
         return try DeviceOrientationEventImpl.get_beta(instance);
     }
 
-    pub fn get_gamma(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_gamma(instance: *runtime.Instance) anyerror!?f64 {
         return try DeviceOrientationEventImpl.get_gamma(instance);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -104,19 +104,19 @@ pub const VideoColorSpace = struct {
         return try VideoColorSpaceImpl.call_constructor(allocator, ctx, init_data);
     }
 
-    pub fn get_primaries(instance: *runtime.Instance) anyerror!VideoColorPrimaries {
+    pub fn get_primaries(instance: *runtime.Instance) anyerror!?VideoColorPrimaries {
         return try VideoColorSpaceImpl.get_primaries(instance);
     }
 
-    pub fn get_transfer(instance: *runtime.Instance) anyerror!VideoTransferCharacteristics {
+    pub fn get_transfer(instance: *runtime.Instance) anyerror!?VideoTransferCharacteristics {
         return try VideoColorSpaceImpl.get_transfer(instance);
     }
 
-    pub fn get_matrix(instance: *runtime.Instance) anyerror!VideoMatrixCoefficients {
+    pub fn get_matrix(instance: *runtime.Instance) anyerror!?VideoMatrixCoefficients {
         return try VideoColorSpaceImpl.get_matrix(instance);
     }
 
-    pub fn get_fullRange(instance: *runtime.Instance) anyerror!bool {
+    pub fn get_fullRange(instance: *runtime.Instance) anyerror!?bool {
         return try VideoColorSpaceImpl.get_fullRange(instance);
     }
 

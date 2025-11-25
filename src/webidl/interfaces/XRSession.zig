@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -275,11 +275,11 @@ pub const XRSession = struct {
         return try XRSessionImpl.get_visibilityState(instance);
     }
 
-    pub fn get_frameRate(instance: *runtime.Instance) anyerror!f32 {
+    pub fn get_frameRate(instance: *runtime.Instance) anyerror!?f32 {
         return try XRSessionImpl.get_frameRate(instance);
     }
 
-    pub fn get_supportedFrameRates(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_supportedFrameRates(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try XRSessionImpl.get_supportedFrameRates(instance);
     }
 
@@ -407,7 +407,7 @@ pub const XRSession = struct {
         try XRSessionImpl.set_onframeratechange(instance, value);
     }
 
-    pub fn get_domOverlayState(instance: *runtime.Instance) anyerror!XRDOMOverlayState {
+    pub fn get_domOverlayState(instance: *runtime.Instance) anyerror!?XRDOMOverlayState {
         return try XRSessionImpl.get_domOverlayState(instance);
     }
 
@@ -419,11 +419,11 @@ pub const XRSession = struct {
         return try XRSessionImpl.get_depthDataFormat(instance);
     }
 
-    pub fn get_depthType(instance: *runtime.Instance) anyerror!XRDepthType {
+    pub fn get_depthType(instance: *runtime.Instance) anyerror!?XRDepthType {
         return try XRSessionImpl.get_depthType(instance);
     }
 
-    pub fn get_depthActive(instance: *runtime.Instance) anyerror!bool {
+    pub fn get_depthActive(instance: *runtime.Instance) anyerror!?bool {
         return try XRSessionImpl.get_depthActive(instance);
     }
 

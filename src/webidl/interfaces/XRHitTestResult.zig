@@ -1,5 +1,5 @@
 //! Generated from: webxr-hit-test.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -59,7 +59,9 @@ pub const XRHitTestResult = struct {
     pub const State = runtime.FlattenedState(
         Meta.BaseType,
         Meta.MixinTypes,
-        struct {},
+        struct {
+            _internal: ?*XRHitTestResultImpl.InternalState = null,
+        },
     );
 
     const delegates = .{
@@ -83,7 +85,7 @@ pub const XRHitTestResult = struct {
         return try XRHitTestResultImpl.call_createAnchor(instance);
     }
 
-    pub fn call_getPose(instance: *runtime.Instance, baseSpace: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_getPose(instance: *runtime.Instance, baseSpace: *runtime.Instance) anyerror!?*runtime.Instance {
         
         return try XRHitTestResultImpl.call_getPose(instance, baseSpace);
     }

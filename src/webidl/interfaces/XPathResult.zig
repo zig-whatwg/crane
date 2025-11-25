@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-24T18:47:08Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -202,7 +202,7 @@ pub const XPathResult = struct {
         return try XPathResultImpl.get_booleanValue(instance);
     }
 
-    pub fn get_singleNodeValue(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_singleNodeValue(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try XPathResultImpl.get_singleNodeValue(instance);
     }
 
@@ -214,12 +214,12 @@ pub const XPathResult = struct {
         return try XPathResultImpl.get_snapshotLength(instance);
     }
 
-    pub fn call_snapshotItem(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+    pub fn call_snapshotItem(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
         
         return try XPathResultImpl.call_snapshotItem(instance, index);
     }
 
-    pub fn call_iterateNext(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_iterateNext(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try XPathResultImpl.call_iterateNext(instance);
     }
 

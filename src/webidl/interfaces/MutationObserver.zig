@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-24T18:47:08Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -21,36 +21,40 @@ pub const MutationObserver = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
-
+        pub const properties = .{
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own methods
         pub const methods = .{
             .{ "observe", "call_observe", 1 },
             .{ "disconnect", "call_disconnect", 0 },
             .{ "takeRecords", "call_takeRecords", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "observe",
             "disconnect",
             "takeRecords",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
-
+        pub const eager_properties = .{
+        };
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -63,6 +67,7 @@ pub const MutationObserver = struct {
     );
 
     const delegates = .{
+
         .call_disconnect = &call_disconnect,
         .call_observe = &call_observe,
         .call_takeRecords = &call_takeRecords,
@@ -86,6 +91,7 @@ pub const MutationObserver = struct {
     }
 
     pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, options: MutationObserverInit) anyerror!void {
+        
         return try MutationObserverImpl.call_observe(instance, target, options);
     }
 
@@ -96,4 +102,5 @@ pub const MutationObserver = struct {
     pub fn call_takeRecords(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try MutationObserverImpl.call_takeRecords(instance);
     }
+
 };

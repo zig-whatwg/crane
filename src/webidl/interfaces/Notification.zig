@@ -1,5 +1,5 @@
 //! Generated from: notifications.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -298,7 +298,7 @@ pub const Notification = struct {
         return try NotificationImpl.get_renotify(instance);
     }
 
-    pub fn get_silent(instance: *runtime.Instance) anyerror!bool {
+    pub fn get_silent(instance: *runtime.Instance) anyerror!?bool {
         return try NotificationImpl.get_silent(instance);
     }
 

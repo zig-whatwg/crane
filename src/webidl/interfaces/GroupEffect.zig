@@ -1,5 +1,5 @@
 //! Generated from: web-animations-2.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -106,11 +106,11 @@ pub const GroupEffect = struct {
         return try GroupEffectImpl.get_children(instance);
     }
 
-    pub fn get_firstChild(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_firstChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try GroupEffectImpl.get_firstChild(instance);
     }
 
-    pub fn get_lastChild(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_lastChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try GroupEffectImpl.get_lastChild(instance);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: payment-handler.idl
-//! Generated at: 2025-11-24T18:47:08Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -170,11 +170,11 @@ pub const PaymentRequestEvent = struct {
         return try PaymentRequestEventImpl.get_modifiers(instance);
     }
 
-    pub fn get_paymentOptions(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_paymentOptions(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try PaymentRequestEventImpl.get_paymentOptions(instance);
     }
 
-    pub fn get_shippingOptions(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_shippingOptions(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try PaymentRequestEventImpl.get_shippingOptions(instance);
     }
 

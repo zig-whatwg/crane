@@ -1,5 +1,5 @@
 //! Generated from: OES_element_index_uint.idl
-//! Generated at: 2025-11-24T18:47:08Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -55,7 +55,9 @@ pub const OES_element_index_uint = struct {
     pub const State = runtime.FlattenedState(
         Meta.BaseType,
         Meta.MixinTypes,
-        struct {},
+        struct {
+            _internal: ?*OES_element_index_uintImpl.InternalState = null,
+        },
     );
 
     const delegates = .{

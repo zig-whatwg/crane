@@ -1,5 +1,5 @@
 //! Generated from: svg-animations.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -277,7 +277,7 @@ pub const SVGAnimationElement = struct {
         SVGAnimationElementImpl.deinit(instance);
     }
 
-    pub fn get_targetElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_targetElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try SVGAnimationElementImpl.get_targetElement(instance);
     }
 

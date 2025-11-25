@@ -1,5 +1,5 @@
 //! Generated from: svg-animations.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -95,7 +95,7 @@ pub const TimeEvent = struct {
         TimeEventImpl.deinit(instance);
     }
 
-    pub fn get_view(instance: *runtime.Instance) anyerror!WindowProxy {
+    pub fn get_view(instance: *runtime.Instance) anyerror!?WindowProxy {
         return try TimeEventImpl.get_view(instance);
     }
 

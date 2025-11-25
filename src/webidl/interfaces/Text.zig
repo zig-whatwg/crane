@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -161,7 +161,7 @@ pub const Text = struct {
         return try TextImpl.get_wholeText(instance);
     }
 
-    pub fn get_assignedSlot(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_assignedSlot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try TextImpl.get_assignedSlot(instance);
     }
 

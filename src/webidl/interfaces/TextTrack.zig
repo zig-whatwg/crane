@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-24T18:47:08Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -170,11 +170,11 @@ pub const TextTrack = struct {
         try TextTrackImpl.set_mode(instance, value);
     }
 
-    pub fn get_cues(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_cues(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try TextTrackImpl.get_cues(instance);
     }
 
-    pub fn get_activeCues(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_activeCues(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try TextTrackImpl.get_activeCues(instance);
     }
 
@@ -186,7 +186,7 @@ pub const TextTrack = struct {
         try TextTrackImpl.set_oncuechange(instance, value);
     }
 
-    pub fn get_sourceBuffer(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_sourceBuffer(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try TextTrackImpl.get_sourceBuffer(instance);
     }
 

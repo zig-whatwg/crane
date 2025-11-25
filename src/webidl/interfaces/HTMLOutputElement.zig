@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-24T18:47:08Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -302,7 +302,7 @@ pub const HTMLOutputElement = struct {
         return value;
     }
 
-    pub fn get_form(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLOutputElementImpl.get_form(instance);
     }
 

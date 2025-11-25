@@ -1,5 +1,5 @@
 //! Generated from: web-animations.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -231,7 +231,7 @@ pub const Animation = struct {
         try AnimationImpl.set_id(instance, value);
     }
 
-    pub fn get_effect(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_effect(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try AnimationImpl.get_effect(instance);
     }
 
@@ -239,7 +239,7 @@ pub const Animation = struct {
         try AnimationImpl.set_effect(instance, value);
     }
 
-    pub fn get_timeline(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_timeline(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try AnimationImpl.get_timeline(instance);
     }
 
@@ -247,7 +247,7 @@ pub const Animation = struct {
         try AnimationImpl.set_timeline(instance, value);
     }
 
-    pub fn get_startTime(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_startTime(instance: *runtime.Instance) anyerror!?f64 {
         return try AnimationImpl.get_startTime(instance);
     }
 
@@ -255,7 +255,7 @@ pub const Animation = struct {
         try AnimationImpl.set_startTime(instance, value);
     }
 
-    pub fn get_currentTime(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_currentTime(instance: *runtime.Instance) anyerror!?f64 {
         return try AnimationImpl.get_currentTime(instance);
     }
 
@@ -315,7 +315,7 @@ pub const Animation = struct {
         try AnimationImpl.set_onremove(instance, value);
     }
 
-    pub fn get_trigger(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_trigger(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try AnimationImpl.get_trigger(instance);
     }
 
@@ -339,7 +339,7 @@ pub const Animation = struct {
         try AnimationImpl.set_rangeEnd(instance, value);
     }
 
-    pub fn get_overallProgress(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_overallProgress(instance: *runtime.Instance) anyerror!?f64 {
         return try AnimationImpl.get_overallProgress(instance);
     }
 

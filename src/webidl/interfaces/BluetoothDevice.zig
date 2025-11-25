@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-24T18:47:06Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -152,11 +152,11 @@ pub const BluetoothDevice = struct {
         return try BluetoothDeviceImpl.get_id(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!?DOMString {
         return try BluetoothDeviceImpl.get_name(instance);
     }
 
-    pub fn get_gatt(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_gatt(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try BluetoothDeviceImpl.get_gatt(instance);
     }
 

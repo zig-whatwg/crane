@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -396,7 +396,7 @@ pub const HTMLObjectElement = struct {
         try HTMLObjectElementImpl.set_name(instance, value);
     }
 
-    pub fn get_form(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLObjectElementImpl.get_form(instance);
     }
 
@@ -428,11 +428,11 @@ pub const HTMLObjectElement = struct {
         try HTMLObjectElementImpl.set_height(instance, value);
     }
 
-    pub fn get_contentDocument(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_contentDocument(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLObjectElementImpl.get_contentDocument(instance);
     }
 
-    pub fn get_contentWindow(instance: *runtime.Instance) anyerror!WindowProxy {
+    pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?WindowProxy {
         return try HTMLObjectElementImpl.get_contentWindow(instance);
     }
 
@@ -611,7 +611,7 @@ pub const HTMLObjectElement = struct {
         return try HTMLObjectElementImpl.call_checkValidity(instance);
     }
 
-    pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLObjectElementImpl.call_getSVGDocument(instance);
     }
 

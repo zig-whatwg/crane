@@ -1,5 +1,5 @@
 //! Generated from: payment-request.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -149,23 +149,23 @@ pub const PaymentResponse = struct {
         return try PaymentResponseImpl.get_details(instance);
     }
 
-    pub fn get_shippingAddress(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_shippingAddress(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try PaymentResponseImpl.get_shippingAddress(instance);
     }
 
-    pub fn get_shippingOption(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_shippingOption(instance: *runtime.Instance) anyerror!?DOMString {
         return try PaymentResponseImpl.get_shippingOption(instance);
     }
 
-    pub fn get_payerName(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_payerName(instance: *runtime.Instance) anyerror!?DOMString {
         return try PaymentResponseImpl.get_payerName(instance);
     }
 
-    pub fn get_payerEmail(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_payerEmail(instance: *runtime.Instance) anyerror!?DOMString {
         return try PaymentResponseImpl.get_payerEmail(instance);
     }
 
-    pub fn get_payerPhone(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_payerPhone(instance: *runtime.Instance) anyerror!?DOMString {
         return try PaymentResponseImpl.get_payerPhone(instance);
     }
 

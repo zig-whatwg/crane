@@ -1,5 +1,5 @@
 //! Generated from: webtransport.idl
-//! Generated at: 2025-11-24T18:47:06Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -98,7 +98,7 @@ pub const WebTransportError = struct {
         return try WebTransportErrorImpl.get_source(instance);
     }
 
-    pub fn get_streamErrorCode(instance: *runtime.Instance) anyerror!u32 {
+    pub fn get_streamErrorCode(instance: *runtime.Instance) anyerror!?u32 {
         return try WebTransportErrorImpl.get_streamErrorCode(instance);
     }
 

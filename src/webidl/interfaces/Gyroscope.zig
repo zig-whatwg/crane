@@ -1,5 +1,5 @@
 //! Generated from: gyroscope.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -107,15 +107,15 @@ pub const Gyroscope = struct {
         return try GyroscopeImpl.call_constructor(allocator, ctx, sensorOptions);
     }
 
-    pub fn get_x(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_x(instance: *runtime.Instance) anyerror!?f64 {
         return try GyroscopeImpl.get_x(instance);
     }
 
-    pub fn get_y(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_y(instance: *runtime.Instance) anyerror!?f64 {
         return try GyroscopeImpl.get_y(instance);
     }
 
-    pub fn get_z(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_z(instance: *runtime.Instance) anyerror!?f64 {
         return try GyroscopeImpl.get_z(instance);
     }
 

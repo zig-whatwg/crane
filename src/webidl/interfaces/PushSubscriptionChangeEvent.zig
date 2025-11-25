@@ -1,5 +1,5 @@
 //! Generated from: push-api.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -100,11 +100,11 @@ pub const PushSubscriptionChangeEvent = struct {
         return try PushSubscriptionChangeEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
-    pub fn get_newSubscription(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_newSubscription(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try PushSubscriptionChangeEventImpl.get_newSubscription(instance);
     }
 
-    pub fn get_oldSubscription(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_oldSubscription(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try PushSubscriptionChangeEventImpl.get_oldSubscription(instance);
     }
 

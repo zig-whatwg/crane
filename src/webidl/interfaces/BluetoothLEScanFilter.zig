@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth-scanning.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -103,11 +103,11 @@ pub const BluetoothLEScanFilter = struct {
         return try BluetoothLEScanFilterImpl.call_constructor(allocator, ctx, init_data);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!?DOMString {
         return try BluetoothLEScanFilterImpl.get_name(instance);
     }
 
-    pub fn get_namePrefix(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_namePrefix(instance: *runtime.Instance) anyerror!?DOMString {
         return try BluetoothLEScanFilterImpl.get_namePrefix(instance);
     }
 

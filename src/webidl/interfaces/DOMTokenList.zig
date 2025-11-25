@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-24T18:47:08Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -132,7 +132,7 @@ pub const DOMTokenList = struct {
         try DOMTokenListImpl.set_value(instance, value);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!DOMString {
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?DOMString {
         
         return try DOMTokenListImpl.call_item(instance, index);
     }

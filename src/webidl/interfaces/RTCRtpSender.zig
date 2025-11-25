@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-24T18:47:08Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -118,19 +118,19 @@ pub const RTCRtpSender = struct {
         RTCRtpSenderImpl.deinit(instance);
     }
 
-    pub fn get_track(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_track(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try RTCRtpSenderImpl.get_track(instance);
     }
 
-    pub fn get_transport(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_transport(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try RTCRtpSenderImpl.get_transport(instance);
     }
 
-    pub fn get_dtmf(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_dtmf(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try RTCRtpSenderImpl.get_dtmf(instance);
     }
 
-    pub fn get_transform(instance: *runtime.Instance) anyerror!RTCRtpTransform {
+    pub fn get_transform(instance: *runtime.Instance) anyerror!?RTCRtpTransform {
         return try RTCRtpSenderImpl.get_transform(instance);
     }
 
@@ -143,7 +143,7 @@ pub const RTCRtpSender = struct {
         return try RTCRtpSenderImpl.call_replaceTrack(instance, withTrack);
     }
 
-    pub fn call_getCapabilities(instance: *runtime.Instance, kind: DOMString) anyerror!RTCRtpCapabilities {
+    pub fn call_getCapabilities(instance: *runtime.Instance, kind: DOMString) anyerror!?RTCRtpCapabilities {
         
         return try RTCRtpSenderImpl.call_getCapabilities(instance, kind);
     }

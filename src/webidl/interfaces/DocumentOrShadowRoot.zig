@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-24T18:47:08Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -106,20 +106,20 @@ pub const DocumentOrShadowRoot = struct {
         DocumentOrShadowRootImpl.deinit(instance);
     }
 
-    pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentOrShadowRootImpl.get_customElementRegistry(instance);
     }
 
     /// Extended attributes: [LegacyLenientSetter]
-    pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentOrShadowRootImpl.get_fullscreenElement(instance);
     }
 
-    pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentOrShadowRootImpl.get_pictureInPictureElement(instance);
     }
 
-    pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentOrShadowRootImpl.get_pointerLockElement(instance);
     }
 
@@ -143,7 +143,7 @@ pub const DocumentOrShadowRoot = struct {
         try DocumentOrShadowRootImpl.set_adoptedStyleSheets(instance, value);
     }
 
-    pub fn get_activeElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_activeElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentOrShadowRootImpl.get_activeElement(instance);
     }
 

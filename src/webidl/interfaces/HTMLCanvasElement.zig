@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -297,7 +297,7 @@ pub const HTMLCanvasElement = struct {
         return try HTMLCanvasElementImpl.call_captureStream(instance, frameRequestRate);
     }
 
-    pub fn call_getContext(instance: *runtime.Instance, contextId: DOMString, options: *const anyopaque) anyerror!RenderingContext {
+    pub fn call_getContext(instance: *runtime.Instance, contextId: DOMString, options: *const anyopaque) anyerror!?RenderingContext {
         
         return try HTMLCanvasElementImpl.call_getContext(instance, contextId, options);
     }

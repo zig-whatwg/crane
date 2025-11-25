@@ -1,5 +1,5 @@
 //! Generated from: OES_vertex_array_object.idl
-//! Generated at: 2025-11-24T18:47:06Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -57,7 +57,9 @@ pub const WebGLVertexArrayObjectOES = struct {
     pub const State = runtime.FlattenedState(
         Meta.BaseType,
         Meta.MixinTypes,
-        struct {},
+        struct {
+            _internal: ?*WebGLVertexArrayObjectOESImpl.InternalState = null,
+        },
     );
 
     const delegates = .{

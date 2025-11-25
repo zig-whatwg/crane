@@ -1,5 +1,5 @@
 //! Generated from: EXT_disjoint_timer_query.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -84,7 +84,9 @@ pub const EXT_disjoint_timer_query = struct {
     pub const State = runtime.FlattenedState(
         Meta.BaseType,
         Meta.MixinTypes,
-        struct {},
+        struct {
+            _internal: ?*EXT_disjoint_timer_queryImpl.InternalState = null,
+        },
     );
 
     // ========================================

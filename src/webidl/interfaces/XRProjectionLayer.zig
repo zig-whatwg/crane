@@ -1,5 +1,5 @@
 //! Generated from: webxrlayers.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -130,7 +130,7 @@ pub const XRProjectionLayer = struct {
         return try XRProjectionLayerImpl.get_ignoreDepthValues(instance);
     }
 
-    pub fn get_fixedFoveation(instance: *runtime.Instance) anyerror!f32 {
+    pub fn get_fixedFoveation(instance: *runtime.Instance) anyerror!?f32 {
         return try XRProjectionLayerImpl.get_fixedFoveation(instance);
     }
 
@@ -138,7 +138,7 @@ pub const XRProjectionLayer = struct {
         try XRProjectionLayerImpl.set_fixedFoveation(instance, value);
     }
 
-    pub fn get_deltaPose(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_deltaPose(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try XRProjectionLayerImpl.get_deltaPose(instance);
     }
 

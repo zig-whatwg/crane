@@ -1,5 +1,5 @@
 //! Generated from: css-viewport.idl
-//! Generated at: 2025-11-24T18:47:08Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -76,7 +76,7 @@ pub const Viewport = struct {
         ViewportImpl.deinit(instance);
     }
 
-    pub fn get_segments(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_segments(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try ViewportImpl.get_segments(instance);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: urlpattern.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -183,7 +183,7 @@ pub const URLPattern = struct {
         return try URLPatternImpl.call_test(instance, input, baseURL);
     }
 
-    pub fn call_exec(instance: *runtime.Instance, input: URLPatternInput, baseURL: runtime.USVString) anyerror!URLPatternResult {
+    pub fn call_exec(instance: *runtime.Instance, input: URLPatternInput, baseURL: runtime.USVString) anyerror!?URLPatternResult {
         
         return try URLPatternImpl.call_exec(instance, input, baseURL);
     }

@@ -1,5 +1,5 @@
 //! Generated from: web-nfc.idl
-//! Generated at: 2025-11-24T18:47:08Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -112,27 +112,27 @@ pub const NDEFRecord = struct {
         return try NDEFRecordImpl.get_recordType(instance);
     }
 
-    pub fn get_mediaType(instance: *runtime.Instance) anyerror!runtime.USVString {
+    pub fn get_mediaType(instance: *runtime.Instance) anyerror!?runtime.USVString {
         return try NDEFRecordImpl.get_mediaType(instance);
     }
 
-    pub fn get_id(instance: *runtime.Instance) anyerror!runtime.USVString {
+    pub fn get_id(instance: *runtime.Instance) anyerror!?runtime.USVString {
         return try NDEFRecordImpl.get_id(instance);
     }
 
-    pub fn get_data(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_data(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try NDEFRecordImpl.get_data(instance);
     }
 
-    pub fn get_encoding(instance: *runtime.Instance) anyerror!runtime.USVString {
+    pub fn get_encoding(instance: *runtime.Instance) anyerror!?runtime.USVString {
         return try NDEFRecordImpl.get_encoding(instance);
     }
 
-    pub fn get_lang(instance: *runtime.Instance) anyerror!runtime.USVString {
+    pub fn get_lang(instance: *runtime.Instance) anyerror!?runtime.USVString {
         return try NDEFRecordImpl.get_lang(instance);
     }
 
-    pub fn call_toRecords(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_toRecords(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try NDEFRecordImpl.call_toRecords(instance);
     }
 

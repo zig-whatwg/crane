@@ -1,5 +1,5 @@
 //! Generated from: credential-management.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -107,7 +107,7 @@ pub const FederatedCredential = struct {
         return try FederatedCredentialImpl.get_provider(instance);
     }
 
-    pub fn get_protocol(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_protocol(instance: *runtime.Instance) anyerror!?DOMString {
         return try FederatedCredentialImpl.get_protocol(instance);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -166,11 +166,11 @@ pub const DocumentFragment = struct {
         return value;
     }
 
-    pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentFragmentImpl.get_firstElementChild(instance);
     }
 
-    pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentFragmentImpl.get_lastElementChild(instance);
     }
 
@@ -218,7 +218,7 @@ pub const DocumentFragment = struct {
         return try DocumentFragmentImpl.call_prepend(instance, nodes);
     }
 
-    pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!*runtime.Instance {
+    pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!?*runtime.Instance {
         
         return try DocumentFragmentImpl.call_querySelector(instance, selectors);
     }
@@ -230,7 +230,7 @@ pub const DocumentFragment = struct {
         return try DocumentFragmentImpl.call_querySelectorAll(instance, selectors);
     }
 
-    pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!*runtime.Instance {
+    pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!?*runtime.Instance {
         
         return try DocumentFragmentImpl.call_getElementById(instance, elementId);
     }

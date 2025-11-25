@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -344,15 +344,15 @@ pub const Node = struct {
         return try NodeImpl.get_isConnected(instance);
     }
 
-    pub fn get_ownerDocument(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_ownerDocument(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try NodeImpl.get_ownerDocument(instance);
     }
 
-    pub fn get_parentNode(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_parentNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try NodeImpl.get_parentNode(instance);
     }
 
-    pub fn get_parentElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_parentElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try NodeImpl.get_parentElement(instance);
     }
 
@@ -368,24 +368,24 @@ pub const Node = struct {
         return value;
     }
 
-    pub fn get_firstChild(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_firstChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try NodeImpl.get_firstChild(instance);
     }
 
-    pub fn get_lastChild(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_lastChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try NodeImpl.get_lastChild(instance);
     }
 
-    pub fn get_previousSibling(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_previousSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try NodeImpl.get_previousSibling(instance);
     }
 
-    pub fn get_nextSibling(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_nextSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try NodeImpl.get_nextSibling(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_nodeValue(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_nodeValue(instance: *runtime.Instance) anyerror!?DOMString {
         return try NodeImpl.get_nodeValue(instance);
     }
 
@@ -399,7 +399,7 @@ pub const Node = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_textContent(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_textContent(instance: *runtime.Instance) anyerror!?DOMString {
         return try NodeImpl.get_textContent(instance);
     }
 
@@ -437,7 +437,7 @@ pub const Node = struct {
         return try NodeImpl.call_insertBefore(instance, node, child);
     }
 
-    pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: DOMString) anyerror!DOMString {
+    pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: DOMString) anyerror!?DOMString {
         
         return try NodeImpl.call_lookupNamespaceURI(instance, prefix);
     }
@@ -511,7 +511,7 @@ pub const Node = struct {
         return try NodeImpl.call_isSameNode(instance, otherNode);
     }
 
-    pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: DOMString) anyerror!DOMString {
+    pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: DOMString) anyerror!?DOMString {
         
         return try NodeImpl.call_lookupPrefix(instance, namespace);
     }

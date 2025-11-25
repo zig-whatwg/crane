@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -355,7 +355,7 @@ pub const HTMLLinkElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_crossOrigin(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_crossOrigin(instance: *runtime.Instance) anyerror!?DOMString {
         return try HTMLLinkElementImpl.get_crossOrigin(instance);
     }
 
@@ -600,7 +600,7 @@ pub const HTMLLinkElement = struct {
         try HTMLLinkElementImpl.set_target(instance, value);
     }
 
-    pub fn get_sheet(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLLinkElementImpl.get_sheet(instance);
     }
 

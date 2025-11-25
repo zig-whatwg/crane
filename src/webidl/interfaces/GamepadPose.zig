@@ -1,5 +1,5 @@
 //! Generated from: gamepad-extensions.idl
-//! Generated at: 2025-11-24T18:47:08Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -111,27 +111,27 @@ pub const GamepadPose = struct {
         return try GamepadPoseImpl.get_hasPosition(instance);
     }
 
-    pub fn get_position(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_position(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try GamepadPoseImpl.get_position(instance);
     }
 
-    pub fn get_linearVelocity(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_linearVelocity(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try GamepadPoseImpl.get_linearVelocity(instance);
     }
 
-    pub fn get_linearAcceleration(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_linearAcceleration(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try GamepadPoseImpl.get_linearAcceleration(instance);
     }
 
-    pub fn get_orientation(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_orientation(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try GamepadPoseImpl.get_orientation(instance);
     }
 
-    pub fn get_angularVelocity(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_angularVelocity(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try GamepadPoseImpl.get_angularVelocity(instance);
     }
 
-    pub fn get_angularAcceleration(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_angularAcceleration(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try GamepadPoseImpl.get_angularAcceleration(instance);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: geolocation.idl
-//! Generated at: 2025-11-24T18:47:08Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -116,19 +116,19 @@ pub const GeolocationCoordinates = struct {
         return try GeolocationCoordinatesImpl.get_longitude(instance);
     }
 
-    pub fn get_altitude(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_altitude(instance: *runtime.Instance) anyerror!?f64 {
         return try GeolocationCoordinatesImpl.get_altitude(instance);
     }
 
-    pub fn get_altitudeAccuracy(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_altitudeAccuracy(instance: *runtime.Instance) anyerror!?f64 {
         return try GeolocationCoordinatesImpl.get_altitudeAccuracy(instance);
     }
 
-    pub fn get_heading(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_heading(instance: *runtime.Instance) anyerror!?f64 {
         return try GeolocationCoordinatesImpl.get_heading(instance);
     }
 
-    pub fn get_speed(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_speed(instance: *runtime.Instance) anyerror!?f64 {
         return try GeolocationCoordinatesImpl.get_speed(instance);
     }
 

@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -102,27 +102,27 @@ pub const NotRestoredReasons = struct {
         NotRestoredReasonsImpl.deinit(instance);
     }
 
-    pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
+    pub fn get_src(instance: *runtime.Instance) anyerror!?runtime.USVString {
         return try NotRestoredReasonsImpl.get_src(instance);
     }
 
-    pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_id(instance: *runtime.Instance) anyerror!?DOMString {
         return try NotRestoredReasonsImpl.get_id(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!?DOMString {
         return try NotRestoredReasonsImpl.get_name(instance);
     }
 
-    pub fn get_url(instance: *runtime.Instance) anyerror!runtime.USVString {
+    pub fn get_url(instance: *runtime.Instance) anyerror!?runtime.USVString {
         return try NotRestoredReasonsImpl.get_url(instance);
     }
 
-    pub fn get_reasons(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_reasons(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try NotRestoredReasonsImpl.get_reasons(instance);
     }
 
-    pub fn get_children(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_children(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try NotRestoredReasonsImpl.get_children(instance);
     }
 

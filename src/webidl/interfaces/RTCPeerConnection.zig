@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-24T18:47:06Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -296,27 +296,27 @@ pub const RTCPeerConnection = struct {
         return try RTCPeerConnectionImpl.call_constructor(allocator, ctx, configuration);
     }
 
-    pub fn get_localDescription(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_localDescription(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try RTCPeerConnectionImpl.get_localDescription(instance);
     }
 
-    pub fn get_currentLocalDescription(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_currentLocalDescription(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try RTCPeerConnectionImpl.get_currentLocalDescription(instance);
     }
 
-    pub fn get_pendingLocalDescription(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_pendingLocalDescription(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try RTCPeerConnectionImpl.get_pendingLocalDescription(instance);
     }
 
-    pub fn get_remoteDescription(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_remoteDescription(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try RTCPeerConnectionImpl.get_remoteDescription(instance);
     }
 
-    pub fn get_currentRemoteDescription(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_currentRemoteDescription(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try RTCPeerConnectionImpl.get_currentRemoteDescription(instance);
     }
 
-    pub fn get_pendingRemoteDescription(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_pendingRemoteDescription(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try RTCPeerConnectionImpl.get_pendingRemoteDescription(instance);
     }
 
@@ -336,7 +336,7 @@ pub const RTCPeerConnection = struct {
         return try RTCPeerConnectionImpl.get_connectionState(instance);
     }
 
-    pub fn get_canTrickleIceCandidates(instance: *runtime.Instance) anyerror!bool {
+    pub fn get_canTrickleIceCandidates(instance: *runtime.Instance) anyerror!?bool {
         return try RTCPeerConnectionImpl.get_canTrickleIceCandidates(instance);
     }
 
@@ -404,7 +404,7 @@ pub const RTCPeerConnection = struct {
         try RTCPeerConnectionImpl.set_ontrack(instance, value);
     }
 
-    pub fn get_sctp(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_sctp(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try RTCPeerConnectionImpl.get_sctp(instance);
     }
 
@@ -420,11 +420,11 @@ pub const RTCPeerConnection = struct {
         return try RTCPeerConnectionImpl.get_peerIdentity(instance);
     }
 
-    pub fn get_idpLoginUrl(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_idpLoginUrl(instance: *runtime.Instance) anyerror!?DOMString {
         return try RTCPeerConnectionImpl.get_idpLoginUrl(instance);
     }
 
-    pub fn get_idpErrorInfo(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_idpErrorInfo(instance: *runtime.Instance) anyerror!?DOMString {
         return try RTCPeerConnectionImpl.get_idpErrorInfo(instance);
     }
 

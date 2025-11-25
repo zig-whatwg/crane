@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -106,15 +106,15 @@ pub const XRRenderState = struct {
         return try XRRenderStateImpl.get_depthFar(instance);
     }
 
-    pub fn get_passthroughFullyObscured(instance: *runtime.Instance) anyerror!bool {
+    pub fn get_passthroughFullyObscured(instance: *runtime.Instance) anyerror!?bool {
         return try XRRenderStateImpl.get_passthroughFullyObscured(instance);
     }
 
-    pub fn get_inlineVerticalFieldOfView(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_inlineVerticalFieldOfView(instance: *runtime.Instance) anyerror!?f64 {
         return try XRRenderStateImpl.get_inlineVerticalFieldOfView(instance);
     }
 
-    pub fn get_baseLayer(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_baseLayer(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try XRRenderStateImpl.get_baseLayer(instance);
     }
 

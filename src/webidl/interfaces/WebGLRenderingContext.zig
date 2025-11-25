@@ -1,5 +1,5 @@
 //! Generated from: webgl1.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -2725,7 +2725,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_generateMipmap(instance, target);
     }
 
-    pub fn call_getActiveAttrib(instance: *runtime.Instance, program: *runtime.Instance, index: GLuint) anyerror!*runtime.Instance {
+    pub fn call_getActiveAttrib(instance: *runtime.Instance, program: *runtime.Instance, index: GLuint) anyerror!?*runtime.Instance {
         
         return try WebGLRenderingContextImpl.call_getActiveAttrib(instance, program, index);
     }
@@ -2762,7 +2762,7 @@ pub const WebGLRenderingContext = struct {
     }
 
     /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_getContextAttributes(instance: *runtime.Instance) anyerror!WebGLContextAttributes {
+    pub fn call_getContextAttributes(instance: *runtime.Instance) anyerror!?WebGLContextAttributes {
         return try WebGLRenderingContextImpl.call_getContextAttributes(instance);
     }
 
@@ -2797,7 +2797,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_deleteTexture(instance, texture);
     }
 
-    pub fn call_getShaderSource(instance: *runtime.Instance, shader: *runtime.Instance) anyerror!DOMString {
+    pub fn call_getShaderSource(instance: *runtime.Instance, shader: *runtime.Instance) anyerror!?DOMString {
         
         return try WebGLRenderingContextImpl.call_getShaderSource(instance, shader);
     }
@@ -2864,7 +2864,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_makeXRCompatible(instance);
     }
 
-    pub fn call_getSupportedExtensions(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getSupportedExtensions(instance: *runtime.Instance) anyerror!?*const anyopaque {
         return try WebGLRenderingContextImpl.call_getSupportedExtensions(instance);
     }
 
@@ -2972,12 +2972,12 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_uniform1fv(instance, location, v);
     }
 
-    pub fn call_getProgramInfoLog(instance: *runtime.Instance, program: *runtime.Instance) anyerror!DOMString {
+    pub fn call_getProgramInfoLog(instance: *runtime.Instance, program: *runtime.Instance) anyerror!?DOMString {
         
         return try WebGLRenderingContextImpl.call_getProgramInfoLog(instance, program);
     }
 
-    pub fn call_createShader(instance: *runtime.Instance, @"type": GLenum) anyerror!*runtime.Instance {
+    pub fn call_createShader(instance: *runtime.Instance, @"type": GLenum) anyerror!?*runtime.Instance {
         
         return try WebGLRenderingContextImpl.call_createShader(instance, @"type");
     }
@@ -3090,7 +3090,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_framebufferRenderbuffer(instance, target, attachment, renderbuffertarget, renderbuffer);
     }
 
-    pub fn call_getActiveUniform(instance: *runtime.Instance, program: *runtime.Instance, index: GLuint) anyerror!*runtime.Instance {
+    pub fn call_getActiveUniform(instance: *runtime.Instance, program: *runtime.Instance, index: GLuint) anyerror!?*runtime.Instance {
         
         return try WebGLRenderingContextImpl.call_getActiveUniform(instance, program, index);
     }
@@ -3110,7 +3110,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_vertexAttrib1f(instance, index, x);
     }
 
-    pub fn call_getShaderInfoLog(instance: *runtime.Instance, shader: *runtime.Instance) anyerror!DOMString {
+    pub fn call_getShaderInfoLog(instance: *runtime.Instance, shader: *runtime.Instance) anyerror!?DOMString {
         
         return try WebGLRenderingContextImpl.call_getShaderInfoLog(instance, shader);
     }
@@ -3160,7 +3160,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_hint(instance, target, mode);
     }
 
-    pub fn call_getUniformLocation(instance: *runtime.Instance, program: *runtime.Instance, name: DOMString) anyerror!*runtime.Instance {
+    pub fn call_getUniformLocation(instance: *runtime.Instance, program: *runtime.Instance, name: DOMString) anyerror!?*runtime.Instance {
         
         return try WebGLRenderingContextImpl.call_getUniformLocation(instance, program, name);
     }
@@ -3180,7 +3180,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_uniformMatrix3fv(instance, location, transpose, value);
     }
 
-    pub fn call_getExtension(instance: *runtime.Instance, name: DOMString) anyerror!*const anyopaque {
+    pub fn call_getExtension(instance: *runtime.Instance, name: DOMString) anyerror!?*const anyopaque {
         
         return try WebGLRenderingContextImpl.call_getExtension(instance, name);
     }
@@ -3316,7 +3316,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_uniform1i(instance, location, x);
     }
 
-    pub fn call_getShaderPrecisionFormat(instance: *runtime.Instance, shadertype: GLenum, precisiontype: GLenum) anyerror!*runtime.Instance {
+    pub fn call_getShaderPrecisionFormat(instance: *runtime.Instance, shadertype: GLenum, precisiontype: GLenum) anyerror!?*runtime.Instance {
         
         return try WebGLRenderingContextImpl.call_getShaderPrecisionFormat(instance, shadertype, precisiontype);
     }
@@ -3366,7 +3366,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_getUniform(instance, program, location);
     }
 
-    pub fn call_getAttachedShaders(instance: *runtime.Instance, program: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getAttachedShaders(instance: *runtime.Instance, program: *runtime.Instance) anyerror!?*const anyopaque {
         
         return try WebGLRenderingContextImpl.call_getAttachedShaders(instance, program);
     }

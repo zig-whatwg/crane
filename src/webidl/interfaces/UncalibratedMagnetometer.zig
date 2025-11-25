@@ -1,5 +1,5 @@
 //! Generated from: magnetometer.idl
-//! Generated at: 2025-11-24T18:47:08Z
+//! Generated at: 2025-11-25T13:07:13Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -119,27 +119,27 @@ pub const UncalibratedMagnetometer = struct {
         return try UncalibratedMagnetometerImpl.call_constructor(allocator, ctx, sensorOptions);
     }
 
-    pub fn get_x(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_x(instance: *runtime.Instance) anyerror!?f64 {
         return try UncalibratedMagnetometerImpl.get_x(instance);
     }
 
-    pub fn get_y(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_y(instance: *runtime.Instance) anyerror!?f64 {
         return try UncalibratedMagnetometerImpl.get_y(instance);
     }
 
-    pub fn get_z(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_z(instance: *runtime.Instance) anyerror!?f64 {
         return try UncalibratedMagnetometerImpl.get_z(instance);
     }
 
-    pub fn get_xBias(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_xBias(instance: *runtime.Instance) anyerror!?f64 {
         return try UncalibratedMagnetometerImpl.get_xBias(instance);
     }
 
-    pub fn get_yBias(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_yBias(instance: *runtime.Instance) anyerror!?f64 {
         return try UncalibratedMagnetometerImpl.get_yBias(instance);
     }
 
-    pub fn get_zBias(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_zBias(instance: *runtime.Instance) anyerror!?f64 {
         return try UncalibratedMagnetometerImpl.get_zBias(instance);
     }
 

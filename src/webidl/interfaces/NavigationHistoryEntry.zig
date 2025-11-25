@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -115,7 +115,7 @@ pub const NavigationHistoryEntry = struct {
         NavigationHistoryEntryImpl.deinit(instance);
     }
 
-    pub fn get_url(instance: *runtime.Instance) anyerror!runtime.USVString {
+    pub fn get_url(instance: *runtime.Instance) anyerror!?runtime.USVString {
         return try NavigationHistoryEntryImpl.get_url(instance);
     }
 

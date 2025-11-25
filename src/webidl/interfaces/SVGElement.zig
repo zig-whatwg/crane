@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -827,11 +827,11 @@ pub const SVGElement = struct {
         return value;
     }
 
-    pub fn get_ownerSVGElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_ownerSVGElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try SVGElementImpl.get_ownerSVGElement(instance);
     }
 
-    pub fn get_viewportElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_viewportElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try SVGElementImpl.get_viewportElement(instance);
     }
 
@@ -1706,7 +1706,7 @@ pub const SVGElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_correspondingElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_correspondingElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_correspondingElement) |cached| {
@@ -1718,7 +1718,7 @@ pub const SVGElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_correspondingUseElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_correspondingUseElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_correspondingUseElement) |cached| {

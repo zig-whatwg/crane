@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:11Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -50,7 +50,9 @@ pub const NonElementParentNode = struct {
     pub const State = runtime.FlattenedState(
         Meta.BaseType,
         Meta.MixinTypes,
-        struct {},
+        struct {
+            _internal: ?*NonElementParentNodeImpl.InternalState = null,
+        },
     );
 
     const delegates = .{
@@ -69,7 +71,7 @@ pub const NonElementParentNode = struct {
         NonElementParentNodeImpl.deinit(instance);
     }
 
-    pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!*runtime.Instance {
+    pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!?*runtime.Instance {
         
         return try NonElementParentNodeImpl.call_getElementById(instance, elementId);
     }

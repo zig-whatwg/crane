@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -336,7 +336,7 @@ pub const HTMLTableElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_caption(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_caption(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLTableElementImpl.get_caption(instance);
     }
 
@@ -350,7 +350,7 @@ pub const HTMLTableElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_tHead(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_tHead(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLTableElementImpl.get_tHead(instance);
     }
 
@@ -364,7 +364,7 @@ pub const HTMLTableElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_tFoot(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_tFoot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLTableElementImpl.get_tFoot(instance);
     }
 

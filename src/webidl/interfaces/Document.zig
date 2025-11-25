@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -1274,11 +1274,11 @@ pub const Document = struct {
         return try DocumentImpl.get_contentType(instance);
     }
 
-    pub fn get_doctype(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_doctype(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentImpl.get_doctype(instance);
     }
 
-    pub fn get_documentElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_documentElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentImpl.get_documentElement(instance);
     }
 
@@ -1380,16 +1380,16 @@ pub const Document = struct {
         return try DocumentImpl.get_namedFlows(instance);
     }
 
-    pub fn get_rootElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_rootElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentImpl.get_rootElement(instance);
     }
 
-    pub fn get_activeViewTransition(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_activeViewTransition(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentImpl.get_activeViewTransition(instance);
     }
 
     /// Extended attributes: [PutForwards=href], [LegacyUnforgeable]
-    pub fn get_location(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_location(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentImpl.get_location(instance);
     }
 
@@ -1450,7 +1450,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_body(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_body(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentImpl.get_body(instance);
     }
 
@@ -1463,7 +1463,7 @@ pub const Document = struct {
         try DocumentImpl.set_body(instance, value);
     }
 
-    pub fn get_head(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_head(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentImpl.get_head(instance);
     }
 
@@ -1539,11 +1539,11 @@ pub const Document = struct {
         return value;
     }
 
-    pub fn get_currentScript(instance: *runtime.Instance) anyerror!HTMLOrSVGScriptElement {
+    pub fn get_currentScript(instance: *runtime.Instance) anyerror!?HTMLOrSVGScriptElement {
         return try DocumentImpl.get_currentScript(instance);
     }
 
-    pub fn get_defaultView(instance: *runtime.Instance) anyerror!WindowProxy {
+    pub fn get_defaultView(instance: *runtime.Instance) anyerror!?WindowProxy {
         return try DocumentImpl.get_defaultView(instance);
     }
 
@@ -1693,7 +1693,7 @@ pub const Document = struct {
         return value;
     }
 
-    pub fn get_scrollingElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_scrollingElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentImpl.get_scrollingElement(instance);
     }
 
@@ -1713,20 +1713,20 @@ pub const Document = struct {
         return try DocumentImpl.get_fonts(instance);
     }
 
-    pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentImpl.get_customElementRegistry(instance);
     }
 
     /// Extended attributes: [LegacyLenientSetter]
-    pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentImpl.get_fullscreenElement(instance);
     }
 
-    pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentImpl.get_pictureInPictureElement(instance);
     }
 
-    pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentImpl.get_pointerLockElement(instance);
     }
 
@@ -1750,7 +1750,7 @@ pub const Document = struct {
         try DocumentImpl.set_adoptedStyleSheets(instance, value);
     }
 
-    pub fn get_activeElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_activeElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentImpl.get_activeElement(instance);
     }
 
@@ -1766,11 +1766,11 @@ pub const Document = struct {
         return value;
     }
 
-    pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentImpl.get_firstElementChild(instance);
     }
 
-    pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentImpl.get_lastElementChild(instance);
     }
 
@@ -2651,7 +2651,7 @@ pub const Document = struct {
         return try DocumentImpl.call_createExpression(instance, expression, resolver);
     }
 
-    pub fn call_elementFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyerror!*runtime.Instance {
+    pub fn call_elementFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyerror!?*runtime.Instance {
         
         return try DocumentImpl.call_elementFromPoint(instance, x, y);
     }
@@ -2824,7 +2824,7 @@ pub const Document = struct {
         return try DocumentImpl.call_evaluate(instance, expression, contextNode, resolver, @"type", result);
     }
 
-    pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!*runtime.Instance {
+    pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!?*runtime.Instance {
         
         return try DocumentImpl.call_querySelector(instance, selectors);
     }
@@ -2862,7 +2862,7 @@ pub const Document = struct {
         return try DocumentImpl.call_createRange(instance);
     }
 
-    pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!*runtime.Instance {
+    pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!?*runtime.Instance {
         
         return try DocumentImpl.call_getElementById(instance, elementId);
     }
@@ -2951,7 +2951,7 @@ pub const Document = struct {
         return try DocumentImpl.call_queryCommandValue(instance, commandId);
     }
 
-    pub fn call_caretPositionFromPoint(instance: *runtime.Instance, x: f64, y: f64, options: CaretPositionFromPointOptions) anyerror!*runtime.Instance {
+    pub fn call_caretPositionFromPoint(instance: *runtime.Instance, x: f64, y: f64, options: CaretPositionFromPointOptions) anyerror!?*runtime.Instance {
         
         return try DocumentImpl.call_caretPositionFromPoint(instance, x, y, options);
     }
@@ -2974,7 +2974,7 @@ pub const Document = struct {
         return try DocumentImpl.call_createDocumentFragment(instance);
     }
 
-    pub fn call_getSelection(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_getSelection(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentImpl.call_getSelection(instance);
     }
 

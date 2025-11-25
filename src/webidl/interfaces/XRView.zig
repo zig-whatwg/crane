@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -120,12 +120,12 @@ pub const XRView = struct {
         return try XRViewImpl.get_index(instance);
     }
 
-    pub fn get_recommendedViewportScale(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_recommendedViewportScale(instance: *runtime.Instance) anyerror!?f64 {
         return try XRViewImpl.get_recommendedViewportScale(instance);
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_camera(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_camera(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_camera) |cached| {

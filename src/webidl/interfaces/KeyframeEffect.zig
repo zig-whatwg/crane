@@ -1,5 +1,5 @@
 //! Generated from: web-animations.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -134,7 +134,7 @@ pub const KeyframeEffect = struct {
         return try KeyframeEffectImpl.call_constructor(allocator, ctx, args);
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_target(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try KeyframeEffectImpl.get_target(instance);
     }
 
@@ -142,7 +142,7 @@ pub const KeyframeEffect = struct {
         try KeyframeEffectImpl.set_target(instance, value);
     }
 
-    pub fn get_pseudoElement(instance: *runtime.Instance) anyerror!CSSOMString {
+    pub fn get_pseudoElement(instance: *runtime.Instance) anyerror!?CSSOMString {
         return try KeyframeEffectImpl.get_pseudoElement(instance);
     }
 

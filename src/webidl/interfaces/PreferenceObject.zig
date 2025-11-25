@@ -1,5 +1,5 @@
 //! Generated from: mediaqueries-5.idl
-//! Generated at: 2025-11-24T18:47:07Z
+//! Generated at: 2025-11-25T13:07:12Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -110,7 +110,7 @@ pub const PreferenceObject = struct {
         PreferenceObjectImpl.deinit(instance);
     }
 
-    pub fn get_override(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_override(instance: *runtime.Instance) anyerror!?DOMString {
         return try PreferenceObjectImpl.get_override(instance);
     }
 
