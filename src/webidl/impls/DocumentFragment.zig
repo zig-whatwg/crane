@@ -118,15 +118,15 @@ pub fn get_children(instance: *runtime.Instance) !*runtime.Instance {
 }
 
 /// Getter for firstElementChild (from ParentNode mixin)
-/// Returns the first child that is an element
+/// Returns the first child that is an element, or null if none.
 pub fn get_firstElementChild(instance: *runtime.Instance) !?*runtime.Instance {
-    return ParentNode.firstElementChild(instance) orelse error.NotImplemented;
+    return ParentNode.firstElementChild(instance);
 }
 
 /// Getter for lastElementChild (from ParentNode mixin)
-/// Returns the last child that is an element
+/// Returns the last child that is an element, or null if none.
 pub fn get_lastElementChild(instance: *runtime.Instance) !?*runtime.Instance {
-    return ParentNode.lastElementChild(instance) orelse error.NotImplemented;
+    return ParentNode.lastElementChild(instance);
 }
 
 /// Getter for childElementCount (from ParentNode mixin)
@@ -227,7 +227,7 @@ pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, chi
 }
 
 /// Operation: querySelector (from ParentNode mixin)
-/// Returns the first element matching the selector
+/// Returns the first element matching the selector, or null if not found.
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-queryselector
 pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
@@ -242,7 +242,7 @@ pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMStr
         };
     };
 
-    return result orelse error.NotImplemented; // null case
+    return result;
 }
 
 /// Operation: querySelectorAll (from ParentNode mixin)
@@ -267,10 +267,11 @@ pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOM
 // =============================================================================
 
 /// Operation: getElementById (from NonElementParentNode mixin)
+/// Returns the element with the given ID, or null if not found.
 /// Spec: https://dom.spec.whatwg.org/#dom-nonelementparentnode-getelementbyid
-pub fn call_getElementById(instance: *runtime.Instance, elementId: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_getElementById(instance: *runtime.Instance, elementId: runtime.DOMString) ImplError!?*runtime.Instance {
     const element_id = elementId.asSlice();
 
     // Delegate to NonElementParentNode mixin
-    return NonElementParentNode.getElementById(instance, element_id) orelse error.NotImplemented;
+    return NonElementParentNode.getElementById(instance, element_id);
 }

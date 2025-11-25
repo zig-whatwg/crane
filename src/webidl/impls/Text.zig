@@ -156,13 +156,11 @@ pub fn get_wholeText(instance: *runtime.Instance) !runtime.DOMString {
 }
 
 /// Getter for assignedSlot (from Slottable mixin)
+/// Returns the slot this node is assigned to, or null if not assigned.
 /// https://dom.spec.whatwg.org/#dom-slottable-assignedslot
 pub fn get_assignedSlot(instance: *runtime.Instance) !?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.assigned_slot) |slot| {
-        return slot;
-    }
-    return error.NotImplemented; // null
+    return internal.assigned_slot;
 }
 
 // =============================================================================

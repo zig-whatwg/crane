@@ -25,6 +25,7 @@ const dom = @import("dom");
 // Import mixins for shared interface methods
 const mixins = @import("mixins");
 const NonDocumentTypeChildNode = mixins.NonDocumentTypeChildNode;
+const ChildNode = mixins.ChildNode;
 
 pub const State = CharacterData.State;
 
@@ -112,13 +113,13 @@ pub fn get_length(instance: *runtime.Instance) !u32 {
 /// Getter for previousElementSibling (from NonDocumentTypeChildNode mixin)
 /// Spec: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-previouselementsibling
 pub fn get_previousElementSibling(instance: *runtime.Instance) ImplError!?*runtime.Instance {
-    return NonDocumentTypeChildNode.previousElementSibling(instance) orelse error.NotImplemented;
+    return NonDocumentTypeChildNode.previousElementSibling(instance);
 }
 
 /// Getter for nextElementSibling (from NonDocumentTypeChildNode mixin)
 /// Spec: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-nextelementsibling
 pub fn get_nextElementSibling(instance: *runtime.Instance) ImplError!?*runtime.Instance {
-    return NonDocumentTypeChildNode.nextElementSibling(instance) orelse error.NotImplemented;
+    return NonDocumentTypeChildNode.nextElementSibling(instance);
 }
 
 // =============================================================================
@@ -204,9 +205,13 @@ pub fn call_replaceData(instance: *runtime.Instance, offset: u32, count: u32, da
 /// Operation: remove (from ChildNode mixin)
 /// https://dom.spec.whatwg.org/#dom-childnode-remove
 pub fn call_remove(instance: *runtime.Instance) !void {
-    _ = instance;
-    // TODO: Remove this node from its parent using dom.mutation algorithms
-    return error.NotImplemented;
+    // Delegate to ChildNode mixin
+    ChildNode.remove(instance) catch |err| {
+        return switch (err) {
+            error.HierarchyRequestError => error.HierarchyRequestError,
+            else => error.NotImplemented,
+        };
+    };
 }
 
 /// Operation: before (from ChildNode mixin)

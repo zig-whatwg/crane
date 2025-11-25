@@ -163,25 +163,29 @@ pub fn get_type(instance: *runtime.Instance) !runtime.DOMString {
 }
 
 /// Getter for target
+/// Getter for target
+/// Returns the target of this event, or null if the event is not dispatched.
 /// Spec: https://dom.spec.whatwg.org/#dom-event-target
 pub fn get_target(instance: *runtime.Instance) !?*runtime.Instance {
     const state = instance.getState(State);
-    return state.own.target orelse return error.NotImplemented;
+    return state.own.target;
 }
 
 /// Getter for srcElement (legacy)
+/// Returns the same as target.
 /// Spec: https://dom.spec.whatwg.org/#dom-event-srcelement
 /// The srcElement getter steps are to return this's target.
 pub fn get_srcElement(instance: *runtime.Instance) !?*runtime.Instance {
     const state = instance.getState(State);
-    return state.own.target orelse return error.NotImplemented;
+    return state.own.target;
 }
 
 /// Getter for currentTarget
+/// Returns the current target of this event, or null.
 /// Spec: https://dom.spec.whatwg.org/#dom-event-currenttarget
 pub fn get_currentTarget(instance: *runtime.Instance) !?*runtime.Instance {
     const state = instance.getState(State);
-    return state.own.currentTarget orelse return error.NotImplemented;
+    return state.own.currentTarget;
 }
 
 /// Getter for eventPhase
