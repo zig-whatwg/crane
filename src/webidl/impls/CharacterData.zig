@@ -318,7 +318,20 @@ pub fn setData(instance: *runtime.Instance, data: []const u8) !void {
 }
 
 /// Get the data directly as a slice
+/// Returns null if instance has no internal state
 pub fn getData(instance: *runtime.Instance) ?[]const u8 {
     const internal = getInternal(instance) orelse return null;
     return internal.data;
+}
+
+/// Get the length of the data (number of code units)
+pub fn getDataLength(instance: *runtime.Instance) u32 {
+    const internal = getInternal(instance) orelse return 0;
+    return @intCast(internal.data.len);
+}
+
+/// Delete a range of data (used by Range.deleteContents)
+pub fn deleteDataRange(instance: *runtime.Instance, offset: u32, count: u32) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    try replaceDataInternal(instance, internal, offset, count, "");
 }

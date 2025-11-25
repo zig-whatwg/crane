@@ -1192,3 +1192,17 @@ pub fn hasChildren(instance: *runtime.Instance) bool {
     const internal = getInternal(instance) orelse return false;
     return internal.first_child != null;
 }
+
+/// Get the number of child nodes
+/// This is a convenience helper for Range and other impls
+pub fn getChildCount(instance: *runtime.Instance) u32 {
+    const internal = getInternal(instance) orelse return 0;
+    var count: u32 = 0;
+    var child = internal.first_child;
+    while (child) |c| {
+        count += 1;
+        const child_internal = getInternal(c) orelse break;
+        child = child_internal.next_sibling;
+    }
+    return count;
+}

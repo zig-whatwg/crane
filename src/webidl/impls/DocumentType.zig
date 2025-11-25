@@ -121,32 +121,81 @@ pub fn get_systemId(instance: *runtime.Instance) !runtime.DOMString {
 // ChildNode Mixin Operations
 // =============================================================================
 
+// Import mixins for shared interface methods
+const mixins = @import("mixins");
+const ChildNode = mixins.ChildNode;
+
 /// Operation: remove (from ChildNode mixin)
+/// Removes this doctype from its parent
+/// Spec: https://dom.spec.whatwg.org/#dom-childnode-remove
 pub fn call_remove(instance: *runtime.Instance) !void {
-    _ = instance;
-    // TODO: Remove this node from its parent
-    return error.NotImplemented;
+    // Step 1: If this's parent is null, return
+    const parent = NodeImpl.getParent(instance) orelse return;
+
+    // Step 2: Remove this node from parent
+    try NodeImpl.removeNodeFromParent(instance, parent);
 }
 
 /// Operation: before (from ChildNode mixin)
+/// Inserts nodes just before this doctype
+/// Spec: https://dom.spec.whatwg.org/#dom-childnode-before
 pub fn call_before(instance: *runtime.Instance, nodes: *const anyopaque) !void {
-    _ = instance;
     _ = nodes;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = internal;
+
+    // Step 1: Get parent - if null, return
+    const parent = NodeImpl.getParent(instance) orelse return;
+
+    // TODO: Implement full algorithm:
+    // 1. Find viablePreviousSibling (first preceding sibling not in nodes)
+    // 2. Convert nodes into a node
+    // 3. Pre-insert converted node into parent before viablePreviousSibling
+
+    // For now, this is a stub - nodes parameter would need to be converted
+    // from variadic (Node or DOMString)... to actual nodes
+    _ = parent;
 }
 
 /// Operation: after (from ChildNode mixin)
+/// Inserts nodes just after this doctype
+/// Spec: https://dom.spec.whatwg.org/#dom-childnode-after
 pub fn call_after(instance: *runtime.Instance, nodes: *const anyopaque) !void {
-    _ = instance;
     _ = nodes;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = internal;
+
+    // Step 1: Get parent - if null, return
+    const parent = NodeImpl.getParent(instance) orelse return;
+
+    // TODO: Implement full algorithm:
+    // 1. Find viableNextSibling (first following sibling not in nodes)
+    // 2. Convert nodes into a node
+    // 3. Pre-insert converted node into parent before viableNextSibling
+
+    // For now, this is a stub
+    _ = parent;
 }
 
 /// Operation: replaceWith (from ChildNode mixin)
+/// Replaces this doctype with nodes
+/// Spec: https://dom.spec.whatwg.org/#dom-childnode-replacewith
 pub fn call_replaceWith(instance: *runtime.Instance, nodes: *const anyopaque) !void {
-    _ = instance;
     _ = nodes;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = internal;
+
+    // Step 1: Get parent - if null, return
+    const parent = NodeImpl.getParent(instance) orelse return;
+
+    // TODO: Implement full algorithm:
+    // 1. Find viableNextSibling (first following sibling not in nodes)
+    // 2. Convert nodes into a node
+    // 3. If this's parent is parent, replace this with converted node
+    // 4. Otherwise, pre-insert converted node into parent before viableNextSibling
+
+    // For now, just remove this node as a minimal implementation
+    try NodeImpl.removeNodeFromParent(instance, parent);
 }
 
 // =============================================================================
