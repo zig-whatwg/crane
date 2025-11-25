@@ -5,13 +5,10 @@
 //! CompressionStream compresses data using the specified format.
 //! Supported formats: deflate, deflate-raw, gzip
 //!
-//! Implementation Status:
-//! - Structure: COMPLETE (per spec)
-//! - Compression: STUB (uses pass-through until streaming compression API available)
-//!
-//! The Zig 0.15 std.compress.flate API requires a writer-based streaming interface
-//! which doesn't directly fit the chunk-by-chunk transform stream model.
-//! A full implementation would buffer input and use flate.Compress.
+//! TODO: Implement actual compression when Zig std.compress matures or link zlib
+//! - deflate: ZLIB format (RFC 1950) with 2-byte header and adler32 checksum
+//! - deflate-raw: raw DEFLATE (RFC 1951) with no header/footer
+//! - gzip: GZIP format (RFC 1952) with 10-byte header and crc32/size footer
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -30,13 +27,14 @@ pub const ImplError = error{
     InvalidState,
     OutOfMemory,
     CompressionError,
+    NotImplemented,
 };
 
 /// Compression format enumeration
 pub const Format = enum {
-    deflate,
-    deflate_raw,
-    gzip,
+    deflate, // zlib container (RFC 1950)
+    deflate_raw, // raw deflate (RFC 1951)
+    gzip, // gzip container (RFC 1952)
 };
 
 /// Internal state for CompressionStream
@@ -51,7 +49,7 @@ pub const InternalState = struct {
     /// The compression format
     format: Format,
 
-    /// Accumulated input data
+    /// Accumulated input data - chunks are buffered until flush
     input_buffer: infra.List(u8),
 
     /// Whether compression has been finalized
@@ -160,38 +158,53 @@ pub fn get_writable(instance: *runtime.Instance) ImplError!*runtime.Instance {
 }
 
 // ============================================================================
-// Internal Transform Algorithm
+// Internal Transform Algorithm (Stubs)
 // ============================================================================
 
-/// Compress a chunk of data
+/// Compress and enqueue a chunk algorithm
 ///
-/// This is the transform algorithm used by the underlying TransformStream.
+/// Spec: § 3.1 "compress and enqueue a chunk"
+/// 1. If chunk is not a BufferSource type, throw TypeError
+/// 2. Let buffer be the result of compressing chunk with cs's format and context
+/// 3. If buffer is empty, return
+/// 4. Split buffer into Uint8Arrays and enqueue each
 ///
-/// STUB: Currently passes data through unchanged. Full implementation would use
-/// std.compress.flate.Compress with writer-based API.
-pub fn compressChunk(internal: *InternalState, input: []const u8) ![]u8 {
+/// TODO: Implement actual compression using zlib or mature Zig stdlib
+pub fn compressChunk(internal: *InternalState, input: []const u8) ImplError![]u8 {
     if (internal.finalized) {
         return error.InvalidState;
     }
 
-    // STUB: Pass through unchanged
-    // Full implementation would compress using flate
-    return try internal.allocator.dupe(u8, input);
+    // Buffer the input chunk for compression on flush
+    try internal.input_buffer.appendSlice(input);
+
+    // TODO: When compression is implemented, compress incrementally here
+    // For now, return empty - actual compressed output comes from flush()
+    return internal.allocator.alloc(u8, 0) catch return error.OutOfMemory;
 }
 
-/// Finish compression and flush remaining data
+/// Compress flush and enqueue algorithm
 ///
-/// This is the flush algorithm used by the underlying TransformStream.
+/// Spec: § 3.1 "compress flush and enqueue"
+/// 1. Let buffer be the result of compressing empty input with finish flag
+/// 2. If buffer is empty, return
+/// 3. Split buffer into Uint8Arrays and enqueue each
 ///
-/// STUB: Returns null (no pending data). Full implementation would finalize
-/// the compression stream and return any remaining compressed data.
-pub fn flush(internal: *InternalState) !?[]u8 {
+/// TODO: Implement actual compression using zlib or mature Zig stdlib
+pub fn flush(internal: *InternalState) ImplError!?[]u8 {
     if (internal.finalized) {
         return null;
     }
 
     internal.finalized = true;
 
-    // STUB: No pending data
-    return null;
+    const input_data = internal.input_buffer.slice();
+    if (input_data.len == 0) {
+        return null;
+    }
+
+    // TODO: Implement actual compression
+    // For now, return the data uncompressed as a placeholder
+    // This allows the API to function for testing while compression is pending
+    return internal.allocator.dupe(u8, input_data) catch return error.OutOfMemory;
 }
