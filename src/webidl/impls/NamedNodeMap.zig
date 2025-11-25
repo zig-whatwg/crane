@@ -104,33 +104,56 @@ pub fn call_item(instance: *runtime.Instance, index: u32) !*runtime.Instance {
 /// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-getnameditem
 pub fn call_getNamedItem(instance: *runtime.Instance, qualifiedName: runtime.DOMString) !*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidState;
-    _ = qualifiedName;
+    const name = qualifiedName.asSlice();
 
     // Find attribute by qualified name
+    const AttrImpl = @import("Attr.zig");
     const attrs = internal.attrs.toSlice();
     for (attrs) |attr| {
-        // TODO: Get attr's qualified name and compare
-        _ = attr;
+        // Get attr's name (qualified name)
+        const attr_name = AttrImpl.get_name(attr) catch continue;
+        if (std.mem.eql(u8, attr_name.asSlice(), name)) {
+            return attr;
+        }
     }
 
-    return error.NotImplemented;
+    return error.NotImplemented; // null
 }
 
 /// Operation: getNamedItemNS(namespace, localName)
 /// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-getnameditemns
 pub fn call_getNamedItemNS(instance: *runtime.Instance, namespace: runtime.DOMString, localName: runtime.DOMString) !*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidState;
-    _ = namespace;
-    _ = localName;
+    const ns = namespace.asSlice();
+    const name = localName.asSlice();
+
+    // Normalize empty namespace to null per spec
+    const ns_to_match: ?[]const u8 = if (ns.len == 0) null else ns;
 
     // Find attribute by namespace and local name
+    const AttrImpl = @import("Attr.zig");
     const attrs = internal.attrs.toSlice();
     for (attrs) |attr| {
-        // TODO: Get attr's namespace and local name and compare
-        _ = attr;
+        // Get attr's namespace and local name
+        const attr_ns = AttrImpl.get_namespaceURI(attr) catch continue;
+        const attr_local = AttrImpl.get_localName(attr) catch continue;
+
+        const attr_ns_slice = attr_ns.asSlice();
+        const attr_local_slice = attr_local.asSlice();
+
+        // Check namespace match
+        const ns_match = if (ns_to_match == null)
+            attr_ns_slice.len == 0
+        else
+            std.mem.eql(u8, attr_ns_slice, ns_to_match.?);
+
+        // Check local name match
+        if (ns_match and std.mem.eql(u8, attr_local_slice, name)) {
+            return attr;
+        }
     }
 
-    return error.NotImplemented;
+    return error.NotImplemented; // null
 }
 
 /// Operation: setNamedItem(attr)
@@ -149,13 +172,25 @@ pub fn call_setNamedItemNS(instance: *runtime.Instance, attr: *runtime.Instance)
 /// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-removenameditem
 pub fn call_removeNamedItem(instance: *runtime.Instance, qualifiedName: runtime.DOMString) !*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidState;
-    _ = qualifiedName;
+    const name = qualifiedName.asSlice();
 
     // Find and remove attribute by qualified name
-    const attrs = internal.attrs.toSlice();
-    for (attrs) |attr| {
-        // TODO: Get attr's qualified name and compare
-        _ = attr;
+    const AttrImpl = @import("Attr.zig");
+    for (internal.attrs.toSlice(), 0..) |attr, i| {
+        const attr_name = AttrImpl.get_name(attr) catch continue;
+        if (std.mem.eql(u8, attr_name.asSlice(), name)) {
+            // Remove from list
+            const removed = internal.attrs.remove(i) catch return error.NotFoundError;
+
+            // Update length
+            const state = instance.getState(State);
+            state.own.length = @intCast(internal.attrs.size());
+
+            // Clear owner element
+            AttrImpl.setOwnerElement(removed, null) catch {};
+
+            return removed;
+        }
     }
 
     return error.NotFoundError;
@@ -165,14 +200,41 @@ pub fn call_removeNamedItem(instance: *runtime.Instance, qualifiedName: runtime.
 /// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-removenameditemns
 pub fn call_removeNamedItemNS(instance: *runtime.Instance, namespace: runtime.DOMString, localName: runtime.DOMString) !*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidState;
-    _ = namespace;
-    _ = localName;
+    const ns = namespace.asSlice();
+    const name = localName.asSlice();
+
+    // Normalize empty namespace to null per spec
+    const ns_to_match: ?[]const u8 = if (ns.len == 0) null else ns;
 
     // Find and remove attribute by namespace and local name
-    const attrs = internal.attrs.toSlice();
-    for (attrs) |attr| {
-        // TODO: Get attr's namespace and local name and compare
-        _ = attr;
+    const AttrImpl = @import("Attr.zig");
+    for (internal.attrs.toSlice(), 0..) |attr, i| {
+        const attr_ns = AttrImpl.get_namespaceURI(attr) catch continue;
+        const attr_local = AttrImpl.get_localName(attr) catch continue;
+
+        const attr_ns_slice = attr_ns.asSlice();
+        const attr_local_slice = attr_local.asSlice();
+
+        // Check namespace match
+        const ns_match = if (ns_to_match == null)
+            attr_ns_slice.len == 0
+        else
+            std.mem.eql(u8, attr_ns_slice, ns_to_match.?);
+
+        // Check local name match
+        if (ns_match and std.mem.eql(u8, attr_local_slice, name)) {
+            // Remove from list
+            const removed = internal.attrs.remove(i) catch return error.NotFoundError;
+
+            // Update length
+            const state = instance.getState(State);
+            state.own.length = @intCast(internal.attrs.size());
+
+            // Clear owner element
+            AttrImpl.setOwnerElement(removed, null) catch {};
+
+            return removed;
+        }
     }
 
     return error.NotFoundError;

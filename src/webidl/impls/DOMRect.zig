@@ -1,7 +1,9 @@
 //! Implementation for DOMRect interface
 //!
-//! This file is AUTO-GENERATED on first creation.
-//! Add your custom implementation here.
+//! CSSOM View Module - DOMRect
+//! Spec: https://drafts.csswg.org/geometry-1/#domrect
+//!
+//! Extends DOMRectReadOnly with mutable x, y, width, height properties.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -11,18 +13,22 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const DOMRect = interfaces.DOMRect;
+const DOMRectReadOnlyImpl = @import("DOMRectReadOnly.zig");
 
 pub const State = DOMRect.State;
 
 pub const ImplError = error{
     NotImplemented,
+    OutOfMemory,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Internal state - not currently used, dimensions stored in State.own
+pub const InternalState = DOMRectReadOnlyImpl.InternalState;
+
+/// Get state from instance
+fn getState(instance: *runtime.Instance) *State {
+    return instance.getState(State);
+}
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -32,60 +38,105 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    return instance;
+}
+
+/// Initialize with dimensions
+pub fn initWithDimensions(
+    allocator: std.mem.Allocator,
+    ctx: runtime.Context,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) !*runtime.Instance {
+    const instance = try init(allocator, State, &DOMRect.vtable, ctx);
+    errdefer deinit(instance);
+
+    // Set state values
+    const state = getState(instance);
+    state.own.x = x;
+    state.own.y = y;
+    state.own.width = width;
+    state.own.height = height;
+
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
     runtime.Instance.deinit(instance);
 }
 
 /// Constructor implementation
-/// This is called when the interface is constructed from JavaScript
+/// Spec: https://drafts.csswg.org/geometry-1/#dom-domrect-domrect
 pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: f64, y: f64, width: f64, height: f64) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(allocator, State, &DOMRect.vtable, ctx);
-    errdefer deinit(instance);
-
-    _ = x;
-    _ = y;
-    _ = width;
-    _ = height;
-    // TODO: Implement constructor logic with parameters
-
-    return instance;
+    return initWithDimensions(allocator, ctx, x, y, width, height);
 }
 
 /// Getter for x
+/// Spec: https://drafts.csswg.org/geometry-1/#dom-domrect-x
 pub fn get_x(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    return error.NotImplemented;
+    const state = getState(instance);
+    return state.own.x;
+}
+
+/// Setter for x
+pub fn set_x(instance: *runtime.Instance, value: f64) ImplError!void {
+    const state = getState(instance);
+    state.own.x = value;
 }
 
 /// Getter for y
+/// Spec: https://drafts.csswg.org/geometry-1/#dom-domrect-y
 pub fn get_y(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    return error.NotImplemented;
+    const state = getState(instance);
+    return state.own.y;
+}
+
+/// Setter for y
+pub fn set_y(instance: *runtime.Instance, value: f64) ImplError!void {
+    const state = getState(instance);
+    state.own.y = value;
 }
 
 /// Getter for width
+/// Spec: https://drafts.csswg.org/geometry-1/#dom-domrect-width
 pub fn get_width(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    return error.NotImplemented;
+    const state = getState(instance);
+    return state.own.width;
+}
+
+/// Setter for width
+pub fn set_width(instance: *runtime.Instance, value: f64) ImplError!void {
+    const state = getState(instance);
+    state.own.width = value;
 }
 
 /// Getter for height
+/// Spec: https://drafts.csswg.org/geometry-1/#dom-domrect-height
 pub fn get_height(instance: *runtime.Instance) ImplError!f64 {
-    _ = instance;
-    return error.NotImplemented;
+    const state = getState(instance);
+    return state.own.height;
 }
 
-/// Operation: fromRect
+/// Setter for height
+pub fn set_height(instance: *runtime.Instance, value: f64) ImplError!void {
+    const state = getState(instance);
+    state.own.height = value;
+}
+
+/// Operation: fromRect (static)
+/// Spec: https://drafts.csswg.org/geometry-1/#dom-domrect-fromrect
+/// Creates a new DOMRect from a DOMRectInit dictionary
 pub fn call_fromRect(instance: *runtime.Instance, other: dictionaries.DOMRectInit) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = other;
-    return error.NotImplemented;
-}
+    const ctx = instance.ctx;
 
+    // Extract values from dictionary with defaults
+    const x = other.x orelse 0;
+    const y = other.y orelse 0;
+    const width = other.width orelse 0;
+    const height = other.height orelse 0;
+
+    return initWithDimensions(std.heap.page_allocator, ctx, x, y, width, height) catch return error.OutOfMemory;
+}
