@@ -129,6 +129,10 @@ pub const ContextData = struct {
     /// This is owned by the context and must be cleaned up via engine interface
     _engine_event_loop_storage: ?*anyopaque,
 
+    /// V8 wrapper cache (optional, only used with V8 engine)
+    /// Maintains 1:1 mapping between Zig instances and V8 wrappers for identity
+    _v8_wrapper_cache_storage: ?*anyopaque,
+
     const Self = @This();
 
     /// Context initialization options
@@ -189,11 +193,15 @@ pub const ContextData = struct {
             .console_state = ConsoleState.init(allocator),
             .event_loop = ev_loop,
             ._engine_event_loop_storage = engine_event_loop_storage,
+            ._v8_wrapper_cache_storage = null, // Initialized later via initV8WrapperCache
         };
     }
 
     /// Deinitialize context and cleanup resources
     pub fn deinit(self: *Self) void {
+        // NOTE: V8 wrapper cache cleanup is handled by context_manager
+        // before calling this function (to avoid circular module dependencies)
+
         // Clean up engine-created event loop if we have one
         if (self._engine_event_loop_storage) |loop_storage| {
             if (self.engine) |engine| {
@@ -205,6 +213,28 @@ pub const ContextData = struct {
 
         self.console_state.deinit(self.allocator);
         self.logger.deinit();
+    }
+
+    /// Get V8 wrapper cache storage (returns null if not initialized)
+    ///
+    /// This is used by template_registry.wrapInstanceAsV8Object to access the cache.
+    /// The cache is initialized and cleaned up by context_manager.
+    pub fn getV8WrapperCacheStorage(self: *Self) ?*anyopaque {
+        return self._v8_wrapper_cache_storage;
+    }
+
+    /// Set V8 wrapper cache storage (called by context_manager during init)
+    ///
+    /// This is an internal method used by context_manager to inject the cache.
+    pub fn setV8WrapperCacheStorage(self: *Self, cache_storage: *anyopaque) void {
+        self._v8_wrapper_cache_storage = cache_storage;
+    }
+
+    /// Clear V8 wrapper cache storage (called by context_manager during cleanup)
+    ///
+    /// This is an internal method used by context_manager.
+    pub fn clearV8WrapperCacheStorage(self: *Self) void {
+        self._v8_wrapper_cache_storage = null;
     }
 
     /// Check if this context has a JS engine

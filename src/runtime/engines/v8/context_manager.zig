@@ -102,11 +102,21 @@ pub fn init(allocator: std.mem.Allocator) !void {
 /// Thread safety: Thread-local, no synchronization needed
 pub fn deinit() void {
     if (manager_state) |*state| {
+        const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
+
         // Deinit all owned runtime contexts
         var it = state.contexts.valueIterator();
         while (it.next()) |entry| {
             if (entry.owns_context) {
                 var ctx_data = entry.runtime_ctx;
+
+                // Clean up V8 wrapper cache
+                if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
+                    const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
+                    cache_ptr.deinit();
+                    ctx_data.getAllocator().destroy(cache_ptr);
+                }
+
                 ctx_data.deinit();
             }
         }
@@ -151,6 +161,17 @@ pub fn getOrCreate(v8_ctx: *v8.Context, allocator: std.mem.Allocator) !runtime.C
         .engine_ctx = @ptrCast(v8_ctx), // Store V8 context as engine context
     });
     errdefer ctx_data.deinit();
+
+    // Initialize V8 wrapper cache for this context
+    const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
+    const cache_ptr = try allocator.create(WrapperCache);
+    errdefer allocator.destroy(cache_ptr);
+
+    cache_ptr.* = try WrapperCache.init(allocator, v8_ctx);
+    errdefer cache_ptr.deinit();
+
+    // Store cache in runtime context
+    ctx_data.setV8WrapperCacheStorage(@ptrCast(cache_ptr));
 
     // Store in map
     try state.contexts.put(key, ContextEntry{
@@ -220,6 +241,16 @@ pub fn removeContext(v8_ctx: *v8.Context) void {
     if (state.contexts.fetchRemove(key)) |kv| {
         if (kv.value.owns_context) {
             var ctx_data = kv.value.runtime_ctx;
+
+            // Clean up V8 wrapper cache before deinit
+            if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
+                const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
+                const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
+                cache_ptr.deinit();
+                ctx_data.getAllocator().destroy(cache_ptr);
+                ctx_data.clearV8WrapperCacheStorage();
+            }
+
             ctx_data.deinit();
         }
     }
