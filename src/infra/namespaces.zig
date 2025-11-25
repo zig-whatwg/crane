@@ -33,10 +33,3 @@ pub const XMLNS_NAMESPACE = "http://www.w3.org/2000/xmlns/";
 /// Extension: VML namespace (not defined in WHATWG Infra Standard).
 /// This is a library-specific extension for VML support.
 pub const VML_NAMESPACE = "http://example.org";
-
-
-
-
-
-
-

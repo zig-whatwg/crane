@@ -2,7 +2,7 @@
 //!
 //! A space-efficient probabilistic data structure used to test whether an element
 //! is a member of a set. False positive matches are possible, but false negatives
-//! are not – in other words, a query returns either "possibly in set" or 
+//! are not – in other words, a query returns either "possibly in set" or
 //! "definitely not in set".
 //!
 //! This implementation uses a fixed-size bit array with multiple hash functions.
@@ -11,7 +11,7 @@
 const std = @import("std");
 
 /// Fixed-size bloom filter for string membership testing
-/// 
+///
 /// Uses 256 bits (32 bytes) and 3 hash functions for a good balance of:
 /// - Memory usage (32 bytes per filter)
 /// - False positive rate (~2.5% with typical class lists)
@@ -47,8 +47,8 @@ pub const BloomFilter = struct {
         const h3 = hash3(item);
 
         return self.getBit(h1 % NUM_BITS) and
-               self.getBit(h2 % NUM_BITS) and
-               self.getBit(h3 % NUM_BITS);
+            self.getBit(h2 % NUM_BITS) and
+            self.getBit(h3 % NUM_BITS);
     }
 
     /// Clear all bits (reset to empty state)
@@ -102,9 +102,3 @@ pub const BloomFilter = struct {
 // ============================================================================
 // Tests
 // ============================================================================
-
-
-
-
-
-

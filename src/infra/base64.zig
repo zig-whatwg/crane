@@ -66,15 +66,3 @@ const ascii_whitespace_table = blk: {
 inline fn isAsciiWhitespace(c: u8) bool {
     return ascii_whitespace_table[c];
 }
-
-
-
-
-
-
-
-
-
-
-
-

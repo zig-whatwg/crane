@@ -152,37 +152,3 @@ pub fn isomorphicEncode(allocator: Allocator, string: String) !ByteSequence {
 
     return result;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
