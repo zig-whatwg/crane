@@ -319,6 +319,7 @@ pub extern fn v8_Context_Dispose(context: *Context) void;
 pub extern fn v8_Context_Enter(context: *Context) void;
 pub extern fn v8_Context_Exit(context: *Context) void;
 pub extern fn v8_Context_Global(context: *Context) ?*Object;
+pub extern fn v8_Context_GetRawAddress(context: *Context) ?*anyopaque;
 
 // String management
 pub extern fn v8_String_NewFromUtf8(isolate: *Isolate, data: [*]const u8, length: c_int) ?*String;

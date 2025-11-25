@@ -104,6 +104,18 @@ Global<Context>* v8_Isolate_GetCurrentContext(Isolate* isolate) {
     return new Global<Context>(isolate, ctx);
 }
 
+// Get the raw internal address of a context (for stable identity)
+// Returns a unique identifier for the context that stays constant across Global/Local conversions
+void* v8_Context_GetRawAddress(Global<Context>* context_handle) {
+    // Get the internal V8 context pointer from the Global handle
+    // This address is stable and can be used as a HashMap key
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context_handle->Get(isolate);
+    // Return the raw internal pointer - this is stable across handle conversions
+    return *reinterpret_cast<void**>(*ctx);
+}
+
 void v8_Isolate_ThrowException(Isolate* isolate, Global<Value>* exception) {
     HandleScope handle_scope(isolate);
     Local<Value> exc = exception->Get(isolate);

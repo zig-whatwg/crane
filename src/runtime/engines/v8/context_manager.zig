@@ -146,7 +146,9 @@ pub fn deinit() void {
 pub fn getOrCreate(v8_ctx: *v8.Context, allocator: std.mem.Allocator) !runtime.Context {
     const state = &(manager_state orelse return error.NotInitialized);
 
-    const key = @intFromPtr(v8_ctx);
+    // Use the raw V8 internal address as the key (stable across Global/Local conversions)
+    const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return error.InvalidContext;
+    const key = @intFromPtr(raw_addr);
 
     // Check if context already exists
     if (state.contexts.getPtr(key)) |entry| {
@@ -194,7 +196,9 @@ pub fn getOrCreate(v8_ctx: *v8.Context, allocator: std.mem.Allocator) !runtime.C
 pub fn get(v8_ctx: *v8.Context) ?runtime.Context {
     const state = &(manager_state orelse return null);
 
-    const key = @intFromPtr(v8_ctx);
+    // Use the raw V8 internal address as the key (stable across Global/Local conversions)
+    const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return null;
+    const key = @intFromPtr(raw_addr);
 
     if (state.contexts.getPtr(key)) |entry| {
         return &entry.runtime_ctx;
