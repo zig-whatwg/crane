@@ -273,33 +273,46 @@ pub fn set_innerHTML(instance: *runtime.Instance, value: *const anyopaque) ImplE
 // ============================================================================
 
 /// DocumentOrShadowRoot.customElementRegistry getter
-pub fn get_customElementRegistry(instance: *runtime.Instance) ImplError!*runtime.Instance {
+/// Returns null if no custom element registry is associated
+pub fn get_customElementRegistry(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     const internal = getInternal(instance);
-    return internal.custom_element_registry orelse return error.NotImplemented;
+    return internal.custom_element_registry;
 }
 
 /// DocumentOrShadowRoot.fullscreenElement getter
-pub fn get_fullscreenElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
+/// Returns the element in this shadow tree that is currently in fullscreen mode, or null.
+pub fn get_fullscreenElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     const internal = getInternal(instance);
-    return internal.fullscreen_element orelse return error.NotImplemented;
+    return internal.fullscreen_element;
 }
 
 /// DocumentOrShadowRoot.pictureInPictureElement getter
-pub fn get_pictureInPictureElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
+/// Returns the element in this shadow tree that is currently in picture-in-picture mode, or null.
+pub fn get_pictureInPictureElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     const internal = getInternal(instance);
-    return internal.picture_in_picture_element orelse return error.NotImplemented;
+    return internal.picture_in_picture_element;
 }
 
 /// DocumentOrShadowRoot.pointerLockElement getter
-pub fn get_pointerLockElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
+/// Returns the element in this shadow tree that has pointer lock, or null.
+pub fn get_pointerLockElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     const internal = getInternal(instance);
-    return internal.pointer_lock_element orelse return error.NotImplemented;
+    return internal.pointer_lock_element;
 }
 
 /// DocumentOrShadowRoot.styleSheets getter
+/// Returns the StyleSheetList of stylesheets associated with this shadow root.
+/// Lazily creates an empty StyleSheetList on first access.
 pub fn get_styleSheets(instance: *runtime.Instance) ImplError!*runtime.Instance {
     const internal = getInternal(instance);
-    return internal.style_sheets orelse return error.NotImplemented;
+    if (internal.style_sheets) |sheets| {
+        return sheets;
+    }
+    // Lazily create an empty StyleSheetList
+    const StyleSheetList = interfaces.StyleSheetList;
+    const sheets = StyleSheetList.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
+    internal.style_sheets = sheets;
+    return sheets;
 }
 
 /// DocumentOrShadowRoot.adoptedStyleSheets getter
@@ -321,9 +334,10 @@ pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: *const anyopaq
 }
 
 /// DocumentOrShadowRoot.activeElement getter
-pub fn get_activeElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
+/// Returns the deepest element in this shadow tree that has focus, or null.
+pub fn get_activeElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     const internal = getInternal(instance);
-    return internal.active_element orelse return error.NotImplemented;
+    return internal.active_element;
 }
 
 // ============================================================================

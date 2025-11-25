@@ -386,15 +386,15 @@ pub fn get_shadowRoot(instance: *runtime.Instance) ImplError!?*runtime.Instance 
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Step 1: Let shadow be this's shadow root
-    const shadow = internal.shadow_root orelse return error.NotImplemented; // null
+    const shadow = internal.shadow_root orelse return null;
 
     // Step 2: If shadow's mode is "closed", return null
     const ShadowRootImpl = @import("ShadowRoot.zig");
-    const mode = ShadowRootImpl.get_mode(shadow) catch return error.NotImplemented;
+    const mode = ShadowRootImpl.get_mode(shadow) catch return null;
 
     // Check if mode is closed
     if (mode == ._closed_) {
-        return error.NotImplemented; // null
+        return null;
     }
 
     // Step 3: Return shadow
@@ -410,7 +410,7 @@ pub fn get_shadowRoot(instance: *runtime.Instance) ImplError!?*runtime.Instance 
 pub fn get_customElementRegistry(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
     // Custom Element Registry not implemented - return null
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for onfullscreenchange
@@ -492,7 +492,7 @@ pub fn get_part(instance: *runtime.Instance) ImplError!*runtime.Instance {
 pub fn get_activeViewTransition(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
     // View Transitions require rendering engine - return null
-    return error.NotImplemented;
+    return null;
 }
 
 /// Getter for innerHTML
@@ -712,8 +712,8 @@ pub fn get_role(instance: *runtime.Instance) ImplError!runtime.DOMString {
 /// Spec: https://w3c.github.io/aria/#aria-activedescendant
 ///
 /// Returns the element referenced by aria-activedescendant, or null if not set
-pub fn get_ariaActiveDescendantElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    return getAriaElementRef(instance, "aria-activedescendant") orelse error.NotImplemented;
+pub fn get_ariaActiveDescendantElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+    return getAriaElementRef(instance, "aria-activedescendant");
 }
 
 /// Getter for ariaAtomic
@@ -1086,15 +1086,15 @@ pub fn get_children(instance: *runtime.Instance) ImplError!*runtime.Instance {
 /// Getter for firstElementChild
 /// ParentNode mixin - Returns the first child that is an element
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-firstelementchild
-pub fn get_firstElementChild(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    return ParentNode.firstElementChild(instance) orelse error.NotImplemented;
+pub fn get_firstElementChild(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+    return ParentNode.firstElementChild(instance);
 }
 
 /// Getter for lastElementChild
 /// ParentNode mixin - Returns the last child that is an element
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-lastelementchild
-pub fn get_lastElementChild(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    return ParentNode.lastElementChild(instance) orelse error.NotImplemented;
+pub fn get_lastElementChild(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+    return ParentNode.lastElementChild(instance);
 }
 
 /// Getter for childElementCount
@@ -1107,18 +1107,17 @@ pub fn get_childElementCount(instance: *runtime.Instance) ImplError!u32 {
 /// Getter for previousElementSibling
 /// NonDocumentTypeChildNode mixin - Returns the previous sibling that is an element
 /// Spec: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-previouselementsibling
-pub fn get_previousElementSibling(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    return NonDocumentTypeChildNode.previousElementSibling(instance) orelse error.NotImplemented;
+pub fn get_previousElementSibling(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+    return NonDocumentTypeChildNode.previousElementSibling(instance);
 }
 
 /// Getter for nextElementSibling
 /// NonDocumentTypeChildNode mixin - Returns the next sibling that is an element
 /// Spec: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-nextelementsibling
-pub fn get_nextElementSibling(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    return NonDocumentTypeChildNode.nextElementSibling(instance) orelse error.NotImplemented;
+pub fn get_nextElementSibling(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+    return NonDocumentTypeChildNode.nextElementSibling(instance);
 }
 
-/// Getter for assignedSlot
 /// Getter for assignedSlot
 /// Slottable mixin - Returns the slot this element is assigned to
 /// Spec: https://dom.spec.whatwg.org/#dom-slottable-assignedslot
@@ -1129,11 +1128,11 @@ pub fn get_nextElementSibling(instance: *runtime.Instance) ImplError!*runtime.In
 /// Returns null if:
 /// - Element is not assigned to any slot
 /// - Element is assigned to a slot in a closed shadow root
-pub fn get_assignedSlot(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_assignedSlot(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Get the assigned slot
-    const slot = internal.assigned_slot orelse return error.NotImplemented; // null
+    const slot = internal.assigned_slot orelse return null;
 
     // Check if the slot's shadow root is open (per spec, only return for open mode)
     // The slot is an HTMLSlotElement which is in a ShadowRoot
@@ -2241,7 +2240,7 @@ pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: dictionaries.
 /// setting an attribute given attr and this.
 ///
 /// Returns the old Attr node if replaced, or null if newly added.
-pub fn call_setAttributeNodeNS(instance: *runtime.Instance, attr: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_setAttributeNodeNS(instance: *runtime.Instance, attr: *runtime.Instance) ImplError!?*runtime.Instance {
     // setAttributeNodeNS and setAttributeNode have identical behavior per spec
     // They both call the "set an attribute" algorithm
     return call_setAttributeNode(instance, attr);
@@ -2250,7 +2249,7 @@ pub fn call_setAttributeNodeNS(instance: *runtime.Instance, attr: *runtime.Insta
 /// Operation: getAttributeNodeNS
 /// DOM §4.8 - Returns the Attr node with the given namespace and local name
 /// Spec: https://dom.spec.whatwg.org/#dom-element-getattributenodens
-pub fn call_getAttributeNodeNS(instance: *runtime.Instance, namespace: runtime.DOMString, localName: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_getAttributeNodeNS(instance: *runtime.Instance, namespace: runtime.DOMString, localName: runtime.DOMString) ImplError!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const ns_slice = namespace.asSlice();
     const name_slice = localName.asSlice();
@@ -2274,7 +2273,7 @@ pub fn call_getAttributeNodeNS(instance: *runtime.Instance, namespace: runtime.D
     }
 
     // Return null (not found)
-    return error.NotImplemented;
+    return null;
 }
 
 /// Operation: setAttributeNS
@@ -2309,7 +2308,7 @@ pub fn call_setAttributeNS(instance: *runtime.Instance, namespace: runtime.DOMSt
 ///
 /// The setAttributeNode(attr) method steps are to return the result of
 /// setting an attribute given attr and this.
-pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instance) ImplError!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Get attribute properties from the Attr node
@@ -2341,8 +2340,8 @@ pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instanc
     // Set owner element on the new attr
     AttrImpl.setOwnerElement(attr, instance) catch return error.InvalidStateError;
 
-    // Return old attribute if it existed, otherwise return null (NotImplemented)
-    return old_attr orelse error.NotImplemented;
+    // Return old attribute if it existed, otherwise null
+    return old_attr;
 }
 
 /// Operation: scrollTo
@@ -2509,7 +2508,7 @@ pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: runt
 /// - "afterbegin": Inside this element, before first child
 /// - "beforeend": Inside this element, after last child
 /// - "afterend": After this element (as a sibling)
-pub fn call_insertAdjacentElement(instance: *runtime.Instance, where: runtime.DOMString, element: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_insertAdjacentElement(instance: *runtime.Instance, where: runtime.DOMString, element: *runtime.Instance) ImplError!?*runtime.Instance {
     const result = insertAdjacent(instance, where.asSlice(), element) catch |err| {
         return switch (err) {
             error.SyntaxError => error.SyntaxError,
@@ -2518,7 +2517,7 @@ pub fn call_insertAdjacentElement(instance: *runtime.Instance, where: runtime.DO
     };
 
     // insertAdjacent returns null if parent is null for beforebegin/afterend positions
-    return result orelse error.NotImplemented;
+    return result;
 }
 
 /// Operation: webkitMatchesSelector
@@ -2533,13 +2532,13 @@ pub fn call_webkitMatchesSelector(instance: *runtime.Instance, selectors: runtim
 /// CSS Spatial Navigation §5 - Searches for next focusable element in direction
 /// Spec: https://drafts.csswg.org/css-nav-1/#dom-element-spatialnavigationsearch
 ///
-/// Note: Returns null - spatial navigation not implemented
-pub fn call_spatialNavigationSearch(instance: *runtime.Instance, dir: enums.SpatialNavigationDirection, options: dictionaries.SpatialNavigationSearchOptions) ImplError!*runtime.Instance {
+/// Note: Returns null - spatial navigation not implemented without layout engine
+pub fn call_spatialNavigationSearch(instance: *runtime.Instance, dir: enums.SpatialNavigationDirection, options: dictionaries.SpatialNavigationSearchOptions) ImplError!?*runtime.Instance {
     _ = instance;
     _ = dir;
     _ = options;
-    // Spatial navigation not implemented - return null
-    return error.NotImplemented;
+    // Spatial navigation not implemented without layout engine - return null
+    return null;
 }
 
 /// Operation: getElementsByTagName
@@ -2568,7 +2567,7 @@ pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: run
 /// Operation: querySelector
 /// ParentNode mixin - Returns the first element matching the selector
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-queryselector
-pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const selectors_str = selectors.asSlice();
 
@@ -2581,13 +2580,13 @@ pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMStr
         };
     };
 
-    return result orelse error.NotImplemented; // null case
+    return result;
 }
 
 /// Operation: closest
 /// DOM §4.10.4 - Returns closest ancestor (or self) matching selector
 /// Spec: https://dom.spec.whatwg.org/#dom-element-closest
-pub fn call_closest(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_closest(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const selectors_str = selectors.asSlice();
 
@@ -2600,7 +2599,7 @@ pub fn call_closest(instance: *runtime.Instance, selectors: runtime.DOMString) I
         };
     };
 
-    return result orelse error.NotImplemented; // null case
+    return result;
 }
 
 /// Operation: getSpatialNavigationContainer
@@ -2855,7 +2854,7 @@ pub fn call_getHTML(instance: *runtime.Instance, options: dictionaries.GetHTMLOp
 ///
 /// The getAttributeNode(qualifiedName) method steps are to return the result of
 /// getting an attribute given qualifiedName and this.
-pub fn call_getAttributeNode(instance: *runtime.Instance, qualifiedName: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_getAttributeNode(instance: *runtime.Instance, qualifiedName: runtime.DOMString) ImplError!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const name = qualifiedName.asSlice();
 
@@ -2881,8 +2880,8 @@ pub fn call_getAttributeNode(instance: *runtime.Instance, qualifiedName: runtime
         }
     }
 
-    // Return null (not found) - mapped to NotImplemented for nullable return
-    return error.NotImplemented;
+    // Return null (not found)
+    return null;
 }
 
 /// Operation: startViewTransition

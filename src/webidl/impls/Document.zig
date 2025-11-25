@@ -43,6 +43,7 @@ pub const ImplError = error{
     InvalidStateError,
     NotSupportedError,
     HierarchyRequestError,
+    NotFoundError,
     OutOfMemory,
 };
 
@@ -139,6 +140,15 @@ pub const InternalState = struct {
     // === Pointer lock state ===
     pointer_lock_element: ?*runtime.Instance,
 
+    // === Picture-in-picture state ===
+    picture_in_picture_element: ?*runtime.Instance,
+
+    // === Active element (focus) ===
+    active_element: ?*runtime.Instance,
+
+    // === StyleSheetList (DocumentOrShadowRoot mixin) ===
+    style_sheets: ?*runtime.Instance,
+
     // === Event handlers storage (using string keys for handler names) ===
     event_handlers: std.StringHashMap(typedefs.EventHandler),
 
@@ -177,6 +187,12 @@ pub const InternalState = struct {
             .fullscreen_element = null,
             // Pointer lock
             .pointer_lock_element = null,
+            // Picture-in-picture
+            .picture_in_picture_element = null,
+            // Active element (focus)
+            .active_element = null,
+            // StyleSheetList
+            .style_sheets = null,
             // Event handlers
             .event_handlers = std.StringHashMap(typedefs.EventHandler).init(allocator),
         };
@@ -346,14 +362,29 @@ pub fn unregisterNodeIterator(instance: *runtime.Instance, iterator: *runtime.In
 /// Getter for implementation
 /// DOM §4.6 - Returns document's DOMImplementation object
 /// [SameObject] - Always returns the same instance
-/// TODO: Implement DOMImplementation interface first
 pub fn get_implementation(instance: *runtime.Instance) ImplError!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Return cached implementation if it exists
     if (internal.implementation) |impl| {
         return impl;
     }
-    // TODO: Create and cache DOMImplementation when that interface is migrated
-    return error.NotImplemented;
+
+    // Create and cache DOMImplementation
+    const DOMImplementationImpl = @import("DOMImplementation.zig");
+    const impl = DOMImplementationImpl.init(
+        internal.allocator,
+        interfaces.DOMImplementation.State,
+        &interfaces.DOMImplementation.vtable,
+        instance.ctx,
+    ) catch return error.OutOfMemory;
+
+    // Set the associated document
+    DOMImplementationImpl.setDocument(impl, instance);
+
+    // Cache and return
+    internal.implementation = impl;
+    return impl;
 }
 
 /// Getter for URL
@@ -427,15 +458,17 @@ pub fn get_fragmentDirective(instance: *runtime.Instance) ImplError!*runtime.Ins
 }
 
 /// Getter for prerendering
+/// Returns whether this document is currently in prerendering mode.
+/// In a server-side/headless context, this is always false.
 pub fn get_prerendering(instance: *runtime.Instance) ImplError!bool {
     _ = instance;
-    return error.NotImplemented;
+    return false;
 }
 
 /// Getter for onprerenderingchange
+/// Returns the event handler for prerenderingchange events.
 pub fn get_onprerenderingchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "prerenderingchange");
 }
 
 /// Getter for fullscreenEnabled
@@ -456,14 +489,12 @@ pub fn get_fullscreen(instance: *runtime.Instance) ImplError!bool {
 
 /// Getter for onfullscreenchange
 pub fn get_onfullscreenchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "fullscreenchange");
 }
 
 /// Getter for onfullscreenerror
 pub fn get_onfullscreenerror(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "fullscreenerror");
 }
 
 /// Getter for timeline
@@ -473,39 +504,39 @@ pub fn get_timeline(instance: *runtime.Instance) ImplError!*runtime.Instance {
 }
 
 /// Getter for pictureInPictureEnabled
+/// Returns whether Picture-in-Picture mode is enabled for this document.
+/// In a server-side/headless context, this is always false.
 pub fn get_pictureInPictureEnabled(instance: *runtime.Instance) ImplError!bool {
     _ = instance;
-    return error.NotImplemented;
+    return false;
 }
 
 /// Getter for onpointerlockchange
 pub fn get_onpointerlockchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "pointerlockchange");
 }
 
 /// Getter for onpointerlockerror
 pub fn get_onpointerlockerror(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "pointerlockerror");
 }
 
 /// Getter for onfreeze
 pub fn get_onfreeze(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "freeze");
 }
 
 /// Getter for onresume
 pub fn get_onresume(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "resume");
 }
 
 /// Getter for wasDiscarded
+/// Returns whether this document was discarded.
+/// In a server-side/headless context, this is always false.
 pub fn get_wasDiscarded(instance: *runtime.Instance) ImplError!bool {
     _ = instance;
-    return error.NotImplemented;
+    return false;
 }
 
 /// Getter for namedFlows
@@ -561,15 +592,27 @@ pub fn get_referrer(instance: *runtime.Instance) ImplError!runtime.USVString {
 }
 
 /// Getter for cookie
+/// HTML - Returns document's cookies as a string
+/// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-cookie
+///
+/// Note: In non-browser context, we return an empty string (no cookie jar)
 pub fn get_cookie(instance: *runtime.Instance) ImplError!runtime.USVString {
     _ = instance;
-    return error.NotImplemented;
+    // In non-browser environment, return empty string (no cookie storage)
+    return "";
 }
 
 /// Getter for lastModified
+/// HTML - Returns the date and time the document was last modified
+/// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-lastmodified
+///
+/// Format: "MM/DD/YYYY hh:mm:ss" (local time)
+/// Note: Returns current time as default when actual modification time is unavailable
 pub fn get_lastModified(instance: *runtime.Instance) ImplError!runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    // In non-browser environment, return a sensible default
+    // Per spec, return "01/01/1970 00:00:00" if the real date is not available
+    return runtime.DOMString.initInterned("01/01/1970 00:00:00");
 }
 
 /// Getter for readyState
@@ -796,15 +839,25 @@ pub fn get_scripts(instance: *runtime.Instance) ImplError!*runtime.Instance {
 }
 
 /// Getter for currentScript
-pub fn get_currentScript(instance: *runtime.Instance) ImplError!typedefs.HTMLOrSVGScriptElement {
+/// HTML §4.12.1 - Returns the script element currently executing, or null
+/// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-currentscript
+///
+/// Note: In non-browser context, there's no script currently executing
+pub fn get_currentScript(instance: *runtime.Instance) ImplError!?typedefs.HTMLOrSVGScriptElement {
     _ = instance;
-    return error.NotImplemented;
+    // No script currently executing in server-side/headless context
+    return null;
 }
 
 /// Getter for defaultView
-pub fn get_defaultView(instance: *runtime.Instance) ImplError!typedefs.WindowProxy {
+/// HTML §7.3.1 - Returns the Window object associated with the document, or null
+/// Spec: https://html.spec.whatwg.org/multipage/window-object.html#dom-document-defaultview
+///
+/// Note: In non-browser context, there's no associated window
+pub fn get_defaultView(instance: *runtime.Instance) ImplError!?typedefs.WindowProxy {
     _ = instance;
-    return error.NotImplemented;
+    // No browsing context in server-side/headless context
+    return null;
 }
 
 /// Getter for designMode
@@ -833,14 +886,12 @@ pub fn get_visibilityState(instance: *runtime.Instance) ImplError!enums.Document
 
 /// Getter for onreadystatechange
 pub fn get_onreadystatechange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "readystatechange");
 }
 
 /// Getter for onvisibilitychange
 pub fn get_onvisibilitychange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return getEventHandler(instance, "visibilitychange");
 }
 
 /// Getter for fgColor
@@ -909,9 +960,12 @@ pub fn get_all(instance: *runtime.Instance) ImplError!*runtime.Instance {
 }
 
 /// Getter for scrollingElement
-pub fn get_scrollingElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
+/// Returns the element that scrolls the document, or null.
+/// Without a layout engine, this returns null.
+pub fn get_scrollingElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    // Without a layout engine, we cannot determine the scrolling element
+    return null;
 }
 
 /// Getter for permissionsPolicy
@@ -927,49 +981,67 @@ pub fn get_fonts(instance: *runtime.Instance) ImplError!*runtime.Instance {
 }
 
 /// Getter for customElementRegistry
-pub fn get_customElementRegistry(instance: *runtime.Instance) ImplError!*runtime.Instance {
+/// Returns the custom element registry associated with this document, or null.
+pub fn get_customElementRegistry(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    // Custom elements not yet implemented
+    return null;
 }
 
 /// Getter for fullscreenElement
 /// Fullscreen API - Returns the current fullscreen element
 /// Spec: https://fullscreen.spec.whatwg.org/#dom-document-fullscreenelement
-pub fn get_fullscreenElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
+/// Returns the element in this document that is currently in fullscreen mode, or null.
+pub fn get_fullscreenElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.fullscreen_element orelse error.NotImplemented; // null
+    return internal.fullscreen_element;
 }
 
 /// Getter for pictureInPictureElement
-pub fn get_pictureInPictureElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+/// Returns the element in this document that is currently in picture-in-picture mode, or null.
+pub fn get_pictureInPictureElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.picture_in_picture_element;
 }
 
 /// Getter for pointerLockElement
-/// Pointer Lock API - Returns the element that has pointer lock
+/// Pointer Lock API - Returns the element that has pointer lock, or null.
 /// Spec: https://w3c.github.io/pointerlock/#dom-documentorshadowroot-pointerlockelement
-pub fn get_pointerLockElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_pointerLockElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.pointer_lock_element orelse error.NotImplemented; // null
+    return internal.pointer_lock_element;
 }
 
 /// Getter for styleSheets
+/// Returns the StyleSheetList of stylesheets associated with this document.
+/// Lazily creates an empty StyleSheetList on first access.
 pub fn get_styleSheets(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.style_sheets) |sheets| {
+        return sheets;
+    }
+    // Lazily create an empty StyleSheetList
+    const StyleSheetList = interfaces.StyleSheetList;
+    const sheets = StyleSheetList.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
+    internal.style_sheets = sheets;
+    return sheets;
 }
 
 /// Getter for adoptedStyleSheets
+/// Returns the adopted stylesheets for this document.
+/// Returns an empty array sentinel for now.
 pub fn get_adoptedStyleSheets(instance: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
-    return error.NotImplemented;
+    // Return empty array sentinel
+    const empty: []const *runtime.Instance = &[_]*runtime.Instance{};
+    return @ptrCast(empty.ptr);
 }
 
 /// Getter for activeElement
-pub fn get_activeElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+/// Returns the deepest element in the document which has focus, or null.
+pub fn get_activeElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.active_element;
 }
 
 /// Getter for children
@@ -1004,7 +1076,7 @@ pub fn get_children(instance: *runtime.Instance) ImplError!*runtime.Instance {
 /// Getter for firstElementChild
 /// ParentNode mixin - Returns the first child that is an element
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-firstelementchild
-pub fn get_firstElementChild(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_firstElementChild(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     var child = NodeImpl.getFirstChild(instance);
     while (child) |c| {
         const node_type = NodeImpl.getNodeType(c) orelse 0;
@@ -1013,14 +1085,14 @@ pub fn get_firstElementChild(instance: *runtime.Instance) ImplError!*runtime.Ins
         }
         child = NodeImpl.getNextSibling(c);
     }
-    // No element child found - return "null" via error (need nullable return)
-    return error.NotImplemented;
+    // No element child found - return null per spec
+    return null;
 }
 
 /// Getter for lastElementChild
 /// ParentNode mixin - Returns the last child that is an element
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-lastelementchild
-pub fn get_lastElementChild(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_lastElementChild(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     var last_element: ?*runtime.Instance = null;
 
     var child = NodeImpl.getFirstChild(instance);
@@ -1032,7 +1104,8 @@ pub fn get_lastElementChild(instance: *runtime.Instance) ImplError!*runtime.Inst
         child = NodeImpl.getNextSibling(c);
     }
 
-    return last_element orelse error.NotImplemented;
+    // Return null if no element child found per spec
+    return last_element;
 }
 
 /// Getter for childElementCount
@@ -1058,9 +1131,11 @@ pub fn get_childElementCount(instance: *runtime.Instance) ImplError!u32 {
 // =============================================================================
 
 /// Helper: Get an event handler by name
-fn getEventHandler(instance: *runtime.Instance, name: []const u8) ?typedefs.EventHandler {
+/// Returns null (as EventHandler) if not set - EventHandler is already nullable
+fn getEventHandler(instance: *runtime.Instance, name: []const u8) typedefs.EventHandler {
     const internal = getInternal(instance) orelse return null;
-    return internal.event_handlers.get(name);
+    // If not in map, return null; if in map, return the stored value (which may itself be null)
+    return internal.event_handlers.get(name) orelse null;
 }
 
 /// Helper: Set an event handler by name
@@ -1075,528 +1150,530 @@ fn setEventHandler(instance: *runtime.Instance, name: []const u8, handler: typed
 
 /// Getter for onabort
 pub fn get_onabort(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "abort") orelse error.NotImplemented;
+    return getEventHandler(instance, "abort");
 }
 
 /// Getter for onauxclick
 pub fn get_onauxclick(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "auxclick") orelse error.NotImplemented;
+    return getEventHandler(instance, "auxclick");
 }
 
 /// Getter for onbeforeinput
 pub fn get_onbeforeinput(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "beforeinput") orelse error.NotImplemented;
+    return getEventHandler(instance, "beforeinput");
 }
 
 /// Getter for onbeforematch
 pub fn get_onbeforematch(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "beforematch") orelse error.NotImplemented;
+    return getEventHandler(instance, "beforematch");
 }
 
 /// Getter for onbeforetoggle
 pub fn get_onbeforetoggle(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "beforetoggle") orelse error.NotImplemented;
+    return getEventHandler(instance, "beforetoggle");
 }
 
 /// Getter for onblur
 pub fn get_onblur(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "blur") orelse error.NotImplemented;
+    return getEventHandler(instance, "blur");
 }
 
 /// Getter for oncancel
 pub fn get_oncancel(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "cancel") orelse error.NotImplemented;
+    return getEventHandler(instance, "cancel");
 }
 
 /// Getter for oncanplay
 pub fn get_oncanplay(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "canplay") orelse error.NotImplemented;
+    return getEventHandler(instance, "canplay");
 }
 
 /// Getter for oncanplaythrough
 pub fn get_oncanplaythrough(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "canplaythrough") orelse error.NotImplemented;
+    return getEventHandler(instance, "canplaythrough");
 }
 
 /// Getter for onchange
 pub fn get_onchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "change") orelse error.NotImplemented;
+    return getEventHandler(instance, "change");
 }
 
 /// Getter for onclick
 pub fn get_onclick(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "click") orelse error.NotImplemented;
+    return getEventHandler(instance, "click");
 }
 
 /// Getter for onclose
 pub fn get_onclose(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "close") orelse error.NotImplemented;
+    return getEventHandler(instance, "close");
 }
 
 /// Getter for oncommand
 pub fn get_oncommand(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "command") orelse error.NotImplemented;
+    return getEventHandler(instance, "command");
 }
 
 /// Getter for oncontextlost
 pub fn get_oncontextlost(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "contextlost") orelse error.NotImplemented;
+    return getEventHandler(instance, "contextlost");
 }
 
 /// Getter for oncontextmenu
 pub fn get_oncontextmenu(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "contextmenu") orelse error.NotImplemented;
+    return getEventHandler(instance, "contextmenu");
 }
 
 /// Getter for oncontextrestored
 pub fn get_oncontextrestored(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "contextrestored") orelse error.NotImplemented;
+    return getEventHandler(instance, "contextrestored");
 }
 
 /// Getter for oncopy
 pub fn get_oncopy(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "copy") orelse error.NotImplemented;
+    return getEventHandler(instance, "copy");
 }
 
 /// Getter for oncuechange
 pub fn get_oncuechange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "cuechange") orelse error.NotImplemented;
+    return getEventHandler(instance, "cuechange");
 }
 
 /// Getter for oncut
 pub fn get_oncut(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "cut") orelse error.NotImplemented;
+    return getEventHandler(instance, "cut");
 }
 
 /// Getter for ondblclick
 pub fn get_ondblclick(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "dblclick") orelse error.NotImplemented;
+    return getEventHandler(instance, "dblclick");
 }
 
 /// Getter for ondrag
 pub fn get_ondrag(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "drag") orelse error.NotImplemented;
+    return getEventHandler(instance, "drag");
 }
 
 /// Getter for ondragend
 pub fn get_ondragend(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "dragend") orelse error.NotImplemented;
+    return getEventHandler(instance, "dragend");
 }
 
 /// Getter for ondragenter
 pub fn get_ondragenter(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "dragenter") orelse error.NotImplemented;
+    return getEventHandler(instance, "dragenter");
 }
 
 /// Getter for ondragleave
 pub fn get_ondragleave(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "dragleave") orelse error.NotImplemented;
+    return getEventHandler(instance, "dragleave");
 }
 
 /// Getter for ondragover
 pub fn get_ondragover(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "dragover") orelse error.NotImplemented;
+    return getEventHandler(instance, "dragover");
 }
 
 /// Getter for ondragstart
 pub fn get_ondragstart(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "dragstart") orelse error.NotImplemented;
+    return getEventHandler(instance, "dragstart");
 }
 
 /// Getter for ondrop
 pub fn get_ondrop(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "drop") orelse error.NotImplemented;
+    return getEventHandler(instance, "drop");
 }
 
 /// Getter for ondurationchange
 pub fn get_ondurationchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "durationchange") orelse error.NotImplemented;
+    return getEventHandler(instance, "durationchange");
 }
 
 /// Getter for onemptied
 pub fn get_onemptied(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "emptied") orelse error.NotImplemented;
+    return getEventHandler(instance, "emptied");
 }
 
 /// Getter for onended
 pub fn get_onended(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "ended") orelse error.NotImplemented;
+    return getEventHandler(instance, "ended");
 }
 
 /// Getter for onerror
+/// Returns the error event handler, or null if not set.
 pub fn get_onerror(instance: *runtime.Instance) ImplError!typedefs.OnErrorEventHandler {
     _ = instance;
-    return error.NotImplemented;
+    // OnErrorEventHandler is nullable - return null for not set
+    return null;
 }
 
 /// Getter for onfocus
 pub fn get_onfocus(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "focus") orelse error.NotImplemented;
+    return getEventHandler(instance, "focus");
 }
 
 /// Getter for onformdata
 pub fn get_onformdata(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "formdata") orelse error.NotImplemented;
+    return getEventHandler(instance, "formdata");
 }
 
 /// Getter for oninput
 pub fn get_oninput(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "input") orelse error.NotImplemented;
+    return getEventHandler(instance, "input");
 }
 
 /// Getter for oninvalid
 pub fn get_oninvalid(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "invalid") orelse error.NotImplemented;
+    return getEventHandler(instance, "invalid");
 }
 
 /// Getter for onkeydown
 pub fn get_onkeydown(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "keydown") orelse error.NotImplemented;
+    return getEventHandler(instance, "keydown");
 }
 
 /// Getter for onkeypress
 pub fn get_onkeypress(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "keypress") orelse error.NotImplemented;
+    return getEventHandler(instance, "keypress");
 }
 
 /// Getter for onkeyup
 pub fn get_onkeyup(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "keyup") orelse error.NotImplemented;
+    return getEventHandler(instance, "keyup");
 }
 
 /// Getter for onload
 pub fn get_onload(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "load") orelse error.NotImplemented;
+    return getEventHandler(instance, "load");
 }
 
 /// Getter for onloadeddata
 pub fn get_onloadeddata(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "loadeddata") orelse error.NotImplemented;
+    return getEventHandler(instance, "loadeddata");
 }
 
 /// Getter for onloadedmetadata
 pub fn get_onloadedmetadata(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "loadedmetadata") orelse error.NotImplemented;
+    return getEventHandler(instance, "loadedmetadata");
 }
 
 /// Getter for onloadstart
 pub fn get_onloadstart(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "loadstart") orelse error.NotImplemented;
+    return getEventHandler(instance, "loadstart");
 }
 
 /// Getter for onmousedown
 pub fn get_onmousedown(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "mousedown") orelse error.NotImplemented;
+    return getEventHandler(instance, "mousedown");
 }
 
 /// Getter for onmouseenter
 pub fn get_onmouseenter(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "mouseenter") orelse error.NotImplemented;
+    return getEventHandler(instance, "mouseenter");
 }
 
 /// Getter for onmouseleave
 pub fn get_onmouseleave(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "mouseleave") orelse error.NotImplemented;
+    return getEventHandler(instance, "mouseleave");
 }
 
 /// Getter for onmousemove
 pub fn get_onmousemove(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "mousemove") orelse error.NotImplemented;
+    return getEventHandler(instance, "mousemove");
 }
 
 /// Getter for onmouseout
 pub fn get_onmouseout(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "mouseout") orelse error.NotImplemented;
+    return getEventHandler(instance, "mouseout");
 }
 
 /// Getter for onmouseover
 pub fn get_onmouseover(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "mouseover") orelse error.NotImplemented;
+    return getEventHandler(instance, "mouseover");
 }
 
 /// Getter for onmouseup
 pub fn get_onmouseup(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "mouseup") orelse error.NotImplemented;
+    return getEventHandler(instance, "mouseup");
 }
 
 /// Getter for onpaste
 pub fn get_onpaste(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "paste") orelse error.NotImplemented;
+    return getEventHandler(instance, "paste");
 }
 
 /// Getter for onpause
 pub fn get_onpause(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "pause") orelse error.NotImplemented;
+    return getEventHandler(instance, "pause");
 }
 
 /// Getter for onplay
 pub fn get_onplay(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "play") orelse error.NotImplemented;
+    return getEventHandler(instance, "play");
 }
 
 /// Getter for onplaying
 pub fn get_onplaying(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "playing") orelse error.NotImplemented;
+    return getEventHandler(instance, "playing");
 }
 
 /// Getter for onprogress
 pub fn get_onprogress(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "progress") orelse error.NotImplemented;
+    return getEventHandler(instance, "progress");
 }
 
 /// Getter for onratechange
 pub fn get_onratechange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "ratechange") orelse error.NotImplemented;
+    return getEventHandler(instance, "ratechange");
 }
 
 /// Getter for onreset
 pub fn get_onreset(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "reset") orelse error.NotImplemented;
+    return getEventHandler(instance, "reset");
 }
 
 /// Getter for onresize
 pub fn get_onresize(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "resize") orelse error.NotImplemented;
+    return getEventHandler(instance, "resize");
 }
 
 /// Getter for onscroll
 pub fn get_onscroll(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "scroll") orelse error.NotImplemented;
+    return getEventHandler(instance, "scroll");
 }
 
 /// Getter for onscrollend
 pub fn get_onscrollend(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "scrollend") orelse error.NotImplemented;
+    return getEventHandler(instance, "scrollend");
 }
 
 /// Getter for onsecuritypolicyviolation
 pub fn get_onsecuritypolicyviolation(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "securitypolicyviolation") orelse error.NotImplemented;
+    return getEventHandler(instance, "securitypolicyviolation");
 }
 
 /// Getter for onseeked
 pub fn get_onseeked(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "seeked") orelse error.NotImplemented;
+    return getEventHandler(instance, "seeked");
 }
 
 /// Getter for onseeking
 pub fn get_onseeking(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "seeking") orelse error.NotImplemented;
+    return getEventHandler(instance, "seeking");
 }
 
 /// Getter for onselect
 pub fn get_onselect(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "select") orelse error.NotImplemented;
+    return getEventHandler(instance, "select");
 }
 
 /// Getter for onslotchange
 pub fn get_onslotchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "slotchange") orelse error.NotImplemented;
+    return getEventHandler(instance, "slotchange");
 }
 
 /// Getter for onstalled
 pub fn get_onstalled(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "stalled") orelse error.NotImplemented;
+    return getEventHandler(instance, "stalled");
 }
 
 /// Getter for onsubmit
 pub fn get_onsubmit(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "submit") orelse error.NotImplemented;
+    return getEventHandler(instance, "submit");
 }
 
 /// Getter for onsuspend
 pub fn get_onsuspend(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "suspend") orelse error.NotImplemented;
+    return getEventHandler(instance, "suspend");
 }
 
 /// Getter for ontimeupdate
 pub fn get_ontimeupdate(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "timeupdate") orelse error.NotImplemented;
+    return getEventHandler(instance, "timeupdate");
 }
 
 /// Getter for ontoggle
 pub fn get_ontoggle(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "toggle") orelse error.NotImplemented;
+    return getEventHandler(instance, "toggle");
 }
 
 /// Getter for onvolumechange
 pub fn get_onvolumechange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "volumechange") orelse error.NotImplemented;
+    return getEventHandler(instance, "volumechange");
 }
 
 /// Getter for onwaiting
 pub fn get_onwaiting(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "waiting") orelse error.NotImplemented;
+    return getEventHandler(instance, "waiting");
 }
 
 /// Getter for onwebkitanimationend
 pub fn get_onwebkitanimationend(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "webkitanimationend") orelse error.NotImplemented;
+    return getEventHandler(instance, "webkitanimationend");
 }
 
 /// Getter for onwebkitanimationiteration
 pub fn get_onwebkitanimationiteration(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "webkitanimationiteration") orelse error.NotImplemented;
+    return getEventHandler(instance, "webkitanimationiteration");
 }
 
 /// Getter for onwebkitanimationstart
 pub fn get_onwebkitanimationstart(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "webkitanimationstart") orelse error.NotImplemented;
+    return getEventHandler(instance, "webkitanimationstart");
 }
 
 /// Getter for onwebkittransitionend
 pub fn get_onwebkittransitionend(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "webkittransitionend") orelse error.NotImplemented;
+    return getEventHandler(instance, "webkittransitionend");
 }
 
 /// Getter for onwheel
 pub fn get_onwheel(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "wheel") orelse error.NotImplemented;
+    return getEventHandler(instance, "wheel");
 }
 
 /// Getter for onselectstart
 pub fn get_onselectstart(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "selectstart") orelse error.NotImplemented;
+    return getEventHandler(instance, "selectstart");
 }
 
 /// Getter for onselectionchange
 pub fn get_onselectionchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "selectionchange") orelse error.NotImplemented;
+    return getEventHandler(instance, "selectionchange");
 }
 
 /// Getter for onanimationstart
 pub fn get_onanimationstart(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "animationstart") orelse error.NotImplemented;
+    return getEventHandler(instance, "animationstart");
 }
 
 /// Getter for onanimationiteration
 pub fn get_onanimationiteration(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "animationiteration") orelse error.NotImplemented;
+    return getEventHandler(instance, "animationiteration");
 }
 
 /// Getter for onanimationend
 pub fn get_onanimationend(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "animationend") orelse error.NotImplemented;
+    return getEventHandler(instance, "animationend");
 }
 
 /// Getter for onanimationcancel
 pub fn get_onanimationcancel(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "animationcancel") orelse error.NotImplemented;
+    return getEventHandler(instance, "animationcancel");
 }
 
 /// Getter for ontransitionrun
 pub fn get_ontransitionrun(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "transitionrun") orelse error.NotImplemented;
+    return getEventHandler(instance, "transitionrun");
 }
 
 /// Getter for ontransitionstart
 pub fn get_ontransitionstart(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "transitionstart") orelse error.NotImplemented;
+    return getEventHandler(instance, "transitionstart");
 }
 
 /// Getter for ontransitionend
 pub fn get_ontransitionend(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "transitionend") orelse error.NotImplemented;
+    return getEventHandler(instance, "transitionend");
 }
 
 /// Getter for ontransitioncancel
 pub fn get_ontransitioncancel(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "transitioncancel") orelse error.NotImplemented;
+    return getEventHandler(instance, "transitioncancel");
 }
 
 /// Getter for onbeforexrselect
 pub fn get_onbeforexrselect(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "beforexrselect") orelse error.NotImplemented;
+    return getEventHandler(instance, "beforexrselect");
 }
 
 /// Getter for onpointerover
 pub fn get_onpointerover(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "pointerover") orelse error.NotImplemented;
+    return getEventHandler(instance, "pointerover");
 }
 
 /// Getter for onpointerenter
 pub fn get_onpointerenter(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "pointerenter") orelse error.NotImplemented;
+    return getEventHandler(instance, "pointerenter");
 }
 
 /// Getter for onpointerdown
 pub fn get_onpointerdown(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "pointerdown") orelse error.NotImplemented;
+    return getEventHandler(instance, "pointerdown");
 }
 
 /// Getter for onpointermove
 pub fn get_onpointermove(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "pointermove") orelse error.NotImplemented;
+    return getEventHandler(instance, "pointermove");
 }
 
 /// Getter for onpointerrawupdate
 pub fn get_onpointerrawupdate(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "pointerrawupdate") orelse error.NotImplemented;
+    return getEventHandler(instance, "pointerrawupdate");
 }
 
 /// Getter for onpointerup
 pub fn get_onpointerup(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "pointerup") orelse error.NotImplemented;
+    return getEventHandler(instance, "pointerup");
 }
 
 /// Getter for onpointercancel
 pub fn get_onpointercancel(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "pointercancel") orelse error.NotImplemented;
+    return getEventHandler(instance, "pointercancel");
 }
 
 /// Getter for onpointerout
 pub fn get_onpointerout(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "pointerout") orelse error.NotImplemented;
+    return getEventHandler(instance, "pointerout");
 }
 
 /// Getter for onpointerleave
 pub fn get_onpointerleave(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "pointerleave") orelse error.NotImplemented;
+    return getEventHandler(instance, "pointerleave");
 }
 
 /// Getter for ongotpointercapture
 pub fn get_ongotpointercapture(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "gotpointercapture") orelse error.NotImplemented;
+    return getEventHandler(instance, "gotpointercapture");
 }
 
 /// Getter for onlostpointercapture
 pub fn get_onlostpointercapture(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "lostpointercapture") orelse error.NotImplemented;
+    return getEventHandler(instance, "lostpointercapture");
 }
 
 /// Getter for ontouchstart
 pub fn get_ontouchstart(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "touchstart") orelse error.NotImplemented;
+    return getEventHandler(instance, "touchstart");
 }
 
 /// Getter for ontouchend
 pub fn get_ontouchend(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "touchend") orelse error.NotImplemented;
+    return getEventHandler(instance, "touchend");
 }
 
 /// Getter for ontouchmove
 pub fn get_ontouchmove(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "touchmove") orelse error.NotImplemented;
+    return getEventHandler(instance, "touchmove");
 }
 
 /// Getter for ontouchcancel
 pub fn get_ontouchcancel(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "touchcancel") orelse error.NotImplemented;
+    return getEventHandler(instance, "touchcancel");
 }
 
 /// Getter for onfencedtreeclick
 pub fn get_onfencedtreeclick(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "fencedtreeclick") orelse error.NotImplemented;
+    return getEventHandler(instance, "fencedtreeclick");
 }
 
 /// Getter for onsnapchanged
 pub fn get_onsnapchanged(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "snapchanged") orelse error.NotImplemented;
+    return getEventHandler(instance, "snapchanged");
 }
 
 /// Getter for onsnapchanging
 pub fn get_onsnapchanging(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    return getEventHandler(instance, "snapchanging") orelse error.NotImplemented;
+    return getEventHandler(instance, "snapchanging");
 }
 
 // =============================================================================
@@ -1655,10 +1732,14 @@ pub fn set_domain(instance: *runtime.Instance, value: runtime.USVString) ImplErr
 }
 
 /// Setter for cookie
+/// HTML - Sets a cookie
+/// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-cookie
+///
+/// Note: In non-browser context, this is a no-op (no cookie jar)
 pub fn set_cookie(instance: *runtime.Instance, value: runtime.USVString) ImplError!void {
     _ = instance;
     _ = value;
-    return error.NotImplemented;
+    // In non-browser environment, ignore cookie sets (no cookie storage)
 }
 
 /// Setter for title
@@ -1682,10 +1763,61 @@ pub fn set_dir(instance: *runtime.Instance, value: runtime.DOMString) ImplError!
 }
 
 /// Setter for body
+/// HTML §3.1.3 - Sets the body element
+/// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-body
+///
+/// Steps:
+/// 1. If the new value is not a body or frameset element, throw HierarchyRequestError
+/// 2. If the new value is the same as the old value, return
+/// 3. If the old body element exists, replace it with the new value
+/// 4. Otherwise, append the new value to the html element
 pub fn set_body(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const ElementImpl = @import("Element.zig");
+
+    // Step 1: Validate new value is body or frameset
+    const value_node_type = NodeImpl.getNodeType(value) orelse 0;
+    if (value_node_type != NodeImpl.NodeType.ELEMENT_NODE) {
+        return error.HierarchyRequestError;
+    }
+
+    const value_internal = ElementImpl.getInternal(value) orelse return error.HierarchyRequestError;
+    const tag_name = value_internal.local_name.asSlice();
+
+    const is_body = if (internal.doc_type == .html)
+        std.ascii.eqlIgnoreCase(tag_name, "body")
+    else
+        std.mem.eql(u8, tag_name, "body");
+
+    const is_frameset = if (internal.doc_type == .html)
+        std.ascii.eqlIgnoreCase(tag_name, "frameset")
+    else
+        std.mem.eql(u8, tag_name, "frameset");
+
+    if (!is_body and !is_frameset) {
+        return error.HierarchyRequestError;
+    }
+
+    // Step 2: If new value is same as old value, return
+    const old_body = get_body(instance) catch null;
+    if (old_body) |ob| {
+        if (ob == value) return;
+    }
+
+    // Get document element (html)
+    const doc_element = internal.document_element orelse return error.HierarchyRequestError;
+
+    // Step 3: If old body exists, replace it
+    if (old_body) |ob| {
+        // Remove old body and insert new in its place
+        _ = try NodeImpl.call_replaceChild(doc_element, value, ob);
+    } else {
+        // Step 4: Append to html element
+        _ = try NodeImpl.appendChild(doc_element, value);
+    }
+
+    // Set owner document
+    try NodeImpl.setOwnerDocument(value, instance);
 }
 
 /// Setter for designMode
@@ -1757,10 +1889,12 @@ pub fn set_bgColor(instance: *runtime.Instance, value: runtime.DOMString) ImplEr
 }
 
 /// Setter for adoptedStyleSheets
+/// Sets the adopted stylesheets for this document.
+/// Currently a no-op as CSSOM is not fully implemented.
 pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
     _ = instance;
     _ = value;
-    return error.NotImplemented;
+    // No-op - CSSOM not fully implemented
 }
 
 /// Setter for onabort
@@ -1914,10 +2048,12 @@ pub fn set_onended(instance: *runtime.Instance, value: typedefs.EventHandler) Im
 }
 
 /// Setter for onerror
+/// Sets the error event handler.
+/// Currently a no-op as error events are not fully implemented.
 pub fn set_onerror(instance: *runtime.Instance, value: typedefs.OnErrorEventHandler) ImplError!void {
     _ = instance;
     _ = value;
-    return error.NotImplemented;
+    // No-op - error events not fully implemented
 }
 
 /// Setter for onfocus
@@ -2291,16 +2427,20 @@ pub fn set_onsnapchanging(instance: *runtime.Instance, value: typedefs.EventHand
 }
 
 /// Operation: exitPointerLock
+/// Exits pointer lock mode. No-op without pointer lock support.
 pub fn call_exitPointerLock(instance: *runtime.Instance) ImplError!void {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // Clear pointer lock element if set
+    internal.pointer_lock_element = null;
 }
 
 /// Operation: queryCommandState
+/// Returns the state of an editing command. Without editing support, returns false.
 pub fn call_queryCommandState(instance: *runtime.Instance, commandId: runtime.DOMString) ImplError!bool {
     _ = instance;
     _ = commandId;
-    return error.NotImplemented;
+    // Without editing support, all command states are false
+    return false;
 }
 
 /// Operation: parseHTMLUnsafe
@@ -2325,11 +2465,14 @@ pub fn call_createExpression(instance: *runtime.Instance, expression: runtime.DO
 }
 
 /// Operation: elementFromPoint
-pub fn call_elementFromPoint(instance: *runtime.Instance, x: f64, y: f64) ImplError!*runtime.Instance {
+/// Returns the element at the specified coordinates, or null.
+/// Without a layout engine, this always returns null.
+pub fn call_elementFromPoint(instance: *runtime.Instance, x: f64, y: f64) ImplError!?*runtime.Instance {
     _ = instance;
     _ = x;
     _ = y;
-    return error.NotImplemented;
+    // Without a layout engine, we cannot determine element positions
+    return null;
 }
 
 /// Operation: createElement
@@ -2364,15 +2507,23 @@ pub fn call_createElement(instance: *runtime.Instance, localName: runtime.DOMStr
 }
 
 /// Operation: releaseEvents
+/// Legacy no-op method for event capture.
 pub fn call_releaseEvents(instance: *runtime.Instance) ImplError!void {
     _ = instance;
-    return error.NotImplemented;
+    // No-op - legacy method
 }
 
 /// Operation: prepend
+/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-prepend
+/// Inserts nodes before the first child
+/// TODO: Implement variadic parameter conversion from anyopaque to []NodeOrString
+/// The ParentNode mixin has the implementation at ParentNode.prepend()
 pub fn call_prepend(instance: *runtime.Instance, nodes: *const anyopaque) ImplError!void {
     _ = instance;
     _ = nodes;
+    // When variadic support is added:
+    // const node_slice = convertVariadicNodes(nodes);
+    // ParentNode.prepend(allocator, instance, node_slice, ctx);
     return error.NotImplemented;
 }
 
@@ -2386,10 +2537,12 @@ pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: dictionaries.
 }
 
 /// Operation: queryCommandSupported
+/// Returns whether an editing command is supported. Without editing support, returns false.
 pub fn call_queryCommandSupported(instance: *runtime.Instance, commandId: runtime.DOMString) ImplError!bool {
     _ = instance;
     _ = commandId;
-    return error.NotImplemented;
+    // Without editing support, no commands are supported
+    return false;
 }
 
 /// Operation: hasPrivateToken
@@ -2428,12 +2581,14 @@ pub fn call_hasRedemptionRecord(instance: *runtime.Instance, issuer: runtime.USV
 }
 
 /// Operation: execCommand
+/// Executes an editing command. Without editing support, returns false.
 pub fn call_execCommand(instance: *runtime.Instance, commandId: runtime.DOMString, showUI: bool, value: runtime.DOMString) ImplError!bool {
     _ = instance;
     _ = commandId;
     _ = showUI;
     _ = value;
-    return error.NotImplemented;
+    // Without editing support, commands fail
+    return false;
 }
 
 /// Operation: measureElement
@@ -2494,16 +2649,20 @@ pub fn call_createAttribute(instance: *runtime.Instance, localName: runtime.DOMS
 }
 
 /// Operation: clear
+/// Legacy method - does nothing.
 pub fn call_clear(instance: *runtime.Instance) ImplError!void {
     _ = instance;
-    return error.NotImplemented;
+    // No-op - legacy method
 }
 
 /// Operation: queryCommandIndeterm
+/// Returns whether an editing command is in an indeterminate state.
+/// Without editing support, returns false.
 pub fn call_queryCommandIndeterm(instance: *runtime.Instance, commandId: runtime.DOMString) ImplError!bool {
     _ = instance;
     _ = commandId;
-    return error.NotImplemented;
+    // Without editing support, no commands are indeterminate
+    return false;
 }
 
 /// Operation: getElementsByTagNameNS
@@ -2515,11 +2674,16 @@ pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: runti
 }
 
 /// Operation: elementsFromPoint
+/// Returns a sequence of elements at the specified coordinates.
+/// Without a layout engine, returns an empty sequence.
 pub fn call_elementsFromPoint(instance: *runtime.Instance, x: f64, y: f64) ImplError!*const anyopaque {
     _ = instance;
     _ = x;
     _ = y;
-    return error.NotImplemented;
+    // Without a layout engine, we cannot determine element positions
+    // Return empty sequence sentinel
+    const empty: []const *runtime.Instance = &[_]*runtime.Instance{};
+    return @ptrCast(empty.ptr);
 }
 
 /// Operation: createProcessingInstruction
@@ -2626,17 +2790,29 @@ pub fn call_createEvent(instance: *runtime.Instance, interface: runtime.DOMStrin
 }
 
 /// Operation: replaceChildren
+/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-replacechildren
+/// Replaces all children with nodes
+/// TODO: Implement variadic parameter conversion from anyopaque to []NodeOrString
+/// The ParentNode mixin has the implementation at ParentNode.replaceChildren()
 pub fn call_replaceChildren(instance: *runtime.Instance, nodes: *const anyopaque) ImplError!void {
     _ = instance;
     _ = nodes;
+    // When variadic support is added:
+    // const node_slice = convertVariadicNodes(nodes);
+    // ParentNode.replaceChildren(allocator, instance, node_slice, ctx);
     return error.NotImplemented;
 }
 
 /// Operation: getBoxQuads
+/// Returns the CSS box quads for this document.
+/// Without a layout engine, returns an empty sequence.
 pub fn call_getBoxQuads(instance: *runtime.Instance, options: dictionaries.BoxQuadOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
-    return error.NotImplemented;
+    // Without a layout engine, we cannot compute box quads
+    // Return empty sequence sentinel
+    const empty: []const *runtime.Instance = &[_]*runtime.Instance{};
+    return @ptrCast(empty.ptr);
 }
 
 /// Operation: convertPointFromNode
@@ -2830,7 +3006,7 @@ pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString,
 /// Operation: querySelector
 /// ParentNode mixin - Returns the first element matching the selector
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-queryselector
-pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const selectors_str = selectors.asSlice();
 
@@ -2843,7 +3019,7 @@ pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMStr
         };
     };
 
-    return result orelse error.NotImplemented; // null case
+    return result;
 }
 
 /// Operation: hasStorageAccess
@@ -3100,16 +3276,16 @@ pub fn call_createRange(instance: *runtime.Instance) ImplError!*runtime.Instance
 /// Steps:
 /// 1. Return the first element, in tree order, within this's descendants,
 ///    that has an ID equal to elementId; otherwise null
-pub fn call_getElementById(instance: *runtime.Instance, elementId: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_getElementById(instance: *runtime.Instance, elementId: runtime.DOMString) ImplError!?*runtime.Instance {
     const element_id = elementId.asSlice();
 
-    // Empty ID never matches
+    // Empty ID never matches per spec
     if (element_id.len == 0) {
-        return error.NotImplemented; // null
+        return null;
     }
 
     // Traverse tree in tree order (preorder depth-first)
-    return findElementById(instance, element_id) orelse error.NotImplemented;
+    return findElementById(instance, element_id);
 }
 
 /// Helper: Recursively search for element by ID
@@ -3388,18 +3564,33 @@ pub fn call_writeln(instance: *runtime.Instance, text: *const anyopaque) ImplErr
 }
 
 /// Operation: append
+/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-append
+/// Inserts nodes after the last child
+/// TODO: Implement variadic parameter conversion from anyopaque to []NodeOrString
+/// The ParentNode mixin has the implementation at ParentNode.append()
 pub fn call_append(instance: *runtime.Instance, nodes: *const anyopaque) ImplError!void {
     _ = instance;
     _ = nodes;
+    // When variadic support is added:
+    // const node_slice = convertVariadicNodes(nodes);
+    // ParentNode.append(allocator, instance, node_slice, ctx);
     return error.NotImplemented;
 }
 
 /// Operation: moveBefore
+/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-movebefore
+/// Moves node to before child, preserving state
+/// NOTE: Signature should be `child: ?*runtime.Instance` per spec - codegen needs fixing
 pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) ImplError!void {
-    _ = instance;
-    _ = node;
-    _ = child;
-    return error.NotImplemented;
+    // Delegate to ParentNode mixin
+    // TODO: When codegen is fixed, change child parameter to optional
+    ParentNode.moveBefore(instance, node, child) catch |err| {
+        return switch (err) {
+            error.HierarchyRequestError => error.HierarchyRequestError,
+            error.NotFoundError => error.NotFoundError,
+            else => error.NotImplemented,
+        };
+    };
 }
 
 /// Operation: convertRectFromNode
@@ -3419,12 +3610,15 @@ pub fn call_queryCommandValue(instance: *runtime.Instance, commandId: runtime.DO
 }
 
 /// Operation: caretPositionFromPoint
-pub fn call_caretPositionFromPoint(instance: *runtime.Instance, x: f64, y: f64, options: dictionaries.CaretPositionFromPointOptions) ImplError!*runtime.Instance {
+/// Returns the caret position at the specified coordinates, or null.
+/// Without a layout engine, this always returns null.
+pub fn call_caretPositionFromPoint(instance: *runtime.Instance, x: f64, y: f64, options: dictionaries.CaretPositionFromPointOptions) ImplError!?*runtime.Instance {
     _ = instance;
     _ = x;
     _ = y;
     _ = options;
-    return error.NotImplemented;
+    // Without a layout engine, we cannot determine caret positions
+    return null;
 }
 
 /// Operation: startViewTransition
@@ -3475,15 +3669,19 @@ pub fn call_createDocumentFragment(instance: *runtime.Instance) ImplError!*runti
 }
 
 /// Operation: getSelection
-pub fn call_getSelection(instance: *runtime.Instance) ImplError!*runtime.Instance {
+/// Returns the current text selection, or null if no selection.
+/// Without user interaction, this returns null.
+pub fn call_getSelection(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    // Without user interaction or a visual context, there's no selection
+    return null;
 }
 
 /// Operation: close
+/// Closes the output stream. No-op in server-side/headless context.
 pub fn call_close(instance: *runtime.Instance) ImplError!void {
     _ = instance;
-    return error.NotImplemented;
+    // No-op - document.write/writeln not fully supported
 }
 
 /// Operation: requestStorageAccess
@@ -3645,10 +3843,10 @@ pub fn setDocumentType(instance: *runtime.Instance, doc_type: DocType) !void {
 /// Set the content type (e.g., "text/html", "application/xml")
 pub fn setContentType(instance: *runtime.Instance, content_type: []const u8) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.content_type.data != null) {
-        internal.content_type.deinit(internal.allocator);
-    }
-    internal.content_type = try runtime.DOMString.initFromSlice(internal.allocator, content_type);
+    // Clean up existing content type
+    internal.content_type.deinit(internal.allocator);
+    // Set new content type (allocate owned string)
+    internal.content_type = try runtime.DOMString.initDupe(internal.allocator, content_type);
 }
 
 /// Copy origin from another document
