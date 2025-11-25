@@ -62,28 +62,57 @@ pub const InternalState = struct {
 
 /// Get the internal state from an instance
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    const state = instance.getState(State);
-    return state.own._internal;
+    return getInternalFromRegistry(instance);
 }
 
 /// Initialize instance (creates the instance)
+/// Chains to parent class initialization: CharacterData -> Node -> EventTarget
+///
+/// IMPORTANT: Due to state hierarchy complexity, internal state is stored
+/// in a global registry rather than in the State struct.
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
+    // Chain to parent class (CharacterData) which chains to Node -> EventTarget
+    const instance = try CharacterDataImpl.init(allocator, StateType, vtable, ctx);
+    errdefer CharacterDataImpl.deinit(instance);
 
-    // Initialize Text internal state
-    const state = instance.getState(StateType);
+    // Initialize Text internal state in global registry
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
-    state.own._internal = internal;
+    try setInternalInRegistry(instance, internal);
 
     return instance;
+}
+
+/// Global registry for Text internal state
+var text_registry: std.AutoHashMap(usize, *InternalState) = undefined;
+var text_registry_initialized: bool = false;
+
+fn ensureTextRegistry() void {
+    if (!text_registry_initialized) {
+        text_registry = std.AutoHashMap(usize, *InternalState).init(std.heap.page_allocator);
+        text_registry_initialized = true;
+    }
+}
+
+fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) !void {
+    ensureTextRegistry();
+    try text_registry.put(@intFromPtr(instance), internal);
+}
+
+fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
+    ensureTextRegistry();
+    return text_registry.get(@intFromPtr(instance));
+}
+
+/// Get Text's internal state from the registry
+pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
+    return getInternalFromRegistry(instance);
 }
 
 /// Deinitialize instance

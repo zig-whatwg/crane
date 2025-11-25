@@ -56,28 +56,57 @@ pub const InternalState = struct {
 
 /// Get the internal state from an instance
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    const state = instance.getState(State);
-    return state.own._internal;
+    return getInternalFromRegistry(instance);
 }
 
 /// Initialize instance (creates the instance)
+/// Chains to parent class initialization: Node -> EventTarget
+///
+/// IMPORTANT: Due to state hierarchy complexity, internal state is stored
+/// in a global registry rather than in the State struct.
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
+    // Chain to parent class (Node) which chains to EventTarget
+    const instance = try NodeImpl.init(allocator, StateType, vtable, ctx);
+    errdefer NodeImpl.deinit(instance);
 
-    // Initialize DocumentFragment internal state
-    const state = instance.getState(StateType);
+    // Initialize DocumentFragment internal state in global registry
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
-    state.own._internal = internal;
+    try setInternalInRegistry(instance, internal);
 
     return instance;
+}
+
+/// Global registry for DocumentFragment internal state
+var docfrag_registry: std.AutoHashMap(usize, *InternalState) = undefined;
+var docfrag_registry_initialized: bool = false;
+
+fn ensureDocFragRegistry() void {
+    if (!docfrag_registry_initialized) {
+        docfrag_registry = std.AutoHashMap(usize, *InternalState).init(std.heap.page_allocator);
+        docfrag_registry_initialized = true;
+    }
+}
+
+fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) !void {
+    ensureDocFragRegistry();
+    try docfrag_registry.put(@intFromPtr(instance), internal);
+}
+
+fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
+    ensureDocFragRegistry();
+    return docfrag_registry.get(@intFromPtr(instance));
+}
+
+/// Get DocumentFragment's internal state from the registry
+pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
+    return getInternalFromRegistry(instance);
 }
 
 /// Deinitialize instance

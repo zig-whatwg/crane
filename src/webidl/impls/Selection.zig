@@ -32,6 +32,11 @@ pub const ImplError = error{
     InvalidStateError,
     IndexSizeError,
     OutOfMemory,
+    InvalidNodeTypeError,
+    NotSupportedError,
+    HierarchyRequestError,
+    NotFoundError,
+    WrongDocumentError,
 };
 
 /// Selection direction constants
@@ -262,7 +267,7 @@ pub fn call_getRangeAt(instance: *runtime.Instance, index: u32) ImplError!*runti
     }
 
     // Create a new range representing the selection
-    const range = try createRangeFromSelection(internal);
+    const range = try createRangeFromSelection(internal, instance.ctx);
     internal.range = range;
     return range;
 }
@@ -517,7 +522,7 @@ pub fn call_deleteFromDocument(instance: *runtime.Instance) ImplError!void {
     }
 
     // Get or create the range
-    const range = if (internal.range) |r| r else try createRangeFromSelection(internal);
+    const range = if (internal.range) |r| r else try createRangeFromSelection(internal, instance.ctx);
     internal.range = range;
 
     // Delete the range contents
@@ -539,7 +544,7 @@ pub fn call_containsNode(instance: *runtime.Instance, node: *runtime.Instance, a
 
     // Get or create the range for containment check
     const range = if (internal.range) |r| r else blk: {
-        const r = try createRangeFromSelection(internal);
+        const r = try createRangeFromSelection(internal, instance.ctx);
         internal.range = r;
         break :blk r;
     };
@@ -571,12 +576,12 @@ pub fn call_getComposedRanges(instance: *runtime.Instance, options: dictionaries
 // =============================================================================
 
 /// Create a Range object from the current selection boundaries
-fn createRangeFromSelection(internal: *InternalState) !*runtime.Instance {
+fn createRangeFromSelection(internal: *InternalState, ctx: runtime.Context) !*runtime.Instance {
     const anchor = internal.anchor_node orelse return error.InvalidStateError;
     const focus = internal.focus_node orelse return error.InvalidStateError;
 
     // Create a new Range
-    const range = try RangeImpl.call_constructor(internal.allocator, .{});
+    const range = try RangeImpl.call_constructor(internal.allocator, ctx);
 
     // Set the range boundaries based on direction
     switch (internal.direction) {

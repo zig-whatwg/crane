@@ -34,6 +34,8 @@ pub const ImplError = error{
     InvalidState,
     OutOfMemory,
     NoEventLoop,
+    NullValue,
+    BufferDetached,
 };
 
 /// Stream state enumeration per WHATWG spec
