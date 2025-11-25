@@ -2814,19 +2814,49 @@ fn cloneNode(doc: *runtime.Instance, node: *runtime.Instance, deep: bool) ImplEr
                 doc.ctx,
             );
             try NodeImpl.setNodeType(elem, NodeImpl.NodeType.ELEMENT_NODE);
-            // TODO: Copy attributes and other element properties
+
+            // Copy element properties from source
+            if (ElementImpl.getInternal(node)) |src_internal| {
+                const elem_internal = ElementImpl.getInternal(elem) orelse break :blk elem;
+
+                // Copy namespace, prefix, local name
+                if (src_internal.namespace_uri) |ns| {
+                    elem_internal.namespace_uri = try ns.clone(internal.allocator);
+                }
+                if (src_internal.prefix) |p| {
+                    elem_internal.prefix = try p.clone(internal.allocator);
+                }
+                elem_internal.local_name = try src_internal.local_name.clone(internal.allocator);
+                elem_internal.id = try src_internal.id.clone(internal.allocator);
+                elem_internal.class_name = try src_internal.class_name.clone(internal.allocator);
+                elem_internal.slot = try src_internal.slot.clone(internal.allocator);
+
+                // Copy all attributes
+                for (src_internal.attributes.items) |attr| {
+                    const new_attr = ElementImpl.InternalState.AttributeEntry{
+                        .namespace_uri = if (attr.namespace_uri) |ns| try internal.allocator.dupe(u8, ns) else null,
+                        .prefix = if (attr.prefix) |p| try internal.allocator.dupe(u8, p) else null,
+                        .local_name = try internal.allocator.dupe(u8, attr.local_name),
+                        .value = try internal.allocator.dupe(u8, attr.value),
+                    };
+                    try elem_internal.attributes.append(internal.allocator, new_attr);
+                }
+            }
+
             break :blk elem;
         },
         NodeImpl.NodeType.TEXT_NODE => blk: {
             // Clone text data
-            // TODO: Get text data from source node via CharacterData
-            const text = try TextImpl.call_constructor(internal.allocator, doc.ctx, runtime.DOMString.initEmpty());
+            const CharacterDataImpl = @import("CharacterData.zig");
+            const src_data = CharacterDataImpl.getData(node) orelse "";
+            const text = try TextImpl.call_constructor(internal.allocator, doc.ctx, runtime.DOMString.initInterned(src_data));
             break :blk text;
         },
         NodeImpl.NodeType.COMMENT_NODE => blk: {
             // Clone comment data
-            // TODO: Get comment data from source node via CharacterData
-            const comment = try CommentImpl.call_constructor(internal.allocator, doc.ctx, runtime.DOMString.initEmpty());
+            const CharacterDataImpl = @import("CharacterData.zig");
+            const src_data = CharacterDataImpl.getData(node) orelse "";
+            const comment = try CommentImpl.call_constructor(internal.allocator, doc.ctx, runtime.DOMString.initInterned(src_data));
             break :blk comment;
         },
         NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE => blk: {
@@ -2840,17 +2870,25 @@ fn cloneNode(doc: *runtime.Instance, node: *runtime.Instance, deep: bool) ImplEr
             break :blk fragment;
         },
         NodeImpl.NodeType.PROCESSING_INSTRUCTION_NODE => blk: {
-            const pi = try ProcessingInstructionImpl.init(
+            // Get source target and data
+            const src_target = ProcessingInstructionImpl.getTarget(node) orelse "";
+            const CharacterDataImpl = @import("CharacterData.zig");
+            const src_data = CharacterDataImpl.getData(node) orelse "";
+
+            // Create PI with target and data
+            const pi = try ProcessingInstructionImpl.createProcessingInstruction(
                 internal.allocator,
-                interfaces.ProcessingInstruction.State,
-                &interfaces.ProcessingInstruction.vtable,
                 doc.ctx,
+                src_target,
+                src_data,
             );
-            try NodeImpl.setNodeType(pi, NodeImpl.NodeType.PROCESSING_INSTRUCTION_NODE);
-            // TODO: Copy target and data
             break :blk pi;
         },
         NodeImpl.NodeType.CDATA_SECTION_NODE => blk: {
+            // Get source data
+            const CharacterDataImpl = @import("CharacterData.zig");
+            const src_data = CharacterDataImpl.getData(node) orelse "";
+
             const cdata = try CDATASectionImpl.init(
                 internal.allocator,
                 interfaces.CDATASection.State,
@@ -2858,7 +2896,10 @@ fn cloneNode(doc: *runtime.Instance, node: *runtime.Instance, deep: bool) ImplEr
                 doc.ctx,
             );
             try NodeImpl.setNodeType(cdata, NodeImpl.NodeType.CDATA_SECTION_NODE);
-            // TODO: Copy data
+
+            // Set the data via CharacterData
+            try CharacterDataImpl.setData(cdata, src_data);
+
             break :blk cdata;
         },
         NodeImpl.NodeType.DOCUMENT_TYPE_NODE => {

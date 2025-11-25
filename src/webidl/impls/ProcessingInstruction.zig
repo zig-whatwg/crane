@@ -108,6 +108,12 @@ pub fn get_sheet(instance: *runtime.Instance) !*runtime.Instance {
 // Helper Functions
 // =============================================================================
 
+/// Get the target string directly (for cloning)
+pub fn getTarget(instance: *runtime.Instance) ?[]const u8 {
+    const internal = getInternal(instance) orelse return null;
+    return internal.target;
+}
+
 /// Create a ProcessingInstruction with the given target and data
 pub fn createProcessingInstruction(
     allocator: std.mem.Allocator,
