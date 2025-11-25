@@ -95,6 +95,18 @@ pub const streams_callbacks = @import("streams_callbacks.zig");
 /// Zig to V8 Callback Wrappers (Phase 5: Streams Integration)
 pub const zig_callbacks = @import("zig_callbacks.zig");
 
+/// WrapperTypeInfo for type-safe V8 object unwrapping
+pub const wrapper_type_info_mod = @import("wrapper_type_info.zig");
+pub const WrapperTypeInfo = wrapper_type_info_mod.WrapperTypeInfo;
+pub const TypeTag = wrapper_type_info_mod.TypeTag;
+pub const WrapperClassId = wrapper_type_info_mod.WrapperClassId;
+pub const TypeRegistry = wrapper_type_info_mod.TypeRegistry;
+pub const getGlobalRegistry = wrapper_type_info_mod.getGlobalRegistry;
+pub const INTERNAL_FIELD_COUNT = wrapper_type_info_mod.INTERNAL_FIELD_COUNT;
+
+/// DOM WrapperTypeInfo definitions (pre-defined until codegen generates them)
+pub const dom_type_info = @import("dom_type_info.zig");
+
 // Re-export commonly used types for convenience
 pub const Isolate = ffi.Isolate;
 pub const Context = ffi.Context;

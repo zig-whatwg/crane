@@ -33,6 +33,85 @@ const conv = @import("conversions.zig");
 const runtime = @import("runtime");
 const overload_resolver = @import("overload_resolver.zig");
 const async_iterator = @import("async_iterator.zig");
+const wrapper_type_info = @import("wrapper_type_info.zig");
+
+/// Re-export WrapperTypeInfo for use by generated bindings
+pub const WrapperTypeInfo = wrapper_type_info.WrapperTypeInfo;
+
+/// Number of internal fields required for wrapped objects
+/// Slot 0: Zig instance pointer
+/// Slot 1: WrapperTypeInfo pointer (for type-safe unwrapping)
+pub const INTERNAL_FIELD_COUNT: c_int = 2;
+
+/// Check if a type can be default-initialized (all fields have defaults or are optional/struct)
+fn canDefaultInit(comptime T: type) bool {
+    const info = @typeInfo(T);
+    if (info != .@"struct") {
+        return switch (info) {
+            .optional => true,
+            .bool, .int, .float => true,
+            else => false,
+        };
+    }
+
+    // Check all fields
+    inline for (info.@"struct".fields) |field| {
+        if (field.default_value_ptr != null) {
+            // Has explicit default - OK
+            continue;
+        }
+        // No default value - check if we can recursively init
+        const field_info = @typeInfo(field.type);
+        if (field_info == .@"struct") {
+            if (!canDefaultInit(field.type)) return false;
+        } else if (field_info == .optional) {
+            // Optional without default - OK (use null)
+            continue;
+        } else {
+            // Required field without default - cannot default init
+            return false;
+        }
+    }
+    return true;
+}
+
+/// Recursively creates a default-initialized value for a struct type.
+/// Handles nested structs (like dictionary inheritance with `base` fields)
+/// by recursively initializing them as well.
+/// Only call this if canDefaultInit(T) returns true.
+fn defaultInit(comptime T: type) T {
+    const info = @typeInfo(T);
+    if (info != .@"struct") {
+        // Non-struct types: use zero/null default
+        return switch (info) {
+            .optional => null,
+            .bool => false,
+            .int, .float => 0,
+            else => unreachable, // canDefaultInit should have caught this
+        };
+    }
+
+    // Build struct with default values for all fields
+    var result: T = undefined;
+    inline for (info.@"struct".fields) |field| {
+        if (field.default_value_ptr) |default_ptr| {
+            // Field has explicit default value (Zig 0.15: default_value_ptr)
+            const typed_ptr: *const field.type = @ptrCast(@alignCast(default_ptr));
+            @field(result, field.name) = typed_ptr.*;
+        } else {
+            // No default value - recursively initialize if struct, otherwise use null
+            const field_info = @typeInfo(field.type);
+            if (field_info == .@"struct") {
+                @field(result, field.name) = defaultInit(field.type);
+            } else if (field_info == .optional) {
+                @field(result, field.name) = null;
+            } else {
+                unreachable; // canDefaultInit should have caught this
+            }
+        }
+    }
+    return result;
+}
 
 /// Comptime V8 interface binding generator
 ///
@@ -174,6 +253,44 @@ pub fn V8Interface(comptime Interface: type) type {
                                     false, // enumerable = false
                                     true, // configurable = true
                                 );
+
+                                // Also add entries(), keys(), values() methods for iterable protocol
+                                // These are standard iterable methods per WHATWG WebIDL spec
+                                const iterable_methods = [_]struct { name: []const u8, cb: v8.FunctionCallback }{
+                                    .{ .name = "entries", .cb = entriesCallback },
+                                    .{ .name = "keys", .cb = keysCallback },
+                                    .{ .name = "values", .cb = valuesCallback },
+                                };
+
+                                for (iterable_methods) |method| {
+                                    const method_tmpl = v8.v8_FunctionTemplate_New(
+                                        isolate,
+                                        method.cb,
+                                        null,
+                                    );
+                                    if (method_tmpl) |m_tmpl| {
+                                        v8.v8_FunctionTemplate_SetLength(m_tmpl, 0);
+                                        const method_func = v8.v8_FunctionTemplate_GetFunction(m_tmpl, context);
+                                        if (method_func) |m_func| {
+                                            const method_name = v8.v8_String_NewFromUtf8(
+                                                isolate,
+                                                method.name.ptr,
+                                                @intCast(method.name.len),
+                                            );
+                                            if (method_name) |m_name| {
+                                                _ = v8.v8_Object_DefineProperty(
+                                                    @ptrCast(proto),
+                                                    context,
+                                                    @ptrCast(m_name),
+                                                    @ptrCast(m_func),
+                                                    true, // writable = true
+                                                    false, // enumerable = false
+                                                    true, // configurable = true
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -243,6 +360,46 @@ pub fn V8Interface(comptime Interface: type) type {
                     }
                 }
             }
+
+            // Register static methods on constructor
+            // Static methods like AbortSignal.abort(), AbortSignal.timeout()
+            if (@hasDecl(Meta, "static_methods")) {
+                const static_methods = Meta.static_methods;
+                inline for (static_methods) |method| {
+                    const method_name: []const u8 = method[0];
+                    const arity: c_int = if (method.len >= 3) method[2] else 0;
+
+                    // Create function template for static method
+                    const method_tmpl = v8.v8_FunctionTemplate_New(
+                        isolate,
+                        staticMethodCallback,
+                        null,
+                    );
+                    if (method_tmpl) |tmpl| {
+                        v8.v8_FunctionTemplate_SetLength(tmpl, arity);
+                        const method_func = v8.v8_FunctionTemplate_GetFunction(tmpl, context);
+                        if (method_func) |func| {
+                            const name_v8 = v8.v8_String_NewFromUtf8(
+                                isolate,
+                                method_name.ptr,
+                                @intCast(method_name.len),
+                            );
+                            if (name_v8) |method_name_v8| {
+                                // Static methods: writable=true, enumerable=true, configurable=true
+                                _ = v8.v8_Object_DefineProperty(
+                                    @ptrCast(constructor.?),
+                                    context,
+                                    @ptrCast(method_name_v8),
+                                    @ptrCast(func),
+                                    true, // writable = true
+                                    true, // enumerable = true
+                                    true, // configurable = true
+                                );
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         /// Check if interface has a constructor (from Meta.has_constructor hint)
@@ -280,9 +437,10 @@ pub fn V8Interface(comptime Interface: type) type {
             v8.v8_FunctionTemplate_SetLength(template, 0);
 
             // Get instance template and set internal field count
-            // We use 1 internal field to store pointer to Zig instance
+            // Field 0: pointer to Zig instance (*runtime.Instance)
+            // Field 1: pointer to type tag (for type-safe unwrapping)
             const instance_tmpl = v8.v8_FunctionTemplate_InstanceTemplate(template);
-            v8.v8_ObjectTemplate_SetInternalFieldCount(instance_tmpl, 1);
+            v8.v8_ObjectTemplate_SetInternalFieldCount(instance_tmpl, 2);
 
             // Get prototype template
             const proto_tmpl = v8.v8_FunctionTemplate_PrototypeTemplate(template);
@@ -450,7 +608,9 @@ pub fn V8Interface(comptime Interface: type) type {
                 const should_register = comptime (own_method_names.len == 0 or own_method_set.has(method_name));
 
                 if (should_register) {
-                    registerMethod(isolate, proto_tmpl, method_name, zig_name, arity);
+                    // Pass zig_name as comptime parameter to generate proper callback
+                    // Also pass template for signature-based receiver type checking
+                    registerMethod(zig_name, isolate, template, proto_tmpl, method_name, arity);
                 }
             }
 
@@ -479,22 +639,284 @@ pub fn V8Interface(comptime Interface: type) type {
             return template;
         }
 
-        /// Register a method on the prototype template
-        fn registerMethod(
+        /// Generate a method callback for a specific method at comptime
+        ///
+        /// This creates a callback that:
+        /// 1. Gets the Zig Instance from V8 object's internal field
+        /// 2. Parses arguments from V8 using comptime reflection
+        /// 3. Calls the Interface method
+        /// 4. Converts and returns the result to V8
+        fn MethodCallback(comptime zig_name: []const u8) type {
+            return struct {
+                fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+                    const isolate = info.getIsolate();
+
+                    // Get V8 context
+                    const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+                        conv.throwError(isolate, "No current V8 context");
+                        return;
+                    };
+
+                    // Get allocator
+                    const isolate_alloc = @import("isolate_allocator.zig");
+                    const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.page_allocator) catch {
+                        conv.throwError(isolate, "Failed to get isolate allocator");
+                        return;
+                    };
+
+                    // Get 'this' object and extract the Zig instance
+                    const this_obj = info.getThis();
+                    const instance = getInstance(runtime.Instance, this_obj) orelse {
+                        conv.throwError(isolate, "Invalid instance - no internal data");
+                        return;
+                    };
+
+                    // Get the method function at comptime
+                    const method_fn = @field(Interface, zig_name);
+                    const fn_info = @typeInfo(@TypeOf(method_fn)).@"fn";
+                    const params = fn_info.params;
+                    const ReturnType = fn_info.return_type.?;
+
+                    // First parameter should be *runtime.Instance (self)
+                    if (params.len < 1) {
+                        @compileError("Method must have at least instance parameter");
+                    }
+
+                    // Calculate number of WebIDL parameters (excluding instance)
+                    const webidl_param_count = params.len - 1;
+
+                    // Call the method with appropriate arguments
+                    const result = callMethodWithArgs(
+                        method_fn,
+                        params,
+                        webidl_param_count,
+                        ReturnType,
+                        instance,
+                        info,
+                        allocator,
+                        isolate,
+                        v8_context,
+                    ) catch |err| {
+                        const err_msg = std.fmt.allocPrint(allocator, "Method '{s}' failed: {s}", .{ zig_name, @errorName(err) }) catch {
+                            conv.throwError(isolate, "Method failed");
+                            return;
+                        };
+                        defer allocator.free(err_msg);
+                        conv.throwError(isolate, err_msg);
+                        return;
+                    };
+
+                    // Convert and set return value
+                    if (result) |v8_result| {
+                        info.setReturnValue(v8_result);
+                    }
+                    // If result is null, V8 will return undefined (correct for void methods)
+                }
+            };
+        }
+
+        /// Call method with arguments parsed using comptime reflection
+        fn callMethodWithArgs(
+            comptime method_fn: anytype,
+            comptime params: anytype,
+            comptime webidl_param_count: usize,
+            comptime ReturnType: type,
+            instance: *runtime.Instance,
+            info: *const v8.FunctionCallbackInfo,
+            allocator: std.mem.Allocator,
             isolate: *v8.Isolate,
+            v8_context: *v8.Context,
+        ) !?*v8.Value {
+            const js_arg_count = info.length();
+
+            // Call method based on parameter count
+            const zig_result = blk: {
+                if (webidl_param_count == 0) {
+                    break :blk try method_fn(instance);
+                } else if (webidl_param_count == 1) {
+                    const Param1Type = params[1].type.?;
+                    const arg1 = if (js_arg_count >= 1) arg_blk: {
+                        const v8_arg1 = info.get(0);
+                        break :arg_blk try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                    } else arg_blk: {
+                        // Try default value
+                        if (canDefaultInit(Param1Type)) {
+                            break :arg_blk defaultInit(Param1Type);
+                        } else if (@typeInfo(Param1Type) == .optional) {
+                            break :arg_blk null;
+                        } else if (Param1Type == runtime.DOMString) {
+                            break :arg_blk runtime.DOMString.initEmpty();
+                        } else {
+                            return error.NotEnoughArguments;
+                        }
+                    };
+                    break :blk try method_fn(instance, arg1);
+                } else if (webidl_param_count == 2) {
+                    const Param1Type = params[1].type.?;
+                    const Param2Type = params[2].type.?;
+
+                    if (js_arg_count < 1) return error.NotEnoughArguments;
+
+                    const v8_arg1 = info.get(0);
+                    const arg1 = try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
+
+                    const arg2 = if (js_arg_count >= 2) arg_blk: {
+                        const v8_arg2 = info.get(1);
+                        break :arg_blk try conv.fromV8Value(Param2Type, allocator, isolate, v8_context, v8_arg2);
+                    } else arg_blk: {
+                        if (canDefaultInit(Param2Type)) {
+                            break :arg_blk defaultInit(Param2Type);
+                        } else if (@typeInfo(Param2Type) == .optional) {
+                            break :arg_blk null;
+                        } else if (Param2Type == *const anyopaque or Param2Type == *anyopaque) {
+                            // Allow null for anyopaque pointer types (optional object parameters)
+                            // Use undefined to satisfy type system - impl code should check for null
+                            break :arg_blk undefined;
+                        } else {
+                            return error.NotEnoughArguments;
+                        }
+                    };
+                    break :blk try method_fn(instance, arg1, arg2);
+                } else if (webidl_param_count == 3) {
+                    const Param1Type = params[1].type.?;
+                    const Param2Type = params[2].type.?;
+                    const Param3Type = params[3].type.?;
+
+                    if (js_arg_count < 2) return error.NotEnoughArguments;
+
+                    const v8_arg1 = info.get(0);
+                    const v8_arg2 = info.get(1);
+                    const arg1 = try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                    const arg2 = try conv.fromV8Value(Param2Type, allocator, isolate, v8_context, v8_arg2);
+
+                    const arg3 = if (js_arg_count >= 3) arg_blk: {
+                        const v8_arg3 = info.get(2);
+                        break :arg_blk try conv.fromV8Value(Param3Type, allocator, isolate, v8_context, v8_arg3);
+                    } else arg_blk: {
+                        if (canDefaultInit(Param3Type)) {
+                            break :arg_blk defaultInit(Param3Type);
+                        } else if (@typeInfo(Param3Type) == .optional) {
+                            break :arg_blk null;
+                        } else if (Param3Type == *const anyopaque or Param3Type == *anyopaque) {
+                            // Allow null for anyopaque pointer types (optional object parameters)
+                            // Use undefined to satisfy type system - impl code should check for null
+                            break :arg_blk undefined;
+                        } else {
+                            return error.NotEnoughArguments;
+                        }
+                    };
+                    break :blk try method_fn(instance, arg1, arg2, arg3);
+                } else {
+                    // Fallback for methods with more params - use placeholder behavior
+                    return error.NotImplemented;
+                }
+            };
+
+            // Convert return value to V8
+            return try convertReturnValue(ReturnType, zig_result, allocator, isolate, v8_context);
+        }
+
+        /// Convert Zig return value to V8 Value
+        fn convertReturnValue(
+            comptime ReturnType: type,
+            result: anytype,
+            allocator: std.mem.Allocator,
+            isolate: *v8.Isolate,
+            v8_context: *v8.Context,
+        ) !?*v8.Value {
+            // Suppress unused parameter warning - allocator used only in recursive calls
+            _ = allocator;
+
+            const type_info = @typeInfo(ReturnType);
+
+            // Handle error union - unwrap it
+            if (type_info == .error_union) {
+                const PayloadType = type_info.error_union.payload;
+                return convertReturnValue(PayloadType, result, std.heap.page_allocator, isolate, v8_context);
+            }
+
+            // Handle void return
+            if (ReturnType == void) {
+                return null;
+            }
+
+            // Handle optional types
+            if (type_info == .optional) {
+                if (result) |value| {
+                    const ChildType = type_info.optional.child;
+                    return convertReturnValue(ChildType, value, std.heap.page_allocator, isolate, v8_context);
+                } else {
+                    return @ptrCast(v8.v8_Null(isolate));
+                }
+            }
+
+            // Handle Instance pointer (return the V8 wrapper object)
+            if (ReturnType == *runtime.Instance) {
+                // For methods returning Instance, we need to wrap it in a V8 object
+                // Use the conversion function that handles Instance types
+                return conv.toV8Value(*runtime.Instance, isolate, v8_context, result);
+            }
+
+            // Handle primitive types
+            if (ReturnType == bool) {
+                return @ptrCast(v8.v8_Boolean_New(isolate, result));
+            }
+
+            if (ReturnType == i32 or ReturnType == i64 or ReturnType == u32 or ReturnType == u64 or ReturnType == u16) {
+                return @ptrCast(v8.v8_Number_New(isolate, @floatFromInt(result)));
+            }
+
+            if (ReturnType == f64 or ReturnType == f32) {
+                return @ptrCast(v8.v8_Number_New(isolate, result));
+            }
+
+            // Handle DOMString
+            if (ReturnType == runtime.DOMString) {
+                const slice = result.asSlice();
+                const v8_str = v8.v8_String_NewFromUtf8(isolate, slice.ptr, @intCast(slice.len)) orelse {
+                    return @ptrCast(v8.v8_Undefined(isolate));
+                };
+                return @ptrCast(v8_str);
+            }
+
+            // Handle []const u8 (string slices)
+            if (ReturnType == []const u8) {
+                const v8_str = v8.v8_String_NewFromUtf8(isolate, result.ptr, @intCast(result.len)) orelse {
+                    return @ptrCast(v8.v8_Undefined(isolate));
+                };
+                return @ptrCast(v8_str);
+            }
+
+            // For other types, return undefined as fallback
+            // TODO: Expand type conversion coverage
+            return @ptrCast(v8.v8_Undefined(isolate));
+        }
+
+        /// Register a method on the prototype template using generated callback
+        ///
+        /// Uses V8 Signature to enforce receiver type checking. This ensures the
+        /// method callback is only invoked when `this` is an instance of the
+        /// interface template (or a subclass via FunctionTemplate_Inherit).
+        fn registerMethod(
+            comptime zig_name: []const u8,
+            isolate: *v8.Isolate,
+            receiver_template: *v8.FunctionTemplate,
             proto_tmpl: *v8.ObjectTemplate,
             method_name: []const u8,
-            zig_name: []const u8,
             arity: c_int,
         ) void {
-            _ = zig_name;
+            // Generate the method callback at comptime
+            const Callback = MethodCallback(zig_name);
 
-            // Create function template for method
-            // TODO: Generate actual method callback based on signature
-            const method_tmpl = v8.v8_FunctionTemplate_New(
+            // Create function template for method WITH SIGNATURE
+            // The signature ensures V8 only calls this callback when `this` is
+            // an instance created from receiver_template (or inheriting template).
+            // This prevents "Internal field out of bounds" crashes.
+            const method_tmpl = v8.v8_FunctionTemplate_NewWithSignature(
                 isolate,
-                placeholderMethodCallback,
+                Callback.callback,
                 null,
+                receiver_template, // Receiver type for signature
             ) orelse {
                 std.debug.panic("Failed to create function template for method", .{});
             };
@@ -564,7 +986,15 @@ pub fn V8Interface(comptime Interface: type) type {
             };
 
             // Store the Zig instance in the V8 object's internal field (slot 0)
-            setInstance(runtime.Instance, this_obj, instance);
+            // Also store WrapperTypeInfo in slot 1 for type-safe unwrapping
+            const dom_type_info_mod = @import("dom_type_info.zig");
+            if (dom_type_info_mod.getTypeInfoByName(interface_name)) |type_info| {
+                setInstanceWithTypeInfo(runtime.Instance, this_obj, instance, type_info);
+            } else {
+                // Fall back to legacy setInstance if type info not found
+                // This is expected for interfaces not yet in dom_type_info.zig
+                setInstance(runtime.Instance, this_obj, instance);
+            }
 
             // Return 'this' (V8 does this automatically for constructors)
         }
@@ -620,6 +1050,32 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
 
                 // Normal single-parameter constructor
+                // Parameter may be optional - check type and provide default if needed
+                const arg1 = if (js_arg_count >= 1) blk: {
+                    const v8_arg1 = info.get(0);
+                    break :blk try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                } else blk: {
+                    // No argument provided - try to use default
+                    const param1_info = @typeInfo(Param1Type);
+                    if (param1_info == .@"struct" and canDefaultInit(Param1Type)) {
+                        break :blk defaultInit(Param1Type);
+                    } else if (param1_info == .optional) {
+                        break :blk null;
+                    } else if (Param1Type == runtime.DOMString) {
+                        // DOMString defaults to empty string (common case like Text(""))
+                        break :blk runtime.DOMString.initEmpty();
+                    } else {
+                        return error.NotEnoughArguments;
+                    }
+                };
+
+                return try Interface.call_constructor(allocator, ctx, arg1);
+            } else if (webidl_param_count == 2) {
+                // Two arguments constructor (second may be optional dictionary)
+                const Param1Type = params[2].type.?;
+                const Param2Type = params[3].type.?;
+
+                // First param is required
                 if (js_arg_count < 1) {
                     return error.NotEnoughArguments;
                 }
@@ -627,21 +1083,20 @@ pub fn V8Interface(comptime Interface: type) type {
                 const v8_arg1 = info.get(0);
                 const arg1 = try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
 
-                return try Interface.call_constructor(allocator, ctx, arg1);
-            } else if (webidl_param_count == 2) {
-                // Two arguments constructor
-                const Param1Type = params[2].type.?;
-                const Param2Type = params[3].type.?;
-
-                if (js_arg_count < 2) {
-                    return error.NotEnoughArguments;
-                }
-
-                const v8_arg1 = info.get(0);
-                const v8_arg2 = info.get(1);
-
-                const arg1 = try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
-                const arg2 = try conv.fromV8Value(Param2Type, allocator, isolate, v8_context, v8_arg2);
+                // Second param may be optional (use default if not provided)
+                // Check if it's a struct (dictionary) type that has default values
+                const arg2 = if (js_arg_count >= 2) blk: {
+                    const v8_arg2 = info.get(1);
+                    break :blk try conv.fromV8Value(Param2Type, allocator, isolate, v8_context, v8_arg2);
+                } else blk: {
+                    // Use recursively default-initialized struct (handles nested base fields)
+                    const param2_info = @typeInfo(Param2Type);
+                    if (param2_info == .@"struct" and canDefaultInit(Param2Type)) {
+                        break :blk defaultInit(Param2Type);
+                    } else {
+                        return error.NotEnoughArguments;
+                    }
+                };
 
                 return try Interface.call_constructor(allocator, ctx, arg1, arg2);
             } else if (webidl_param_count == 3) {
@@ -888,17 +1343,184 @@ pub fn V8Interface(comptime Interface: type) type {
         }
 
         /// Iterator callback for Symbol.iterator
+        /// Returns an iterator that yields [index, value] pairs (same as entries())
         fn iteratorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
             const isolate = info.getIsolate();
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+                conv.throwError(isolate, "No V8 context");
+                return;
+            };
 
-            // For now, return a placeholder empty iterator object
-            // A real implementation would create an actual iterator
-            const iterator_obj = v8.v8_Object_New(isolate);
+            // Get 'this' object
+            const this_obj = info.getThis();
+
+            // Create an iterator object with next() method
+            const iterator_obj = createValueIterator(isolate, v8_context, this_obj, .values);
             if (iterator_obj) |obj| {
                 info.setReturnValue(@ptrCast(obj));
             } else {
                 conv.throwError(isolate, "Failed to create iterator");
             }
+        }
+
+        /// entries() callback - returns iterator yielding [index, value] pairs
+        fn entriesCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+            const isolate = info.getIsolate();
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+                conv.throwError(isolate, "No V8 context");
+                return;
+            };
+
+            const this_obj = info.getThis();
+            const iterator_obj = createValueIterator(isolate, v8_context, this_obj, .entries);
+            if (iterator_obj) |obj| {
+                info.setReturnValue(@ptrCast(obj));
+            } else {
+                conv.throwError(isolate, "Failed to create iterator");
+            }
+        }
+
+        /// keys() callback - returns iterator yielding indices
+        fn keysCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+            const isolate = info.getIsolate();
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+                conv.throwError(isolate, "No V8 context");
+                return;
+            };
+
+            const this_obj = info.getThis();
+            const iterator_obj = createValueIterator(isolate, v8_context, this_obj, .keys);
+            if (iterator_obj) |obj| {
+                info.setReturnValue(@ptrCast(obj));
+            } else {
+                conv.throwError(isolate, "Failed to create iterator");
+            }
+        }
+
+        /// values() callback - returns iterator yielding values
+        fn valuesCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+            const isolate = info.getIsolate();
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+                conv.throwError(isolate, "No V8 context");
+                return;
+            };
+
+            const this_obj = info.getThis();
+            const iterator_obj = createValueIterator(isolate, v8_context, this_obj, .values);
+            if (iterator_obj) |obj| {
+                info.setReturnValue(@ptrCast(obj));
+            } else {
+                conv.throwError(isolate, "Failed to create iterator");
+            }
+        }
+
+        const IteratorKind = enum { entries, keys, values };
+
+        /// Create a JavaScript iterator object for indexed collections
+        fn createValueIterator(
+            isolate: *v8.Isolate,
+            context: *v8.Context,
+            target: *v8.Object,
+            kind: IteratorKind,
+        ) ?*v8.Object {
+            // Create iterator state object to track position
+            const iterator_obj = v8.v8_Object_New(isolate) orelse return null;
+
+            // Store reference to target object
+            const target_key = v8.v8_String_NewFromUtf8(isolate, "_target", 7) orelse return null;
+            _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(target_key), @ptrCast(target));
+
+            // Store current index
+            const index_key = v8.v8_String_NewFromUtf8(isolate, "_index", 6) orelse return null;
+            const zero = v8.v8_Number_New(isolate, 0);
+            _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(index_key), @ptrCast(zero));
+
+            // Store iterator kind
+            const kind_key = v8.v8_String_NewFromUtf8(isolate, "_kind", 5) orelse return null;
+            const kind_val = v8.v8_Number_New(isolate, @floatFromInt(@intFromEnum(kind)));
+            _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(kind_key), @ptrCast(kind_val));
+
+            // Create next() method
+            const next_tmpl = v8.v8_FunctionTemplate_New(isolate, iteratorNextCallback, null) orelse return null;
+            const next_func = v8.v8_FunctionTemplate_GetFunction(next_tmpl, context) orelse return null;
+            const next_key = v8.v8_String_NewFromUtf8(isolate, "next", 4) orelse return null;
+            _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(next_key), @ptrCast(next_func));
+
+            // Set Symbol.toStringTag to "Array Iterator" (spec-compliant)
+            const symbol_toStringTag = v8.v8_Symbol_GetToStringTag(isolate);
+            if (symbol_toStringTag) |symbol| {
+                const tag_str = v8.v8_String_NewFromUtf8(isolate, "Array Iterator", 14);
+                if (tag_str) |tag| {
+                    _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(symbol), @ptrCast(tag));
+                }
+            }
+
+            return iterator_obj;
+        }
+
+        /// next() callback for iterator objects
+        fn iteratorNextCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+            const isolate = info.getIsolate();
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+                conv.throwError(isolate, "No V8 context");
+                return;
+            };
+
+            // Get the iterator object (this)
+            const iterator_obj = info.getThis();
+
+            // Get stored state
+            const target_key = v8.v8_String_NewFromUtf8(isolate, "_target", 7) orelse return;
+            const index_key = v8.v8_String_NewFromUtf8(isolate, "_index", 6) orelse return;
+            const kind_key = v8.v8_String_NewFromUtf8(isolate, "_kind", 5) orelse return;
+
+            const target = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(target_key)) orelse return;
+            const index_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(index_key)) orelse return;
+            const kind_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(kind_key)) orelse return;
+
+            const index: u32 = @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(index_val), v8_context));
+            const kind: IteratorKind = @enumFromInt(@as(u2, @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(kind_val), v8_context))));
+
+            // Get length from target
+            const length_key = v8.v8_String_NewFromUtf8(isolate, "length", 6) orelse return;
+            const length_val = v8.v8_Object_Get(@ptrCast(target), v8_context, @ptrCast(length_key));
+            const length: u32 = if (length_val) |lv| @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(lv), v8_context)) else 0;
+
+            // Create result object { value: ..., done: ... }
+            const result_obj = v8.v8_Object_New(isolate) orelse return;
+            const value_key = v8.v8_String_NewFromUtf8(isolate, "value", 5) orelse return;
+            const done_key = v8.v8_String_NewFromUtf8(isolate, "done", 4) orelse return;
+
+            if (index >= length) {
+                // Iterator exhausted
+                _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(value_key), @ptrCast(v8.v8_Undefined(isolate)));
+                _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(done_key), @ptrCast(v8.v8_Boolean_New(isolate, true)));
+            } else {
+                // Get value at index using item() method or indexed access
+                const index_str = v8.v8_Number_New(isolate, @floatFromInt(index));
+                const item_val = v8.v8_Object_Get(@ptrCast(target), v8_context, @ptrCast(index_str));
+
+                const result_value: *v8.Value = switch (kind) {
+                    .keys => @ptrCast(index_str),
+                    .values => @ptrCast(item_val orelse v8.v8_Undefined(isolate).?),
+                    .entries => blk: {
+                        // Create [index, value] array
+                        const arr = v8.v8_Array_New(isolate, 2);
+                        _ = v8.v8_Array_Set(arr, v8_context, 0, @ptrCast(index_str));
+                        _ = v8.v8_Array_Set(arr, v8_context, 1, @ptrCast(item_val orelse v8.v8_Undefined(isolate).?));
+                        break :blk @ptrCast(arr);
+                    },
+                };
+
+                _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(value_key), result_value);
+                _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(done_key), @ptrCast(v8.v8_Boolean_New(isolate, false)));
+
+                // Increment index
+                const new_index = v8.v8_Number_New(isolate, @floatFromInt(index + 1));
+                _ = v8.v8_Object_Set(iterator_obj, v8_context, @ptrCast(index_key), @ptrCast(new_index));
+            }
+
+            info.setReturnValue(@ptrCast(result_obj));
         }
 
         /// Async iterator callback for Symbol.asyncIterator
@@ -977,6 +1599,16 @@ pub fn V8Interface(comptime Interface: type) type {
             const isolate = info.getIsolate();
             conv.throwError(isolate, "Setter not yet implemented");
         }
+
+        /// Static method callback
+        /// Called for static methods like AbortSignal.abort(), AbortSignal.timeout()
+        fn staticMethodCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+            const isolate = info.getIsolate();
+            // Static methods don't have an instance - they're factory methods
+            // For now, return undefined as placeholder
+            // TODO: Implement proper static method dispatch
+            info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate).?));
+        }
     };
 }
 
@@ -984,19 +1616,85 @@ pub fn V8Interface(comptime Interface: type) type {
 // Helper Functions
 // ============================================================================
 
-/// Extract Zig instance from V8 object internal field
+/// Extract Zig instance from V8 object internal field (legacy - no type checking)
+/// Prefer getInstanceTypeSafe for production code.
 pub fn getInstance(comptime T: type, object: *v8.Object) ?*T {
     const ptr = v8.v8_Object_GetAlignedPointerFromInternalField(object, 0);
     if (ptr == null) return null;
     return @ptrCast(@alignCast(ptr));
 }
 
-/// Store Zig instance in V8 object internal field
+/// Extract Zig instance from V8 object with type-safe unwrapping
+///
+/// Validates that the stored type tag matches the expected type before returning.
+/// Returns null if:
+/// - The object has no internal fields set
+/// - The stored type is not compatible with the expected type
+pub fn getInstanceTypeSafe(
+    comptime T: type,
+    object: *v8.Object,
+    expected_type: *const WrapperTypeInfo,
+) ?*T {
+    // Get stored type info from slot 1
+    const type_info_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(object, 1);
+    if (type_info_ptr == null) {
+        // No type info stored - fall back to legacy behavior for compatibility
+        return getInstance(T, object);
+    }
+
+    const stored_type_info: *const WrapperTypeInfo = @ptrCast(@alignCast(type_info_ptr));
+
+    // Validate that stored type is compatible with expected type
+    // The stored tag must be in the expected type's valid range (allows subclasses)
+    if (!expected_type.isValidTag(stored_type_info.this_tag)) {
+        return null;
+    }
+
+    // Type check passed, get the instance pointer from slot 0
+    const ptr = v8.v8_Object_GetAlignedPointerFromInternalField(object, 0);
+    if (ptr == null) return null;
+    return @ptrCast(@alignCast(ptr));
+}
+
+/// Get the WrapperTypeInfo from a V8 object (if set)
+pub fn getWrapperTypeInfo(object: *v8.Object) ?*const WrapperTypeInfo {
+    const ptr = v8.v8_Object_GetAlignedPointerFromInternalField(object, 1);
+    if (ptr == null) return null;
+    return @ptrCast(@alignCast(ptr));
+}
+
+/// Store Zig instance in V8 object internal field (legacy - no type info)
+/// Prefer setInstanceWithTypeInfo for new code.
 pub fn setInstance(comptime T: type, object: *v8.Object, instance: *T) void {
     v8.v8_Object_SetAlignedPointerInInternalField(
         object,
         0,
         @ptrCast(instance),
+    );
+}
+
+/// Store Zig instance in V8 object with type info for safe unwrapping
+///
+/// Stores:
+/// - Slot 0: Zig instance pointer
+/// - Slot 1: WrapperTypeInfo pointer (for type checking during unwrap)
+pub fn setInstanceWithTypeInfo(
+    comptime T: type,
+    object: *v8.Object,
+    instance: *T,
+    type_info: *const WrapperTypeInfo,
+) void {
+    // Store instance pointer in slot 0
+    v8.v8_Object_SetAlignedPointerInInternalField(
+        object,
+        0,
+        @ptrCast(instance),
+    );
+    // Store type info pointer in slot 1
+    v8.v8_Object_SetAlignedPointerInInternalField(
+        object,
+        1,
+        @ptrCast(@constCast(type_info)),
     );
 }
 
