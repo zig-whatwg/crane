@@ -203,18 +203,70 @@ pub fn wrapInstanceAsV8Object(
 /// Get the interface name from an Instance
 ///
 /// This looks at the instance's vtable to determine which interface it belongs to.
-/// Currently uses a heuristic based on vtable address matching.
-/// TODO: Store interface name directly in Instance or VTable
+/// Compares vtable addresses against known vtables to identify the interface.
 pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
-    // For now, we need to determine the interface from the vtable
-    // This is a temporary solution - ideally the vtable or instance would store the name
+    // Import generated interfaces to get their vtables
+    const interfaces = @import("interfaces");
 
-    // Check against known vtable addresses
-    // This will be populated by codegen in the future
+    // Get the instance's vtable address
+    const inst_vtable = instance.vtable;
 
-    // Default to "Element" for now (most common case for createElement)
-    // The proper fix is to store the interface name in the instance or vtable
-    _ = instance;
+    // Compare against known vtable addresses
+    // NOTE: This compares pointer addresses, which works because vtables are comptime constants
+
+    // Check NodeList first (most common for querySelectorAll)
+    if (inst_vtable == &interfaces.NodeList.vtable) {
+        return "NodeList";
+    }
+
+    // Check Element and subclasses
+    if (inst_vtable == &interfaces.Element.vtable) {
+        return "Element";
+    }
+
+    if (inst_vtable == &interfaces.HTMLElement.vtable) {
+        return "HTMLElement";
+    }
+
+    // Check Document
+    if (inst_vtable == &interfaces.Document.vtable) {
+        return "Document";
+    }
+
+    // Check other common types
+    if (inst_vtable == &interfaces.Text.vtable) {
+        return "Text";
+    }
+
+    if (inst_vtable == &interfaces.Comment.vtable) {
+        return "Comment";
+    }
+
+    if (inst_vtable == &interfaces.DocumentFragment.vtable) {
+        return "DocumentFragment";
+    }
+
+    if (inst_vtable == &interfaces.Attr.vtable) {
+        return "Attr";
+    }
+
+    if (inst_vtable == &interfaces.CharacterData.vtable) {
+        return "CharacterData";
+    }
+
+    if (inst_vtable == &interfaces.ProcessingInstruction.vtable) {
+        return "ProcessingInstruction";
+    }
+
+    if (inst_vtable == &interfaces.CDATASection.vtable) {
+        return "CDATASection";
+    }
+
+    if (inst_vtable == &interfaces.DocumentType.vtable) {
+        return "DocumentType";
+    }
+
+    // Default to "Element" for unknown types (backwards compat)
     return "Element";
 }
 
