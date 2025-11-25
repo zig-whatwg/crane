@@ -97,7 +97,7 @@ pub fn init(
 
     const internal = state.own._internal.?;
     internal.allocator = allocator;
-    internal.enc = &encoding_mod.UTF_8; // Default, will be set in constructor
+    internal.enc = encoding_mod.UTF_8; // Default, will be set in constructor
     internal.decoder = encoding_mod.UTF_8.newDecoder();
     internal.fatal = false;
     internal.ignore_bom = false;
