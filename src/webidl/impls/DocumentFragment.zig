@@ -119,13 +119,13 @@ pub fn get_children(instance: *runtime.Instance) !*runtime.Instance {
 
 /// Getter for firstElementChild (from ParentNode mixin)
 /// Returns the first child that is an element
-pub fn get_firstElementChild(instance: *runtime.Instance) !*runtime.Instance {
+pub fn get_firstElementChild(instance: *runtime.Instance) !?*runtime.Instance {
     return ParentNode.firstElementChild(instance) orelse error.NotImplemented;
 }
 
 /// Getter for lastElementChild (from ParentNode mixin)
 /// Returns the last child that is an element
-pub fn get_lastElementChild(instance: *runtime.Instance) !*runtime.Instance {
+pub fn get_lastElementChild(instance: *runtime.Instance) !?*runtime.Instance {
     return ParentNode.lastElementChild(instance) orelse error.NotImplemented;
 }
 
@@ -229,7 +229,7 @@ pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, chi
 /// Operation: querySelector (from ParentNode mixin)
 /// Returns the first element matching the selector
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-queryselector
-pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const selectors_str = selectors.asSlice();
 

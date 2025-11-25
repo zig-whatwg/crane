@@ -110,7 +110,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Getter for namespaceURI
 /// DOM §4.9 - Returns this's namespace.
-pub fn get_namespaceURI(instance: *runtime.Instance) !runtime.DOMString {
+pub fn get_namespaceURI(instance: *runtime.Instance) !?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.namespace_uri) |ns| {
         return runtime.DOMString.initInterned(ns);
@@ -120,7 +120,7 @@ pub fn get_namespaceURI(instance: *runtime.Instance) !runtime.DOMString {
 
 /// Getter for prefix
 /// DOM §4.9 - Returns this's namespace prefix.
-pub fn get_prefix(instance: *runtime.Instance) !runtime.DOMString {
+pub fn get_prefix(instance: *runtime.Instance) !?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.prefix) |p| {
         return runtime.DOMString.initInterned(p);
@@ -164,7 +164,7 @@ pub fn get_value(instance: *runtime.Instance) !runtime.DOMString {
 
 /// Getter for ownerElement
 /// DOM §4.9 - Returns this's element.
-pub fn get_ownerElement(instance: *runtime.Instance) !*runtime.Instance {
+pub fn get_ownerElement(instance: *runtime.Instance) !?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.owner_element) |elem| {
         return elem;

@@ -240,7 +240,7 @@ pub fn setLocalName(instance: *runtime.Instance, local_name: []const u8) !void {
 
 /// Getter for namespaceURI
 /// DOM §4.8 - Returns the namespace URI of this element
-pub fn get_namespaceURI(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_namespaceURI(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.namespace_uri) |ns| {
         return ns;
@@ -250,7 +250,7 @@ pub fn get_namespaceURI(instance: *runtime.Instance) ImplError!runtime.DOMString
 
 /// Getter for prefix
 /// DOM §4.8 - Returns the namespace prefix of this element
-pub fn get_prefix(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_prefix(instance: *runtime.Instance) ImplError!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.prefix) |p| {
         return p;
@@ -382,7 +382,7 @@ pub fn get_attributes(instance: *runtime.Instance) ImplError!*runtime.Instance {
 /// 1. Let shadow be this's shadow root.
 /// 2. If shadow is null or its mode is "closed", then return null.
 /// 3. Return shadow.
-pub fn get_shadowRoot(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_shadowRoot(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Step 1: Let shadow be this's shadow root
@@ -407,7 +407,7 @@ pub fn get_shadowRoot(instance: *runtime.Instance) ImplError!*runtime.Instance {
 ///
 /// Note: Returns null until Custom Element Registry is implemented.
 /// This is acceptable as custom elements are an optional feature.
-pub fn get_customElementRegistry(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_customElementRegistry(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
     // Custom Element Registry not implemented - return null
     return error.NotImplemented;
@@ -489,7 +489,7 @@ pub fn get_part(instance: *runtime.Instance) ImplError!*runtime.Instance {
 /// Spec: https://drafts.csswg.org/css-view-transitions-2/#dom-element-activeviewtransition
 ///
 /// Note: Returns null - View Transitions API requires rendering engine.
-pub fn get_activeViewTransition(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_activeViewTransition(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
     // View Transitions require rendering engine - return null
     return error.NotImplemented;
@@ -2313,13 +2313,13 @@ pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instanc
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Get attribute properties from the Attr node
-    const namespace_uri = AttrImpl.get_namespaceURI(attr) catch return error.InvalidStateError;
-    const prefix = AttrImpl.get_prefix(attr) catch return error.InvalidStateError;
+    const namespace_uri_opt = AttrImpl.get_namespaceURI(attr) catch return error.InvalidStateError;
+    const prefix_opt = AttrImpl.get_prefix(attr) catch return error.InvalidStateError;
     const local_name = AttrImpl.get_localName(attr) catch return error.InvalidStateError;
     const value = AttrImpl.get_value(attr) catch return error.InvalidStateError;
 
-    const ns_slice = namespace_uri.asSlice();
-    const prefix_slice = prefix.asSlice();
+    const ns_slice = if (namespace_uri_opt) |ns| ns.asSlice() else "";
+    const prefix_slice = if (prefix_opt) |p| p.asSlice() else "";
     const name_slice = local_name.asSlice();
     const value_slice = value.asSlice();
 
@@ -2331,7 +2331,8 @@ pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instanc
 
     if (getAttributeByNS(internal, ns, name_slice)) |_| {
         // Get old attribute node before replacing
-        old_attr = call_getAttributeNodeNS(instance, namespace_uri, local_name) catch null;
+        const namespace_uri_param = namespace_uri_opt orelse runtime.DOMString.initEmpty();
+        old_attr = call_getAttributeNodeNS(instance, namespace_uri_param, local_name) catch null;
     }
 
     // Set the attribute value (this will add or update)
@@ -2691,10 +2692,10 @@ pub fn call_removeAttributeNode(instance: *runtime.Instance, attr: *runtime.Inst
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Get attribute properties from the Attr node
-    const namespace_uri = AttrImpl.get_namespaceURI(attr) catch return error.InvalidStateError;
+    const namespace_uri_opt = AttrImpl.get_namespaceURI(attr) catch return error.InvalidStateError;
     const local_name = AttrImpl.get_localName(attr) catch return error.InvalidStateError;
 
-    const ns_slice = namespace_uri.asSlice();
+    const ns_slice = if (namespace_uri_opt) |ns| ns.asSlice() else "";
     const name_slice = local_name.asSlice();
     const ns = if (ns_slice.len > 0) ns_slice else null;
 

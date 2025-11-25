@@ -135,10 +135,10 @@ pub fn call_getNamedItemNS(instance: *runtime.Instance, namespace: runtime.DOMSt
     const attrs = internal.attrs.toSlice();
     for (attrs) |attr| {
         // Get attr's namespace and local name
-        const attr_ns = AttrImpl.get_namespaceURI(attr) catch continue;
+        const attr_ns_opt = AttrImpl.get_namespaceURI(attr) catch continue;
         const attr_local = AttrImpl.get_localName(attr) catch continue;
 
-        const attr_ns_slice = attr_ns.asSlice();
+        const attr_ns_slice = if (attr_ns_opt) |attr_ns| attr_ns.asSlice() else "";
         const attr_local_slice = attr_local.asSlice();
 
         // Check namespace match
@@ -209,10 +209,10 @@ pub fn call_removeNamedItemNS(instance: *runtime.Instance, namespace: runtime.DO
     // Find and remove attribute by namespace and local name
     const AttrImpl = @import("Attr.zig");
     for (internal.attrs.toSlice(), 0..) |attr, i| {
-        const attr_ns = AttrImpl.get_namespaceURI(attr) catch continue;
+        const attr_ns_opt = AttrImpl.get_namespaceURI(attr) catch continue;
         const attr_local = AttrImpl.get_localName(attr) catch continue;
 
-        const attr_ns_slice = attr_ns.asSlice();
+        const attr_ns_slice = if (attr_ns_opt) |attr_ns| attr_ns.asSlice() else "";
         const attr_local_slice = attr_local.asSlice();
 
         // Check namespace match

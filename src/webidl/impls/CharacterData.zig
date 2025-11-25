@@ -111,13 +111,13 @@ pub fn get_length(instance: *runtime.Instance) !u32 {
 
 /// Getter for previousElementSibling (from NonDocumentTypeChildNode mixin)
 /// Spec: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-previouselementsibling
-pub fn get_previousElementSibling(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_previousElementSibling(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     return NonDocumentTypeChildNode.previousElementSibling(instance) orelse error.NotImplemented;
 }
 
 /// Getter for nextElementSibling (from NonDocumentTypeChildNode mixin)
 /// Spec: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-nextelementsibling
-pub fn get_nextElementSibling(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_nextElementSibling(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     return NonDocumentTypeChildNode.nextElementSibling(instance) orelse error.NotImplemented;
 }
 

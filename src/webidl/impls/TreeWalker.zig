@@ -157,12 +157,11 @@ pub fn get_whatToShow(instance: *runtime.Instance) ImplError!u32 {
 
 /// DOM §6.3 - TreeWalker.filter
 /// Returns the filter callback (may be null)
-/// Note: Generated interface expects non-nullable but WebIDL says nullable
-pub fn get_filter(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_filter(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     const internal = getInternal(instance);
     // TODO: Return proper NodeFilter interface
     _ = internal;
-    return error.NotImplemented;
+    return null;
 }
 
 /// DOM §6.3 - TreeWalker.currentNode getter
@@ -185,12 +184,11 @@ pub fn set_currentNode(instance: *runtime.Instance, value: *runtime.Instance) Im
 
 /// DOM §6.3 - TreeWalker.parentNode()
 /// Move to parent node if it passes filter, return null otherwise
-/// Note: WebIDL says nullable, but generated interface expects non-null - we throw NotImplemented for null
-pub fn call_parentNode(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_parentNode(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     const internal = getInternal(instance);
 
     // Step 1: Let node be this's current
-    var node = internal.current orelse return error.NotImplemented;
+    var node = internal.current orelse return null;
 
     // Step 2: While node is non-null and is not this's root
     while (internal.root == null or node != internal.root.?) {
@@ -206,46 +204,41 @@ pub fn call_parentNode(instance: *runtime.Instance) ImplError!*runtime.Instance 
         }
     }
 
-    // Step 3: Return null (expressed as error for non-null interface)
-    return error.NotImplemented;
+    // Step 3: Return null
+    return null;
 }
 
 /// DOM §6.3 - TreeWalker.firstChild()
 /// Move to first child that passes filter
-/// Note: WebIDL says nullable, but generated interface expects non-null - we throw NotImplemented for null
-pub fn call_firstChild(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    return try traverseChildren(instance, .first) orelse return error.NotImplemented;
+pub fn call_firstChild(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+    return try traverseChildren(instance, .first);
 }
 
 /// DOM §6.3 - TreeWalker.lastChild()
 /// Move to last child that passes filter
-/// Note: WebIDL says nullable, but generated interface expects non-null - we throw NotImplemented for null
-pub fn call_lastChild(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    return try traverseChildren(instance, .last) orelse return error.NotImplemented;
+pub fn call_lastChild(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+    return try traverseChildren(instance, .last);
 }
 
 /// DOM §6.3 - TreeWalker.previousSibling()
 /// Move to previous sibling that passes filter
-/// Note: WebIDL says nullable, but generated interface expects non-null - we throw NotImplemented for null
-pub fn call_previousSibling(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    return try traverseSiblings(instance, .previous) orelse return error.NotImplemented;
+pub fn call_previousSibling(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+    return try traverseSiblings(instance, .previous);
 }
 
 /// DOM §6.3 - TreeWalker.nextSibling()
 /// Move to next sibling that passes filter
-/// Note: WebIDL says nullable, but generated interface expects non-null - we throw NotImplemented for null
-pub fn call_nextSibling(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    return try traverseSiblings(instance, .next) orelse return error.NotImplemented;
+pub fn call_nextSibling(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+    return try traverseSiblings(instance, .next);
 }
 
 /// DOM §6.3 - TreeWalker.previousNode()
 /// Move to previous node in tree order that passes filter
-/// Note: WebIDL says nullable, but generated interface expects non-null - we throw NotImplemented for null
-pub fn call_previousNode(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_previousNode(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     const internal = getInternal(instance);
 
     // Step 1: Let node be this's current
-    var node = internal.current orelse return error.NotImplemented;
+    var node = internal.current orelse return null;
 
     // Step 2: While node is not this's root
     while (internal.root == null or node != internal.root.?) {
@@ -281,10 +274,10 @@ pub fn call_previousNode(instance: *runtime.Instance) ImplError!*runtime.Instanc
 
         // Step 2.3: If node is root or node's parent is null, return null
         if (internal.root != null and node == internal.root.?) {
-            return error.NotImplemented;
+            return null;
         }
         if (getParentNode(node) == null) {
-            return error.NotImplemented;
+            return null;
         }
 
         // Step 2.4: Set node to node's parent
@@ -298,18 +291,17 @@ pub fn call_previousNode(instance: *runtime.Instance) ImplError!*runtime.Instanc
         }
     }
 
-    // Step 3: Return null (expressed as error for non-null interface)
-    return error.NotImplemented;
+    // Step 3: Return null
+    return null;
 }
 
 /// DOM §6.3 - TreeWalker.nextNode()
 /// Move to next node in tree order that passes filter
-/// Note: WebIDL says nullable, but generated interface expects non-null - we throw NotImplemented for null
-pub fn call_nextNode(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_nextNode(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     const internal = getInternal(instance);
 
     // Step 1: Let node be this's current
-    var node = internal.current orelse return error.NotImplemented;
+    var node = internal.current orelse return null;
 
     // Step 2: Let result be FILTER_ACCEPT
     var result: u16 = NodeFilter.FILTER_ACCEPT;
@@ -341,7 +333,7 @@ pub fn call_nextNode(instance: *runtime.Instance) ImplError!*runtime.Instance {
         while (temporary) |temp| {
             // Step 3.4.1: If temporary is root, return null
             if (internal.root != null and temp == internal.root.?) {
-                return error.NotImplemented;
+                return null;
             }
 
             // Step 3.4.2: Set sibling to temporary's next sibling
@@ -359,7 +351,7 @@ pub fn call_nextNode(instance: *runtime.Instance) ImplError!*runtime.Instance {
 
         // If we didn't find a sibling, return null
         if (sibling == null) {
-            return error.NotImplemented;
+            return null;
         }
 
         // Step 3.5: Set result to the result of filtering node

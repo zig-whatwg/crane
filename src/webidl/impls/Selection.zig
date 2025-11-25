@@ -145,7 +145,7 @@ pub fn createSelection(allocator: std.mem.Allocator, ctx: runtime.Context, docum
 /// Selection API - anchorNode getter
 /// Returns the Node in which the selection begins.
 /// Returns null if the selection is empty.
-pub fn get_anchorNode(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_anchorNode(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.anchor_node orelse return error.NotImplemented; // null
 }
@@ -161,7 +161,7 @@ pub fn get_anchorOffset(instance: *runtime.Instance) ImplError!u32 {
 /// Selection API - focusNode getter
 /// Returns the Node in which the selection ends.
 /// Returns null if the selection is empty.
-pub fn get_focusNode(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_focusNode(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.focus_node orelse return error.NotImplemented; // null
 }

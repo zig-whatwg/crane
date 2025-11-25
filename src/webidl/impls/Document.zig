@@ -408,14 +408,14 @@ pub fn get_contentType(instance: *runtime.Instance) ImplError!runtime.DOMString 
 
 /// Getter for doctype
 /// DOM §4.6 - Returns the DocumentType node or null
-pub fn get_doctype(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_doctype(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.doctype orelse return error.NotImplemented; // null case - need nullable return
 }
 
 /// Getter for documentElement
 /// DOM §4.6 - Returns the document element (root element, e.g., <html>)
-pub fn get_documentElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_documentElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.document_element orelse return error.NotImplemented; // null case - need nullable return
 }
@@ -515,19 +515,19 @@ pub fn get_namedFlows(instance: *runtime.Instance) ImplError!*runtime.Instance {
 }
 
 /// Getter for rootElement
-pub fn get_rootElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_rootElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for activeViewTransition
-pub fn get_activeViewTransition(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_activeViewTransition(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for location
-pub fn get_location(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_location(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -584,7 +584,7 @@ pub fn get_dir(instance: *runtime.Instance) ImplError!runtime.DOMString {
 /// Getter for body
 /// HTML §3.1.3 - Returns the body element (the first body or frameset child of html element)
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-body
-pub fn get_body(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_body(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Get document element (should be <html>)
@@ -623,7 +623,7 @@ pub fn get_body(instance: *runtime.Instance) ImplError!*runtime.Instance {
 /// Getter for head
 /// HTML §3.1.3 - Returns the head element (the first head child of html element)
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-head
-pub fn get_head(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_head(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Get document element (should be <html>)
