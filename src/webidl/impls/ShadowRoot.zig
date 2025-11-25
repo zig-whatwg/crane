@@ -84,9 +84,9 @@ pub const InternalState = struct {
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
-            .shadow_mode = .open,
+            .shadow_mode = ._open_,
             .delegates_focus_flag = false,
-            .slot_assignment_mode = .named,
+            .slot_assignment_mode = ._named_,
             .clonable_flag = false,
             .serializable_flag = false,
             .available_to_element_internals = false,
