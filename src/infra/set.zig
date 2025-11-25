@@ -46,12 +46,32 @@ pub fn OrderedSet(comptime T: type) type {
         pub fn remove(self: *Self, item: T) bool {
             const items_slice = self.items_list.items();
             for (items_slice, 0..) |elem, i| {
-                if (std.meta.eql(elem, item)) {
+                if (itemsEqual(elem, item)) {
                     _ = self.items_list.remove(i) catch unreachable;
                     return true;
                 }
             }
             return false;
+        }
+
+        /// Compare two items for equality.
+        /// For slices (like []const u16), compares contents instead of pointers.
+        /// For other types, uses std.meta.eql.
+        inline fn itemsEqual(a: T, b: T) bool {
+            // Determine at compile time if T is a slice
+            const is_slice = comptime blk: {
+                const info = @typeInfo(T);
+                break :blk info == .pointer and info.pointer.size == .slice;
+            };
+
+            if (is_slice) {
+                // For slices, compare contents
+                const child = @typeInfo(T).pointer.child;
+                return std.mem.eql(child, a, b);
+            } else {
+                // For other types, use std.meta.eql
+                return std.meta.eql(a, b);
+            }
         }
 
         pub fn contains(self: *const Self, item: T) bool {
@@ -117,10 +137,10 @@ pub fn OrderedSet(comptime T: type) type {
             var found_replacement: ?usize = null;
 
             for (items_slice, 0..) |elem, i| {
-                if (std.meta.eql(elem, item)) {
+                if (itemsEqual(elem, item)) {
                     found_item = i;
                 }
-                if (std.meta.eql(elem, replacement)) {
+                if (itemsEqual(elem, replacement)) {
                     found_replacement = i;
                 }
             }
@@ -243,36 +263,3 @@ pub fn rangeExclusive(allocator: Allocator, comptime T: type, n: T, m: T) !Order
 
     return result;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
