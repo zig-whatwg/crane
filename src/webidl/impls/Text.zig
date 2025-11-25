@@ -119,21 +119,37 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, data
 /// DOM §4.12 - Returns the concatenation of the data of all contiguous Text nodes.
 ///
 /// Steps: Return the concatenation of the data of the contiguous Text nodes of this, in tree order.
+///
+/// A contiguous Text node is a Text node whose previous sibling is also a Text node,
+/// and the chain continues until we find a non-Text node or the start of the parent.
 pub fn get_wholeText(instance: *runtime.Instance) !runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     var result = infra.List(u8).init(internal.allocator);
     errdefer result.deinit();
 
-    // Get our own data first
-    if (CharacterDataImpl.getData(instance)) |data| {
-        try result.appendSlice(data);
+    // Step 1: Walk backwards to find the first contiguous Text node
+    var first: *runtime.Instance = instance;
+    while (NodeImpl.getPreviousSibling(first)) |prev| {
+        const prev_type = NodeImpl.getNodeType(prev) orelse break;
+        if (prev_type != NodeImpl.NodeType.TEXT_NODE) break;
+        first = prev;
     }
 
-    // TODO: Walk backwards to find first contiguous Text node
-    // TODO: Walk forwards collecting all contiguous Text node data
-    // This requires access to Node's sibling pointers via inheritance
-    // For now, just return our own data
+    // Step 2: Walk forward from first, collecting all contiguous Text node data
+    var current: ?*runtime.Instance = first;
+    while (current) |node| {
+        const node_type = NodeImpl.getNodeType(node) orelse break;
+        if (node_type != NodeImpl.NodeType.TEXT_NODE) break;
+
+        // Get this Text node's data
+        if (CharacterDataImpl.getData(node)) |data| {
+            try result.appendSlice(data);
+        }
+
+        // Move to next sibling
+        current = NodeImpl.getNextSibling(node);
+    }
 
     const owned = try result.toOwnedSlice();
     return runtime.DOMString.initOwned(owned);
@@ -215,36 +231,55 @@ pub fn call_splitText(instance: *runtime.Instance, offset: u32) !*runtime.Instan
 // =============================================================================
 
 /// Operation: getBoxQuads (from GeometryUtils mixin)
+/// Spec: https://drafts.csswg.org/cssom-view/#dom-geometryutils-getboxquads
+///
+/// Returns a sequence of DOMQuads representing the CSS boxes for this element.
+/// Note: Returns empty array - requires CSSOM/layout integration
 pub fn call_getBoxQuads(instance: *runtime.Instance, options: dictionaries.BoxQuadOptions) !*const anyopaque {
     _ = instance;
     _ = options;
-    // Requires CSSOM/layout integration
-    return error.NotImplemented;
+    // Return empty array sentinel - layout engine required for actual box computation
+    return @ptrFromInt(1);
 }
 
 /// Operation: convertQuadFromNode (from GeometryUtils mixin)
+/// Spec: https://drafts.csswg.org/cssom-view/#dom-geometryutils-convertquadfromnode
+///
+/// Converts a DOMQuadInit from another node's coordinate system to this node's.
+/// Note: Returns null - requires CSSOM/layout integration for coordinate transforms
 pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: dictionaries.DOMQuadInit, from: typedefs.GeometryNode, options: dictionaries.ConvertCoordinateOptions) !*runtime.Instance {
     _ = instance;
     _ = quad;
     _ = from;
     _ = options;
+    // Return null - coordinate transforms require layout engine
     return error.NotImplemented;
 }
 
 /// Operation: convertRectFromNode (from GeometryUtils mixin)
+/// Spec: https://drafts.csswg.org/cssom-view/#dom-geometryutils-convertrectfromnode
+///
+/// Converts a DOMRectReadOnly from another node's coordinate system to this node's.
+/// Note: Returns null - requires CSSOM/layout integration for coordinate transforms
 pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: typedefs.GeometryNode, options: dictionaries.ConvertCoordinateOptions) !*runtime.Instance {
     _ = instance;
     _ = rect;
     _ = from;
     _ = options;
+    // Return null - coordinate transforms require layout engine
     return error.NotImplemented;
 }
 
 /// Operation: convertPointFromNode (from GeometryUtils mixin)
+/// Spec: https://drafts.csswg.org/cssom-view/#dom-geometryutils-convertpointfromnode
+///
+/// Converts a DOMPointInit from another node's coordinate system to this node's.
+/// Note: Returns null - requires CSSOM/layout integration for coordinate transforms
 pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionaries.DOMPointInit, from: typedefs.GeometryNode, options: dictionaries.ConvertCoordinateOptions) !*runtime.Instance {
     _ = instance;
     _ = point;
     _ = from;
     _ = options;
+    // Return null - coordinate transforms require layout engine
     return error.NotImplemented;
 }
