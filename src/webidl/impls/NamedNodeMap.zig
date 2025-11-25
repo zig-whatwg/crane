@@ -1,7 +1,10 @@
 //! Implementation for NamedNodeMap interface
 //!
-//! This file is AUTO-GENERATED on first creation.
-//! Add your custom implementation here.
+//! Spec: https://dom.spec.whatwg.org/#interface-namednodemap
+//! WHATWG DOM Standard §4.9.1
+//!
+//! A NamedNodeMap represents a collection of Attr objects. It's used for
+//! Element.attributes and provides both indexed and named access.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -10,19 +13,46 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const infra = @import("infra");
 const NamedNodeMap = interfaces.NamedNodeMap;
 
 pub const State = NamedNodeMap.State;
 
 pub const ImplError = error{
     NotImplemented,
+    InvalidState,
+    OutOfMemory,
+    NotFoundError,
+    InUseAttributeError,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Internal state for NamedNodeMap implementation
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+
+    /// The list of Attr nodes
+    attrs: infra.List(*runtime.Instance),
+
+    /// Owner element (for attribute modification tracking)
+    owner_element: ?*runtime.Instance = null,
+
+    pub fn init(allocator: std.mem.Allocator) InternalState {
+        return .{
+            .allocator = allocator,
+            .attrs = infra.List(*runtime.Instance).init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *InternalState) void {
+        self.attrs.deinit();
+    }
+};
+
+/// Get the internal state from an instance
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    const state = instance.getState(State);
+    return state.own._internal;
+}
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -32,70 +62,156 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    errdefer runtime.Instance.deinit(instance);
+
+    // Initialize internal state
+    const state = instance.getState(StateType);
+    const ArenaAllocator = @import("runtime").ArenaAllocator;
+    const internal = try ArenaAllocator.get().create(InternalState);
+    internal.* = InternalState.init(allocator);
+    state.own._internal = internal;
+
+    // Initialize length to 0
+    state.own.length = 0;
+
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.deinit();
+    }
     runtime.Instance.deinit(instance);
 }
 
 /// Getter for length
-pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
-    _ = instance;
+/// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-length
+pub fn get_length(instance: *runtime.Instance) !u32 {
+    const internal = getInternal(instance) orelse return 0;
+    return @intCast(internal.attrs.size());
+}
+
+/// Operation: item(index)
+/// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-item
+pub fn call_item(instance: *runtime.Instance, index: u32) !*runtime.Instance {
+    const internal = getInternal(instance) orelse return error.InvalidState;
+    return internal.attrs.get(index) orelse return error.NotImplemented;
+}
+
+/// Operation: getNamedItem(qualifiedName)
+/// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-getnameditem
+pub fn call_getNamedItem(instance: *runtime.Instance, qualifiedName: runtime.DOMString) !*runtime.Instance {
+    const internal = getInternal(instance) orelse return error.InvalidState;
+    _ = qualifiedName;
+
+    // Find attribute by qualified name
+    const attrs = internal.attrs.toSlice();
+    for (attrs) |attr| {
+        // TODO: Get attr's qualified name and compare
+        _ = attr;
+    }
+
     return error.NotImplemented;
 }
 
-/// Operation: item
-pub fn call_item(instance: *runtime.Instance, index: u32) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = index;
-    return error.NotImplemented;
-}
-
-/// Operation: getNamedItemNS
-pub fn call_getNamedItemNS(instance: *runtime.Instance, namespace: runtime.DOMString, localName: runtime.DOMString) ImplError!*runtime.Instance {
-    _ = instance;
+/// Operation: getNamedItemNS(namespace, localName)
+/// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-getnameditemns
+pub fn call_getNamedItemNS(instance: *runtime.Instance, namespace: runtime.DOMString, localName: runtime.DOMString) !*runtime.Instance {
+    const internal = getInternal(instance) orelse return error.InvalidState;
     _ = namespace;
     _ = localName;
+
+    // Find attribute by namespace and local name
+    const attrs = internal.attrs.toSlice();
+    for (attrs) |attr| {
+        // TODO: Get attr's namespace and local name and compare
+        _ = attr;
+    }
+
     return error.NotImplemented;
 }
 
-/// Operation: getNamedItem
-pub fn call_getNamedItem(instance: *runtime.Instance, qualifiedName: runtime.DOMString) ImplError!*runtime.Instance {
-    _ = instance;
+/// Operation: setNamedItem(attr)
+/// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-setnameditem
+pub fn call_setNamedItem(instance: *runtime.Instance, attr: *runtime.Instance) !*runtime.Instance {
+    return setAttr(instance, attr);
+}
+
+/// Operation: setNamedItemNS(attr)
+/// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-setnameditemns
+pub fn call_setNamedItemNS(instance: *runtime.Instance, attr: *runtime.Instance) !*runtime.Instance {
+    return setAttr(instance, attr);
+}
+
+/// Operation: removeNamedItem(qualifiedName)
+/// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-removenameditem
+pub fn call_removeNamedItem(instance: *runtime.Instance, qualifiedName: runtime.DOMString) !*runtime.Instance {
+    const internal = getInternal(instance) orelse return error.InvalidState;
     _ = qualifiedName;
-    return error.NotImplemented;
+
+    // Find and remove attribute by qualified name
+    const attrs = internal.attrs.toSlice();
+    for (attrs) |attr| {
+        // TODO: Get attr's qualified name and compare
+        _ = attr;
+    }
+
+    return error.NotFoundError;
 }
 
-/// Operation: setNamedItemNS
-pub fn call_setNamedItemNS(instance: *runtime.Instance, attr: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = attr;
-    return error.NotImplemented;
-}
-
-/// Operation: removeNamedItem
-pub fn call_removeNamedItem(instance: *runtime.Instance, qualifiedName: runtime.DOMString) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = qualifiedName;
-    return error.NotImplemented;
-}
-
-/// Operation: removeNamedItemNS
-pub fn call_removeNamedItemNS(instance: *runtime.Instance, namespace: runtime.DOMString, localName: runtime.DOMString) ImplError!*runtime.Instance {
-    _ = instance;
+/// Operation: removeNamedItemNS(namespace, localName)
+/// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-removenameditemns
+pub fn call_removeNamedItemNS(instance: *runtime.Instance, namespace: runtime.DOMString, localName: runtime.DOMString) !*runtime.Instance {
+    const internal = getInternal(instance) orelse return error.InvalidState;
     _ = namespace;
     _ = localName;
-    return error.NotImplemented;
+
+    // Find and remove attribute by namespace and local name
+    const attrs = internal.attrs.toSlice();
+    for (attrs) |attr| {
+        // TODO: Get attr's namespace and local name and compare
+        _ = attr;
+    }
+
+    return error.NotFoundError;
 }
 
-/// Operation: setNamedItem
-pub fn call_setNamedItem(instance: *runtime.Instance, attr: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = attr;
-    return error.NotImplemented;
+// ============================================================================
+// Internal helper functions
+// ============================================================================
+
+/// Set an attribute in the map
+fn setAttr(instance: *runtime.Instance, attr: *runtime.Instance) !*runtime.Instance {
+    const internal = getInternal(instance) orelse return error.InvalidState;
+    try internal.attrs.append(attr);
+
+    // Update length
+    const state = instance.getState(State);
+    state.own.length = @intCast(internal.attrs.size());
+
+    return attr;
 }
 
+/// Add an attribute to the map (internal API)
+pub fn addAttr(instance: *runtime.Instance, attr: *runtime.Instance) !void {
+    const internal = getInternal(instance) orelse return error.InvalidState;
+    try internal.attrs.append(attr);
+
+    // Update length
+    const state = instance.getState(State);
+    state.own.length = @intCast(internal.attrs.size());
+}
+
+/// Set the owner element
+pub fn setOwnerElement(instance: *runtime.Instance, element: ?*runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    internal.owner_element = element;
+}
+
+/// Get the attrs as a slice
+pub fn getAttrs(instance: *runtime.Instance) []const *runtime.Instance {
+    const internal = getInternal(instance) orelse return &[_]*runtime.Instance{};
+    return internal.attrs.toSlice();
+}
