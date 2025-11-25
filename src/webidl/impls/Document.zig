@@ -2519,11 +2519,117 @@ pub fn call_hasStorageAccess(instance: *runtime.Instance) ImplError!*const anyop
 }
 
 /// Operation: importNode
+/// DOM §4.6 - Returns a copy of node imported into this document.
+/// Spec: https://dom.spec.whatwg.org/#dom-document-importnode
+///
+/// Steps:
+/// 1. If node is a document or shadow root, throw "NotSupportedError"
+/// 2. Return clone a node with document=this, subtree=deep
 pub fn call_importNode(instance: *runtime.Instance, node: *runtime.Instance, options: *const anyopaque) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = node;
-    _ = options;
-    return error.NotImplemented;
+    _ = options; // TODO: Handle ImportNodeOptions (deep flag)
+
+    // Step 1: Check node type
+    const node_type = NodeImpl.getNodeType(node);
+
+    // Document nodes cannot be imported
+    if (node_type == NodeImpl.NodeType.DOCUMENT_NODE) {
+        return error.NotSupportedError;
+    }
+
+    // TODO: Check for shadow root when shadow DOM is implemented
+
+    // Step 2: Clone the node into this document
+    // For now, do a shallow clone (deep=false by default)
+    // TODO: Parse options to get deep flag
+    return cloneNode(instance, node, false);
+}
+
+/// Clone a node for importNode/cloneNode
+/// Spec: https://dom.spec.whatwg.org/#concept-node-clone
+fn cloneNode(doc: *runtime.Instance, node: *runtime.Instance, deep: bool) ImplError!*runtime.Instance {
+    const internal = getInternal(doc) orelse return error.InvalidStateError;
+    const node_type = NodeImpl.getNodeType(node) orelse return error.InvalidStateError;
+
+    // Clone based on node type
+    const copy = switch (node_type) {
+        NodeImpl.NodeType.ELEMENT_NODE => blk: {
+            // Create new element
+            const ElementImpl = @import("Element.zig");
+            const elem = try ElementImpl.init(
+                internal.allocator,
+                interfaces.Element.State,
+                &interfaces.Element.vtable,
+                doc.ctx,
+            );
+            try NodeImpl.setNodeType(elem, NodeImpl.NodeType.ELEMENT_NODE);
+            // TODO: Copy attributes and other element properties
+            break :blk elem;
+        },
+        NodeImpl.NodeType.TEXT_NODE => blk: {
+            // Clone text data
+            // TODO: Get text data from source node via CharacterData
+            const text = try TextImpl.call_constructor(internal.allocator, doc.ctx, runtime.DOMString.initEmpty());
+            break :blk text;
+        },
+        NodeImpl.NodeType.COMMENT_NODE => blk: {
+            // Clone comment data
+            // TODO: Get comment data from source node via CharacterData
+            const comment = try CommentImpl.call_constructor(internal.allocator, doc.ctx, runtime.DOMString.initEmpty());
+            break :blk comment;
+        },
+        NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE => blk: {
+            const fragment = try DocumentFragmentImpl.init(
+                internal.allocator,
+                interfaces.DocumentFragment.State,
+                &interfaces.DocumentFragment.vtable,
+                doc.ctx,
+            );
+            try NodeImpl.setNodeType(fragment, NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE);
+            break :blk fragment;
+        },
+        NodeImpl.NodeType.PROCESSING_INSTRUCTION_NODE => blk: {
+            const pi = try ProcessingInstructionImpl.init(
+                internal.allocator,
+                interfaces.ProcessingInstruction.State,
+                &interfaces.ProcessingInstruction.vtable,
+                doc.ctx,
+            );
+            try NodeImpl.setNodeType(pi, NodeImpl.NodeType.PROCESSING_INSTRUCTION_NODE);
+            // TODO: Copy target and data
+            break :blk pi;
+        },
+        NodeImpl.NodeType.CDATA_SECTION_NODE => blk: {
+            const cdata = try CDATASectionImpl.init(
+                internal.allocator,
+                interfaces.CDATASection.State,
+                &interfaces.CDATASection.vtable,
+                doc.ctx,
+            );
+            try NodeImpl.setNodeType(cdata, NodeImpl.NodeType.CDATA_SECTION_NODE);
+            // TODO: Copy data
+            break :blk cdata;
+        },
+        NodeImpl.NodeType.DOCUMENT_TYPE_NODE => {
+            // DocumentType cannot be imported via importNode per spec
+            return error.NotSupportedError;
+        },
+        else => return error.NotSupportedError,
+    };
+    errdefer {
+        // Clean up on error - cast to generic deinit
+        runtime.Instance.deinit(copy);
+    }
+
+    // Set owner document
+    try NodeImpl.setOwnerDocument(copy, doc);
+
+    // If deep clone, recursively clone children
+    if (deep) {
+        // TODO: Iterate node's children and clone each
+        // For each child, call cloneNode(doc, child, true) and append to copy
+    }
+
+    return copy;
 }
 
 /// Operation: createCDATASection
@@ -2600,10 +2706,59 @@ pub fn call_exitFullscreen(instance: *runtime.Instance) ImplError!*const anyopaq
 }
 
 /// Operation: adoptNode
+/// DOM §4.6 - Moves node from another document to this document.
+/// Spec: https://dom.spec.whatwg.org/#dom-document-adoptnode
+///
+/// Steps:
+/// 1. If node is a document, throw "NotSupportedError"
+/// 2. If node is a shadow root, throw "HierarchyRequestError"
+/// 3. If node is a DocumentFragment whose host is non-null, return node
+/// 4. Adopt node into this document
+/// 5. Return node
 pub fn call_adoptNode(instance: *runtime.Instance, node: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = node;
-    return error.NotImplemented;
+    const node_type = NodeImpl.getNodeType(node);
+
+    // Step 1: Document nodes cannot be adopted
+    if (node_type == NodeImpl.NodeType.DOCUMENT_NODE) {
+        return error.NotSupportedError;
+    }
+
+    // Step 2: Shadow roots cannot be adopted
+    // TODO: Check for shadow root when shadow DOM is implemented
+
+    // Step 3: DocumentFragment with host - just return
+    if (node_type == NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE) {
+        // TODO: Check DocumentFragment.host when shadow DOM is implemented
+        // For now, DocumentFragment doesn't have host field
+    }
+
+    // Step 4: Adopt node into this document
+    // This involves:
+    // a) Remove node from its parent (if any)
+    // b) Set node's node document to this
+    // c) Recursively set node document for all descendants
+
+    // Remove from parent if attached
+    if (NodeImpl.getParent(node)) |parent| {
+        _ = parent;
+        // TODO: Call parent.removeChild(node) when mutation algorithms are available
+    }
+
+    // Set owner document (recursively for descendants)
+    try adoptNodeRecursive(instance, node);
+
+    // Step 5: Return node
+    return node;
+}
+
+/// Recursively adopt a node and all its descendants
+fn adoptNodeRecursive(doc: *runtime.Instance, node: *runtime.Instance) ImplError!void {
+    // Set this node's owner document
+    try NodeImpl.setOwnerDocument(node, doc);
+
+    // TODO: Iterate children and adopt recursively
+    // For each child in node's children:
+    //   try adoptNodeRecursive(doc, child);
 }
 
 /// Operation: createTextNode
