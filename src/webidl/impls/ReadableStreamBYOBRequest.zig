@@ -88,16 +88,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Getter for view
 ///
 /// Spec: § 4.8.2 "The view getter steps are:"
-pub fn get_view(instance: *runtime.Instance) ImplError!typedefs.ArrayBufferView {
+pub fn get_view(instance: *runtime.Instance) ImplError!?typedefs.ArrayBufferView {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
     // Step 1: Return this.[[view]]
-    return internal.view orelse {
-        // If view is null, return a "null" view (empty opaque pointer)
-        // This matches the spec behavior when request has been responded
-        return @as(typedefs.ArrayBufferView, @ptrCast(&[_]u8{}));
-    };
+    // Per spec, returns null if the request has been responded to
+    return internal.view;
 }
 
 /// Operation: respond
@@ -112,8 +109,7 @@ pub fn call_respond(instance: *runtime.Instance, bytesWritten: u64) ImplError!vo
 
     // Step 2: If this.[[view]].[[ViewedArrayBuffer]] is detached, throw TypeError
     if (internal.view) |view| {
-        const ArrayBufferViewModule = @import("runtime").arraybuffer_view;
-        if (ArrayBufferViewModule.isViewDetached(view)) {
+        if (view.isDetached()) {
             return error.TypeError;
         }
     }

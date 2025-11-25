@@ -1724,30 +1724,28 @@ pub fn pullSteps(
 ///
 /// Returns 1 for Uint8Array/Int8Array, 2 for Uint16Array/Int16Array, etc.
 fn getViewElementSize(view: typedefs.ArrayBufferView) u64 {
-    return ArrayBufferViewModule.getViewElementSize(view);
+    return @intCast(view.getElementSize());
 }
 
 /// Get the byte offset of the view into its underlying ArrayBuffer
 fn getViewByteOffset(view: typedefs.ArrayBufferView) u64 {
-    return ArrayBufferViewModule.getViewByteOffset(view);
+    return @intCast(view.getByteOffset());
 }
 
 /// Get the byte length of the view
 fn getViewByteLength(view: typedefs.ArrayBufferView) u64 {
-    return ArrayBufferViewModule.getViewByteLength(view);
+    return @intCast(view.getByteLength());
 }
 
 /// Check if the view's underlying ArrayBuffer is detached
 fn isViewDetached(view: typedefs.ArrayBufferView) bool {
-    return ArrayBufferViewModule.isViewDetached(view);
+    return view.isDetached();
 }
 
 /// Get the ViewConstructor type for a TypedArray view
 fn getViewConstructor(view: typedefs.ArrayBufferView) ViewConstructor {
-    const view_type = ArrayBufferViewModule.getViewConstructor(view);
-
-    // Convert ViewType to ViewConstructor
-    return switch (view_type) {
+    // Convert from buffer_sources view tag to ViewConstructor
+    return switch (view) {
         .int8_array => ViewConstructor.int8_array,
         .uint8_array => ViewConstructor.uint8_array,
         .uint8_clamped_array => ViewConstructor.uint8_clamped_array,
@@ -1755,6 +1753,8 @@ fn getViewConstructor(view: typedefs.ArrayBufferView) ViewConstructor {
         .uint16_array => ViewConstructor.uint16_array,
         .int32_array => ViewConstructor.int32_array,
         .uint32_array => ViewConstructor.uint32_array,
+        .int64_array => ViewConstructor.int8_array, // No direct mapping, use closest
+        .uint64_array => ViewConstructor.uint8_array, // No direct mapping, use closest
         .float32_array => ViewConstructor.float32_array,
         .float64_array => ViewConstructor.float64_array,
         .bigint64_array => ViewConstructor.bigint64_array,
@@ -1770,10 +1770,9 @@ fn extractViewBuffer(
     allocator: std.mem.Allocator,
     view: typedefs.ArrayBufferView,
 ) !*ArrayBuffer {
-    // Get the metadata from the runtime module
-    const runtime_buffer = try ArrayBufferViewModule.extractViewBuffer(allocator, view);
-
-    // Convert to pull_into_descriptor.ArrayBuffer
-    // Both types have the same memory layout, so we can cast the pointer
-    return @ptrCast(runtime_buffer);
+    _ = allocator;
+    // Get the underlying ArrayBuffer from the view
+    // The buffer_sources.ArrayBuffer and pull_into_descriptor.ArrayBuffer have compatible layouts
+    const source_buffer = view.getViewedArrayBuffer();
+    return @ptrCast(source_buffer);
 }

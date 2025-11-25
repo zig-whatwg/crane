@@ -603,8 +603,9 @@ pub fn call_getReader(instance: *runtime.Instance, options: dictionaries.Readabl
     };
 
     // Step 3: Return reader
-    // The return type is typedefs.ReadableStreamReader which is *const anyopaque
-    return @ptrCast(reader);
+    // The return type is typedefs.ReadableStreamReader which is a union
+    // Wrap the reader instance in variant_0 (for default reader)
+    return typedefs.ReadableStreamReader{ .variant_0 = @ptrCast(reader) };
 }
 
 /// Operation: pipeTo

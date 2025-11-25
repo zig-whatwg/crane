@@ -156,14 +156,14 @@ pub fn call_read(
     const internal = state.own._internal orelse return error.InvalidState;
 
     // Step 1: If view.[[ByteLength]] is 0, reject with TypeError
-    const view_byte_length = arraybuffer_view.getViewByteLength(view);
+    const view_byte_length = view.getByteLength();
     if (view_byte_length == 0) {
         return error.TypeError;
     }
 
     // Step 2: If buffer byte length is 0, reject with TypeError
     // Step 3: If buffer is detached, reject with TypeError
-    if (arraybuffer_view.isViewDetached(view)) {
+    if (view.isDetached()) {
         return error.TypeError;
     }
 
