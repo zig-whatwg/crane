@@ -25,6 +25,7 @@ const CommentImpl = @import("Comment.zig");
 const DocumentFragmentImpl = @import("DocumentFragment.zig");
 const ProcessingInstructionImpl = @import("ProcessingInstruction.zig");
 const CDATASectionImpl = @import("CDATASection.zig");
+const EventImpl = @import("Event.zig");
 
 pub const State = Document.State;
 
@@ -2266,9 +2267,7 @@ pub fn call_createElement(instance: *runtime.Instance, localName: runtime.DOMStr
     _ = options; // TODO: Handle ElementCreationOptions (custom elements)
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Intern the tag name for memory efficiency
-    const interned_name = try internString(instance, localName.asSlice());
-    _ = interned_name;
+    const local_name_slice = localName.asSlice();
 
     // Create element via Element impl
     const ElementImpl = @import("Element.zig");
@@ -2283,9 +2282,8 @@ pub fn call_createElement(instance: *runtime.Instance, localName: runtime.DOMStr
     // Set node type to ELEMENT_NODE via Node impl
     try NodeImpl.setNodeType(element, NodeImpl.NodeType.ELEMENT_NODE);
 
-    // Set the local name via the element's state
-    // TODO: Element needs proper localName setter implementation
-    // For now, the element is created but tagName is not set
+    // Set the local name
+    try ElementImpl.setLocalName(element, local_name_slice);
 
     // Set owner document
     try NodeImpl.setOwnerDocument(element, instance);
@@ -2445,10 +2443,78 @@ pub fn call_createProcessingInstruction(instance: *runtime.Instance, target: run
 }
 
 /// Operation: createEvent
+/// DOM §4.6.1 - Creates a legacy event object
+/// Spec: https://dom.spec.whatwg.org/#dom-document-createevent
+///
+/// This is a legacy API for creating events. New code should use event constructors instead.
+///
+/// Spec steps:
+/// 1. Let constructor be null
+/// 2. If interface is ASCII case-insensitive match for strings in table, set constructor
+/// 3. If constructor is null, throw "NotSupportedError"
+/// 4. If interface not exposed on relevant global object, throw "NotSupportedError"
+/// 5. Return result of creating an event given constructor
 pub fn call_createEvent(instance: *runtime.Instance, interface: runtime.DOMString) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = interface;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const interface_slice = interface.asSlice();
+
+    // Step 2: Check ASCII case-insensitive match against known event types
+    // Convert to lowercase for comparison
+    var lowercase_buf: [64]u8 = undefined;
+    if (interface_slice.len > lowercase_buf.len) {
+        return error.NotSupportedError;
+    }
+
+    for (interface_slice, 0..) |c, i| {
+        lowercase_buf[i] = std.ascii.toLower(c);
+    }
+    const lowercase_interface = lowercase_buf[0..interface_slice.len];
+
+    // Step 2: Match against known event type strings
+    // For now, we only support basic Event type
+    // Full spec requires: BeforeUnloadEvent, CompositionEvent, CustomEvent,
+    // DeviceMotionEvent, DeviceOrientationEvent, DragEvent, Event, FocusEvent,
+    // HashChangeEvent, KeyboardEvent, MessageEvent, MouseEvent, StorageEvent,
+    // TextEvent, TouchEvent, UIEvent
+
+    const is_event = std.mem.eql(u8, lowercase_interface, "event") or
+        std.mem.eql(u8, lowercase_interface, "events") or
+        std.mem.eql(u8, lowercase_interface, "htmlevents") or
+        std.mem.eql(u8, lowercase_interface, "svgevents");
+
+    const is_uievent = std.mem.eql(u8, lowercase_interface, "uievent") or
+        std.mem.eql(u8, lowercase_interface, "uievents");
+
+    const is_mouseevent = std.mem.eql(u8, lowercase_interface, "mouseevent") or
+        std.mem.eql(u8, lowercase_interface, "mouseevents");
+
+    const is_customevent = std.mem.eql(u8, lowercase_interface, "customevent");
+
+    // TODO: Add support for other event types when they're implemented:
+    // - KeyboardEvent, FocusEvent, TouchEvent, etc.
+
+    // Step 3: If constructor is null, throw "NotSupportedError"
+    if (!is_event and !is_uievent and !is_mouseevent and !is_customevent) {
+        return error.NotSupportedError;
+    }
+
+    // Step 4: Interface exposure check (skipped for now - all Event types are exposed)
+
+    // Step 5: Create an event
+    // For now, we create a basic Event for all types
+    // Proper implementation would create specific event subtypes (UIEvent, MouseEvent, etc.)
+    // Note: The created event is in an uninitialized state
+    // The caller must call initEvent() to initialize it - this matches legacy behavior per spec
+
+    // Create with empty type and default EventInit (not initialized)
+    const event_init = dictionaries.EventInit{
+        .bubbles = false,
+        .cancelable = false,
+        .composed = false,
+    };
+    const event = try EventImpl.call_constructor(internal.allocator, instance.ctx, runtime.DOMString.initEmpty(), event_init);
+
+    return event;
 }
 
 /// Operation: replaceChildren
@@ -2625,8 +2691,15 @@ fn cloneNode(doc: *runtime.Instance, node: *runtime.Instance, deep: bool) ImplEr
 
     // If deep clone, recursively clone children
     if (deep) {
-        // TODO: Iterate node's children and clone each
-        // For each child, call cloneNode(doc, child, true) and append to copy
+        // Iterate node's children using first_child/next_sibling traversal
+        var child = NodeImpl.getFirstChild(node);
+        while (child) |c| {
+            const child_copy = try cloneNode(doc, c, true);
+            // TODO: Append child_copy to copy using proper appendChild
+            // For now we just clone; tree structure maintenance needs mutation algorithms
+            _ = child_copy;
+            child = NodeImpl.getNextSibling(c);
+        }
     }
 
     return copy;
@@ -2752,13 +2825,17 @@ pub fn call_adoptNode(instance: *runtime.Instance, node: *runtime.Instance) Impl
 }
 
 /// Recursively adopt a node and all its descendants
+/// Spec: https://dom.spec.whatwg.org/#concept-node-adopt
 fn adoptNodeRecursive(doc: *runtime.Instance, node: *runtime.Instance) ImplError!void {
     // Set this node's owner document
     try NodeImpl.setOwnerDocument(node, doc);
 
-    // TODO: Iterate children and adopt recursively
-    // For each child in node's children:
-    //   try adoptNodeRecursive(doc, child);
+    // Iterate children and adopt recursively using first_child/next_sibling traversal
+    var child = NodeImpl.getFirstChild(node);
+    while (child) |c| {
+        try adoptNodeRecursive(doc, c);
+        child = NodeImpl.getNextSibling(c);
+    }
 }
 
 /// Operation: createTextNode
@@ -2906,12 +2983,55 @@ pub fn call_requestStorageAccess(instance: *runtime.Instance) ImplError!*const a
 }
 
 /// Operation: createElementNS
+/// DOM §4.6 - Creates an element in the given namespace
+/// Spec: https://dom.spec.whatwg.org/#dom-document-createelementns
+///
+/// Steps:
+/// 1. Validate and extract namespace and qualifiedName
+/// 2. Parse qualifiedName for prefix:localName
+/// 3. Create element with namespace, prefix, localName
 pub fn call_createElementNS(instance: *runtime.Instance, namespace: runtime.DOMString, qualifiedName: runtime.DOMString, options: *const anyopaque) ImplError!*runtime.Instance {
-    _ = instance;
-    _ = namespace;
-    _ = qualifiedName;
-    _ = options;
-    return error.NotImplemented;
+    _ = options; // TODO: Handle ElementCreationOptions (custom elements)
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    const ns_slice = namespace.asSlice();
+    const qname_slice = qualifiedName.asSlice();
+
+    // Parse qualified name for prefix and local name
+    var prefix: ?[]const u8 = null;
+    var local_name: []const u8 = qname_slice;
+
+    if (std.mem.indexOfScalar(u8, qname_slice, ':')) |colon_pos| {
+        prefix = qname_slice[0..colon_pos];
+        local_name = qname_slice[colon_pos + 1 ..];
+    }
+
+    // Create element via Element impl
+    const ElementImpl = @import("Element.zig");
+    const element = try ElementImpl.init(
+        internal.allocator,
+        interfaces.Element.State,
+        &interfaces.Element.vtable,
+        instance.ctx,
+    );
+    errdefer ElementImpl.deinit(element);
+
+    // Set node type to ELEMENT_NODE
+    try NodeImpl.setNodeType(element, NodeImpl.NodeType.ELEMENT_NODE);
+
+    // Set namespace, prefix, and local name
+    if (ns_slice.len > 0) {
+        try ElementImpl.setNamespaceURI(element, ns_slice);
+    }
+    if (prefix) |p| {
+        try ElementImpl.setPrefix(element, p);
+    }
+    try ElementImpl.setLocalName(element, local_name);
+
+    // Set owner document
+    try NodeImpl.setOwnerDocument(element, instance);
+
+    return element;
 }
 
 /// Operation: captureEvents

@@ -1,7 +1,12 @@
 //! Implementation for MutationObserver interface
 //!
-//! This file is AUTO-GENERATED on first creation.
-//! Add your custom implementation here.
+//! Spec: https://dom.spec.whatwg.org/#interface-mutationobserver
+//! WHATWG DOM Standard §7.1
+//!
+//! MutationObservers can be used to observe mutations to the tree of nodes.
+//! They maintain a list of observed nodes and a queue of pending mutation records.
+//!
+//! Migrated from: webidl/src/dom/MutationObserver.zig
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -16,13 +21,71 @@ pub const State = MutationObserver.State;
 
 pub const ImplError = error{
     NotImplemented,
+    TypeError,
+    OutOfMemory,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Internal state for MutationObserver
+/// Spec: https://dom.spec.whatwg.org/#mutationobserver
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+
+    /// Callback invoked when mutations are observed
+    /// TODO: Proper WebIDL callback support
+    callback: ?*anyopaque,
+
+    /// List of weak references to nodes being observed
+    ///
+    /// Spec: https://dom.spec.whatwg.org/#mutationobserver-node-list
+    ///
+    /// Implementation note:
+    /// In garbage-collected languages (JavaScript), "weak references" means the GC
+    /// can collect nodes even while observed. In Zig with manual memory management,
+    /// "weak" means we don't own the nodes (don't call deinit on them).
+    ///
+    /// Lifetime contract:
+    /// - MutationObserver does NOT own observed nodes
+    /// - Caller must ensure nodes outlive the observer, OR
+    /// - Caller must call disconnect() before freeing observed nodes
+    node_list: std.ArrayListUnmanaged(*runtime.Instance),
+
+    /// Queue of pending mutation records
+    record_queue: std.ArrayListUnmanaged(*runtime.Instance),
+
+    pub fn init(allocator: std.mem.Allocator) InternalState {
+        _ = allocator;
+        return .{
+            .allocator = undefined,
+            .callback = null,
+            .node_list = .{},
+            .record_queue = .{},
+        };
+    }
+
+    pub fn initWithAllocator(allocator: std.mem.Allocator) InternalState {
+        return .{
+            .allocator = allocator,
+            .callback = null,
+            .node_list = .{},
+            .record_queue = .{},
+        };
+    }
+
+    pub fn deinit(self: *InternalState) void {
+        // Clear node list (don't free nodes, we don't own them)
+        self.node_list.deinit(self.allocator);
+
+        // Clear record queue
+        // Note: MutationRecord instances should be cleaned up separately
+        self.record_queue.deinit(self.allocator);
+    }
+};
+
+/// Helper to access internal state from instance
+fn getInternal(instance: *runtime.Instance) *InternalState {
+    const state = instance.getState(State);
+    return @ptrCast(@alignCast(state.own._internal));
+}
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -32,46 +95,224 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    errdefer runtime.Instance.deinit(instance);
+
+    // Initialize internal state using ArenaAllocator
+    const ArenaAllocator = @import("runtime").ArenaAllocator;
+    const internal = try ArenaAllocator.get().create(InternalState);
+    internal.* = InternalState.initWithAllocator(allocator);
+
+    // Store internal state in instance
+    const state = instance.getState(State);
+    state.own._internal = internal;
+
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
+    const state = instance.getState(State);
+    if (state.own._internal) |internal_ptr| {
+        const internal: *InternalState = @ptrCast(@alignCast(internal_ptr));
+        internal.deinit();
+        internal.allocator.destroy(internal);
+    }
     runtime.Instance.deinit(instance);
 }
 
 /// Constructor implementation
-/// This is called when the interface is constructed from JavaScript
+/// DOM §7.1 - new MutationObserver(callback)
+///
+/// Constructs a MutationObserver and sets its callback to callback.
+/// The callback is invoked with a list of MutationRecord objects as first
+/// argument and the constructed MutationObserver object as second argument.
 pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, callback: callbacks.MutationCallback) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &MutationObserver.vtable, ctx);
     errdefer deinit(instance);
 
-    _ = callback;
-    // TODO: Implement constructor logic with parameters
+    // Store the callback
+    const internal = getInternal(instance);
+    internal.callback = @ptrCast(@constCast(&callback));
 
     return instance;
 }
 
-/// Operation: observe
+/// DOM §7.1 - MutationObserver.observe(target, options)
+///
+/// Instructs the user agent to observe a given target (a node) and report
+/// any mutations based on the criteria given by options (an object).
+///
+/// Spec: https://dom.spec.whatwg.org/#dom-mutationobserver-observe
 pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, options: dictionaries.MutationObserverInit) ImplError!void {
-    _ = instance;
-    _ = target;
-    _ = options;
-    return error.NotImplemented;
+    const internal = getInternal(instance);
+
+    // Step 1: If either options["attributeOldValue"] or options["attributeFilter"]
+    // exists, and options["attributes"] does not exist, then set
+    // options["attributes"] to true.
+    var normalized_options = options;
+    if ((options.attributeOldValue != null or options.attributeFilter != null) and
+        options.attributes == null)
+    {
+        normalized_options.attributes = true;
+    }
+
+    // Step 2: If options["characterDataOldValue"] exists and
+    // options["characterData"] does not exist, then set
+    // options["characterData"] to true.
+    if (options.characterDataOldValue != null and options.characterData == null) {
+        normalized_options.characterData = true;
+    }
+
+    // Step 3: If none of options["childList"], options["attributes"], and
+    // options["characterData"] is true, then throw a TypeError.
+    const childList = normalized_options.childList orelse false;
+    const attributes = normalized_options.attributes orelse false;
+    const characterData = normalized_options.characterData orelse false;
+
+    if (!childList and !attributes and !characterData) {
+        return error.TypeError;
+    }
+
+    // Step 4: If options["attributeOldValue"] is true and options["attributes"]
+    // is false, then throw a TypeError.
+    if ((normalized_options.attributeOldValue orelse false) and !attributes) {
+        return error.TypeError;
+    }
+
+    // Step 5: If options["attributeFilter"] is present and options["attributes"]
+    // is false, then throw a TypeError.
+    if (normalized_options.attributeFilter != null and !attributes) {
+        return error.TypeError;
+    }
+
+    // Step 6: If options["characterDataOldValue"] is true and
+    // options["characterData"] is false, then throw a TypeError.
+    if ((normalized_options.characterDataOldValue orelse false) and !characterData) {
+        return error.TypeError;
+    }
+
+    // Step 7: For each registered of target's registered observer list,
+    // if registered's observer is this:
+    // TODO: Access target's registered observer list once Node is bridged
+    // For now, just add to node_list
+
+    // Step 8: Otherwise, append target to this's node list
+    internal.node_list.append(internal.allocator, target) catch return error.OutOfMemory;
 }
 
-/// Operation: disconnect
+/// DOM §7.1 - MutationObserver.disconnect()
+///
+/// Stops observer from observing any mutations. Until the observe() method
+/// is used again, observer's callback will not be invoked.
+///
+/// Spec: https://dom.spec.whatwg.org/#dom-mutationobserver-disconnect
 pub fn call_disconnect(instance: *runtime.Instance) ImplError!void {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance);
+
+    // Step 1: For each node of this's node list, remove any registered
+    // observer from node's registered observer list for which this is
+    // the observer.
+    // TODO: Remove registered observers from nodes once Node is bridged
+
+    // Step 2: Empty this's record queue.
+    internal.record_queue.clearRetainingCapacity();
+
+    // Clear node list
+    internal.node_list.clearRetainingCapacity();
 }
 
-/// Operation: takeRecords
+/// DOM §7.1 - MutationObserver.takeRecords()
+///
+/// Empties the record queue and returns what was in there.
+///
+/// Spec: https://dom.spec.whatwg.org/#dom-mutationobserver-takerecords
 pub fn call_takeRecords(instance: *runtime.Instance) ImplError!*const anyopaque {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance);
+
+    // Step 1: Let records be a clone of this's record queue.
+    const records = internal.record_queue.toOwnedSlice(internal.allocator) catch return error.OutOfMemory;
+
+    // Step 2: Empty this's record queue.
+    // (Already emptied by toOwnedSlice)
+
+    // Step 3: Return records as opaque pointer to slice.
+    // TODO: Return proper sequence<MutationRecord>
+    return @ptrCast(records.ptr);
 }
 
+// ============================================================================
+// Internal methods (for mutation algorithms)
+// ============================================================================
+
+/// Enqueue a mutation record to this observer's record queue
+///
+/// Called by mutation observation algorithms when mutations occur.
+/// This is an internal method, not exposed in the WebIDL.
+pub fn enqueueRecord(instance: *runtime.Instance, record: *runtime.Instance) ImplError!void {
+    const internal = getInternal(instance);
+    internal.record_queue.append(internal.allocator, record) catch return error.OutOfMemory;
+}
+
+/// Get the callback for this observer
+///
+/// Used by the notify mutation observers algorithm.
+pub fn getCallback(instance: *runtime.Instance) ?*anyopaque {
+    const internal = getInternal(instance);
+    return internal.callback;
+}
+
+/// Get the node list for this observer
+///
+/// Used by the notify mutation observers algorithm.
+pub fn getNodeList(instance: *runtime.Instance) []const *runtime.Instance {
+    const internal = getInternal(instance);
+    return internal.node_list.items;
+}
+
+/// Get the record queue for this observer
+///
+/// Used by the notify mutation observers algorithm.
+pub fn getRecordQueue(instance: *runtime.Instance) []const *runtime.Instance {
+    const internal = getInternal(instance);
+    return internal.record_queue.items;
+}
+
+/// Check if this observer is observing a specific node
+///
+/// Useful for caller to verify observation state before node cleanup.
+/// Returns true if the node is in this observer's node list.
+pub fn isObserving(instance: *runtime.Instance, node: *const runtime.Instance) bool {
+    const internal = getInternal(instance);
+    for (internal.node_list.items) |observed_node| {
+        if (observed_node == node) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/// Remove a node from the observation list
+///
+/// This is an internal helper for cases where a node needs to be
+/// removed from observation without calling disconnect().
+/// Useful when node is about to be freed.
+pub fn unobserveNode(instance: *runtime.Instance, node: *const runtime.Instance) void {
+    const internal = getInternal(instance);
+    var i: usize = 0;
+    while (i < internal.node_list.items.len) {
+        if (internal.node_list.items[i] == node) {
+            _ = internal.node_list.orderedRemove(i);
+            return;
+        }
+        i += 1;
+    }
+}
+
+/// Clear the record queue
+///
+/// Used by the notify mutation observers algorithm.
+pub fn clearRecordQueue(instance: *runtime.Instance) void {
+    const internal = getInternal(instance);
+    internal.record_queue.clearRetainingCapacity();
+}

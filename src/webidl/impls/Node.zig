@@ -662,13 +662,99 @@ pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: *runtime.Instanc
 
 /// Operation: cloneNode
 /// https://dom.spec.whatwg.org/#dom-node-clonenode
+/// Spec steps:
+/// 1. If this is a shadow root, throw NotSupportedError
+/// 2. Return clone of this with subtree set to deep
 pub fn call_cloneNode(instance: *runtime.Instance, subtree: bool) !*runtime.Instance {
-    _ = instance;
-    _ = subtree;
-    // TODO: Implement node cloning
-    // This requires creating a new node with same type, attributes, etc.
-    // If subtree is true, also clone all descendants
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Step 1: If this is a shadow root, throw NotSupportedError
+    // Shadow roots have DOCUMENT_FRAGMENT_NODE type but also have a host
+    // For now, we don't have full shadow DOM so skip this check
+
+    // Step 2: Clone this node
+    return cloneNodeInternal(instance, internal.owner_document, subtree);
+}
+
+/// Internal clone algorithm
+/// Spec: https://dom.spec.whatwg.org/#concept-node-clone
+fn cloneNodeInternal(
+    node: *runtime.Instance,
+    document: ?*runtime.Instance,
+    subtree: bool,
+) !*runtime.Instance {
+    const node_internal = getInternal(node) orelse return error.InvalidStateError;
+
+    // Create a copy of the node based on its type
+    const copy = try cloneSingleNode(node, document);
+    errdefer runtime.Instance.deinit(copy);
+
+    // If subtree is true, clone all children recursively
+    if (subtree) {
+        var child = node_internal.first_child;
+        while (child) |c| {
+            const child_copy = try cloneNodeInternal(c, document, true);
+            errdefer runtime.Instance.deinit(child_copy);
+
+            // Append child_copy to copy
+            _ = try call_appendChild(copy, child_copy);
+
+            const child_internal = getInternal(c) orelse break;
+            child = child_internal.next_sibling;
+        }
+    }
+
+    return copy;
+}
+
+/// Clone a single node without children
+/// Creates a new node with the same type and properties
+fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance) !*runtime.Instance {
+    const node_internal = getInternal(node) orelse return error.InvalidStateError;
+
+    // Get allocator from node's state
+    const allocator = node_internal.allocator;
+
+    // Create new instance based on node type
+    // For now, create a basic Node - specific types will override via their own init
+    const ArenaAllocator = @import("runtime").ArenaAllocator;
+
+    // Create a new instance of the same type
+    // This is simplified - full implementation would dispatch based on node_type
+    const copy = try runtime.Instance.init(allocator, State, node.vtable, node.ctx);
+    errdefer runtime.Instance.deinit(copy);
+
+    // Initialize internal state for copy
+    const copy_state = copy.getState(State);
+    const copy_internal = try ArenaAllocator.get().create(InternalState);
+    copy_internal.* = InternalState.init(allocator);
+    copy_state.own._internal = copy_internal;
+
+    // Copy node properties
+    copy_internal.node_type = node_internal.node_type;
+    copy_internal.owner_document = document orelse node_internal.owner_document;
+
+    // Copy local_name if present
+    if (node_internal.local_name) |name| {
+        copy_internal.local_name = try name.clone(allocator);
+    }
+
+    // Copy namespace_uri if present
+    if (node_internal.namespace_uri) |uri| {
+        copy_internal.namespace_uri = try uri.clone(allocator);
+    }
+
+    // Copy prefix if present
+    if (node_internal.prefix) |p| {
+        copy_internal.prefix = try p.clone(allocator);
+    }
+
+    // Copy node_value for CharacterData nodes
+    if (node_internal.node_value) |val| {
+        copy_internal.node_value = try val.clone(allocator);
+    }
+
+    return copy;
 }
 
 /// Operation: normalize
@@ -1069,4 +1155,18 @@ pub fn getNodeType(instance: *runtime.Instance) ?u16 {
 pub fn getParent(instance: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
     return internal.parent;
+}
+
+/// Get the first child (returns null if no children or instance has no state)
+/// This is a convenience helper for iterating children
+pub fn getFirstChild(instance: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(instance) orelse return null;
+    return internal.first_child;
+}
+
+/// Get the next sibling (returns null if no sibling or instance has no state)
+/// This is a convenience helper for iterating children
+pub fn getNextSibling(instance: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(instance) orelse return null;
+    return internal.next_sibling;
 }

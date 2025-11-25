@@ -166,6 +166,56 @@ pub fn deinit(instance: *runtime.Instance) void {
     runtime.Instance.deinit(instance);
 }
 
+// =============================================================================
+// Setters for internal state (used by Document factory methods)
+// =============================================================================
+
+/// Set the namespace URI of this element
+/// Used by Document.createElementNS
+pub fn setNamespaceURI(instance: *runtime.Instance, namespace: ?[]const u8) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Free existing namespace if any
+    if (internal.namespace_uri) |*ns| {
+        ns.deinit(internal.allocator);
+        internal.namespace_uri = null;
+    }
+
+    // Set new namespace if provided
+    if (namespace) |ns| {
+        internal.namespace_uri = try runtime.DOMString.initDupe(internal.allocator, ns);
+    }
+}
+
+/// Set the namespace prefix of this element
+/// Used by Document.createElementNS
+pub fn setPrefix(instance: *runtime.Instance, prefix: ?[]const u8) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Free existing prefix if any
+    if (internal.prefix) |*p| {
+        p.deinit(internal.allocator);
+        internal.prefix = null;
+    }
+
+    // Set new prefix if provided
+    if (prefix) |p| {
+        internal.prefix = try runtime.DOMString.initDupe(internal.allocator, p);
+    }
+}
+
+/// Set the local name of this element
+/// Used by Document.createElement and Document.createElementNS
+pub fn setLocalName(instance: *runtime.Instance, local_name: []const u8) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Free existing local name
+    internal.local_name.deinit(internal.allocator);
+
+    // Set new local name
+    internal.local_name = try runtime.DOMString.initDupe(internal.allocator, local_name);
+}
+
 /// Getter for namespaceURI
 /// DOM §4.8 - Returns the namespace URI of this element
 pub fn get_namespaceURI(instance: *runtime.Instance) ImplError!runtime.DOMString {
@@ -767,6 +817,61 @@ pub fn set_slot(instance: *runtime.Instance, value: runtime.DOMString) ImplError
     try setAttributeInternal(internal, null, null, "slot", value.asSlice());
 }
 
+/// Internal helper to get an attribute by namespace and local name
+fn getAttributeByNS(
+    internal: *InternalState,
+    namespace_uri: ?[]const u8,
+    local_name: []const u8,
+) ?*InternalState.AttributeEntry {
+    // Step 1: Empty string namespace becomes null per spec
+    const ns = if (namespace_uri) |n| if (n.len == 0) null else n else null;
+
+    // Step 2: Find attribute with matching namespace and local name
+    for (internal.attributes.items) |*entry| {
+        const ns_match = (ns == null and entry.namespace_uri == null) or
+            (ns != null and entry.namespace_uri != null and
+                std.mem.eql(u8, ns.?, entry.namespace_uri.?));
+        const name_match = std.mem.eql(u8, local_name, entry.local_name);
+
+        if (ns_match and name_match) {
+            return entry;
+        }
+    }
+    return null;
+}
+
+/// Internal helper to remove an attribute by namespace and local name
+fn removeAttributeByNS(
+    internal: *InternalState,
+    namespace_uri: ?[]const u8,
+    local_name: []const u8,
+) void {
+    // Step 1: Empty string namespace becomes null per spec
+    const ns = if (namespace_uri) |n| if (n.len == 0) null else n else null;
+
+    var i: usize = 0;
+    while (i < internal.attributes.items.len) {
+        const entry = internal.attributes.items[i];
+        const ns_match = (ns == null and entry.namespace_uri == null) or
+            (ns != null and entry.namespace_uri != null and
+                std.mem.eql(u8, ns.?, entry.namespace_uri.?));
+        const name_match = std.mem.eql(u8, local_name, entry.local_name);
+
+        if (ns_match and name_match) {
+            // Free the entry's strings
+            if (entry.namespace_uri) |ens| internal.allocator.free(ens);
+            if (entry.prefix) |p| internal.allocator.free(p);
+            internal.allocator.free(entry.local_name);
+            internal.allocator.free(entry.value);
+
+            // Remove from list
+            _ = internal.attributes.orderedRemove(i);
+            return;
+        }
+        i += 1;
+    }
+}
+
 /// Internal helper to set an attribute
 fn setAttributeInternal(
     internal: *InternalState,
@@ -1214,11 +1319,20 @@ pub fn set_ariaValueText(instance: *runtime.Instance, value: runtime.DOMString) 
 }
 
 /// Operation: getAttributeNS
+/// DOM §4.8 - Returns the value of the attribute with the given namespace and local name
+/// Spec: https://dom.spec.whatwg.org/#dom-element-getattributens
 pub fn call_getAttributeNS(instance: *runtime.Instance, namespace: runtime.DOMString, localName: runtime.DOMString) ImplError!runtime.DOMString {
-    _ = instance;
-    _ = namespace;
-    _ = localName;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const ns_slice = namespace.asSlice();
+    const name_slice = localName.asSlice();
+
+    // Get attribute by namespace and local name
+    if (getAttributeByNS(internal, if (ns_slice.len > 0) ns_slice else null, name_slice)) |entry| {
+        return runtime.DOMString.initInterned(entry.value);
+    }
+
+    // Return empty for not found (WebIDL nullable maps to empty)
+    return runtime.DOMString.initEmpty();
 }
 
 /// Operation: getAttribute
@@ -1336,12 +1450,29 @@ pub fn call_getAttributeNodeNS(instance: *runtime.Instance, namespace: runtime.D
 }
 
 /// Operation: setAttributeNS
+/// DOM §4.8 - Sets the attribute with the given namespace and qualified name
+/// Spec: https://dom.spec.whatwg.org/#dom-element-setattributens
 pub fn call_setAttributeNS(instance: *runtime.Instance, namespace: runtime.DOMString, qualifiedName: runtime.DOMString, value: *const anyopaque) ImplError!void {
-    _ = instance;
-    _ = namespace;
-    _ = qualifiedName;
-    _ = value;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const ns_slice = namespace.asSlice();
+    const qname_slice = qualifiedName.asSlice();
+
+    // Cast value - it should be a DOMString
+    const value_str: *const runtime.DOMString = @ptrCast(@alignCast(value));
+    const val = value_str.asSlice();
+
+    // Parse qualified name for prefix and local name
+    var prefix: ?[]const u8 = null;
+    var local_name: []const u8 = qname_slice;
+
+    if (std.mem.indexOfScalar(u8, qname_slice, ':')) |colon_pos| {
+        prefix = qname_slice[0..colon_pos];
+        local_name = qname_slice[colon_pos + 1 ..];
+    }
+
+    // Set attribute value with namespace and prefix
+    const ns = if (ns_slice.len > 0) ns_slice else null;
+    try setAttributeInternal(internal, ns, prefix, local_name, val);
 }
 
 /// Operation: setAttributeNode
@@ -1529,11 +1660,15 @@ pub fn call_removeAttributeNode(instance: *runtime.Instance, attr: *runtime.Inst
 }
 
 /// Operation: removeAttributeNS
+/// DOM §4.8 - Removes the attribute with the given namespace and local name
+/// Spec: https://dom.spec.whatwg.org/#dom-element-removeattributens
 pub fn call_removeAttributeNS(instance: *runtime.Instance, namespace: runtime.DOMString, localName: runtime.DOMString) ImplError!void {
-    _ = instance;
-    _ = namespace;
-    _ = localName;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const ns_slice = namespace.asSlice();
+    const name_slice = localName.asSlice();
+
+    // Remove by namespace and local name
+    removeAttributeByNS(internal, if (ns_slice.len > 0) ns_slice else null, name_slice);
 }
 
 /// Operation: insertAdjacentText
@@ -1610,9 +1745,11 @@ pub fn call_scrollIntoView(instance: *runtime.Instance, arg: *const anyopaque) I
 }
 
 /// Operation: hasAttributes
+/// DOM §4.8 - Returns true if the element has any attributes
+/// Spec: https://dom.spec.whatwg.org/#dom-element-hasattributes
 pub fn call_hasAttributes(instance: *runtime.Instance) ImplError!bool {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.attributes.items.len > 0;
 }
 
 /// Operation: hasPointerCapture
@@ -1623,11 +1760,72 @@ pub fn call_hasPointerCapture(instance: *runtime.Instance, pointerId: i32) ImplE
 }
 
 /// Operation: toggleAttribute
+/// DOM §4.8 - Toggles the named attribute: removes it if present, adds it if not
+/// Spec: https://dom.spec.whatwg.org/#dom-element-toggleattribute
+///
+/// Steps:
+/// 1. If qualifiedName is invalid, throw InvalidCharacterError
+/// 2. If HTML element in HTML document, lowercase qualifiedName
+/// 3. If attribute exists and force is not true, remove it and return false
+/// 4. If attribute doesn't exist and force is not false, add it with empty value and return true
+/// 5. Return whether attribute now exists
 pub fn call_toggleAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString, force: bool) ImplError!bool {
-    _ = instance;
-    _ = qualifiedName;
-    _ = force;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const name = qualifiedName.asSlice();
+
+    // Step 1: Validate qualified name (simplified - just check non-empty)
+    if (name.len == 0) {
+        return error.InvalidCharacterError;
+    }
+
+    // TODO: Step 2: Lowercase name for HTML elements in HTML documents
+
+    // Step 3: Check if attribute exists
+    var attr_index: ?usize = null;
+    for (internal.attributes.items, 0..) |entry, i| {
+        if (entry.namespace_uri == null and std.mem.eql(u8, entry.local_name, name)) {
+            attr_index = i;
+            break;
+        }
+    }
+
+    if (attr_index != null) {
+        // Attribute exists
+        if (!force) {
+            // Remove it
+            const entry = internal.attributes.items[attr_index.?];
+            if (entry.namespace_uri) |ns| internal.allocator.free(ns);
+            if (entry.prefix) |p| internal.allocator.free(p);
+            internal.allocator.free(entry.local_name);
+            internal.allocator.free(entry.value);
+            _ = internal.attributes.orderedRemove(attr_index.?);
+
+            // Clear cached values if applicable
+            if (std.mem.eql(u8, name, "id")) {
+                internal.id.deinit(internal.allocator);
+                internal.id = runtime.DOMString.initEmpty();
+            } else if (std.mem.eql(u8, name, "class")) {
+                internal.class_name.deinit(internal.allocator);
+                internal.class_name = runtime.DOMString.initEmpty();
+            } else if (std.mem.eql(u8, name, "slot")) {
+                internal.slot.deinit(internal.allocator);
+                internal.slot = runtime.DOMString.initEmpty();
+            }
+
+            return false;
+        }
+        // force is true, attribute exists - return true
+        return true;
+    } else {
+        // Attribute doesn't exist
+        if (force) {
+            // Add it with empty value
+            try setAttributeInternal(internal, null, null, name, "");
+            return true;
+        }
+        // force is false, attribute doesn't exist - return false
+        return false;
+    }
 }
 
 /// Operation: pseudo
@@ -1718,11 +1916,14 @@ pub fn call_requestPointerLock(instance: *runtime.Instance, options: dictionarie
 }
 
 /// Operation: hasAttributeNS
+/// DOM §4.8 - Returns true if the element has an attribute with the given namespace and local name
+/// Spec: https://dom.spec.whatwg.org/#dom-element-hasattributens
 pub fn call_hasAttributeNS(instance: *runtime.Instance, namespace: runtime.DOMString, localName: runtime.DOMString) ImplError!bool {
-    _ = instance;
-    _ = namespace;
-    _ = localName;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const ns_slice = namespace.asSlice();
+    const name_slice = localName.asSlice();
+
+    return getAttributeByNS(internal, if (ns_slice.len > 0) ns_slice else null, name_slice) != null;
 }
 
 /// Operation: getBoundingClientRect
