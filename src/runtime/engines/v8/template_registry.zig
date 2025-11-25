@@ -115,6 +115,9 @@ pub fn getTemplate(interface_name: []const u8) ?*v8.FunctionTemplate {
 /// It creates a V8 object with the correct FunctionTemplate (prototype chain)
 /// and stores the Zig instance pointer in the internal fields.
 ///
+/// **Now with wrapper identity caching!** Returns the same V8 wrapper for the
+/// same Zig instance, solving the querySelector identity problem.
+///
 /// ## Parameters
 /// - instance: The Zig instance to wrap
 /// - interface_name: Name of the interface (e.g., "Element", "Document")
@@ -122,14 +125,32 @@ pub fn getTemplate(interface_name: []const u8) ?*v8.FunctionTemplate {
 /// - context: V8 context
 ///
 /// ## Returns
-/// A V8 Object wrapping the instance, or error if template not found
+/// A V8 Object wrapping the instance (cached if already wrapped, new if first time)
 pub fn wrapInstanceAsV8Object(
     instance: *runtime.Instance,
     interface_name: []const u8,
     isolate: *v8.Isolate,
     context: *v8.Context,
 ) !*v8.Object {
-    _ = isolate; // May be needed for future error handling
+    // ========================================
+    // CACHE LOOKUP: Check if we already have a wrapper for this instance
+    // ========================================
+    const ctx_mgr = @import("context_manager.zig");
+    if (ctx_mgr.get(context)) |runtime_ctx| {
+        if (runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
+            const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
+            const cache: *WrapperCache = @ptrCast(@alignCast(cache_storage));
+
+            // Cache hit? Return existing wrapper (same V8 object)
+            if (cache.get(instance)) |cached_wrapper| {
+                return cached_wrapper;
+            }
+        }
+    }
+
+    // ========================================
+    // CACHE MISS: Create new wrapper
+    // ========================================
 
     // Look up the FunctionTemplate for this interface
     const template = getTemplate(interface_name) orelse {
@@ -159,6 +180,21 @@ pub fn wrapInstanceAsV8Object(
             1,
             @ptrCast(@constCast(type_info)),
         );
+    }
+
+    // ========================================
+    // CACHE THE WRAPPER: Store for future lookups
+    // ========================================
+    if (ctx_mgr.get(context)) |runtime_ctx| {
+        if (runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
+            const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
+            const cache: *WrapperCache = @ptrCast(@alignCast(cache_storage));
+
+            // Cache the wrapper (log but don't fail if caching fails)
+            cache.set(instance, v8_object, isolate) catch |err| {
+                std.log.warn("Failed to cache V8 wrapper: {s}", .{@errorName(err)});
+            };
+        }
     }
 
     return v8_object;
