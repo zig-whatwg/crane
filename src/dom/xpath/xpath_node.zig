@@ -12,17 +12,17 @@ const NamespaceNode = @import("namespace_node.zig").NamespaceNode;
 pub const XPathNode = union(enum) {
     dom_node: *NodeBase,
     namespace_node: *NamespaceNode,
-    
+
     /// Check if this is a namespace node
     pub fn isNamespaceNode(self: XPathNode) bool {
         return self == .namespace_node;
     }
-    
+
     /// Check if this is a DOM node
     pub fn isDomNode(self: XPathNode) bool {
         return self == .dom_node;
     }
-    
+
     /// Get as DOM node (returns null if namespace node)
     pub fn asDomNode(self: XPathNode) ?*NodeBase {
         return switch (self) {
@@ -30,7 +30,7 @@ pub const XPathNode = union(enum) {
             .namespace_node => null,
         };
     }
-    
+
     /// Get as namespace node (returns null if DOM node)
     pub fn asNamespaceNode(self: XPathNode) ?*NamespaceNode {
         return switch (self) {
@@ -38,7 +38,7 @@ pub const XPathNode = union(enum) {
             .namespace_node => |n| n,
         };
     }
-    
+
     /// Get parent node (works for both types)
     pub fn getParent(self: XPathNode) ?*NodeBase {
         return switch (self) {
@@ -46,7 +46,7 @@ pub const XPathNode = union(enum) {
             .namespace_node => |n| n.getParent(),
         };
     }
-    
+
     /// Check equality
     pub fn eql(self: XPathNode, other: XPathNode) bool {
         return switch (self) {
@@ -61,7 +61,7 @@ pub const XPathNode = union(enum) {
                     const other_ns = other.namespace_node;
                     // Same if same prefix and parent element
                     return nsn.parent_element == other_ns.parent_element and
-                           std.mem.eql(u8, nsn.prefix, other_ns.prefix);
+                        std.mem.eql(u8, nsn.prefix, other_ns.prefix);
                 }
                 return false;
             },
@@ -74,10 +74,3 @@ pub const XPathNode = union(enum) {
 // ============================================================================
 
 const testing = std.testing;
-
-
-
-
-
-
-

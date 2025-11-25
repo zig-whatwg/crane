@@ -286,4 +286,3 @@ pub const ParentNode = webidl.mixin(struct {
 // ============================================================================
 
 // NOTE: convertNodesIntoNode() is implemented in ChildNode.zig and shared by both mixins
-

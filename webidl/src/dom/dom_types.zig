@@ -22,4 +22,3 @@ pub const NodeOrDOMString = union(enum) {
 pub const GetRootNodeOptions = struct {
     composed: bool = false,
 };
-

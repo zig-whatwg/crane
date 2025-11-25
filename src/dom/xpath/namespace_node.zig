@@ -23,16 +23,16 @@ const NodeBase = @import("../node_base.zig").NodeBase;
 /// These nodes are created on-demand when the namespace axis is evaluated.
 pub const NamespaceNode = struct {
     allocator: Allocator,
-    
+
     /// The prefix (empty string for default namespace)
     prefix: []const u8,
-    
+
     /// The namespace URI
     namespace_uri: []const u8,
-    
+
     /// Parent element (for XPath parent axis)
     parent_element: *NodeBase,
-    
+
     /// Create a new namespace node
     pub fn init(
         allocator: Allocator,
@@ -42,7 +42,7 @@ pub const NamespaceNode = struct {
     ) !*NamespaceNode {
         const node = try allocator.create(NamespaceNode);
         errdefer allocator.destroy(node);
-        
+
         node.* = .{
             .allocator = allocator,
             .prefix = try allocator.dupe(u8, prefix),
@@ -51,26 +51,26 @@ pub const NamespaceNode = struct {
         };
         return node;
     }
-    
+
     /// Clean up namespace node
     pub fn deinit(self: *NamespaceNode) void {
         self.allocator.free(self.prefix);
         self.allocator.free(self.namespace_uri);
         self.allocator.destroy(self);
     }
-    
+
     /// Get expanded-name (the prefix)
     /// XPath 1.0 §5.4: The expanded-name of a namespace node is its prefix
     pub fn getExpandedName(self: *const NamespaceNode) []const u8 {
         return self.prefix;
     }
-    
+
     /// Get string-value (the namespace URI)
     /// XPath 1.0 §5.4: The string-value is the namespace URI
     pub fn getStringValue(self: *const NamespaceNode) []const u8 {
         return self.namespace_uri;
     }
-    
+
     /// Get parent element
     pub fn getParent(self: *const NamespaceNode) *NodeBase {
         return self.parent_element;
@@ -82,8 +82,3 @@ pub const NamespaceNode = struct {
 // ============================================================================
 
 const testing = std.testing;
-
-
-
-
-

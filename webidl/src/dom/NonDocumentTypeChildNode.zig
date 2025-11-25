@@ -80,4 +80,3 @@ pub const NonDocumentTypeChildNode = webidl.mixin(struct {
         return null;
     }
 });
-

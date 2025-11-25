@@ -46,5 +46,3 @@ pub const DocumentOrShadowRoot = webidl.mixin(struct {
 });
 
 // Tests
-
-

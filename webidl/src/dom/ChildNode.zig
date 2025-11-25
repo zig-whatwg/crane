@@ -281,4 +281,3 @@ pub fn convertNodesIntoNode(allocator: std.mem.Allocator, nodes: []const dom_typ
     // Step 5: Return the fragment node
     return fragment_node;
 }
-
