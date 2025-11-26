@@ -870,6 +870,9 @@ pub fn build(b: *std.Build) void {
     impls_mod.addImport("streams_readable_stream_async_iterator", streams_readable_stream_async_iterator_mod);
     impls_mod.addImport("streams_internal", streams_message_port_mod);
 
+    // DOM module for XPath implementations
+    impls_mod.addImport("dom", dom_mod);
+
     // ArrayBufferView is part of runtime module, no separate module needed
     // (ReadableStreamBYOBReader accesses it via runtime.arraybuffer_view)
 
