@@ -112,6 +112,17 @@ pub const IDBCursorDirection = cursor.IDBCursorDirection;
 pub const version_change_event = @import("version_change_event.zig");
 pub const IDBVersionChangeEvent = version_change_event.IDBVersionChangeEvent;
 
+pub const events = @import("events.zig");
+pub const IDBEvent = events.IDBEvent;
+pub const EventDispatchResult = events.EventDispatchResult;
+pub const fireSuccessEvent = events.fireSuccessEvent;
+pub const fireErrorEvent = events.fireErrorEvent;
+pub const fireVersionChangeEvent = events.fireVersionChangeEvent;
+pub const fireBlockedEvent = events.fireBlockedEvent;
+pub const fireUpgradeneededEvent = events.fireUpgradeneededEvent;
+pub const fireCompleteEvent = events.fireCompleteEvent;
+pub const fireAbortEvent = events.fireAbortEvent;
+
 // Error types
 pub const IDBError = @import("errors.zig").IDBError;
 
@@ -128,4 +139,5 @@ test {
     _ = index_keygen;
     _ = cursor;
     _ = version_change_event;
+    _ = events;
 }
