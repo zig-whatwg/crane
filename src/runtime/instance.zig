@@ -115,48 +115,6 @@ pub const Instance = struct {
         // Note: State memory is NOT freed here - it's batch-freed during GC sweep
         // via ArenaAllocator.reset() in gc_integration.zig::onGCSweep()
     }
-
-    /// Initialize state fields using comptime reflection
-    ///
-    /// Automatically initializes fields based on their types:
-    /// - Optional types (?T): Set to null
-    /// - Booleans: Set to false
-    /// - Integers: Set to 0
-    /// - Floats: Set to 0.0
-    /// - Other types: Left undefined (caller must initialize)
-    pub fn initState(state: anytype) void {
-        const StateType = @TypeOf(state.*);
-        const type_info = @typeInfo(StateType);
-
-        switch (type_info) {
-            .@"struct" => |struct_info| {
-                inline for (struct_info.fields) |field| {
-                    const field_type_info = @typeInfo(field.type);
-
-                    switch (field_type_info) {
-                        .optional => {
-                            @field(state, field.name) = null;
-                        },
-                        .bool => {
-                            @field(state, field.name) = false;
-                        },
-                        .int => {
-                            @field(state, field.name) = 0;
-                        },
-                        .float => {
-                            @field(state, field.name) = 0.0;
-                        },
-                        else => {
-                            // Leave undefined - caller must initialize
-                        },
-                    }
-                }
-            },
-            else => {
-                @compileError("initState expects a pointer to a struct");
-            },
-        }
-    }
 };
 
 /// VTable with function pointers for method dispatch
