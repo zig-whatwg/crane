@@ -52,11 +52,14 @@ fn addTestFilesFromDir(
             test_exe.linkSystemLibrary("v8");
             test_exe.linkSystemLibrary("v8_libplatform");
             test_exe.linkSystemLibrary("v8_libbase");
+            test_exe.linkSystemLibrary("uv");
             test_exe.linkLibCpp();
 
-            // Add library search paths for Homebrew V8
+            // Add library search paths for Homebrew V8 and libuv
             test_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/lib" });
+            test_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
             test_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
+            test_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
         }
 
         const run_test = builder.addRunArtifact(test_exe);
@@ -1253,6 +1256,11 @@ pub fn build(b: *std.Build) void {
     repl_exe.linkSystemLibrary("v8");
     repl_exe.linkSystemLibrary("v8_libplatform");
     repl_exe.linkSystemLibrary("v8_libbase");
+
+    // Link libuv for timer support
+    repl_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
+    repl_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
+    repl_exe.linkSystemLibrary("uv");
 
     // Link C++ standard library
     repl_exe.linkLibCpp();

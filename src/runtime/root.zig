@@ -6,6 +6,7 @@
 //! - Instance: WebIDL interface instances with state and vtable
 //! - VTable: Virtual function table for interface methods
 //! - Type system: WebIDL types (DOMString, sequences, etc.)
+//! - Timer: Host-agnostic timer interface for setTimeout/clearTimeout
 
 const std = @import("std");
 
@@ -108,6 +109,15 @@ pub const stub_engine = @import("engine_interface.zig").stub_engine;
 // NOTE: V8 engine is in src/runtime/engines/v8/ but is imported as a SEPARATE module.
 // It is NOT part of the runtime module to avoid circular dependencies.
 // Use @import("v8") to access V8 bindings and v8.engine for the EngineInterface.
+
+// Timer interface - Host-agnostic timer support for setTimeout/clearTimeout
+// Each host (V8+libuv, etc.) provides its own implementation
+pub const timer = @import("timer.zig");
+pub const TimerId = timer.TimerId;
+pub const TimerCallback = timer.TimerCallback;
+pub const TimerInterface = timer.TimerInterface;
+pub const TimerVTable = timer.TimerVTable;
+pub const TimerError = timer.TimerError;
 
 // Convenience re-exports
 pub const initRuntime = initializeRuntime;

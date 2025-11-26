@@ -117,6 +117,13 @@ pub const createCallbackFromV8Value = callback_wrapper_mod.createFromV8Value;
 pub const wrapper_cache_mod = @import("wrapper_cache.zig");
 pub const WrapperCache = wrapper_cache_mod.WrapperCache;
 
+/// libuv FFI bindings for timer support
+pub const libuv = @import("libuv.zig");
+
+/// libuv-based timer manager for V8 isolates
+pub const libuv_timer = @import("libuv_timer.zig");
+pub const LibuvTimerManager = libuv_timer.LibuvTimerManager;
+
 // Re-export commonly used types for convenience
 pub const Isolate = ffi.Isolate;
 pub const Context = ffi.Context;

@@ -1,14 +1,20 @@
 //! V8 Event Loop Implementation
 //!
 //! This module provides an EventLoop implementation that integrates with
-//! V8's built-in microtask queue. This ensures proper interop between
-//! V8 promises and our AsyncPromise implementation.
+//! V8's built-in microtask queue and libuv for timer support. This ensures
+//! proper interop between V8 promises and our AsyncPromise implementation,
+//! as well as support for setTimeout/clearTimeout via AbortSignal.timeout().
 //!
 //! ## Design
 //!
 //! V8 provides native microtask management through:
 //! - `Isolate::EnqueueMicrotask()` - Add microtask to V8's queue
 //! - `Isolate::PerformMicrotaskCheckpoint()` - Run all pending microtasks
+//!
+//! Timer support is provided by libuv:
+//! - Each V8EventLoop owns a LibuvTimerManager
+//! - runOnce() polls libuv for ready timer callbacks
+//! - setTimeout/clearTimeout APIs available via TimerInterface
 //!
 //! This implementation wraps those APIs to conform to our EventLoop interface.
 //!
@@ -19,7 +25,7 @@
 //! const V8EventLoop = @import("event_loop.zig").V8EventLoop;
 //!
 //! // Create V8EventLoop from V8 isolate
-//! var v8_loop = V8EventLoop.init(isolate, allocator);
+//! var v8_loop = try V8EventLoop.init(isolate, allocator);
 //! defer v8_loop.deinit();
 //!
 //! // Get EventLoop interface
@@ -31,6 +37,11 @@
 //!     .context = &data,
 //! });
 //! loop.runMicrotasks();
+//!
+//! // Use timers
+//! const timer = v8_loop.timerInterface();
+//! const id = timer.setTimeout(1000, myTimerCallback, &myData);
+//! timer.clearTimeout(id);
 //! ```
 //!
 //! ## Thread Safety
@@ -42,6 +53,8 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const v8_ffi = @import("ffi.zig");
+const libuv_timer = @import("libuv_timer.zig");
+const runtime = @import("runtime");
 
 // Import the EventLoop interface from streams
 const event_loop_mod = @import("event_loop");
@@ -51,7 +64,8 @@ const Task = event_loop_mod.Task;
 
 /// V8 Event Loop Implementation
 ///
-/// Wraps V8's native microtask queue to provide EventLoop interface.
+/// Wraps V8's native microtask queue and libuv timer loop to provide
+/// EventLoop interface with timer support.
 pub const V8EventLoop = struct {
     /// V8 isolate this event loop is bound to
     isolate: *v8_ffi.Isolate,
@@ -68,38 +82,87 @@ pub const V8EventLoop = struct {
     /// Track if we're inside runOnce to prevent reentrancy
     in_run_once: bool,
 
+    /// libuv-based timer manager for setTimeout/clearTimeout
+    timer_manager: ?*libuv_timer.LibuvTimerManager,
+
     const Self = @This();
 
-    /// Initialize a new V8 event loop
+    /// Initialize a new V8 event loop with timer support
     ///
-    /// The event loop will use the provided V8 isolate's microtask queue.
+    /// The event loop will use the provided V8 isolate's microtask queue
+    /// and create a libuv-based timer manager for setTimeout/clearTimeout.
     /// The allocator is used for internal bookkeeping and promise allocation.
+    ///
+    /// Returns error if libuv timer initialization fails.
     ///
     /// Example:
     /// ```zig
-    /// var loop = V8EventLoop.init(isolate, allocator);
+    /// var loop = try V8EventLoop.init(isolate, allocator);
     /// defer loop.deinit();
     /// ```
-    pub fn init(isolate: *v8_ffi.Isolate, allocator: Allocator) Self {
+    pub fn init(isolate: *v8_ffi.Isolate, allocator: Allocator) !Self {
+        // Create timer manager
+        const timer_mgr = try libuv_timer.LibuvTimerManager.init(allocator);
+        errdefer timer_mgr.deinit();
+
         return .{
             .isolate = isolate,
             .allocator = allocator,
             .promise_arena = std.heap.ArenaAllocator.init(allocator),
             .tasks = std.ArrayList(Task){},
             .in_run_once = false,
+            .timer_manager = timer_mgr,
+        };
+    }
+
+    /// Initialize without timer support (for backwards compatibility)
+    ///
+    /// Use init() instead to get full timer support.
+    pub fn initWithoutTimers(isolate: *v8_ffi.Isolate, allocator: Allocator) Self {
+        return .{
+            .isolate = isolate,
+            .allocator = allocator,
+            .promise_arena = std.heap.ArenaAllocator.init(allocator),
+            .tasks = std.ArrayList(Task){},
+            .in_run_once = false,
+            .timer_manager = null,
         };
     }
 
     /// Free all resources
     ///
-    /// This clears any pending tasks and frees the promise arena.
+    /// This clears any pending tasks, frees the promise arena, and shuts down
+    /// the timer manager (cancelling all pending timers).
     /// After calling deinit(), the loop cannot be used.
     ///
     /// IMPORTANT: This does NOT execute pending microtasks in V8's queue.
     /// Those are owned by V8 and will execute when V8 runs its checkpoint.
     pub fn deinit(self: *Self) void {
+        // Shutdown timer manager first (cancels all pending timers)
+        if (self.timer_manager) |mgr| {
+            mgr.deinit();
+        }
         self.tasks.deinit(self.allocator);
         self.promise_arena.deinit();
+    }
+
+    /// Get the timer interface for this event loop.
+    ///
+    /// Returns null if timer support was not initialized.
+    /// Use this to schedule timers for AbortSignal.timeout() etc.
+    ///
+    /// Example:
+    /// ```zig
+    /// if (loop.timerInterface()) |timer| {
+    ///     const id = timer.setTimeout(1000, myCallback, &data);
+    ///     timer.clearTimeout(id);
+    /// }
+    /// ```
+    pub fn timerInterface(self: *Self) ?runtime.TimerInterface {
+        if (self.timer_manager) |mgr| {
+            return mgr.timerInterface();
+        }
+        return null;
     }
 
     /// Get an EventLoop interface for this V8 loop
@@ -184,19 +247,28 @@ pub const V8EventLoop = struct {
 
         var did_work = false;
 
-        // Step 1: Run all pending microtasks
+        // Step 1: Poll libuv for ready timer callbacks
+        // This processes any timers that have fired
+        if (self.timer_manager) |mgr| {
+            const timer_active = mgr.poll();
+            if (timer_active) {
+                did_work = true;
+            }
+        }
+
+        // Step 2: Run all pending microtasks (including any queued by timer callbacks)
         v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
 
         // V8 doesn't tell us if microtasks ran, but we assume they might have
         // We could track this by checking IsExecutingMicrotasks before/after
 
-        // Step 2: Run one task (if any)
+        // Step 3: Run one task (if any)
         if (self.tasks.items.len > 0) {
             const task = self.tasks.orderedRemove(0);
             task.callback(task.context);
             did_work = true;
 
-            // Step 3: Run microtasks again after task
+            // Step 4: Run microtasks again after task
             v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
         }
 

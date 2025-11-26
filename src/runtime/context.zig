@@ -48,6 +48,7 @@ const Logger = @import("logger.zig").Logger;
 const LoggerConfig = @import("logger.zig").LoggerConfig;
 const EngineInterface = @import("engine_interface.zig").EngineInterface;
 const infra = @import("infra");
+const timer_mod = @import("timer.zig");
 
 // Import event loop for streams and async operations
 // Note: This is an optional dependency - event_loop is only needed for async features
@@ -125,6 +126,10 @@ pub const ContextData = struct {
     /// Optional - only needed for async features like ReadableStream
     event_loop: ?event_loop_mod.EventLoop,
 
+    /// Timer interface for setTimeout/clearTimeout (AbortSignal.timeout, etc.)
+    /// Optional - only available with engines that support timers (V8+libuv)
+    timer: ?timer_mod.TimerInterface,
+
     /// Internal: Engine-created event loop storage (if created during init)
     /// This is owned by the context and must be cleaned up via engine interface
     _engine_event_loop_storage: ?*anyopaque,
@@ -155,6 +160,11 @@ pub const ContextData = struct {
         /// If not provided and engine supports it, engine will create one
         /// If not provided and no engine, async operations will fail with error.NoEventLoop
         event_loop: ?event_loop_mod.EventLoop = null,
+
+        /// Timer interface for setTimeout/clearTimeout
+        /// Optional - only needed for AbortSignal.timeout() and similar APIs
+        /// If not provided, timer operations will return error.NoTimerSupport
+        timer: ?timer_mod.TimerInterface = null,
     };
 
     /// Initialize a new runtime context
@@ -192,6 +202,7 @@ pub const ContextData = struct {
             .engine_ctx = options.engine_ctx,
             .console_state = ConsoleState.init(allocator),
             .event_loop = ev_loop,
+            .timer = options.timer,
             ._engine_event_loop_storage = engine_event_loop_storage,
             ._v8_wrapper_cache_storage = null, // Initialized later via initV8WrapperCache
         };
@@ -270,6 +281,29 @@ pub const ContextData = struct {
     /// Get optional event loop
     pub fn getOptionalEventLoop(self: *const Self) ?event_loop_mod.EventLoop {
         return self.event_loop;
+    }
+
+    /// Check if this context has timer support
+    pub fn hasTimer(self: *const Self) bool {
+        return self.timer != null;
+    }
+
+    /// Get the timer interface (returns error if not available)
+    pub fn getTimer(self: *const Self) timer_mod.TimerError!timer_mod.TimerInterface {
+        return self.timer orelse timer_mod.TimerError.NoTimerSupport;
+    }
+
+    /// Get optional timer interface
+    pub fn getOptionalTimer(self: *const Self) ?timer_mod.TimerInterface {
+        return self.timer;
+    }
+
+    /// Set the timer interface (called by external code during setup)
+    ///
+    /// This allows setting timer support after context creation,
+    /// useful when the timer manager is created separately.
+    pub fn setTimer(self: *Self, timer_interface: timer_mod.TimerInterface) void {
+        self.timer = timer_interface;
     }
 };
 
