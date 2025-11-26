@@ -31,10 +31,10 @@ pub const Node = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "nodeType", "get_nodeType", null },
@@ -52,7 +52,7 @@ pub const Node = struct {
             .{ "nodeValue", "get_nodeValue", "set_nodeValue" },
             .{ "textContent", "get_textContent", "set_textContent" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getRootNode", "call_getRootNode", 0 },
@@ -71,7 +71,7 @@ pub const Node = struct {
             .{ "replaceChild", "call_replaceChild", 2 },
             .{ "removeChild", "call_removeChild", 1 },
         };
-        
+
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "ELEMENT_NODE", "get_ELEMENT_NODE" },
@@ -93,7 +93,7 @@ pub const Node = struct {
             .{ "DOCUMENT_POSITION_CONTAINED_BY", "get_DOCUMENT_POSITION_CONTAINED_BY" },
             .{ "DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC", "get_DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC" },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getRootNode",
@@ -112,7 +112,7 @@ pub const Node = struct {
             "replaceChild",
             "removeChild",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -120,7 +120,7 @@ pub const Node = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "nodeType", "get_nodeType", null },
@@ -135,14 +135,14 @@ pub const Node = struct {
             .{ "nodeValue", "get_nodeValue", "set_nodeValue" },
             .{ "textContent", "get_textContent", "set_textContent" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
             .{ "baseURI", "get_baseURI", null },
             .{ "isConnected", "get_isConnected", null },
             .{ "ownerDocument", "get_ownerDocument", null },
         };
-        
+
         pub const has_constructor = false;
     };
 
@@ -264,7 +264,6 @@ pub const Node = struct {
     }
 
     const delegates = .{
-
         .get_ATTRIBUTE_NODE = &get_ATTRIBUTE_NODE,
         .get_CDATA_SECTION_NODE = &get_CDATA_SECTION_NODE,
         .get_COMMENT_NODE = &get_COMMENT_NODE,
@@ -358,15 +357,11 @@ pub const Node = struct {
     }
 
     /// Extended attributes: [SameObject]
+    /// Note: [SameObject] caching is handled in NodeImpl.get_childNodes via internal.child_nodes_list
+    /// We can't cache in interface State because subclasses (Element, DocumentFragment, etc.)
+    /// may be called through this function but have different State structs.
     pub fn get_childNodes(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_childNodes) |cached| {
-            return cached;
-        }
-        const value = try NodeImpl.get_childNodes(instance);
-        state.own.cached_childNodes = value;
-        return value;
+        return try NodeImpl.get_childNodes(instance);
     }
 
     pub fn get_firstChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
@@ -395,7 +390,7 @@ pub const Node = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try NodeImpl.set_nodeValue(instance, value);
     }
 
@@ -409,22 +404,19 @@ pub const Node = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try NodeImpl.set_textContent(instance, value);
     }
 
     pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: DOMString) anyerror!bool {
-        
         return try NodeImpl.call_isDefaultNamespace(instance, namespace);
     }
 
     pub fn call_compareDocumentPosition(instance: *runtime.Instance, other: *runtime.Instance) anyerror!u16 {
-        
         return try NodeImpl.call_compareDocumentPosition(instance, other);
     }
 
     pub fn call_contains(instance: *runtime.Instance, other: *runtime.Instance) anyerror!bool {
-        
         return try NodeImpl.call_contains(instance, other);
     }
 
@@ -433,13 +425,11 @@ pub const Node = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try NodeImpl.call_insertBefore(instance, node, child);
     }
 
     pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: DOMString) anyerror!?DOMString {
-        
         return try NodeImpl.call_lookupNamespaceURI(instance, prefix);
     }
 
@@ -448,8 +438,7 @@ pub const Node = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try NodeImpl.call_appendChild(instance, node);
     }
 
@@ -462,14 +451,13 @@ pub const Node = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         // [NewObject] - Caller owns the returned object
-        
+
         return try NodeImpl.call_cloneNode(instance, subtree);
     }
 
     pub fn call_getRootNode(instance: *runtime.Instance, options: GetRootNodeOptions) anyerror!*runtime.Instance {
-        
         return try NodeImpl.call_getRootNode(instance, options);
     }
 
@@ -478,13 +466,11 @@ pub const Node = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try NodeImpl.call_removeChild(instance, child);
     }
 
     pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: *runtime.Instance) anyerror!bool {
-        
         return try NodeImpl.call_isEqualNode(instance, otherNode);
     }
 
@@ -493,7 +479,7 @@ pub const Node = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         return try NodeImpl.call_normalize(instance);
     }
 
@@ -502,19 +488,15 @@ pub const Node = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try NodeImpl.call_replaceChild(instance, node, child);
     }
 
     pub fn call_isSameNode(instance: *runtime.Instance, otherNode: *runtime.Instance) anyerror!bool {
-        
         return try NodeImpl.call_isSameNode(instance, otherNode);
     }
 
     pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: DOMString) anyerror!?DOMString {
-        
         return try NodeImpl.call_lookupPrefix(instance, namespace);
     }
-
 };
