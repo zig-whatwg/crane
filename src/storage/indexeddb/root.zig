@@ -189,6 +189,14 @@ pub const AutoIncrementGenerator = object_store_persistence.AutoIncrementGenerat
 pub const ObjectStorePersistence = object_store_persistence.ObjectStorePersistence;
 pub const ObjectStoreSQL = object_store_persistence.ObjectStoreSQL;
 
+// Index persistence (Phase 5.5)
+pub const index_persistence = @import("index_persistence.zig");
+pub const IndexEntry = index_persistence.IndexEntry;
+pub const IndexPersistence = index_persistence.IndexPersistence;
+pub const IndexManager = index_persistence.IndexManager;
+pub const UniqueConstraintChecker = index_persistence.UniqueConstraintChecker;
+pub const IndexSQL = index_persistence.IndexSQL;
+
 // Error types
 pub const IDBError = @import("errors.zig").IDBError;
 
@@ -212,4 +220,5 @@ test {
     _ = sqlite_transactions;
     _ = mvcc;
     _ = object_store_persistence;
+    _ = index_persistence;
 }
