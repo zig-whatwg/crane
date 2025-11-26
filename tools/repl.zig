@@ -353,6 +353,10 @@ const Repl = struct {
 
         // JavaScript code to format the object like Chrome DevTools
         // This runs in the same context, using JS introspection
+        //
+        // SAFETY: Some WebIDL property getters can crash in native code (before JS try/catch).
+        // For WebIDL objects (detected by prototype chain depth), we only show property NAMES,
+        // not values. Plain JS objects get full property display.
         const format_code =
             \\(function() {
             \\  const obj = __repl_temp__;
@@ -383,55 +387,99 @@ const Repl = struct {
             \\    return 'Array(' + obj.length + ') [...]';
             \\  }
             \\  
-            \\  // Get own enumerable properties (limited to first few for display)
-            \\  const props = [];
-            \\  const keys = Object.keys(obj);
-            \\  const maxProps = 5;
-            \\  
-            \\  for (let i = 0; i < Math.min(keys.length, maxProps); i++) {
-            \\    const key = keys[i];
-            \\    let val;
-            \\    try {
-            \\      val = obj[key];
-            \\    } catch (e) {
-            \\      val = '<error>';
-            \\    }
-            \\    
-            \\    let valStr;
-            \\    if (val === null) valStr = 'null';
-            \\    else if (val === undefined) valStr = 'undefined';
-            \\    else if (typeof val === 'string') valStr = "'" + val + "'";
-            \\    else if (typeof val === 'function') valStr = '[Function]';
-            \\    else if (typeof val === 'object') {
-            \\      if (Array.isArray(val)) valStr = 'Array(' + val.length + ')';
-            \\      else valStr = val.constructor ? val.constructor.name : '[object]';
-            \\    }
-            \\    else valStr = String(val);
-            \\    
-            \\    props.push(key + ': ' + valStr);
+            \\  // Detect if this is a WebIDL object (has prototype chain beyond Object.prototype)
+            \\  // WebIDL objects have: Instance -> InterfaceProto -> ParentProto -> ... -> Object.prototype
+            \\  let protoDepth = 0;
+            \\  let proto = Object.getPrototypeOf(obj);
+            \\  while (proto && proto !== Object.prototype) {
+            \\    protoDepth++;
+            \\    proto = Object.getPrototypeOf(proto);
             \\  }
+            \\  const isWebIDL = protoDepth >= 2;
             \\  
-            \\  if (keys.length > maxProps) {
-            \\    props.push('...');
-            \\  }
+            \\  // Collect property names (safe - no getters called)
+            \\  const propNames = [];
+            \\  const seen = new Set();
             \\  
-            \\  // If no own properties, try to show some interesting inherited ones for DOM objects
-            \\  if (props.length === 0 && typeof obj.type !== 'undefined') {
-            \\    // Likely an Event - show key properties
-            \\    const eventProps = ['type', 'target', 'currentTarget', 'eventPhase', 'bubbles', 'cancelable', 'isTrusted'];
-            \\    for (const key of eventProps) {
-            \\      if (key in obj) {
-            \\        let val = obj[key];
-            \\        let valStr;
-            \\        if (val === null) valStr = 'null';
-            \\        else if (val === undefined) valStr = 'undefined';
-            \\        else if (typeof val === 'string') valStr = "'" + val + "'";
-            \\        else valStr = String(val);
-            \\        props.push(key + ': ' + valStr);
-            \\        if (props.length >= maxProps) break;
+            \\  // 1. Add all own property names
+            \\  try {
+            \\    const ownNames = Object.getOwnPropertyNames(obj);
+            \\    for (const key of ownNames) {
+            \\      if (!seen.has(key)) {
+            \\        seen.add(key);
+            \\        propNames.push({ key, own: true });
             \\      }
             \\    }
-            \\    if (props.length < eventProps.length) props.push('...');
+            \\  } catch (e) {}
+            \\  
+            \\  // 2. Walk prototype chain for accessor property names (WebIDL attributes)
+            \\  try {
+            \\    proto = Object.getPrototypeOf(obj);
+            \\    while (proto && proto !== Object.prototype) {
+            \\      const protoNames = Object.getOwnPropertyNames(proto);
+            \\      for (const key of protoNames) {
+            \\        if (key === 'constructor') continue;
+            \\        if (seen.has(key)) continue;
+            \\        const desc = Object.getOwnPropertyDescriptor(proto, key);
+            \\        // Only include accessor properties (getters) - these are WebIDL attributes
+            \\        if (desc && (desc.get || desc.set)) {
+            \\          seen.add(key);
+            \\          propNames.push({ key, own: false, hasGetter: !!desc.get });
+            \\        }
+            \\      }
+            \\      proto = Object.getPrototypeOf(proto);
+            \\    }
+            \\  } catch (e) {}
+            \\  
+            \\  // Filter out methods
+            \\  const attrNames = propNames.filter(p => {
+            \\    // For own properties, check if it's a function (safe for plain objects)
+            \\    if (p.own && !isWebIDL) {
+            \\      try { return typeof obj[p.key] !== 'function'; } catch (e) { return true; }
+            \\    }
+            \\    // For inherited/WebIDL properties, include if it's a getter (attribute) not a method
+            \\    return p.hasGetter !== false;
+            \\  });
+            \\  
+            \\  const maxProps = 8;
+            \\  const displayNames = attrNames.slice(0, maxProps).map(p => p.key);
+            \\  
+            \\  if (isWebIDL) {
+            \\    // WebIDL object: show property names only (values may crash)
+            \\    if (displayNames.length === 0) {
+            \\      return name + ' {}';
+            \\    }
+            \\    const propsStr = displayNames.join(', ');
+            \\    const suffix = attrNames.length > maxProps ? ', ...' : '';
+            \\    return name + ' {' + propsStr + suffix + '}';
+            \\  }
+            \\  
+            \\  // Plain JS object: show property values (safe)
+            \\  function formatValue(val) {
+            \\    if (val === null) return 'null';
+            \\    if (val === undefined) return 'undefined';
+            \\    if (typeof val === 'string') return "'" + val + "'";
+            \\    if (typeof val === 'function') return '[Function]';
+            \\    if (typeof val === 'object') {
+            \\      if (Array.isArray(val)) return 'Array(' + val.length + ')';
+            \\      return val.constructor ? val.constructor.name : '[object]';
+            \\    }
+            \\    return String(val);
+            \\  }
+            \\  
+            \\  const props = [];
+            \\  for (const key of displayNames) {
+            \\    try {
+            \\      const val = obj[key];
+            \\      if (typeof val === 'function') continue;
+            \\      props.push(key + ': ' + formatValue(val));
+            \\    } catch (e) {
+            \\      props.push(key + ': (...)');
+            \\    }
+            \\  }
+            \\  
+            \\  if (attrNames.length > maxProps) {
+            \\    props.push('...');
             \\  }
             \\  
             \\  if (props.length === 0) {
