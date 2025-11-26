@@ -212,6 +212,18 @@ pub const SchemaMigration = schema.SchemaMigration;
 pub const SchemaManager = schema.SchemaManager;
 pub const SchemaSQL = schema.SchemaSQL;
 
+// Worker thread integration (Phase 5.8)
+pub const worker_threads = @import("worker_threads.zig");
+pub const WorkItemType = worker_threads.WorkItemType;
+pub const WorkResult = worker_threads.WorkResult;
+pub const WorkItem = worker_threads.WorkItem;
+pub const WorkQueue = worker_threads.WorkQueue;
+pub const ConnectionPool = worker_threads.ConnectionPool;
+pub const WorkerPoolConfig = worker_threads.WorkerPoolConfig;
+pub const WorkerPool = worker_threads.WorkerPool;
+pub const AsyncSQLite = worker_threads.AsyncSQLite;
+pub const BatchOperation = worker_threads.BatchOperation;
+
 // Error types
 pub const IDBError = @import("errors.zig").IDBError;
 
@@ -238,4 +250,5 @@ test {
     _ = index_persistence;
     _ = blob_storage;
     _ = schema;
+    _ = worker_threads;
 }
