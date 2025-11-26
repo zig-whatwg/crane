@@ -116,6 +116,7 @@ const PseudoClassKind = parser.PseudoClassKind;
 const NthPattern = parser.NthPattern;
 const cache = @import("cache.zig");
 const NthIndexCache = cache.NthIndexCache;
+const HasSelectorCache = cache.HasSelectorCache;
 
 // ============================================================================
 // Matcher Errors
@@ -133,6 +134,7 @@ pub const Matcher = struct {
     allocator: Allocator,
     scoping_root: ?*const Element = null,
     nth_cache: ?*NthIndexCache = null,
+    has_cache: ?*HasSelectorCache = null,
 
     pub fn init(allocator: Allocator) Matcher {
         return .{ .allocator = allocator };
@@ -151,6 +153,34 @@ pub const Matcher = struct {
     /// Initialize matcher with both scoping root and NthIndexCache.
     pub fn initWithScopeAndCache(allocator: Allocator, scoping_root: *const Element, nth_cache: *NthIndexCache) Matcher {
         return .{ .allocator = allocator, .scoping_root = scoping_root, .nth_cache = nth_cache };
+    }
+
+    /// Initialize matcher with all caches for optimal performance.
+    pub fn initWithAllCaches(
+        allocator: Allocator,
+        nth_cache: *NthIndexCache,
+        has_cache: *HasSelectorCache,
+    ) Matcher {
+        return .{
+            .allocator = allocator,
+            .nth_cache = nth_cache,
+            .has_cache = has_cache,
+        };
+    }
+
+    /// Initialize matcher with scoping root and all caches.
+    pub fn initWithScopeAndAllCaches(
+        allocator: Allocator,
+        scoping_root: *const Element,
+        nth_cache: *NthIndexCache,
+        has_cache: *HasSelectorCache,
+    ) Matcher {
+        return .{
+            .allocator = allocator,
+            .scoping_root = scoping_root,
+            .nth_cache = nth_cache,
+            .has_cache = has_cache,
+        };
     }
 
     /// Check if element matches selector list (OR semantics)
@@ -401,7 +431,35 @@ pub const Matcher = struct {
     }
 
     /// Match :has() pseudo-class (element has descendant or relative matching selector)
+    ///
+    /// With HasSelectorCache, the result is cached per element+selector to avoid
+    /// repeated expensive descendant traversals.
     fn matchesHas(self: *const Matcher, element: *Element, selector_list: *const SelectorList) MatcherError!bool {
+        const element_ptr = @intFromPtr(element);
+        // Use pointer address as selector hash (unique per parsed selector)
+        const selector_hash = @intFromPtr(selector_list);
+
+        // Check cache first
+        if (self.has_cache) |has_cache| {
+            if (has_cache.get(element_ptr, selector_hash)) |cached_result| {
+                return cached_result == .matches;
+            }
+        }
+
+        // Compute result
+        const result = try self.matchesHasUncached(element, selector_list);
+
+        // Cache the result
+        if (self.has_cache) |has_cache| {
+            const cache_result: HasSelectorCache.HasResult = if (result) .matches else .fails;
+            @constCast(has_cache).put(element_ptr, selector_hash, cache_result);
+        }
+
+        return result;
+    }
+
+    /// Uncached :has() matching - performs actual descendant/sibling traversal.
+    fn matchesHasUncached(self: *const Matcher, element: *Element, selector_list: *const SelectorList) MatcherError!bool {
         // Check each selector in the list
         for (selector_list.selectors) |*complex_selector| {
             // Handle relative selectors
