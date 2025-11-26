@@ -266,6 +266,42 @@ pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
         return "DocumentType";
     }
 
+    if (inst_vtable == &interfaces.ShadowRoot.vtable) {
+        return "ShadowRoot";
+    }
+
+    if (inst_vtable == &interfaces.Range.vtable) {
+        return "Range";
+    }
+
+    if (inst_vtable == &interfaces.StaticRange.vtable) {
+        return "StaticRange";
+    }
+
+    if (inst_vtable == &interfaces.TreeWalker.vtable) {
+        return "TreeWalker";
+    }
+
+    if (inst_vtable == &interfaces.NodeIterator.vtable) {
+        return "NodeIterator";
+    }
+
+    if (inst_vtable == &interfaces.DOMTokenList.vtable) {
+        return "DOMTokenList";
+    }
+
+    if (inst_vtable == &interfaces.HTMLCollection.vtable) {
+        return "HTMLCollection";
+    }
+
+    if (inst_vtable == &interfaces.NamedNodeMap.vtable) {
+        return "NamedNodeMap";
+    }
+
+    if (inst_vtable == &interfaces.DOMImplementation.vtable) {
+        return "DOMImplementation";
+    }
+
     // Default to "Element" for unknown types (backwards compat)
     return "Element";
 }
