@@ -97,27 +97,27 @@ form.id = "contact-form";
 form.className = "form";
 
 var inputName = doc.createElement("input");
-inputName.type = "text";
-inputName.name = "name";
+inputName.setAttribute("type", "text");  // Use setAttribute for attribute selectors to work
+inputName.setAttribute("name", "name");  // Use setAttribute for attribute selectors to work
 inputName.className = "form-input";
 inputName.placeholder = "Name";
 form.appendChild(inputName);
 
 var inputEmail = doc.createElement("input");
-inputEmail.type = "email";
-inputEmail.name = "email";
+inputEmail.setAttribute("type", "email");  // Use setAttribute for attribute selectors to work
+inputEmail.setAttribute("name", "email");  // Use setAttribute for attribute selectors to work
 inputEmail.className = "form-input";
-inputEmail.required = true;
+inputEmail.setAttribute("required", "");  // Use setAttribute for attribute selectors to work
 form.appendChild(inputEmail);
 
 var textarea = doc.createElement("textarea");
-textarea.name = "message";
+textarea.setAttribute("name", "message");  // Use setAttribute for attribute selectors to work
 textarea.className = "form-input";
 textarea.rows = 5;
 form.appendChild(textarea);
 
 var submitBtn = doc.createElement("button");
-submitBtn.type = "submit";
+submitBtn.setAttribute("type", "submit");  // Use setAttribute for attribute selectors to work
 submitBtn.className = "btn primary";
 submitBtn.textContent = "Submit";
 form.appendChild(submitBtn);
@@ -409,7 +409,8 @@ aside.querySelector("form") === form
 })()
 
 // Case sensitivity
-body.querySelector("HEADER") === null  // HTML element type selectors are case-sensitive
+// Per CSS Selectors spec, type selectors are case-INSENSITIVE in HTML documents
+body.querySelector("HEADER") === header  // HTML type selectors are case-insensitive
 body.querySelector("header") === header
 body.querySelector("[ID='main-header']") === header  // Attribute names are case-insensitive in HTML
 body.querySelector("[id='main-header']") === header

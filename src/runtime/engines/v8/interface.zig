@@ -554,8 +554,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                 } else if (PayloadType == f32 or PayloadType == runtime.Float) {
                                     break :comptime_convert @ptrCast(v8.v8_Number_New(isolate_inner, @floatCast(result)));
                                 } else if (PayloadType == bool or PayloadType == runtime.Boolean) {
-                                    const num_val: f64 = if (result) 1.0 else 0.0;
-                                    break :comptime_convert @ptrCast(v8.v8_Number_New(isolate_inner, num_val));
+                                    break :comptime_convert v8.v8_Boolean_New(isolate_inner, result) orelse unreachable;
                                 } else if (PayloadType == runtime.DOMString) {
                                     break :comptime_convert @ptrCast(conv.toV8String(isolate_inner, result));
                                 } else if (PayloadType == runtime.USVString or PayloadType == []const u8) {
@@ -564,6 +563,20 @@ pub fn V8Interface(comptime Interface: type) type {
                                         break :comptime_convert @ptrCast(str);
                                     } else {
                                         break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
+                                    }
+                                } else if (@typeInfo(PayloadType) == .@"enum") {
+                                    // WebIDL enum - convert to string using @tagName
+                                    // This is a runtime conversion so we use a helper function
+                                    break :comptime_convert @ptrCast(conv.enumToV8String(PayloadType, isolate_inner, result));
+                                } else if (PayloadType == *runtime.Instance) {
+                                    // Instance pointer - wrap with correct V8 prototype
+                                    break :comptime_convert @ptrCast(conv.instanceToV8(isolate_inner, result));
+                                } else if (PayloadType == ?*runtime.Instance) {
+                                    // Optional Instance pointer - null or wrap
+                                    if (result) |inst| {
+                                        break :comptime_convert @ptrCast(conv.instanceToV8(isolate_inner, inst));
+                                    } else {
+                                        break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
                                     }
                                 } else {
                                     // For complex types (interfaces, objects, etc.), return undefined for now
