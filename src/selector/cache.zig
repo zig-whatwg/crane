@@ -213,6 +213,22 @@ pub const SelectorQueryCache = struct {
 /// Computing sibling indices is O(siblings) and happens frequently when
 /// matching multiple elements against :nth-child selectors. This cache
 /// stores computed indices per element to avoid redundant traversal.
+///
+/// ## Usage
+///
+/// ```zig
+/// var cache = NthIndexCache.init(allocator);
+/// defer cache.deinit();
+///
+/// // Check cache first
+/// if (cache.getNthChild(element_ptr)) |cached_index| {
+///     return matchesNthPattern(cached_index, pattern);
+/// }
+///
+/// // Compute and cache
+/// const index = computeNthChild(element);
+/// cache.putNthChild(element_ptr, index);
+/// ```
 pub const NthIndexCache = struct {
     allocator: Allocator,
     nth_child: std.AutoHashMap(usize, i32),
@@ -247,29 +263,65 @@ pub const NthIndexCache = struct {
         self.nth_last_of_type.deinit();
     }
 
-    /// Get cached nth-child index, or compute and cache it.
-    pub fn getNthChild(self: *Self, element_ptr: usize, compute_fn: *const fn (usize) ?i32) ?i32 {
-        if (self.nth_child.get(element_ptr)) |index| {
-            return index;
-        }
-        if (compute_fn(element_ptr)) |index| {
-            self.nth_child.put(element_ptr, index) catch {};
-            return index;
-        }
-        return null;
+    // ========================================================================
+    // nth-child cache
+    // ========================================================================
+
+    /// Get cached nth-child index for an element.
+    pub fn getNthChild(self: *const Self, element_ptr: usize) ?i32 {
+        return self.nth_child.get(element_ptr);
     }
 
-    /// Get cached nth-last-child index, or compute and cache it.
-    pub fn getNthLastChild(self: *Self, element_ptr: usize, compute_fn: *const fn (usize) ?i32) ?i32 {
-        if (self.nth_last_child.get(element_ptr)) |index| {
-            return index;
-        }
-        if (compute_fn(element_ptr)) |index| {
-            self.nth_last_child.put(element_ptr, index) catch {};
-            return index;
-        }
-        return null;
+    /// Cache an nth-child index for an element.
+    pub fn putNthChild(self: *Self, element_ptr: usize, index: i32) void {
+        self.nth_child.put(element_ptr, index) catch {};
     }
+
+    // ========================================================================
+    // nth-last-child cache
+    // ========================================================================
+
+    /// Get cached nth-last-child index for an element.
+    pub fn getNthLastChild(self: *const Self, element_ptr: usize) ?i32 {
+        return self.nth_last_child.get(element_ptr);
+    }
+
+    /// Cache an nth-last-child index for an element.
+    pub fn putNthLastChild(self: *Self, element_ptr: usize, index: i32) void {
+        self.nth_last_child.put(element_ptr, index) catch {};
+    }
+
+    // ========================================================================
+    // nth-of-type cache
+    // ========================================================================
+
+    /// Get cached nth-of-type index for an element.
+    pub fn getNthOfType(self: *const Self, element_ptr: usize, tag_name_hash: u64) ?i32 {
+        return self.nth_of_type.get(.{ .element_ptr = element_ptr, .tag_name_hash = tag_name_hash });
+    }
+
+    /// Cache an nth-of-type index for an element.
+    pub fn putNthOfType(self: *Self, element_ptr: usize, tag_name_hash: u64, index: i32) void {
+        self.nth_of_type.put(.{ .element_ptr = element_ptr, .tag_name_hash = tag_name_hash }, index) catch {};
+    }
+
+    // ========================================================================
+    // nth-last-of-type cache
+    // ========================================================================
+
+    /// Get cached nth-last-of-type index for an element.
+    pub fn getNthLastOfType(self: *const Self, element_ptr: usize, tag_name_hash: u64) ?i32 {
+        return self.nth_last_of_type.get(.{ .element_ptr = element_ptr, .tag_name_hash = tag_name_hash });
+    }
+
+    /// Cache an nth-last-of-type index for an element.
+    pub fn putNthLastOfType(self: *Self, element_ptr: usize, tag_name_hash: u64, index: i32) void {
+        self.nth_last_of_type.put(.{ .element_ptr = element_ptr, .tag_name_hash = tag_name_hash }, index) catch {};
+    }
+
+    // ========================================================================
+    // Utility
+    // ========================================================================
 
     /// Clear all cached indices.
     pub fn clear(self: *Self) void {
@@ -277,6 +329,14 @@ pub const NthIndexCache = struct {
         self.nth_last_child.clearRetainingCapacity();
         self.nth_of_type.clearRetainingCapacity();
         self.nth_last_of_type.clearRetainingCapacity();
+    }
+
+    /// Get total number of cached entries.
+    pub fn count(self: *const Self) usize {
+        return self.nth_child.count() +
+            self.nth_last_child.count() +
+            self.nth_of_type.count() +
+            self.nth_last_of_type.count();
     }
 };
 

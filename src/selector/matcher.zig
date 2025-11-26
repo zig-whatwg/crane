@@ -114,6 +114,8 @@ const AttributeMatcher = parser.AttributeMatcher;
 const PseudoClassSelector = parser.PseudoClassSelector;
 const PseudoClassKind = parser.PseudoClassKind;
 const NthPattern = parser.NthPattern;
+const cache = @import("cache.zig");
+const NthIndexCache = cache.NthIndexCache;
 
 // ============================================================================
 // Matcher Errors
@@ -130,6 +132,7 @@ pub const MatcherError = error{
 pub const Matcher = struct {
     allocator: Allocator,
     scoping_root: ?*const Element = null,
+    nth_cache: ?*NthIndexCache = null,
 
     pub fn init(allocator: Allocator) Matcher {
         return .{ .allocator = allocator };
@@ -137,6 +140,17 @@ pub const Matcher = struct {
 
     pub fn initWithScope(allocator: Allocator, scoping_root: *const Element) Matcher {
         return .{ .allocator = allocator, .scoping_root = scoping_root };
+    }
+
+    /// Initialize matcher with NthIndexCache for faster :nth-child() matching.
+    /// The cache is optional - if not provided, indices are computed on demand.
+    pub fn initWithCache(allocator: Allocator, nth_cache: *NthIndexCache) Matcher {
+        return .{ .allocator = allocator, .nth_cache = nth_cache };
+    }
+
+    /// Initialize matcher with both scoping root and NthIndexCache.
+    pub fn initWithScopeAndCache(allocator: Allocator, scoping_root: *const Element, nth_cache: *NthIndexCache) Matcher {
+        return .{ .allocator = allocator, .scoping_root = scoping_root, .nth_cache = nth_cache };
     }
 
     /// Check if element matches selector list (OR semantics)
@@ -359,10 +373,10 @@ pub const Matcher = struct {
             .Empty => matchesEmpty(element),
             .Root => matchesRoot(element),
             .Scope => self.matchesScope(element),
-            .NthChild => |pattern| matchesNthChild(element, pattern),
-            .NthLastChild => |pattern| matchesNthLastChild(element, pattern),
-            .NthOfType => |pattern| matchesNthOfType(element, pattern),
-            .NthLastOfType => |pattern| matchesNthLastOfType(element, pattern),
+            .NthChild => |pattern| self.matchesNthChild(element, pattern),
+            .NthLastChild => |pattern| self.matchesNthLastChild(element, pattern),
+            .NthOfType => |pattern| self.matchesNthOfType(element, pattern),
+            .NthLastOfType => |pattern| self.matchesNthLastOfType(element, pattern),
             .Not => |selector_list| !try self.matches(element, selector_list),
             .Is, .Where => |selector_list| try self.matches(element, selector_list),
             .Has => |selector_list| try self.matchesHas(element, selector_list),
@@ -466,6 +480,103 @@ pub const Matcher = struct {
             current = getNextSibling(@as(*const Element, @ptrCast(sibling_node)));
         }
         return false;
+    }
+
+    // ========================================================================
+    // Cached Nth-Child Matching
+    // ========================================================================
+
+    /// Match :nth-child(an+b) with optional caching.
+    ///
+    /// If a NthIndexCache is attached to this Matcher, the index is cached
+    /// after computation to avoid redundant O(siblings) traversals.
+    fn matchesNthChild(self: *const Matcher, element: *Element, pattern: NthPattern) bool {
+        const element_ptr = @intFromPtr(element);
+
+        // Check cache first
+        if (self.nth_cache) |nth_cache| {
+            if (nth_cache.getNthChild(element_ptr)) |cached_index| {
+                return matchesNthPattern(@intCast(cached_index), pattern);
+            }
+        }
+
+        // Compute index
+        const index = getChildIndex(element) orelse return false;
+
+        // Cache the result
+        if (self.nth_cache) |nth_cache| {
+            @constCast(nth_cache).putNthChild(element_ptr, @intCast(index));
+        }
+
+        return matchesNthPattern(index, pattern);
+    }
+
+    /// Match :nth-last-child(an+b) with optional caching.
+    fn matchesNthLastChild(self: *const Matcher, element: *Element, pattern: NthPattern) bool {
+        const element_ptr = @intFromPtr(element);
+
+        // Check cache first
+        if (self.nth_cache) |nth_cache| {
+            if (nth_cache.getNthLastChild(element_ptr)) |cached_index| {
+                return matchesNthPattern(@intCast(cached_index), pattern);
+            }
+        }
+
+        // Compute index
+        const index = getChildIndexFromLast(element) orelse return false;
+
+        // Cache the result
+        if (self.nth_cache) |nth_cache| {
+            @constCast(nth_cache).putNthLastChild(element_ptr, @intCast(index));
+        }
+
+        return matchesNthPattern(index, pattern);
+    }
+
+    /// Match :nth-of-type(an+b) with optional caching.
+    fn matchesNthOfType(self: *const Matcher, element: *Element, pattern: NthPattern) bool {
+        const element_ptr = @intFromPtr(element);
+        const tag_name_hash = std.hash.Wyhash.hash(0, element.tag_name);
+
+        // Check cache first
+        if (self.nth_cache) |nth_cache| {
+            if (nth_cache.getNthOfType(element_ptr, tag_name_hash)) |cached_index| {
+                return matchesNthPattern(@intCast(cached_index), pattern);
+            }
+        }
+
+        // Compute index
+        const index = getChildIndexOfType(element) orelse return false;
+
+        // Cache the result
+        if (self.nth_cache) |nth_cache| {
+            @constCast(nth_cache).putNthOfType(element_ptr, tag_name_hash, @intCast(index));
+        }
+
+        return matchesNthPattern(index, pattern);
+    }
+
+    /// Match :nth-last-of-type(an+b) with optional caching.
+    fn matchesNthLastOfType(self: *const Matcher, element: *Element, pattern: NthPattern) bool {
+        const element_ptr = @intFromPtr(element);
+        const tag_name_hash = std.hash.Wyhash.hash(0, element.tag_name);
+
+        // Check cache first
+        if (self.nth_cache) |nth_cache| {
+            if (nth_cache.getNthLastOfType(element_ptr, tag_name_hash)) |cached_index| {
+                return matchesNthPattern(@intCast(cached_index), pattern);
+            }
+        }
+
+        // Compute index
+        const index = getChildIndexOfTypeFromLast(element) orelse return false;
+
+        // Cache the result
+        if (self.nth_cache) |nth_cache| {
+            @constCast(nth_cache).putNthLastOfType(element_ptr, tag_name_hash, @intCast(index));
+        }
+
+        return matchesNthPattern(index, pattern);
     }
 };
 
@@ -841,30 +952,6 @@ fn matchesDir(element: *Element, direction: Direction) bool {
     }
     // Default directionality is ltr per HTML spec
     return direction == .ltr;
-}
-
-/// Match :nth-child(an+b)
-fn matchesNthChild(element: *Element, pattern: NthPattern) bool {
-    const index = getChildIndex(element) orelse return false;
-    return matchesNthPattern(index, pattern);
-}
-
-/// Match :nth-last-child(an+b)
-fn matchesNthLastChild(element: *Element, pattern: NthPattern) bool {
-    const index = getChildIndexFromLast(element) orelse return false;
-    return matchesNthPattern(index, pattern);
-}
-
-/// Match :nth-of-type(an+b)
-fn matchesNthOfType(element: *Element, pattern: NthPattern) bool {
-    const index = getChildIndexOfType(element) orelse return false;
-    return matchesNthPattern(index, pattern);
-}
-
-/// Match :nth-last-of-type(an+b)
-fn matchesNthLastOfType(element: *Element, pattern: NthPattern) bool {
-    const index = getChildIndexOfTypeFromLast(element) orelse return false;
-    return matchesNthPattern(index, pattern);
 }
 
 /// Get element's index among all child elements (1-based)

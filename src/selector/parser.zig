@@ -194,6 +194,7 @@ pub const SimpleSelector = union(enum) {
 
     pub fn deinit(self: *SimpleSelector, allocator: Allocator) void {
         switch (self.*) {
+            .Attribute => |*attr| attr.deinit(),
             .PseudoClass => |*pseudo| pseudo.deinit(allocator),
             .PseudoElement => |*pseudo| pseudo.deinit(allocator),
             else => {},
@@ -219,6 +220,14 @@ pub const AttributeSelector = struct {
     name: []const u8,
     matcher: AttributeMatcher,
     case_sensitive: bool = true,
+    allocator: ?Allocator = null, // Allocator used to allocate name (for cleanup)
+
+    /// Free the allocated name string if this selector owns its allocation.
+    pub fn deinit(self: *AttributeSelector) void {
+        if (self.allocator) |alloc| {
+            alloc.free(self.name);
+        }
+    }
 };
 
 /// Attribute matching operators
@@ -526,7 +535,7 @@ pub const Parser = struct {
             // No combinators - just return the single compound
             const result_compound = compounds_slice[0];
             // Clear the list without freeing (we're transferring ownership)
-            ltr_compounds.clearRetainingCapacity();
+            ltr_compounds.clear();
             return ComplexSelector{
                 .compound = result_compound,
                 .combinators = &.{},
@@ -560,7 +569,7 @@ pub const Parser = struct {
         }
 
         // Clear the original list without freeing (ownership transferred)
-        ltr_compounds.clearRetainingCapacity();
+        ltr_compounds.clear();
 
         var result = ComplexSelector{
             .compound = subject_compound,
@@ -773,6 +782,7 @@ pub const Parser = struct {
             .name = name,
             .matcher = matcher,
             .case_sensitive = case_sensitive,
+            .allocator = self.allocator,
         };
     }
 
