@@ -27,14 +27,21 @@ pub const AcceptOp = poller.AcceptOp;
 pub const ConnectOp = poller.ConnectOp;
 pub const CloseOp = poller.CloseOp;
 
-// TODO(Phase 1.4): io_uring backend
-// pub const linux_uring = @import("linux_uring.zig");
+// Platform-specific backends (stubs - to be fully implemented)
+pub const linux_uring = @import("linux_uring.zig");
+pub const windows_iocp = @import("windows_iocp.zig");
+pub const macos_kqueue = @import("macos_kqueue.zig");
 
-// TODO(Phase 1.5): IOCP backend
-// pub const windows_iocp = @import("windows_iocp.zig");
-
-// TODO(Phase 1.6): kqueue backend
-// pub const macos_kqueue = @import("macos_kqueue.zig");
+/// Get the platform-native poller type
+pub fn NativePoller() type {
+    const builtin = @import("builtin");
+    return switch (builtin.os.tag) {
+        .linux => linux_uring.IoUringPoller,
+        .windows => windows_iocp.IocpPoller,
+        .macos, .freebsd, .ios => macos_kqueue.KqueuePoller,
+        else => @compileError("Unsupported platform for I/O polling"),
+    };
+}
 
 // ============================================================================
 // Tests
@@ -42,4 +49,6 @@ pub const CloseOp = poller.CloseOp;
 
 test {
     _ = poller;
+    _ = macos_kqueue;
+    // linux_uring and windows_iocp are stubs, tested separately
 }
