@@ -170,6 +170,15 @@ pub const TransactionQueue = sqlite_transactions.TransactionQueue;
 pub const QueuedRequest = sqlite_transactions.QueuedRequest;
 pub const RequestResult = sqlite_transactions.RequestResult;
 
+// MVCC for readonly transactions (Phase 5.3)
+pub const mvcc = @import("mvcc.zig");
+pub const Snapshot = mvcc.Snapshot;
+pub const SnapshotId = mvcc.SnapshotId;
+pub const VersionInfo = mvcc.VersionInfo;
+pub const MVCCManager = mvcc.MVCCManager;
+pub const ReadConsistencyChecker = mvcc.ReadConsistencyChecker;
+pub const ConcurrentReadTracker = mvcc.ConcurrentReadTracker;
+
 // Error types
 pub const IDBError = @import("errors.zig").IDBError;
 
@@ -191,4 +200,5 @@ test {
     _ = webidl_types;
     _ = storage_integration;
     _ = sqlite_transactions;
+    _ = mvcc;
 }
