@@ -302,6 +302,23 @@ pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
         return "DOMImplementation";
     }
 
+    // DOM Events and AbortController/AbortSignal
+    if (inst_vtable == &interfaces.AbortController.vtable) {
+        return "AbortController";
+    }
+
+    if (inst_vtable == &interfaces.AbortSignal.vtable) {
+        return "AbortSignal";
+    }
+
+    if (inst_vtable == &interfaces.Event.vtable) {
+        return "Event";
+    }
+
+    if (inst_vtable == &interfaces.EventTarget.vtable) {
+        return "EventTarget";
+    }
+
     // Default to "Element" for unknown types (backwards compat)
     return "Element";
 }

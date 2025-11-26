@@ -373,12 +373,16 @@ pub fn V8Interface(comptime Interface: type) type {
                 const static_methods = Meta.static_methods;
                 inline for (static_methods) |method| {
                     const method_name: []const u8 = method[0];
+                    const zig_name: []const u8 = method[1];
                     const arity: c_int = if (method.len >= 3) method[2] else 0;
+
+                    // Get the comptime-generated callback for this specific static method
+                    const static_callback = StaticMethodCallback(zig_name).callback;
 
                     // Create function template for static method
                     const method_tmpl = v8.v8_FunctionTemplate_New(
                         isolate,
-                        staticMethodCallback,
+                        static_callback,
                         null,
                     );
                     if (method_tmpl) |tmpl| {
@@ -807,6 +811,10 @@ pub fn V8Interface(comptime Interface: type) type {
                             break :arg_blk null;
                         } else if (Param1Type == runtime.DOMString) {
                             break :arg_blk runtime.DOMString.initEmpty();
+                        } else if (Param1Type == *const anyopaque or Param1Type == *anyopaque) {
+                            // Allow null for anyopaque pointer types (optional object parameters)
+                            // Use undefined to satisfy type system - impl code should check for null
+                            break :arg_blk undefined;
                         } else {
                             return error.NotEnoughArguments;
                         }
@@ -1928,14 +1936,95 @@ pub fn V8Interface(comptime Interface: type) type {
             // Other types don't need cleanup
         }
 
-        /// Static method callback
-        /// Called for static methods like AbortSignal.abort(), AbortSignal.timeout()
-        fn staticMethodCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-            const isolate = info.getIsolate();
-            // Static methods don't have an instance - they're factory methods
-            // For now, return undefined as placeholder
-            // TODO: Implement proper static method dispatch
-            info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate).?));
+        /// Generate a static method callback for a specific method at comptime
+        ///
+        /// Static methods don't operate on an existing instance - they create new
+        /// instances (factory methods) or perform class-level operations.
+        ///
+        /// This creates a callback that:
+        /// 1. Gets the runtime context from V8 context manager
+        /// 2. Creates a "template" instance to pass context to the method
+        /// 3. Parses arguments from V8
+        /// 4. Calls the Interface static method
+        /// 5. Converts and returns the result to V8
+        fn StaticMethodCallback(comptime zig_name: []const u8) type {
+            return struct {
+                fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+                    const isolate = info.getIsolate();
+
+                    // Get V8 context
+                    const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+                        conv.throwError(isolate, "No current V8 context");
+                        return;
+                    };
+
+                    // Get allocator
+                    const isolate_alloc = @import("isolate_allocator.zig");
+                    const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.page_allocator) catch {
+                        conv.throwError(isolate, "Failed to get isolate allocator");
+                        return;
+                    };
+
+                    // Get runtime context from context manager
+                    const context_manager = @import("context_manager.zig");
+                    const runtime_ctx = context_manager.getOrCreateWithIsolate(v8_context, isolate, allocator) catch {
+                        conv.throwError(isolate, "Failed to get runtime context");
+                        return;
+                    };
+
+                    // Create a template instance to carry context to the static method
+                    // This instance is just a vehicle for passing allocator/context
+                    const template_instance = runtime.Instance.init(allocator, struct {}, &runtime.VTable{
+                        .deinit = null,
+                        .methods_ptr = &.{},
+                    }, runtime_ctx) catch {
+                        conv.throwError(isolate, "Failed to create template instance");
+                        return;
+                    };
+                    defer runtime.Instance.deinit(template_instance);
+
+                    // Get the static method function at comptime
+                    const method_fn = @field(Interface, zig_name);
+                    const fn_info = @typeInfo(@TypeOf(method_fn)).@"fn";
+                    const params = fn_info.params;
+                    const ReturnType = fn_info.return_type.?;
+
+                    // First parameter should be *runtime.Instance (template for context)
+                    if (params.len < 1) {
+                        @compileError("Static method must have at least instance parameter");
+                    }
+
+                    // Calculate number of WebIDL parameters (excluding instance)
+                    const webidl_param_count = params.len - 1;
+
+                    // Call the static method with appropriate arguments
+                    const result = callMethodWithArgs(
+                        method_fn,
+                        params,
+                        webidl_param_count,
+                        ReturnType,
+                        template_instance,
+                        info,
+                        allocator,
+                        isolate,
+                        v8_context,
+                    ) catch |err| {
+                        const err_msg = std.fmt.allocPrint(allocator, "Static method '{s}' failed: {s}", .{ zig_name, @errorName(err) }) catch {
+                            conv.throwError(isolate, "Static method failed");
+                            return;
+                        };
+                        defer allocator.free(err_msg);
+                        conv.throwError(isolate, err_msg);
+                        return;
+                    };
+
+                    // Convert and set return value
+                    if (result) |v8_result| {
+                        info.setReturnValue(v8_result);
+                    }
+                    // If result is null, V8 will return undefined (correct for void methods)
+                }
+            };
         }
     };
 }
