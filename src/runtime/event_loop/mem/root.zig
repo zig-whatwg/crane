@@ -46,9 +46,11 @@ const std = @import("std");
 
 pub const jemalloc = @import("jemalloc.zig");
 
-// TODO(Phase 1.1): Arena pool
-// pub const arena_pool = @import("arena_pool.zig");
-// pub const ArenaPool = arena_pool.ArenaPool;
+/// Arena pool for transaction/request memory management
+pub const arena_pool = @import("arena_pool.zig");
+pub const ArenaPool = arena_pool.ArenaPool;
+pub const ArenaPoolConfig = arena_pool.Config;
+pub const ArenaPoolStats = arena_pool.Stats;
 
 // TODO(Phase 1.2): Slab allocator
 // pub const slab = @import("slab.zig");
@@ -111,7 +113,16 @@ test "getStats returns valid struct" {
     _ = stats;
 }
 
+test "ArenaPool accessible from root" {
+    var pool = try ArenaPool.initDefault(std.testing.allocator);
+    defer pool.deinit();
+
+    const arena = try pool.acquire();
+    pool.release(arena);
+}
+
 test {
     // Run child module tests
     _ = jemalloc;
+    _ = arena_pool;
 }
