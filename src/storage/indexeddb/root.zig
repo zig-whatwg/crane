@@ -59,6 +59,18 @@ pub const compareKeys = key.compare;
 pub const key_range = @import("key_range.zig");
 pub const IDBKeyRange = key_range.IDBKeyRange;
 
+pub const key_path = @import("key_path.zig");
+pub const KeyPath = key_path.KeyPath;
+pub const ExtractedValue = key_path.ExtractedValue;
+pub const ExtractionResult = key_path.ExtractionResult;
+pub const EvaluationResult = key_path.EvaluationResult;
+pub const isValidKeyPath = key_path.isValidKeyPath;
+pub const isValidIdentifier = key_path.isValidIdentifier;
+pub const validateKeyPath = key_path.validateKeyPath;
+pub const evaluateKeyPath = key_path.evaluateKeyPath;
+pub const extractKey = key_path.extractKey;
+pub const checkKeyInjectable = key_path.checkKeyInjectable;
+
 pub const request = @import("request.zig");
 pub const IDBRequest = request.IDBRequest;
 pub const IDBRequestReadyState = request.IDBRequestReadyState;
@@ -97,6 +109,7 @@ pub const IDBError = @import("errors.zig").IDBError;
 test {
     _ = key;
     _ = key_range;
+    _ = key_path;
     _ = request;
     _ = factory;
     _ = database;
