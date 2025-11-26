@@ -203,6 +203,15 @@ pub const BlobReference = blob_storage.BlobReference;
 pub const BlobStorageManager = blob_storage.BlobStorageManager;
 pub const StoredValue = blob_storage.StoredValue;
 
+// Schema versioning (Phase 5.7)
+pub const schema = @import("schema.zig");
+pub const SchemaVersion = schema.SchemaVersion;
+pub const SchemaChangeType = schema.SchemaChangeType;
+pub const SchemaChange = schema.SchemaChange;
+pub const SchemaMigration = schema.SchemaMigration;
+pub const SchemaManager = schema.SchemaManager;
+pub const SchemaSQL = schema.SchemaSQL;
+
 // Error types
 pub const IDBError = @import("errors.zig").IDBError;
 
@@ -228,4 +237,5 @@ test {
     _ = object_store_persistence;
     _ = index_persistence;
     _ = blob_storage;
+    _ = schema;
 }
