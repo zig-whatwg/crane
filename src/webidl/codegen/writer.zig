@@ -7,6 +7,36 @@ const types = @import("types.zig");
 const overload = @import("overload.zig");
 const property_classifier = @import("property_classifier.zig");
 
+/// Check if a union type is a (TrustedType or DOMString/USVString) pattern
+/// These unions are used for Trusted Types API integration but since TrustedTypes
+/// are not yet implemented, we treat them as plain DOMString/USVString.
+///
+/// Matches patterns like:
+/// - (TrustedType or DOMString)
+/// - (TrustedHTML or DOMString)
+/// - (TrustedScript or DOMString)
+/// - (TrustedScriptURL or USVString)
+fn isTrustedTypeOrStringUnion(union_types: []const types.IDLType) bool {
+    if (union_types.len != 2) return false;
+
+    var has_trusted_type = false;
+    var has_string = false;
+
+    for (union_types) |ut| {
+        const t = ut.type;
+        // Check for TrustedTypes (not yet implemented, treat as string)
+        if (std.mem.eql(u8, t, "TrustedType")) has_trusted_type = true;
+        if (std.mem.eql(u8, t, "TrustedHTML")) has_trusted_type = true;
+        if (std.mem.eql(u8, t, "TrustedScript")) has_trusted_type = true;
+        if (std.mem.eql(u8, t, "TrustedScriptURL")) has_trusted_type = true;
+        // Check for string types
+        if (std.mem.eql(u8, t, "DOMString")) has_string = true;
+        if (std.mem.eql(u8, t, "USVString")) has_string = true;
+    }
+
+    return has_trusted_type and has_string;
+}
+
 /// Write a file header comment with source information and timestamp
 ///
 /// Example output:
@@ -852,10 +882,15 @@ fn writeIDLType(writer: anytype, idl_type: types.IDLType) !void {
     }
 
     // Handle union types
-    if (idl_type.unionTypes) |_| {
-        // Union types should be handled specially by caller
+    if (idl_type.unionTypes) |union_types| {
+        // Check for (TrustedType or DOMString/USVString) pattern
+        // TrustedTypes are not yet implemented, so we treat these as plain strings
+        if (isTrustedTypeOrStringUnion(union_types)) {
+            try writer.writeAll("DOMString");
+            return;
+        }
+        // Other union types fall back to anyopaque
         // (they need variant names and full tagged union syntax)
-        // If we get here, something is wrong - fall back to anyopaque
         try writer.writeAll("*const anyopaque");
         return;
     }
@@ -2448,6 +2483,23 @@ pub const TypeMapping = struct {
 /// This is the new type mapper that uses TypeRegistry to resolve custom types.
 /// Falls back to mapWebIDLType for primitives and unknown types.
 fn mapWebIDLTypeWithRegistry(idl_type: types.IDLType, type_registry: *const @import("ir.zig").TypeRegistry) TypeMapping {
+    // Handle union types first (before registry lookup, since unions have special .type values)
+    if (idl_type.unionTypes) |union_types| {
+        // Check for (TrustedType or DOMString/USVString) pattern
+        // TrustedTypes are not yet implemented, so treat as plain string
+        if (isTrustedTypeOrStringUnion(union_types)) {
+            return .{
+                .type_name = "DOMString",
+                .needs_import = false,
+            };
+        }
+        // Other union types fall back to anyopaque
+        return .{
+            .type_name = "anyopaque",
+            .needs_import = false,
+        };
+    }
+
     // Check if it's a registered custom type first
     if (type_registry.lookup(idl_type.type)) |kind| {
         const import_module = switch (kind) {
@@ -2495,6 +2547,17 @@ fn mapWebIDLTypeWithRegistry(idl_type: types.IDLType, type_registry: *const @imp
 /// - string types -> runtime.DOMString, runtime.ByteString, runtime.USVString
 /// - unknown types -> anyopaque
 fn mapWebIDLType(idl_type: types.IDLType) []const u8 {
+    // Handle union types first
+    if (idl_type.unionTypes) |union_types| {
+        // Check for (TrustedType or DOMString/USVString) pattern
+        // TrustedTypes are not yet implemented, so treat as plain string
+        if (isTrustedTypeOrStringUnion(union_types)) {
+            return "DOMString";
+        }
+        // Other union types fall back to anyopaque
+        return "anyopaque";
+    }
+
     // WebIDL "undefined" is the modern replacement for "void"
     // Both represent operations that return no meaningful value
     // In Zig, both map to the `void` type

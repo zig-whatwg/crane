@@ -502,6 +502,36 @@ fn isNodeOrDOMStringUnion(union_types: []const types.IDLType) bool {
     return has_node and has_string;
 }
 
+/// Check if a union type is a (TrustedType or DOMString/USVString) pattern
+/// These unions are used for Trusted Types API integration but since TrustedTypes
+/// are not yet implemented, we treat them as plain DOMString/USVString.
+///
+/// Matches patterns like:
+/// - (TrustedType or DOMString)
+/// - (TrustedHTML or DOMString)
+/// - (TrustedScript or DOMString)
+/// - (TrustedScriptURL or USVString)
+fn isTrustedTypeOrStringUnion(union_types: []const types.IDLType) bool {
+    if (union_types.len != 2) return false;
+
+    var has_trusted_type = false;
+    var has_string = false;
+
+    for (union_types) |ut| {
+        const t = ut.type;
+        // Check for TrustedTypes (not yet implemented, treat as string)
+        if (std.mem.eql(u8, t, "TrustedType")) has_trusted_type = true;
+        if (std.mem.eql(u8, t, "TrustedHTML")) has_trusted_type = true;
+        if (std.mem.eql(u8, t, "TrustedScript")) has_trusted_type = true;
+        if (std.mem.eql(u8, t, "TrustedScriptURL")) has_trusted_type = true;
+        // Check for string types
+        if (std.mem.eql(u8, t, "DOMString")) has_string = true;
+        if (std.mem.eql(u8, t, "USVString")) has_string = true;
+    }
+
+    return has_trusted_type and has_string;
+}
+
 /// Write a parameter type with proper nullable and variadic handling
 /// Handles: nullable types (T?), variadic (T...), and combinations
 fn writeParamType(w: anytype, arg: types.Argument, type_registry: ?*const ir_mod.TypeRegistry) !void {
@@ -525,6 +555,12 @@ fn writeTypeSimple(w: anytype, webidl_type: types.IDLType, type_registry: ?*cons
         if (isNodeOrDOMStringUnion(union_types)) {
             // Use the mixin's NodeOrString type for (Node or DOMString) pattern
             try w.writeAll("mixins.ParentNode.NodeOrString");
+            return;
+        }
+        if (isTrustedTypeOrStringUnion(union_types)) {
+            // TrustedTypes are not yet implemented - treat as DOMString
+            // This handles (TrustedType or DOMString), (TrustedHTML or DOMString), etc.
+            try w.writeAll("DOMString");
             return;
         }
         // Fallback for other union types - use anyopaque
