@@ -354,12 +354,12 @@ const Repl = struct {
         // JavaScript code to format the object like Chrome DevTools
         // This runs in the same context, using JS introspection
         //
-        // For WebIDL objects (DOM nodes), we show property values for SAFE types only:
-        // - Primitives (string, number, boolean, null, undefined) - always safe
-        // - Objects that return other DOM nodes may crash in native code
+        // For WebIDL objects (DOM nodes), we show property values:
+        // - Primitives (string, number, boolean, null, undefined) - show value
+        // - Objects (other DOM nodes) - show constructor name only (don't recurse)
         //
-        // Strategy: Try to get each value. If it's a primitive, show it.
-        // If it's an object, show just its type name (don't recurse into it).
+        // This is safe because state memory is zero-initialized (see runtime/instance.zig),
+        // preventing crashes from uninitialized pointer fields.
         const format_code =
             \\(function() {
             \\  const obj = __repl_temp__;
