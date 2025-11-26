@@ -144,6 +144,11 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
+    // Link SQLite for storage backends
+    storage_mod.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/sqlite/lib" });
+    storage_mod.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/sqlite/include" });
+    storage_mod.linkSystemLibrary("sqlite3", .{});
+
     // Runtime module (WebIDL runtime infrastructure)
     const runtime_mod = b.addModule("runtime", .{
         .root_source_file = b.path("src/runtime/root.zig"),
