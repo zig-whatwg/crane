@@ -5,16 +5,16 @@
 Crane is a comprehensive, spec-compliant implementation of the [WHATWG](https://whatwg.org/) web platform standards written in [Zig](https://ziglang.org/). Built for performance, safety, and correctness, Crane provides the foundational building blocks for web-compatible applications and runtimes.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Zig Version](https://img.shields.io/badge/Zig-0.15.1-orange.svg)](https://ziglang.org/download/)
+[![Zig Version](https://img.shields.io/badge/Zig-0.15.2-orange.svg)](https://ziglang.org/download/)
 [![CI](https://github.com/bcardarella/whatwg/actions/workflows/test.yml/badge.svg)](https://github.com/bcardarella/whatwg/actions/workflows/test.yml)
 
 ## 🎯 Why Crane?
 
 - **🔒 Memory Safe** - Zero tolerance for memory leaks, leveraging Zig's allocator system and defer patterns
 - **📐 Spec Compliant** - Every algorithm implemented exactly as specified by WHATWG standards
-- **🚀 Tiny Footprint** - Complete 8-spec implementation compiles to just 52 KB (optimized)
+- **🚀 Tiny Footprint** - Complete implementation compiles to just 52 KB (optimized)
 - **⚡ High Performance** - Zero-cost abstractions, aggressive dead code elimination
-- **🧪 Comprehensive Testing** - 1324+ tests covering edge cases and Web Platform Tests (WPT)
+- **🧪 Comprehensive Testing** - 1100+ tests covering edge cases and Web Platform Tests (WPT)
 - **🌐 Browser Compatible** - Behavior matches Chrome, Firefox, and Safari
 
 ## 📦 What's Implemented
@@ -23,25 +23,44 @@ Crane is a comprehensive, spec-compliant implementation of the [WHATWG](https://
 
 | Standard | Status | Key Features |
 |----------|--------|--------------|
-| **[Infra](https://infra.spec.whatwg.org/)** | ✅ Complete | Lists, OrderedMaps, byte sequences, code points, base64 |
+| **[Infra](https://infra.spec.whatwg.org/)** | ✅ Complete | Lists, OrderedMaps, byte sequences, code points, base64, bloom filters |
 | **[WebIDL](https://webidl.spec.whatwg.org/)** | ✅ Complete | Type system, interfaces, namespaces, mixins, code generation |
 
 ### Specifications ✅
 
 | Standard | Status | Key Features |
 |----------|--------|--------------|
-| **[Encoding](https://encoding.spec.whatwg.org/)** | ✅ Complete | UTF-8/16, legacy encodings, TextEncoder/Decoder, BOM handling |
-| **[URL](https://url.spec.whatwg.org/)** | ✅ Complete | URL parsing, serialization, URLSearchParams, IDNA, IPv4/IPv6 |
+| **[Encoding](https://encoding.spec.whatwg.org/)** | ✅ Complete | UTF-8/16, legacy encodings (ISO-8859, Windows-1252, EUC-JP, Shift_JIS, GB18030), TextEncoder/Decoder, BOM handling |
+| **[URL](https://url.spec.whatwg.org/)** | ✅ Complete | URL parsing, serialization, URLSearchParams, IDNA (6391 UTS46 tests), IPv4/IPv6, form-urlencoded |
 | **[Console](https://console.spec.whatwg.org/)** | ✅ Complete | Console logging, formatting, groups, timers, assertions |
-| **[Streams](https://streams.spec.whatwg.org/)** | ✅ Complete | ReadableStream, WritableStream, TransformStream, BYOB readers |
-| **[DOM](https://dom.spec.whatwg.org/)** | 🚧 In Progress | EventTarget, Node, Element, CharacterData, Document, Events |
+| **[Streams](https://streams.spec.whatwg.org/)** | ✅ Complete | ReadableStream, WritableStream, TransformStream, BYOB readers, async iteration |
+| **[DOM](https://dom.spec.whatwg.org/)** | 🚧 In Progress | EventTarget, Node, Element, CharacterData, Document, Events, XPath |
 | **[MIME Sniffing](https://mimesniff.spec.whatwg.org/)** | ✅ Complete | MIME type parsing, content sniffing, resource detection |
+| **[Quirks Mode](https://quirks.spec.whatwg.org/)** | ✅ Complete | Document mode detection, CSS value quirks, selector quirks |
+
+### CSS Support 🎨
+
+| Module | Status | Key Features |
+|--------|--------|--------------|
+| **CSS Syntax** | ✅ Complete | CSS Syntax Module Level 3 tokenizer |
+| **CSS Values** | ✅ Complete | Color parser (hex, rgb, named), length parser (all units) |
+| **CSS Selectors** | ✅ Complete | Full selector parsing, specificity, matching engine |
+| **Quirks Integration** | ✅ Complete | Hashless hex colors, unitless lengths |
+
+### Runtime Infrastructure 🔧
+
+| Module | Status | Key Features |
+|--------|--------|--------------|
+| **V8 Integration** | 🚧 In Progress | JavaScript engine bindings, wrapper caching |
+| **Instance System** | ✅ Complete | Zig-JS object identity, GC integration |
+| **ArrayBufferView** | ✅ Complete | TypedArray introspection (all 13 types) |
 
 ### Planned 🚧
 
 - **Fetch** - HTTP requests, Response/Request APIs
-- **Web Sockets** - WebSocket protocol implementation
+- **Web Sockets** - WebSocket protocol implementation  
 - **Storage** - localStorage, sessionStorage
+- **HTML Parser** - Full HTML5 parsing algorithm
 - Additional DOM APIs
 
 ## 🚀 Quick Start
@@ -243,11 +262,12 @@ This makes Crane ideal for:
 
 ## 🧪 Testing
 
-Crane has **1324+ tests** covering:
+Crane has **1100+ tests** covering:
 
 - ✅ **Unit tests** - Every algorithm, edge case, and error condition
 - ✅ **Integration tests** - Cross-spec interactions
 - ✅ **Web Platform Tests (WPT)** - Browser compatibility tests
+- ✅ **IDNA Conformance** - 6,391 UTS46 tests (100% pass rate)
 - ✅ **Memory leak detection** - Using `std.testing.allocator`
 
 ```bash
@@ -257,7 +277,13 @@ zig build test
 # Run with summary
 zig build test --summary all
 
-# Run specific test
+# Run specific spec tests
+zig build test -Dspec=url
+zig build test -Dspec=encoding
+zig build test -Dspec=css
+zig build test -Dspec=quirks
+
+# Run specific test filter
 zig build test -- --test-filter "URLSearchParams"
 
 # Memory leak detection is automatic with std.testing.allocator
@@ -268,21 +294,29 @@ zig build test -- --test-filter "URLSearchParams"
 ```
 crane/
 ├── src/                      # Source implementations
-│   ├── infra/               # Infra Standard (primitives)
+│   ├── infra/               # Infra Standard (primitives, bloom filters)
 │   ├── webidl/              # WebIDL type system + codegen
-│   ├── encoding/            # Encoding Standard
-│   ├── url/                 # URL Standard
+│   ├── encoding/            # Encoding Standard (UTF-8, legacy encodings)
+│   ├── url/                 # URL Standard (parsing, IDNA, form-urlencoded)
 │   ├── console/             # Console Standard
-│   ├── streams/             # Streams Standard
-│   ├── dom/                 # DOM Standard
+│   ├── streams/             # Streams Standard (readable, writable, transform)
+│   ├── dom/                 # DOM Standard (nodes, events, XPath)
 │   ├── mimesniff/           # MIME Sniffing Standard
+│   ├── quirks/              # Quirks Mode Standard
+│   ├── css/                 # CSS Syntax + Value Parsing
+│   ├── selector/            # CSS Selector Parsing + Matching
+│   ├── runtime/             # V8 integration, instance management
 │   └── root.zig             # Main entry point
 ├── webidl/                  # WebIDL definitions and generated code
 │   ├── src/                 # WebIDL source with annotations
 │   ├── generated/           # Generated enhanced code (gitignored)
 │   └── idls/                # Parsed WebIDL JSON files
 ├── specs/                   # Complete WHATWG specification markdown files
+│   ├── whatwg/              # WHATWG spec sections (HTML, DOM, etc.)
+│   ├── idl/                 # Official WebIDL definitions (symlink)
+│   └── algorithms/          # Algorithm definitions (JSON)
 ├── tests/                   # Test suites
+├── skills/                  # AI agent skill definitions
 ├── build.zig                # Build configuration
 └── build.zig.zon            # Package manifest
 ```
@@ -395,14 +429,20 @@ bd close bd-123 --reason "Implemented"
 
 Complete WHATWG specifications are available in the `specs/` directory:
 
-- `specs/infra.md` - Infra Standard
-- `specs/webidl.md` - WebIDL specification
-- `specs/encoding.md` - Encoding Standard
-- `specs/url.md` - URL Standard
-- `specs/console.md` - Console Standard
-- `specs/streams.md` - Streams Standard
-- `specs/dom.md` - DOM Standard
-- `specs/mimesniff.md` - MIME Sniffing Standard
+| Spec | File | Description |
+|------|------|-------------|
+| **Infra** | `specs/whatwg/infra/` | Infra Standard primitives |
+| **WebIDL** | `specs/whatwg/webidl/` | WebIDL specification |
+| **Encoding** | `specs/whatwg/encoding/` | Encoding Standard |
+| **URL** | `specs/whatwg/url/` | URL Standard |
+| **Console** | `specs/whatwg/console/` | Console Standard |
+| **Streams** | `specs/whatwg/streams/` | Streams Standard |
+| **DOM** | `specs/whatwg/dom/` | DOM Standard |
+| **MIME Sniff** | `specs/whatwg/mimesniff/` | MIME Sniffing Standard |
+| **Quirks** | `specs/whatwg/quirks/` | Quirks Mode Standard |
+| **HTML** | `specs/whatwg/html/` | HTML Standard (60+ sections) |
+
+Official WebIDL definitions from [w3c/webref](https://github.com/w3c/webref) are symlinked in `specs/idl/` (333 IDL files).
 
 ## 🎓 Learning Resources
 
@@ -427,14 +467,20 @@ New to Zig? Check out:
 
 ### Current Status
 
-1. **DOM** - In progress (EventTarget, Node hierarchy, events working; Document/Element APIs partially complete)
-2. **Streams** - ✅ Complete (all 1324 tests passing, including BYOB readers and transform streams)
-3. **Encoding** - ✅ Complete (TextEncoder/Decoder working, streams generated)
-4. **URL** - ✅ Complete (full spec compliance, all WPT tests passing)
-5. **Console** - ✅ Complete (all logging, timing, and grouping APIs)
-6. **MIME Sniffing** - ✅ Complete (type detection and parsing)
-7. **Infra** - ✅ Complete (all primitives, lists, maps, byte sequences)
-8. **WebIDL** - ✅ Complete (type system, codegen with full inheritance support)
+| Module | Status | Notes |
+|--------|--------|-------|
+| **Infra** | ✅ Complete | All primitives, lists, maps, byte sequences, bloom filters |
+| **WebIDL** | ✅ Complete | Type system, codegen with full inheritance, async_iterable |
+| **Encoding** | ✅ Complete | UTF-8/16, legacy encodings (ISO-8859, Windows-1252, EUC-JP, Shift_JIS, GB18030) |
+| **URL** | ✅ Complete | Full spec compliance, 6391 IDNA tests passing, form-urlencoded |
+| **Console** | ✅ Complete | All logging, timing, grouping, and assertion APIs |
+| **Streams** | ✅ Complete | ReadableStream, WritableStream, TransformStream, BYOB, async iteration |
+| **MIME Sniffing** | ✅ Complete | Type detection, parsing, content sniffing |
+| **Quirks Mode** | ✅ Complete | Document modes, CSS value quirks, selector quirks |
+| **CSS** | ✅ Complete | Tokenizer, color/length parsers, property routing |
+| **Selectors** | ✅ Complete | Full CSS selector parsing, specificity, matching engine |
+| **DOM** | 🚧 In Progress | EventTarget, Node, Element, Document, Events, XPath |
+| **Runtime** | 🚧 In Progress | V8 integration, wrapper caching, GC integration |
 
 ### Reporting Issues
 
