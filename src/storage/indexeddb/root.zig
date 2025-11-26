@@ -123,6 +123,16 @@ pub const fireUpgradeneededEvent = events.fireUpgradeneededEvent;
 pub const fireCompleteEvent = events.fireCompleteEvent;
 pub const fireAbortEvent = events.fireAbortEvent;
 
+pub const async_operations = @import("async_operations.zig");
+pub const OperationType = async_operations.OperationType;
+pub const AsyncOperation = async_operations.AsyncOperation;
+pub const AsyncOperationQueue = async_operations.AsyncOperationQueue;
+pub const IDBPromise = async_operations.IDBPromise;
+pub const DatabaseTask = async_operations.DatabaseTask;
+pub const DatabaseTaskQueue = async_operations.DatabaseTaskQueue;
+pub const resolveRequest = async_operations.resolveRequest;
+pub const rejectRequest = async_operations.rejectRequest;
+
 // Error types
 pub const IDBError = @import("errors.zig").IDBError;
 
@@ -140,4 +150,5 @@ test {
     _ = cursor;
     _ = version_change_event;
     _ = events;
+    _ = async_operations;
 }
