@@ -98,9 +98,14 @@ pub const initGlobalStorageShed = standard.initGlobalStorageShed;
 pub const getGlobalStorageShed = standard.getGlobalStorageShed;
 pub const deinitGlobalStorageShed = standard.deinitGlobalStorageShed;
 
+// StorageManager interface (Phase 3.10)
+pub const storage_manager = @import("storage_manager.zig");
+pub const StorageManager = storage_manager.StorageManager;
+
 test {
     _ = @import("backend.zig");
     _ = backends;
     _ = migration;
     _ = standard;
+    _ = storage_manager;
 }
