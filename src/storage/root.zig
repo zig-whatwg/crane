@@ -63,7 +63,18 @@ pub const isBackendAvailable = backend_mod.isBackendAvailable;
 // Backend implementations
 pub const backends = @import("backends/root.zig");
 
+// Migration utilities
+pub const migration = @import("migration.zig");
+pub const MigrationOptions = migration.MigrationOptions;
+pub const MigrationStats = migration.MigrationStats;
+pub const MigrationProgress = migration.MigrationProgress;
+pub const MigrationError = migration.MigrationError;
+pub const migrate = migration.migrate;
+pub const exportToBuffer = migration.exportToBuffer;
+pub const importFromBuffer = migration.importFromBuffer;
+
 test {
     _ = @import("backend.zig");
     _ = backends;
+    _ = migration;
 }
