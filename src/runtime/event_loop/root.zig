@@ -49,11 +49,35 @@ pub const mem = @import("mem/root.zig");
 /// I/O subsystem (poller, backends)
 pub const io = @import("io/root.zig");
 
-// TODO(Phase 1.8-1.12): Scheduling
-// pub const scheduler = @import("scheduler/root.zig");
+/// Task queue set (priority-based macrotask queues)
+pub const task_queue = @import("task_queue.zig");
+pub const TaskQueueSet = task_queue.TaskQueueSet;
+pub const TaskNode = task_queue.TaskNode;
+pub const TaskPriority = task_queue.TaskPriority;
 
-// TODO(Phase 1.16-1.21): Threading
-// pub const threading = @import("threading/root.zig");
+/// Microtask queue (Promise reactions, MutationObserver)
+pub const microtask = @import("microtask.zig");
+pub const MicrotaskQueue = microtask.MicrotaskQueue;
+pub const MicrotaskNode = microtask.MicrotaskNode;
+
+/// Event loop scheduler (WHATWG processing model)
+pub const scheduler = @import("scheduler.zig");
+pub const Scheduler = scheduler.Scheduler;
+
+/// Hierarchical timing wheel (O(1) timer operations)
+pub const timer_wheel = @import("timer_wheel.zig");
+pub const TimerWheel = timer_wheel.TimerWheel;
+pub const TimerNode = timer_wheel.TimerNode;
+
+/// Lock-free MPSC queue (thread-safe task submission)
+pub const mpsc_queue = @import("mpsc_queue.zig");
+pub const MpscQueue = mpsc_queue.MpscQueue;
+pub const MpscNode = mpsc_queue.MpscNode;
+
+/// Worker thread pool (blocking/CPU-bound operations)
+pub const thread_pool = @import("thread_pool.zig");
+pub const ThreadPool = thread_pool.ThreadPool;
+pub const WorkItem = thread_pool.WorkItem;
 
 /// Event loop configuration
 pub const Config = struct {
@@ -169,4 +193,10 @@ test "memory module accessible" {
 test {
     _ = mem;
     _ = io;
+    _ = task_queue;
+    _ = microtask;
+    _ = scheduler;
+    _ = timer_wheel;
+    _ = mpsc_queue;
+    _ = thread_pool;
 }
