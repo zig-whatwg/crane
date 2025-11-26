@@ -74,6 +74,14 @@ pub const Length = length.Length;
 pub const LengthUnit = length.LengthUnit;
 pub const LengthParser = length.LengthParser;
 
+/// Property value parser framework.
+pub const property_parser = @import("property_parser.zig");
+pub const PropertyParser = property_parser.PropertyParser;
+pub const PropertyValue = property_parser.PropertyValue;
+pub const PropertyType = property_parser.PropertyType;
+pub const PropertyParseError = property_parser.PropertyParseError;
+pub const Keyword = property_parser.Keyword;
+
 // ============================================================================
 // Tests
 // ============================================================================
