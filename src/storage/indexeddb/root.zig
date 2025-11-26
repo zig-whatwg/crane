@@ -146,6 +146,19 @@ pub const IDBObjectStoreParameters = webidl_types.IDBObjectStoreParameters;
 pub const IDBIndexParameters = webidl_types.IDBIndexParameters;
 pub const IDBGetAllOptions = webidl_types.IDBGetAllOptions;
 
+// Storage integration (Phase 5.1)
+pub const storage_integration = @import("storage_integration.zig");
+pub const IDBStorageArea = storage_integration.IDBStorageArea;
+pub const StorageIntegrationManager = storage_integration.StorageIntegrationManager;
+pub const DatabaseMetadata = storage_integration.DatabaseMetadata;
+pub const initGlobalIntegrationManager = storage_integration.initGlobalIntegrationManager;
+pub const getGlobalIntegrationManager = storage_integration.getGlobalIntegrationManager;
+pub const deinitGlobalIntegrationManager = storage_integration.deinitGlobalIntegrationManager;
+pub const openDatabase = storage_integration.openDatabase;
+pub const deleteDatabase = storage_integration.deleteDatabase;
+pub const listDatabases = storage_integration.listDatabases;
+pub const getDatabaseInfo = storage_integration.getDatabaseInfo;
+
 // Error types
 pub const IDBError = @import("errors.zig").IDBError;
 
@@ -165,4 +178,5 @@ test {
     _ = events;
     _ = async_operations;
     _ = webidl_types;
+    _ = storage_integration;
 }
