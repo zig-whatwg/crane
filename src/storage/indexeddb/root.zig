@@ -224,6 +224,17 @@ pub const WorkerPool = worker_threads.WorkerPool;
 pub const AsyncSQLite = worker_threads.AsyncSQLite;
 pub const BatchOperation = worker_threads.BatchOperation;
 
+// Transaction ordering (Phase 5.9)
+pub const transaction_ordering = @import("transaction_ordering.zig");
+pub const RequestState = transaction_ordering.RequestState;
+pub const TransactionRequest = transaction_ordering.TransactionRequest;
+pub const TransactionRequestQueue = transaction_ordering.TransactionRequestQueue;
+pub const IDBTaskType = transaction_ordering.IDBTaskType;
+pub const IDBTask = transaction_ordering.IDBTask;
+pub const TransactionScheduler = transaction_ordering.TransactionScheduler;
+pub const VersionchangeCoordinator = transaction_ordering.VersionchangeCoordinator;
+pub const TransactionOrderingManager = transaction_ordering.TransactionOrderingManager;
+
 // Error types
 pub const IDBError = @import("errors.zig").IDBError;
 
@@ -251,4 +262,5 @@ test {
     _ = blob_storage;
     _ = schema;
     _ = worker_threads;
+    _ = transaction_ordering;
 }
