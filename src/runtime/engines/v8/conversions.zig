@@ -630,6 +630,23 @@ pub fn toV8Null(isolate: *v8.Isolate) *v8.Value {
     return v8.v8_Null(isolate) orelse unreachable; // Null always succeeds
 }
 
+/// Convert Zig enum to V8 String (for WebIDL enums)
+/// Strips leading/trailing underscores from enum field names (used for reserved words)
+pub fn enumToV8String(comptime T: type, isolate: *v8.Isolate, value: T) *v8.Value {
+    // Get the tag name at runtime
+    const tag_name = @tagName(value);
+
+    // Strip leading/trailing underscores
+    var name: []const u8 = tag_name;
+    if (name.len > 0 and name[0] == '_') name = name[1..];
+    if (name.len > 0 and name[name.len - 1] == '_') name = name[0 .. name.len - 1];
+
+    if (v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len))) |str| {
+        return @ptrCast(str);
+    }
+    return v8.v8_Undefined(isolate) orelse unreachable;
+}
+
 /// Convert Zig sequence to V8 Array
 pub fn toV8Sequence(
     comptime T: type,
@@ -738,11 +755,30 @@ pub fn toV8Value(
         return @ptrCast(toV8Boolean(isolate, value));
     }
 
-    // Handle enums (convert to string or number)
+    // Handle enums (convert to string for WebIDL compatibility)
     if (type_info == .@"enum") {
-        // Convert enum to its integer value
-        const int_value: i32 = @intFromEnum(value);
-        const num = v8.v8_Number_New(isolate, @floatFromInt(int_value));
+        // Get the enum field name and convert to string
+        // WebIDL enums are represented as strings in JavaScript
+        const fields = std.meta.fields(T);
+        const enum_int: usize = @intFromEnum(value);
+        if (enum_int < fields.len) {
+            // Get the field name and strip leading/trailing underscores (used for reserved words)
+            var name = fields[enum_int].name;
+            // Strip leading underscore if present (e.g., "_open_" -> "open_")
+            if (name.len > 0 and name[0] == '_') {
+                name = name[1..];
+            }
+            // Strip trailing underscore if present (e.g., "open_" -> "open")
+            if (name.len > 0 and name[name.len - 1] == '_') {
+                name = name[0 .. name.len - 1];
+            }
+            const str = v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse {
+                return toV8Undefined(isolate);
+            };
+            return @ptrCast(str);
+        }
+        // Fallback to integer for out-of-range values
+        const num = v8.v8_Number_New(isolate, @floatFromInt(enum_int));
         return @ptrCast(num);
     }
 
@@ -1084,6 +1120,49 @@ pub fn instanceToV8Object(
     // For now, return plain object (sufficient for callbacks that don't access controller)
 
     return obj;
+}
+
+/// Convert runtime.Instance to V8 Value with correct prototype chain
+///
+/// This is the preferred function for returning interface instances from
+/// property getters and methods. It uses the template registry to wrap
+/// the instance with the correct V8 prototype chain.
+///
+/// Unlike instanceToV8Object (which creates a plain object), this function:
+/// 1. Looks up the interface name from the instance's vtable
+/// 2. Wraps the instance with the correct FunctionTemplate
+/// 3. Returns a cached wrapper if one exists (preserving object identity)
+///
+/// Example:
+/// ```zig
+/// // In a property getter returning *runtime.Instance:
+/// const v8_value = conv.instanceToV8(isolate, instance);
+/// info.setReturnValue(v8_value);
+/// ```
+pub fn instanceToV8(isolate: *v8.Isolate, instance: *runtime.Instance) *v8.Value {
+    const template_registry = @import("template_registry.zig");
+
+    // Get interface name from instance vtable
+    const interface_name = template_registry.getInstanceInterfaceName(instance);
+
+    // Get current context
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+        // No context available, return undefined
+        return v8.v8_Undefined(isolate) orelse unreachable;
+    };
+
+    // Wrap with correct prototype using template registry
+    const v8_obj = template_registry.wrapInstanceAsV8Object(
+        instance,
+        interface_name,
+        isolate,
+        context,
+    ) catch {
+        // Template not registered or other error, return undefined
+        return v8.v8_Undefined(isolate) orelse unreachable;
+    };
+
+    return @ptrCast(v8_obj);
 }
 
 /// Chunk type tag for type-safe chunk conversion

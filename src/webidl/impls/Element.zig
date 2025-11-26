@@ -3224,7 +3224,6 @@ pub fn call_getAttributeNames(instance: *runtime.Instance) ImplError!*const anyo
 /// mode/options initialization after creation.
 pub fn call_attachShadow(instance: *runtime.Instance, init_data: dictionaries.ShadowRootInit) ImplError!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    _ = init_data; // TODO: Use init options when ShadowRoot supports them
 
     // Check if element already has a shadow root
     if (internal.shadow_root != null) {
@@ -3237,22 +3236,42 @@ pub fn call_attachShadow(instance: *runtime.Instance, init_data: dictionaries.Sh
     // header, main, nav, p, section, span, or any custom element
     // For now, we allow any element
 
-    // Create the ShadowRoot
-    const ShadowRootImpl = @import("ShadowRoot.zig");
-    const shadow_root = ShadowRootImpl.init(
-        internal.allocator,
-        interfaces.ShadowRoot.State,
-        &interfaces.ShadowRoot.vtable,
-        instance.ctx,
-    ) catch return error.OutOfMemory;
+    // Parse the mode from the dictionary (it comes as *const anyopaque due to codegen)
+    // The mode value is actually a pointer to a DOMString from JavaScript
+    const mode_ptr = init_data.mode;
+    var shadow_mode: enums.ShadowRootMode = ._open_; // Default to open
 
-    // TODO: Initialize the shadow root with init options when ShadowRoot supports:
-    // - setMode(init_data.mode)
-    // - setDelegatesFocus(init_data.delegatesFocus)
-    // - setSlotAssignment(init_data.slotAssignment)
-    // - setClonable(init_data.clonable)
-    // - setSerializable(init_data.serializable)
-    // - setHost(instance)
+    // The mode value is stored as a runtime.DOMString pointer
+    if (@as(?*const runtime.DOMString, @ptrCast(@alignCast(mode_ptr)))) |mode_str_ptr| {
+        const mode_slice = mode_str_ptr.asSlice();
+        if (std.mem.eql(u8, mode_slice, "closed")) {
+            shadow_mode = ._closed_;
+        }
+    }
+
+    // Parse slot assignment mode if provided
+    var slot_mode: enums.SlotAssignmentMode = ._named_;
+    if (init_data.slotAssignment) |slot_ptr| {
+        if (@as(?*const runtime.DOMString, @ptrCast(@alignCast(slot_ptr)))) |slot_str_ptr| {
+            const slot_slice = slot_str_ptr.asSlice();
+            if (std.mem.eql(u8, slot_slice, "manual")) {
+                slot_mode = ._manual_;
+            }
+        }
+    }
+
+    // Create the ShadowRoot using factory function with proper initialization
+    const ShadowRootImpl = @import("ShadowRoot.zig");
+    const shadow_root = ShadowRootImpl.create(
+        internal.allocator,
+        instance.ctx,
+        instance, // host element
+        shadow_mode,
+        init_data.delegatesFocus orelse false,
+        slot_mode,
+        init_data.clonable orelse false,
+        init_data.serializable orelse false,
+    ) catch return error.OutOfMemory;
 
     // Store reference in element's internal state
     internal.shadow_root = shadow_root;

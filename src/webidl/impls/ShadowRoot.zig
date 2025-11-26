@@ -117,22 +117,30 @@ fn getInternal(instance: *runtime.Instance) *InternalState {
 }
 
 /// Initialize instance (creates the instance)
+/// Chains to DocumentFragment -> Node -> EventTarget for proper inheritance
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
+    // Chain to DocumentFragment which chains to Node for proper Node registry setup
+    const DocumentFragmentImpl = @import("DocumentFragment.zig");
+    const instance = try DocumentFragmentImpl.init(allocator, StateType, vtable, ctx);
+    errdefer DocumentFragmentImpl.deinit(instance);
 
-    // Initialize internal state
-    const internal = try allocator.create(InternalState);
+    // Initialize ShadowRoot-specific internal state
+    const ArenaAllocator = @import("runtime").ArenaAllocator;
+    const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
 
     // Store internal state in instance
     const state = instance.getState(State);
     state.own._internal = internal;
+
+    // Set node type to DOCUMENT_FRAGMENT_NODE for proper DOM tree operations
+    const NodeImpl = @import("Node.zig");
+    try NodeImpl.setNodeType(instance, NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE);
 
     return instance;
 }
@@ -143,9 +151,11 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (state.own._internal) |internal_ptr| {
         const internal: *InternalState = @ptrCast(@alignCast(internal_ptr));
         internal.deinit();
-        internal.allocator.destroy(internal);
+        // Note: internal is arena allocated, no need to destroy
     }
-    runtime.Instance.deinit(instance);
+    // Chain to DocumentFragment deinit
+    const DocumentFragmentImpl = @import("DocumentFragment.zig");
+    DocumentFragmentImpl.deinit(instance);
 }
 
 // ============================================================================
