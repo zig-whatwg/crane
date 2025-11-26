@@ -38,6 +38,7 @@ pub const PseudoClassKind = parser.PseudoClassKind;
 pub const NthPattern = parser.NthPattern;
 pub const PseudoElementSelector = parser.PseudoElementSelector;
 pub const Specificity = parser.Specificity;
+pub const BacktrackingInfo = parser.BacktrackingInfo;
 
 // Re-export ancestor hashes from infra for convenience
 const infra = @import("infra");

@@ -6,6 +6,8 @@ const Token = @import("tokenizer.zig").Token;
 const AncestorHashes = infra.AncestorHashes;
 const hashString = infra.hashString;
 const hashStringLower = infra.hashStringLower;
+const context = @import("context.zig");
+const MatchResult = context.MatchResult;
 
 // ============================================================================
 // AST Node Types
@@ -56,6 +58,30 @@ pub const Specificity = struct {
     }
 };
 
+/// Backtracking analysis information for a complex selector.
+///
+/// Determines optimal restart points when matching fails, following
+/// Firefox's Stylo computeBacktrackingInformation() approach.
+pub const BacktrackingInfo = struct {
+    /// Whether descendant combinators exist (enables descendant restart).
+    has_descendant_combinator: bool = false,
+
+    /// Whether sibling combinators exist (enables sibling restart).
+    has_sibling_combinator: bool = false,
+
+    /// Index of first descendant combinator (for restart position).
+    /// null if no descendant combinator exists.
+    first_descendant_index: ?usize = null,
+
+    /// Index of first sibling combinator (for restart position).
+    /// null if no sibling combinator exists.
+    first_sibling_index: ?usize = null,
+
+    /// Whether the selector can potentially benefit from ID fast-rejection.
+    /// True if there's an ID selector in ancestor compounds.
+    has_ancestor_id: bool = false,
+};
+
 /// Complex selector (combinator chain)
 ///
 /// ## Storage Order: Right-to-Left (RTL)
@@ -91,6 +117,9 @@ pub const ComplexSelector = struct {
     /// Precomputed hashes from ancestor selector components.
     /// Used for O(1) bloom filter rejection before tree traversal.
     ancestor_hashes: AncestorHashes = AncestorHashes.init(),
+
+    /// Precomputed backtracking analysis for optimized failure recovery.
+    backtracking: BacktrackingInfo = BacktrackingInfo{},
 
     pub fn deinit(self: *ComplexSelector) void {
         self.compound.deinit();
@@ -141,6 +170,80 @@ pub const ComplexSelector = struct {
             }
             if (self.ancestor_hashes.len >= 4) return;
         }
+    }
+
+    /// Compute backtracking information for optimized failure recovery.
+    ///
+    /// Analyzes the combinator chain to determine:
+    /// - Which combinators allow descendant restart (space combinator)
+    /// - Which combinators allow sibling restart (+ and ~ combinators)
+    /// - Where restart should begin on failure
+    ///
+    /// This is similar to Firefox's computeBacktrackingInformation() in Stylo.
+    pub fn computeBacktrackingInfo(self: *ComplexSelector) void {
+        self.backtracking = BacktrackingInfo{};
+
+        for (self.combinators, 0..) |*pair, i| {
+            switch (pair.combinator) {
+                .Descendant => {
+                    self.backtracking.has_descendant_combinator = true;
+                    if (self.backtracking.first_descendant_index == null) {
+                        self.backtracking.first_descendant_index = i;
+                    }
+                },
+                .NextSibling, .SubsequentSibling => {
+                    self.backtracking.has_sibling_combinator = true;
+                    if (self.backtracking.first_sibling_index == null) {
+                        self.backtracking.first_sibling_index = i;
+                    }
+                },
+                .Child => {
+                    // Child combinator doesn't allow restart - must match exactly
+                },
+            }
+
+            // Check for ID in ancestor compounds (for fast-rejection potential)
+            for (pair.compound.simple_selectors) |*simple| {
+                if (simple.* == .Id) {
+                    self.backtracking.has_ancestor_id = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    /// Determine what kind of retry is appropriate after a match failure.
+    ///
+    /// Returns the appropriate MatchResult hint based on where the failure occurred
+    /// and what combinators are involved.
+    pub fn getFailureRecovery(self: *const ComplexSelector, failed_at_index: usize) MatchResult {
+        // If failure was at a descendant combinator, we can try other descendants
+        if (failed_at_index < self.combinators.len) {
+            const comb = self.combinators[failed_at_index].combinator;
+            switch (comb) {
+                .Descendant => return .not_matched_restart_descendant,
+                .NextSibling, .SubsequentSibling => return .not_matched_restart_later_sibling,
+                .Child => {
+                    // Child combinator - check if there's a descendant combinator earlier
+                    if (self.backtracking.first_descendant_index) |desc_idx| {
+                        if (desc_idx < failed_at_index) {
+                            return .not_matched_restart_descendant;
+                        }
+                    }
+                    return .not_matched_globally;
+                },
+            }
+        }
+
+        // Failure at subject compound - check if we have restart options
+        if (self.backtracking.has_descendant_combinator) {
+            return .not_matched_restart_descendant;
+        }
+        if (self.backtracking.has_sibling_combinator) {
+            return .not_matched_restart_later_sibling;
+        }
+
+        return .not_matched_globally;
     }
 };
 
@@ -581,6 +684,9 @@ pub const Parser = struct {
 
         // Precompute ancestor hashes for bloom filter rejection
         result.computeAncestorHashes();
+
+        // Precompute backtracking info for optimized failure recovery
+        result.computeBacktrackingInfo();
 
         return result;
     }
@@ -1060,6 +1166,121 @@ pub const Parser = struct {
 // ============================================================================
 
 const testing = @import("std").testing;
+
+// ============================================================================
+// Backtracking Analysis Tests
+// ============================================================================
+
+fn parseSelector(allocator: std.mem.Allocator, input: []const u8) !SelectorList {
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    return try p.parse();
+}
+
+test "BacktrackingInfo - no combinators" {
+    const allocator = testing.allocator;
+
+    var selector = try parseSelector(allocator, "div.class");
+    defer selector.deinit();
+
+    const complex = &selector.selectors[0];
+    try testing.expect(!complex.backtracking.has_descendant_combinator);
+    try testing.expect(!complex.backtracking.has_sibling_combinator);
+    try testing.expect(complex.backtracking.first_descendant_index == null);
+    try testing.expect(complex.backtracking.first_sibling_index == null);
+}
+
+test "BacktrackingInfo - descendant combinator" {
+    const allocator = testing.allocator;
+
+    var selector = try parseSelector(allocator, "div p");
+    defer selector.deinit();
+
+    const complex = &selector.selectors[0];
+    try testing.expect(complex.backtracking.has_descendant_combinator);
+    try testing.expect(!complex.backtracking.has_sibling_combinator);
+    try testing.expectEqual(@as(?usize, 0), complex.backtracking.first_descendant_index);
+}
+
+test "BacktrackingInfo - child combinator" {
+    const allocator = testing.allocator;
+
+    var selector = try parseSelector(allocator, "div > p");
+    defer selector.deinit();
+
+    const complex = &selector.selectors[0];
+    try testing.expect(!complex.backtracking.has_descendant_combinator);
+    try testing.expect(!complex.backtracking.has_sibling_combinator);
+}
+
+test "BacktrackingInfo - sibling combinators" {
+    const allocator = testing.allocator;
+
+    var selector = try parseSelector(allocator, "div + p");
+    defer selector.deinit();
+
+    const complex = &selector.selectors[0];
+    try testing.expect(!complex.backtracking.has_descendant_combinator);
+    try testing.expect(complex.backtracking.has_sibling_combinator);
+    try testing.expectEqual(@as(?usize, 0), complex.backtracking.first_sibling_index);
+}
+
+test "BacktrackingInfo - mixed combinators" {
+    const allocator = testing.allocator;
+
+    var selector = try parseSelector(allocator, "div > span p + a");
+    defer selector.deinit();
+
+    const complex = &selector.selectors[0];
+    try testing.expect(complex.backtracking.has_descendant_combinator);
+    try testing.expect(complex.backtracking.has_sibling_combinator);
+}
+
+test "BacktrackingInfo - ancestor ID detection" {
+    const allocator = testing.allocator;
+
+    var selector = try parseSelector(allocator, "#header div p");
+    defer selector.deinit();
+
+    const complex = &selector.selectors[0];
+    try testing.expect(complex.backtracking.has_ancestor_id);
+}
+
+test "getFailureRecovery - descendant combinator failure" {
+    const allocator = testing.allocator;
+
+    var selector = try parseSelector(allocator, "div span p");
+    defer selector.deinit();
+
+    const complex = &selector.selectors[0];
+    // Failure at first combinator (descendant) should allow descendant restart
+    const recovery = complex.getFailureRecovery(0);
+    try testing.expectEqual(MatchResult.not_matched_restart_descendant, recovery);
+}
+
+test "getFailureRecovery - sibling combinator failure" {
+    const allocator = testing.allocator;
+
+    var selector = try parseSelector(allocator, "div + p");
+    defer selector.deinit();
+
+    const complex = &selector.selectors[0];
+    // Failure at sibling combinator should allow sibling restart
+    const recovery = complex.getFailureRecovery(0);
+    try testing.expectEqual(MatchResult.not_matched_restart_later_sibling, recovery);
+}
+
+test "getFailureRecovery - child combinator failure with descendant backup" {
+    const allocator = testing.allocator;
+
+    var selector = try parseSelector(allocator, "div span > p");
+    defer selector.deinit();
+
+    const complex = &selector.selectors[0];
+    // Failure at child combinator (index 1) with descendant combinator at index 0
+    const recovery = complex.getFailureRecovery(1);
+    try testing.expectEqual(MatchResult.not_matched_restart_descendant, recovery);
+}
 
 // ============================================================================
 // Specificity Tests
