@@ -139,7 +139,7 @@ pub fn build(b: *std.Build) void {
 
     // Storage module (IndexedDB and Storage Standard backend)
     const storage_mod = b.addModule("storage", .{
-        .root_source_file = b.path("src/storage/backend.zig"),
+        .root_source_file = b.path("src/storage/root.zig"),
         .target = target,
     });
 
