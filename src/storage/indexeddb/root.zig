@@ -197,6 +197,12 @@ pub const IndexManager = index_persistence.IndexManager;
 pub const UniqueConstraintChecker = index_persistence.UniqueConstraintChecker;
 pub const IndexSQL = index_persistence.IndexSQL;
 
+// Blob storage (Phase 5.6)
+pub const blob_storage = @import("blob_storage.zig");
+pub const BlobReference = blob_storage.BlobReference;
+pub const BlobStorageManager = blob_storage.BlobStorageManager;
+pub const StoredValue = blob_storage.StoredValue;
+
 // Error types
 pub const IDBError = @import("errors.zig").IDBError;
 
@@ -221,4 +227,5 @@ test {
     _ = mvcc;
     _ = object_store_persistence;
     _ = index_persistence;
+    _ = blob_storage;
 }
