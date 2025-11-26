@@ -20,6 +20,13 @@
 pub const memory = @import("memory.zig");
 pub const MemoryBackend = memory.MemoryBackend;
 
+pub const sqlite = @import("sqlite.zig");
+pub const SQLiteBackend = sqlite.SQLiteBackend;
+pub const IDBKeyEncoder = sqlite.IDBKeyEncoder;
+pub const IDBKeyType = sqlite.IDBKeyType;
+pub const Schema = sqlite.Schema;
+pub const Statements = sqlite.Statements;
+
 // Re-export parent types for convenience
 const parent = @import("../backend.zig");
 pub const StorageBackend = parent.StorageBackend;
@@ -39,4 +46,5 @@ pub const IndexOptions = parent.IndexOptions;
 
 test {
     _ = memory;
+    _ = sqlite;
 }
