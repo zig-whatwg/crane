@@ -73,8 +73,34 @@ pub const migrate = migration.migrate;
 pub const exportToBuffer = migration.exportToBuffer;
 pub const importFromBuffer = migration.importFromBuffer;
 
+// WHATWG Storage Standard (Phase 3)
+pub const standard = @import("standard.zig");
+pub const StorageShed = standard.StorageShed;
+pub const StorageShelf = standard.StorageShelf;
+pub const StorageBucket = standard.StorageBucket;
+pub const StorageBottle = standard.StorageBottle;
+pub const StorageKey = standard.StorageKey;
+pub const StorageProxyMap = standard.StorageProxyMap;
+pub const StorageType = standard.StorageType;
+pub const BucketMode = standard.BucketMode;
+pub const StorageIdentifier = standard.StorageIdentifier;
+pub const StorageEndpoint = standard.StorageEndpoint;
+pub const StorageEstimate = standard.StorageEstimate;
+pub const registered_storage_endpoints = standard.registered_storage_endpoints;
+pub const getEndpoint = standard.getEndpoint;
+pub const obtainStorageKey = standard.obtainStorageKey;
+pub const obtainLocalStorageShelf = standard.obtainLocalStorageShelf;
+pub const obtainStorageBottleMap = standard.obtainStorageBottleMap;
+pub const obtainLocalStorageBottleMap = standard.obtainLocalStorageBottleMap;
+pub const obtainSessionStorageBottleMap = standard.obtainSessionStorageBottleMap;
+pub const getStorageEstimate = standard.getStorageEstimate;
+pub const initGlobalStorageShed = standard.initGlobalStorageShed;
+pub const getGlobalStorageShed = standard.getGlobalStorageShed;
+pub const deinitGlobalStorageShed = standard.deinitGlobalStorageShed;
+
 test {
     _ = @import("backend.zig");
     _ = backends;
     _ = migration;
+    _ = standard;
 }
