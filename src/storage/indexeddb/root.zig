@@ -95,6 +95,15 @@ pub const IDBObjectStore = object_store.IDBObjectStore;
 pub const index = @import("index.zig");
 pub const IDBIndex = index.IDBIndex;
 
+pub const index_keygen = @import("index_keygen.zig");
+pub const IndexKeyResult = index_keygen.IndexKeyResult;
+pub const IndexKeyGenOptions = index_keygen.IndexKeyGenOptions;
+pub const generateIndexKey = index_keygen.generateIndexKey;
+pub const wouldViolateUnique = index_keygen.wouldViolateUnique;
+pub const addIndexEntries = index_keygen.addIndexEntries;
+pub const updateIndexesForRecord = index_keygen.updateIndexesForRecord;
+pub const removeIndexEntriesForPrimaryKey = index_keygen.removeIndexEntriesForPrimaryKey;
+
 pub const cursor = @import("cursor.zig");
 pub const IDBCursor = cursor.IDBCursor;
 pub const IDBCursorWithValue = cursor.IDBCursorWithValue;
@@ -116,6 +125,7 @@ test {
     _ = transaction;
     _ = object_store;
     _ = index;
+    _ = index_keygen;
     _ = cursor;
     _ = version_change_event;
 }
