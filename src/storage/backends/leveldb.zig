@@ -248,7 +248,7 @@ pub const LevelDBKeyEncoder = struct {
 };
 
 /// Custom comparator for LevelDB that uses IDBKEY ordering within prefixes
-pub fn leveldbComparator(state: ?*anyopaque, a_ptr: [*]const u8, a_len: usize, b_ptr: [*]const u8, b_len: usize) callconv(.C) c_int {
+pub fn leveldbComparator(state: ?*anyopaque, a_ptr: [*]const u8, a_len: usize, b_ptr: [*]const u8, b_len: usize) callconv(.c) c_int {
     _ = state;
 
     const a = a_ptr[0..a_len];
@@ -324,7 +324,7 @@ pub fn leveldbComparator(state: ?*anyopaque, a_ptr: [*]const u8, a_len: usize, b
     }
 }
 
-pub fn leveldbComparatorName(_: ?*anyopaque) callconv(.C) [*:0]const u8 {
+pub fn leveldbComparatorName(_: ?*anyopaque) callconv(.c) [*:0]const u8 {
     return "IDBKeyComparator";
 }
 

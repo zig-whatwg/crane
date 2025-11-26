@@ -281,7 +281,7 @@ pub const MemoryBackend = struct {
         allocator: std.mem.Allocator,
 
         /// Keys to iterate (sorted)
-        keys: std.ArrayList([]const u8),
+        keys: std.ArrayListUnmanaged([]const u8),
 
         /// Current position
         position: usize,
@@ -300,7 +300,7 @@ pub const MemoryBackend = struct {
                 .id = id,
                 .transaction_id = txn_id,
                 .allocator = allocator,
-                .keys = std.ArrayList([]const u8).init(allocator),
+                .keys = .{},
                 .position = 0,
                 .direction = direction,
                 .range = range,
@@ -313,7 +313,7 @@ pub const MemoryBackend = struct {
             for (self.keys.items) |key| {
                 self.allocator.free(key);
             }
-            self.keys.deinit();
+            self.keys.deinit(self.allocator);
             self.allocator.destroy(self);
         }
     };
@@ -445,10 +445,11 @@ pub const MemoryBackend = struct {
             const maybe_value = entry.value_ptr.*;
 
             if (maybe_value) |value| {
-                // Write operation
-                const existing = store.data.get(key);
-                if (existing) |old_value| {
-                    self.allocator.free(old_value);
+                // Write operation - check if key already exists
+                if (store.data.fetchRemove(key)) |old_kv| {
+                    // Free both old key and value
+                    self.allocator.free(old_kv.key);
+                    self.allocator.free(old_kv.value);
                 }
 
                 // Copy key and value to store
@@ -598,14 +599,14 @@ pub const MemoryBackend = struct {
         errdefer cursor.deinit();
 
         // Collect keys in range
-        var keys = std.ArrayList([]const u8).init(self.allocator);
-        defer keys.deinit();
+        var keys: std.ArrayListUnmanaged([]const u8) = .{};
+        defer keys.deinit(self.allocator);
 
         var it = store.data.keyIterator();
         while (it.next()) |key| {
             if (keyInRange(key.*, range)) {
                 const key_copy = self.allocator.dupe(u8, key.*) catch return BackendError.OutOfMemory;
-                keys.append(key_copy) catch {
+                keys.append(self.allocator, key_copy) catch {
                     self.allocator.free(key_copy);
                     return BackendError.OutOfMemory;
                 };
@@ -626,7 +627,7 @@ pub const MemoryBackend = struct {
                 }
                 if (!found) {
                     const key_copy = self.allocator.dupe(u8, entry.key_ptr.*) catch return BackendError.OutOfMemory;
-                    keys.append(key_copy) catch {
+                    keys.append(self.allocator, key_copy) catch {
                         self.allocator.free(key_copy);
                         return BackendError.OutOfMemory;
                     };
@@ -647,7 +648,7 @@ pub const MemoryBackend = struct {
         }
 
         // Transfer ownership to cursor
-        cursor.keys = keys.clone() catch return BackendError.OutOfMemory;
+        cursor.keys = keys.clone(self.allocator) catch return BackendError.OutOfMemory;
 
         self.cursors.put(cursor_id, cursor) catch return BackendError.OutOfMemory;
 
@@ -737,20 +738,20 @@ pub const MemoryBackend = struct {
         const state = self.state orelse return BackendError.Closed;
 
         // Collect object store names
-        var names = std.ArrayList([]const u8).init(allocator);
-        defer names.deinit();
+        var names: std.ArrayListUnmanaged([]const u8) = .{};
+        defer names.deinit(allocator);
 
         var it = state.object_stores.keyIterator();
         while (it.next()) |key| {
             const name_copy = allocator.dupe(u8, key.*) catch return BackendError.OutOfMemory;
-            names.append(name_copy) catch {
+            names.append(allocator, name_copy) catch {
                 allocator.free(name_copy);
                 return BackendError.OutOfMemory;
             };
         }
 
         const name_copy = allocator.dupe(u8, state.name) catch return BackendError.OutOfMemory;
-        const stores_slice = names.toOwnedSlice() catch return BackendError.OutOfMemory;
+        const stores_slice = names.toOwnedSlice(allocator) catch return BackendError.OutOfMemory;
 
         return DatabaseInfo{
             .name = name_copy,
@@ -1019,15 +1020,15 @@ test "MemoryBackend - cursor with range" {
     const cursor = try backend_inst.cursorOpen(txn2, KeyRange.bound("b", "c", false, false), .next);
     defer backend_inst.cursorClose(cursor);
 
-    var keys = std.ArrayList([]const u8).init(std.testing.allocator);
+    var keys: std.ArrayListUnmanaged([]const u8) = .{};
     defer {
         for (keys.items) |k| std.testing.allocator.free(k);
-        keys.deinit();
+        keys.deinit(std.testing.allocator);
     }
 
     while (try backend_inst.cursorNext(cursor)) |*kv| {
         defer std.testing.allocator.free(kv.value);
-        try keys.append(kv.key);
+        try keys.append(std.testing.allocator, kv.key);
     }
 
     try std.testing.expectEqual(@as(usize, 2), keys.items.len);

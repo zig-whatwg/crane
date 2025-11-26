@@ -147,13 +147,13 @@ pub const c = struct {
     // C function declarations (linked from system SQLite)
     pub extern fn sqlite3_open_v2(filename: [*:0]const u8, ppDb: **sqlite3, flags: c_int, zVfs: ?[*:0]const u8) c_int;
     pub extern fn sqlite3_close(db: *sqlite3) c_int;
-    pub extern fn sqlite3_exec(db: *sqlite3, sql: [*:0]const u8, callback: ?*const fn (?*anyopaque, c_int, [*c][*c]u8, [*c][*c]u8) callconv(.C) c_int, arg: ?*anyopaque, errmsg: ?*[*:0]u8) c_int;
+    pub extern fn sqlite3_exec(db: *sqlite3, sql: [*:0]const u8, callback: ?*const fn (?*anyopaque, c_int, [*c][*c]u8, [*c][*c]u8) callconv(.c) c_int, arg: ?*anyopaque, errmsg: ?*[*:0]u8) c_int;
     pub extern fn sqlite3_prepare_v2(db: *sqlite3, sql: [*]const u8, nByte: c_int, ppStmt: **sqlite3_stmt, pzTail: ?*[*]const u8) c_int;
     pub extern fn sqlite3_step(stmt: *sqlite3_stmt) c_int;
     pub extern fn sqlite3_reset(stmt: *sqlite3_stmt) c_int;
     pub extern fn sqlite3_finalize(stmt: *sqlite3_stmt) c_int;
-    pub extern fn sqlite3_bind_blob(stmt: *sqlite3_stmt, idx: c_int, data: [*]const u8, len: c_int, destructor: ?*const fn (?*anyopaque) callconv(.C) void) c_int;
-    pub extern fn sqlite3_bind_text(stmt: *sqlite3_stmt, idx: c_int, text: [*]const u8, len: c_int, destructor: ?*const fn (?*anyopaque) callconv(.C) void) c_int;
+    pub extern fn sqlite3_bind_blob(stmt: *sqlite3_stmt, idx: c_int, data: [*]const u8, len: c_int, destructor: ?*const fn (?*anyopaque) callconv(.c) void) c_int;
+    pub extern fn sqlite3_bind_text(stmt: *sqlite3_stmt, idx: c_int, text: [*]const u8, len: c_int, destructor: ?*const fn (?*anyopaque) callconv(.c) void) c_int;
     pub extern fn sqlite3_bind_int64(stmt: *sqlite3_stmt, idx: c_int, value: i64) c_int;
     pub extern fn sqlite3_bind_null(stmt: *sqlite3_stmt, idx: c_int) c_int;
     pub extern fn sqlite3_column_blob(stmt: *sqlite3_stmt, idx: c_int) ?[*]const u8;
@@ -161,7 +161,7 @@ pub const c = struct {
     pub extern fn sqlite3_column_int64(stmt: *sqlite3_stmt, idx: c_int) i64;
     pub extern fn sqlite3_column_bytes(stmt: *sqlite3_stmt, idx: c_int) c_int;
     pub extern fn sqlite3_column_type(stmt: *sqlite3_stmt, idx: c_int) c_int;
-    pub extern fn sqlite3_create_collation_v2(db: *sqlite3, name: [*:0]const u8, eTextRep: c_int, pArg: ?*anyopaque, xCompare: ?*const fn (?*anyopaque, c_int, ?[*]const u8, c_int, ?[*]const u8) callconv(.C) c_int, xDestroy: ?*const fn (?*anyopaque) callconv(.C) void) c_int;
+    pub extern fn sqlite3_create_collation_v2(db: *sqlite3, name: [*:0]const u8, eTextRep: c_int, pArg: ?*anyopaque, xCompare: ?*const fn (?*anyopaque, c_int, ?[*]const u8, c_int, ?[*]const u8) callconv(.c) c_int, xDestroy: ?*const fn (?*anyopaque) callconv(.c) void) c_int;
     pub extern fn sqlite3_errmsg(db: *sqlite3) [*:0]const u8;
     pub extern fn sqlite3_changes(db: *sqlite3) c_int;
     pub extern fn sqlite3_last_insert_rowid(db: *sqlite3) i64;
@@ -261,7 +261,7 @@ pub const IDBKeyEncoder = struct {
 /// Implements IndexedDB key comparison as per spec:
 /// 1. Compare type tags first
 /// 2. Within same type, compare values
-pub fn idbkeyCollation(_: ?*anyopaque, len1: c_int, data1: ?[*]const u8, len2: c_int, data2: ?[*]const u8) callconv(.C) c_int {
+pub fn idbkeyCollation(_: ?*anyopaque, len1: c_int, data1: ?[*]const u8, len2: c_int, data2: ?[*]const u8) callconv(.c) c_int {
     const d1 = data1 orelse return -1;
     const d2 = data2 orelse return 1;
     const l1: usize = @intCast(len1);

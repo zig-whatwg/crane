@@ -95,6 +95,7 @@ pub fn build(b: *std.Build) void {
             "mimesniff",
             "quirks",
             "css",
+            "storage",
             "runtime",
             "codegen",
             "v8",
@@ -108,7 +109,7 @@ pub fn build(b: *std.Build) void {
         }
         if (!is_valid) {
             std.debug.print("Error: Invalid spec '{s}'\n", .{spec});
-            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, console, streams, mimesniff, quirks, css, runtime, codegen, v8\n", .{});
+            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, console, streams, mimesniff, quirks, css, storage, runtime, codegen, v8\n", .{});
             std.process.exit(1);
         }
     }
@@ -1120,6 +1121,21 @@ pub fn build(b: *std.Build) void {
         };
         addTestFilesFromDir(b, test_step, "tests/css", target, &css_imports, false) catch |err| {
             std.debug.print("Warning: Failed to add css test files: {}\n", .{err});
+        };
+    }
+
+    // Storage tests
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "storage")) {
+        const storage_tests = b.addTest(.{ .root_module = storage_mod });
+        const run_storage_tests = b.addRunArtifact(storage_tests);
+        test_step.dependOn(&run_storage_tests.step);
+
+        // Add dedicated test files from tests/storage/
+        const storage_imports = [_]std.Build.Module.Import{
+            .{ .name = "storage", .module = storage_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/storage", target, &storage_imports, false) catch |err| {
+            std.debug.print("Warning: Failed to add storage test files: {}\n", .{err});
         };
     }
 
