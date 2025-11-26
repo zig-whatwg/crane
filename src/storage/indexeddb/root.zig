@@ -155,9 +155,20 @@ pub const initGlobalIntegrationManager = storage_integration.initGlobalIntegrati
 pub const getGlobalIntegrationManager = storage_integration.getGlobalIntegrationManager;
 pub const deinitGlobalIntegrationManager = storage_integration.deinitGlobalIntegrationManager;
 pub const openDatabase = storage_integration.openDatabase;
-pub const deleteDatabase = storage_integration.deleteDatabase;
+// Note: deleteDatabase conflicts with factory.deleteDatabase, using qualified name
 pub const listDatabases = storage_integration.listDatabases;
 pub const getDatabaseInfo = storage_integration.getDatabaseInfo;
+
+// SQLite transaction mapping (Phase 5.2)
+pub const sqlite_transactions = @import("sqlite_transactions.zig");
+pub const SQLiteTransaction = sqlite_transactions.SQLiteTransaction;
+pub const SQLiteTransactionManager = sqlite_transactions.SQLiteTransactionManager;
+pub const TransactionState = sqlite_transactions.TransactionState;
+pub const AbortReason = sqlite_transactions.AbortReason;
+pub const TransactionSQL = sqlite_transactions.TransactionSQL;
+pub const TransactionQueue = sqlite_transactions.TransactionQueue;
+pub const QueuedRequest = sqlite_transactions.QueuedRequest;
+pub const RequestResult = sqlite_transactions.RequestResult;
 
 // Error types
 pub const IDBError = @import("errors.zig").IDBError;
@@ -179,4 +190,5 @@ test {
     _ = async_operations;
     _ = webidl_types;
     _ = storage_integration;
+    _ = sqlite_transactions;
 }
