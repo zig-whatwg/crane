@@ -54,6 +54,49 @@ const timer_mod = @import("timer.zig");
 // Note: This is an optional dependency - event_loop is only needed for async features
 const event_loop_mod = @import("event_loop");
 
+// Import storage backend for IndexedDB and Storage Standard
+const storage = @import("storage");
+const StorageBackend = storage.StorageBackend;
+const BackendType = storage.BackendType;
+
+/// Storage configuration for IndexedDB and Storage Standard
+///
+/// Configures the storage backend selection and parameters.
+/// Used by the runtime to initialize storage for the origin.
+pub const StorageConfig = struct {
+    /// Backend type to use (sqlite, leveldb, memory)
+    backend_type: BackendType = .memory,
+
+    /// Base path for storage data (e.g., "/data/storage" or "~/.app/storage")
+    /// For memory backend, this is ignored
+    data_path: []const u8 = "",
+
+    /// Storage quota in bytes (null = unlimited)
+    /// Per WHATWG Storage Standard, this is per-origin quota
+    quota_bytes: ?u64 = null,
+
+    /// Enable encryption at rest (requires backend support)
+    encryption_enabled: bool = false,
+
+    /// Create default config for testing (in-memory, no quota)
+    pub fn forTesting() StorageConfig {
+        return .{
+            .backend_type = .memory,
+            .data_path = "",
+            .quota_bytes = null,
+        };
+    }
+
+    /// Create default config for production (SQLite, reasonable quota)
+    pub fn forProduction(data_path: []const u8) StorageConfig {
+        return .{
+            .backend_type = .sqlite,
+            .data_path = data_path,
+            .quota_bytes = 50 * 1024 * 1024, // 50MB default quota
+        };
+    }
+};
+
 /// Console state for console namespace operations
 ///
 /// This state is per-context (one instance per ContextData).
@@ -130,6 +173,13 @@ pub const ContextData = struct {
     /// Optional - only available with engines that support timers (V8+libuv)
     timer: ?timer_mod.TimerInterface,
 
+    /// Storage backend for IndexedDB and Storage Standard
+    /// Optional - only needed for IndexedDB, localStorage, sessionStorage, etc.
+    storage_backend: ?*StorageBackend,
+
+    /// Storage configuration
+    storage_config: StorageConfig,
+
     /// Internal: Engine-created event loop storage (if created during init)
     /// This is owned by the context and must be cleaned up via engine interface
     _engine_event_loop_storage: ?*anyopaque,
@@ -165,6 +215,15 @@ pub const ContextData = struct {
         /// Optional - only needed for AbortSignal.timeout() and similar APIs
         /// If not provided, timer operations will return error.NoTimerSupport
         timer: ?timer_mod.TimerInterface = null,
+
+        /// Storage backend for IndexedDB and Storage Standard
+        /// Optional - only needed for storage APIs
+        /// If not provided, storage operations will return error.NoStorageBackend
+        storage_backend: ?*StorageBackend = null,
+
+        /// Storage configuration
+        /// Default is memory backend with no quota (for testing)
+        storage_config: ?StorageConfig = null,
     };
 
     /// Initialize a new runtime context
@@ -203,6 +262,8 @@ pub const ContextData = struct {
             .console_state = ConsoleState.init(allocator),
             .event_loop = ev_loop,
             .timer = options.timer,
+            .storage_backend = options.storage_backend,
+            .storage_config = options.storage_config orelse StorageConfig.forTesting(),
             ._engine_event_loop_storage = engine_event_loop_storage,
             ._v8_wrapper_cache_storage = null, // Initialized later via initV8WrapperCache
         };
@@ -304,6 +365,39 @@ pub const ContextData = struct {
     /// useful when the timer manager is created separately.
     pub fn setTimer(self: *Self, timer_interface: timer_mod.TimerInterface) void {
         self.timer = timer_interface;
+    }
+
+    /// Check if this context has storage backend support
+    pub fn hasStorageBackend(self: *const Self) bool {
+        return self.storage_backend != null;
+    }
+
+    /// Get the storage backend (returns error if not available)
+    pub fn getStorageBackend(self: *const Self) error{NoStorageBackend}!*StorageBackend {
+        return self.storage_backend orelse error.NoStorageBackend;
+    }
+
+    /// Get optional storage backend
+    pub fn getOptionalStorageBackend(self: *const Self) ?*StorageBackend {
+        return self.storage_backend;
+    }
+
+    /// Get the storage configuration
+    pub fn getStorageConfig(self: *const Self) StorageConfig {
+        return self.storage_config;
+    }
+
+    /// Set the storage backend (called by external code during setup)
+    ///
+    /// This allows setting storage backend after context creation,
+    /// useful when the backend is created separately.
+    pub fn setStorageBackend(self: *Self, backend: *StorageBackend) void {
+        self.storage_backend = backend;
+    }
+
+    /// Set the storage configuration
+    pub fn setStorageConfig(self: *Self, config: StorageConfig) void {
+        self.storage_config = config;
     }
 };
 

@@ -137,6 +137,12 @@ pub fn build(b: *std.Build) void {
     });
     webidl_mod.addImport("infra", infra_mod);
 
+    // Storage module (IndexedDB and Storage Standard backend)
+    const storage_mod = b.addModule("storage", .{
+        .root_source_file = b.path("src/storage/backend.zig"),
+        .target = target,
+    });
+
     // Runtime module (WebIDL runtime infrastructure)
     const runtime_mod = b.addModule("runtime", .{
         .root_source_file = b.path("src/runtime/root.zig"),
@@ -144,6 +150,7 @@ pub fn build(b: *std.Build) void {
     });
     runtime_mod.addImport("webidl", webidl_mod);
     runtime_mod.addImport("infra", infra_mod);
+    runtime_mod.addImport("storage", storage_mod);
 
     // V8 bindings module
     const v8_mod = b.addModule("v8", .{
