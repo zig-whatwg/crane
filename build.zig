@@ -93,6 +93,8 @@ pub fn build(b: *std.Build) void {
             "console",
             "streams",
             "mimesniff",
+            "quirks",
+            "css",
             "runtime",
             "codegen",
             "v8",
@@ -106,7 +108,7 @@ pub fn build(b: *std.Build) void {
         }
         if (!is_valid) {
             std.debug.print("Error: Invalid spec '{s}'\n", .{spec});
-            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, console, streams, mimesniff, runtime, codegen, v8\n", .{});
+            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, console, streams, mimesniff, quirks, css, runtime, codegen, v8\n", .{});
             std.process.exit(1);
         }
     }
@@ -271,6 +273,19 @@ pub fn build(b: *std.Build) void {
     dom_mod.addImport("runtime", runtime_mod);
     dom_mod.addImport("interfaces", interfaces_mod);
 
+    // Quirks module (WHATWG Quirks Mode Standard)
+    const quirks_mod = b.addModule("quirks", .{
+        .root_source_file = b.path("src/quirks/root.zig"),
+        .target = target,
+    });
+
+    // CSS module (CSS property value parser)
+    const css_mod = b.addModule("css", .{
+        .root_source_file = b.path("src/css/root.zig"),
+        .target = target,
+    });
+    css_mod.addImport("quirks", quirks_mod);
+
     // Selector module (CSS Selectors Level 4 implementation)
     const selector_mod = b.addModule("selector", .{
         .root_source_file = b.path("src/selector/root.zig"),
@@ -278,6 +293,7 @@ pub fn build(b: *std.Build) void {
     });
     selector_mod.addImport("infra", infra_mod);
     selector_mod.addImport("dom", dom_mod);
+    selector_mod.addImport("quirks", quirks_mod);
 
     // Add selector to dom (after selector_mod is defined to avoid undefined reference)
     dom_mod.addImport("selector", selector_mod);
@@ -894,6 +910,8 @@ pub fn build(b: *std.Build) void {
     whatwg_mod.addImport("mimesniff", mimesniff_mod);
     whatwg_mod.addImport("interfaces", interfaces_mod);
     whatwg_mod.addImport("impls", impls_mod);
+    whatwg_mod.addImport("quirks", quirks_mod);
+    whatwg_mod.addImport("css", css_mod);
 
     // ========================================================================
     // TESTS - GENERIC SPEC FILTERING
@@ -911,6 +929,8 @@ pub fn build(b: *std.Build) void {
     const test_console = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "console"));
     const test_streams = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "streams"));
     const test_mimesniff = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "mimesniff"));
+    const test_quirks = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "quirks"));
+    const test_css = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "css"));
 
     if (test_infra) {
         const infra_tests = b.addTest(.{ .root_module = infra_mod });
@@ -1061,6 +1081,35 @@ pub fn build(b: *std.Build) void {
         };
         addTestFilesFromDir(b, test_step, "tests/mimesniff", target, &mimesniff_imports, false) catch |err| {
             std.debug.print("Warning: Failed to add mimesniff test files: {}\n", .{err});
+        };
+    }
+
+    if (test_quirks) {
+        const quirks_tests = b.addTest(.{ .root_module = quirks_mod });
+        const run_quirks_tests = b.addRunArtifact(quirks_tests);
+        test_step.dependOn(&run_quirks_tests.step);
+
+        // Add dedicated test files from tests/quirks/
+        const quirks_imports = [_]std.Build.Module.Import{
+            .{ .name = "quirks", .module = quirks_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/quirks", target, &quirks_imports, false) catch |err| {
+            std.debug.print("Warning: Failed to add quirks test files: {}\n", .{err});
+        };
+    }
+
+    if (test_css) {
+        const css_tests = b.addTest(.{ .root_module = css_mod });
+        const run_css_tests = b.addRunArtifact(css_tests);
+        test_step.dependOn(&run_css_tests.step);
+
+        // Add dedicated test files from tests/css/
+        const css_imports = [_]std.Build.Module.Import{
+            .{ .name = "css", .module = css_mod },
+            .{ .name = "quirks", .module = quirks_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/css", target, &css_imports, false) catch |err| {
+            std.debug.print("Warning: Failed to add css test files: {}\n", .{err});
         };
     }
 

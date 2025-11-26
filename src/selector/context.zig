@@ -26,6 +26,8 @@ const hashStringLower = infra.hashStringLower;
 const cache = @import("cache.zig");
 const NthIndexCache = cache.NthIndexCache;
 const HasSelectorCache = cache.HasSelectorCache;
+const quirks = @import("quirks");
+const QuirksMode = quirks.QuirksMode;
 
 // ============================================================================
 // Matching Context
@@ -55,6 +57,12 @@ pub const MatchingContext = struct {
     /// Current depth in the DOM tree (for debugging/limits).
     depth: usize = 0,
 
+    /// Document's quirks mode for selector quirks.
+    ///
+    /// Per WHATWG Quirks spec §4, in quirks mode the :active/:hover
+    /// pseudo-classes only match links when used alone.
+    quirks_mode: QuirksMode = .no_quirks,
+
     const Self = @This();
 
     /// Maximum tree depth to prevent stack overflow on pathological DOMs.
@@ -70,11 +78,44 @@ pub const MatchingContext = struct {
         };
     }
 
+    /// Create a matching context with a specific quirks mode.
+    pub fn initWithQuirksMode(allocator: Allocator, mode: QuirksMode) Self {
+        var ctx = init(allocator);
+        ctx.quirks_mode = mode;
+        return ctx;
+    }
+
     /// Create a matching context with a scoping root for :scope.
     pub fn initWithScope(allocator: Allocator, scoping_root: *const anyopaque) Self {
         var ctx = init(allocator);
         ctx.scoping_root = scoping_root;
         return ctx;
+    }
+
+    /// Create a matching context with both scoping root and quirks mode.
+    pub fn initWithScopeAndQuirks(allocator: Allocator, scoping_root: *const anyopaque, mode: QuirksMode) Self {
+        var ctx = init(allocator);
+        ctx.scoping_root = scoping_root;
+        ctx.quirks_mode = mode;
+        return ctx;
+    }
+
+    // ========================================================================
+    // Quirks Mode Operations
+    // ========================================================================
+
+    /// Check if the :active/:hover quirk should be applied.
+    ///
+    /// Per WHATWG Quirks spec §4, in quirks mode, compound selectors using
+    /// :active or :hover must not match elements that would not also match
+    /// :any-link, if the selector has no other selectors.
+    pub fn hasActiveHoverQuirk(self: *const Self) bool {
+        return self.quirks_mode.hasSelectorQuirks();
+    }
+
+    /// Check if in quirks mode.
+    pub fn isQuirksMode(self: *const Self) bool {
+        return self.quirks_mode.isQuirks();
     }
 
     /// Clean up the matching context.
@@ -309,4 +350,26 @@ test "MatchResult - retry hints" {
     try testing.expect(MatchResult.not_matched_restart_later_sibling.shouldTryDescendants());
     try testing.expect(MatchResult.not_matched_restart_descendant.shouldTryDescendants());
     try testing.expect(!MatchResult.not_matched_globally.shouldTryDescendants());
+}
+
+test "MatchingContext - quirks mode" {
+    const allocator = testing.allocator;
+
+    // Default should be no-quirks mode
+    var ctx_default = MatchingContext.init(allocator);
+    defer ctx_default.deinit();
+    try testing.expect(!ctx_default.isQuirksMode());
+    try testing.expect(!ctx_default.hasActiveHoverQuirk());
+
+    // Quirks mode
+    var ctx_quirks = MatchingContext.initWithQuirksMode(allocator, .quirks);
+    defer ctx_quirks.deinit();
+    try testing.expect(ctx_quirks.isQuirksMode());
+    try testing.expect(ctx_quirks.hasActiveHoverQuirk());
+
+    // Limited quirks mode (no selector quirks)
+    var ctx_limited = MatchingContext.initWithQuirksMode(allocator, .limited_quirks);
+    defer ctx_limited.deinit();
+    try testing.expect(!ctx_limited.isQuirksMode());
+    try testing.expect(!ctx_limited.hasActiveHoverQuirk());
 }
