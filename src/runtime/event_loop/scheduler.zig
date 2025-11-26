@@ -12,6 +12,16 @@
 //! 5. Wait for I/O or timer (poll)
 //! 6. Repeat
 //!
+//! ## Thread-Safe Task Posting (Phase 1.20)
+//!
+//! Any thread can post tasks to the main event loop using postTaskFromAnyThread().
+//! Tasks are queued in a lock-free MPSC queue and processed during each tick.
+//!
+//! ## Work Submission Flow (Phase 1.19)
+//!
+//! Main loop submits work to thread pool, polls for completions, and converts
+//! completions to macrotasks.
+//!
 //! ## References
 //!
 //! - WHATWG HTML Standard: Event loop processing model
@@ -20,6 +30,8 @@
 const std = @import("std");
 const task_queue = @import("task_queue.zig");
 const microtask = @import("microtask.zig");
+const thread_pool = @import("thread_pool.zig");
+const mpsc_queue = @import("mpsc_queue.zig");
 
 pub const TaskQueueSet = task_queue.TaskQueueSet;
 pub const TaskNode = task_queue.TaskNode;
@@ -30,6 +42,32 @@ pub const MicrotaskQueue = microtask.MicrotaskQueue;
 pub const MicrotaskNode = microtask.MicrotaskNode;
 pub const MicrotaskCallback = microtask.MicrotaskCallback;
 
+pub const ThreadPool = thread_pool.ThreadPool;
+pub const WorkItem = thread_pool.WorkItem;
+pub const MpscQueue = mpsc_queue.MpscQueue;
+pub const MpscNode = mpsc_queue.MpscNode;
+
+/// Cross-thread task node for posting tasks from any thread
+/// Wraps a TaskNode with MPSC queue linkage
+pub const CrossThreadTask = struct {
+    /// MPSC queue node (must be first for intrusive list)
+    mpsc_node: MpscNode = .{},
+
+    /// The actual task
+    task: TaskNode,
+
+    /// Priority for the task
+    priority: TaskPriority,
+
+    /// Create a cross-thread task
+    pub fn init(callback: TaskCallback, user_data: ?*anyopaque, priority: TaskPriority) CrossThreadTask {
+        return .{
+            .task = TaskNode.init(callback, user_data, priority),
+            .priority = priority,
+        };
+    }
+};
+
 /// Event loop scheduler state
 pub const Scheduler = struct {
     /// Task queue set (macrotasks)
@@ -38,13 +76,22 @@ pub const Scheduler = struct {
     /// Microtask queue
     microtasks: MicrotaskQueue,
 
+    /// Cross-thread task queue (Phase 1.20)
+    /// Tasks posted from any thread via postTaskFromAnyThread()
+    cross_thread_queue: MpscQueue,
+
+    /// Thread pool for blocking operations (Phase 1.19)
+    pool: ?*ThreadPool = null,
+
     /// Running flag
-    running: bool = false,
+    running: std.atomic.Value(bool),
 
     /// Statistics
     ticks: usize = 0,
     macrotasks_executed: usize = 0,
     microtask_checkpoints: usize = 0,
+    cross_thread_tasks_processed: usize = 0,
+    pool_completions_processed: usize = 0,
 
     const Self = @This();
 
@@ -53,7 +100,24 @@ pub const Scheduler = struct {
         return .{
             .task_queues = TaskQueueSet.init(),
             .microtasks = MicrotaskQueue.init(),
+            .cross_thread_queue = MpscQueue.init(),
+            .running = std.atomic.Value(bool).init(false),
         };
+    }
+
+    /// Initialize scheduler with thread pool
+    pub fn initWithPool(allocator: std.mem.Allocator, thread_count: usize) !Self {
+        var self = init();
+        self.pool = try ThreadPool.init(allocator, thread_count);
+        return self;
+    }
+
+    /// Deinitialize scheduler
+    pub fn deinit(self: *Self) void {
+        if (self.pool) |pool| {
+            pool.deinit();
+            self.pool = null;
+        }
     }
 
     /// Enqueue a macrotask
@@ -82,6 +146,18 @@ pub const Scheduler = struct {
         self.ticks += 1;
         var did_work = false;
 
+        // Step 0a: Process cross-thread tasks (Phase 1.20)
+        const cross_thread_count = self.processCrossThreadTasks();
+        if (cross_thread_count > 0) {
+            did_work = true;
+        }
+
+        // Step 0b: Process thread pool completions (Phase 1.19)
+        const completion_count = self.processPoolCompletions();
+        if (completion_count > 0) {
+            did_work = true;
+        }
+
         // Step 1: Select and execute ONE macrotask (if any)
         if (self.task_queues.dequeue()) |task| {
             task.execute();
@@ -100,33 +176,93 @@ pub const Scheduler = struct {
         return did_work;
     }
 
+    /// Process tasks posted from other threads (Phase 1.20)
+    ///
+    /// Drains the cross-thread queue and enqueues tasks into the main task queues.
+    fn processCrossThreadTasks(self: *Self) usize {
+        var count: usize = 0;
+
+        while (self.cross_thread_queue.pop()) |node| {
+            const cross_task: *CrossThreadTask = @fieldParentPtr("mpsc_node", node);
+            self.task_queues.enqueue(&cross_task.task, cross_task.priority);
+            count += 1;
+        }
+
+        self.cross_thread_tasks_processed += count;
+        return count;
+    }
+
+    /// Process thread pool completions (Phase 1.19)
+    ///
+    /// Polls the thread pool for completed work and invokes completion callbacks.
+    fn processPoolCompletions(self: *Self) usize {
+        const pool = self.pool orelse return 0;
+        var count: usize = 0;
+
+        while (pool.pollCompletion()) |work| {
+            if (work.completion_fn) |cb| {
+                cb(work.user_data, work.result);
+            }
+            count += 1;
+        }
+
+        self.pool_completions_processed += count;
+        return count;
+    }
+
+    /// Post a task from any thread (Phase 1.20)
+    ///
+    /// Thread-safe: can be called from any thread.
+    /// The task will be processed in the next event loop tick.
+    pub fn postTaskFromAnyThread(self: *Self, task: *CrossThreadTask) void {
+        self.cross_thread_queue.push(&task.mpsc_node);
+    }
+
+    /// Submit work to the thread pool (Phase 1.19)
+    ///
+    /// The work will be executed on a worker thread.
+    /// If completion_fn is set, it will be called on the main thread
+    /// after the work completes (via processPoolCompletions).
+    pub fn submitWork(self: *Self, work: *WorkItem) bool {
+        const pool = self.pool orelse return false;
+        pool.submit(work);
+        return true;
+    }
+
+    /// Get the thread pool (if available)
+    pub fn getPool(self: *Self) ?*ThreadPool {
+        return self.pool;
+    }
+
     /// Run event loop until completion
     ///
     /// Runs until all queues are empty and stop is called.
     /// In practice, this would integrate with I/O polling.
     pub fn runUntilEmpty(self: *Self) void {
-        self.running = true;
-        while (self.running and !self.isEmpty()) {
+        self.running.store(true, .release);
+        while (self.running.load(.acquire) and !self.isEmpty()) {
             _ = self.tick();
         }
-        self.running = false;
+        self.running.store(false, .release);
     }
 
     /// Run event loop for N ticks
     pub fn runForTicks(self: *Self, max_ticks: usize) usize {
-        self.running = true;
+        self.running.store(true, .release);
         var executed: usize = 0;
-        while (self.running and executed < max_ticks) {
+        while (self.running.load(.acquire) and executed < max_ticks) {
             if (!self.tick()) break;
             executed += 1;
         }
-        self.running = false;
+        self.running.store(false, .release);
         return executed;
     }
 
     /// Stop the event loop
+    ///
+    /// Thread-safe: can be called from any thread.
     pub fn stop(self: *Self) void {
-        self.running = false;
+        self.running.store(false, .release);
     }
 
     /// Check if all queues are empty
@@ -136,7 +272,7 @@ pub const Scheduler = struct {
 
     /// Check if running
     pub fn isRunning(self: *const Self) bool {
-        return self.running;
+        return self.running.load(.acquire);
     }
 
     /// Get scheduler statistics
@@ -146,6 +282,8 @@ pub const Scheduler = struct {
         microtask_checkpoints: usize,
         pending_macrotasks: usize,
         pending_microtasks: usize,
+        cross_thread_tasks_processed: usize,
+        pool_completions_processed: usize,
     };
 
     pub fn getStats(self: *const Self) Stats {
@@ -155,6 +293,8 @@ pub const Scheduler = struct {
             .microtask_checkpoints = self.microtask_checkpoints,
             .pending_macrotasks = self.task_queues.pendingCount(),
             .pending_microtasks = self.microtasks.len(),
+            .cross_thread_tasks_processed = self.cross_thread_tasks_processed,
+            .pool_completions_processed = self.pool_completions_processed,
         };
     }
 };
@@ -307,4 +447,83 @@ fn microOrderCallback(user_data: ?*anyopaque) void {
     const ctx: *OrderContext = @ptrCast(@alignCast(user_data.?));
     ctx.order[ctx.order_idx.*] = ctx.id;
     ctx.order_idx.* += 1;
+}
+
+// ============================================================================
+// Phase 1.19/1.20 Tests
+// ============================================================================
+
+test "Scheduler - cross-thread task posting" {
+    var scheduler = Scheduler.init();
+
+    var counter: usize = 0;
+
+    // Create cross-thread tasks
+    var task1 = CrossThreadTask.init(countCallback, &counter, .timer);
+    var task2 = CrossThreadTask.init(countCallback, &counter, .networking);
+
+    // Post from "another thread" (same thread in test, but uses MPSC queue)
+    scheduler.postTaskFromAnyThread(&task1);
+    scheduler.postTaskFromAnyThread(&task2);
+
+    // Tick once to process cross-thread tasks into main queue
+    _ = scheduler.tick();
+
+    // Check tasks were processed and enqueued
+    try std.testing.expectEqual(@as(usize, 2), scheduler.getStats().cross_thread_tasks_processed);
+
+    // Run remaining tasks
+    scheduler.runUntilEmpty();
+
+    try std.testing.expectEqual(@as(usize, 2), counter);
+}
+
+test "Scheduler - thread pool completion flow" {
+    var scheduler = try Scheduler.initWithPool(std.testing.allocator, 2);
+    defer scheduler.deinit();
+
+    var completed = std.atomic.Value(bool).init(false);
+    var work = WorkItem.initWithCompletion(
+        noopWorkCallback,
+        completionFlagCallback,
+        &completed,
+    );
+
+    // Submit work to pool
+    try std.testing.expect(scheduler.submitWork(&work));
+
+    // Wait for completion to be processed
+    var attempts: usize = 0;
+    while (attempts < 1000) : (attempts += 1) {
+        _ = scheduler.tick();
+        if (completed.load(.acquire)) break;
+        std.Thread.yield() catch {};
+    }
+
+    try std.testing.expect(completed.load(.acquire));
+    try std.testing.expect(scheduler.getStats().pool_completions_processed >= 1);
+}
+
+test "Scheduler - stop from any thread" {
+    var scheduler = Scheduler.init();
+
+    // Start running
+    scheduler.running.store(true, .release);
+    try std.testing.expect(scheduler.isRunning());
+
+    // Stop (simulating call from another thread)
+    scheduler.stop();
+    try std.testing.expect(!scheduler.isRunning());
+}
+
+fn atomicCountCallback(user_data: ?*anyopaque) void {
+    const counter: *std.atomic.Value(usize) = @ptrCast(@alignCast(user_data.?));
+    _ = counter.fetchAdd(1, .acq_rel);
+}
+
+fn noopWorkCallback(_: ?*anyopaque) void {}
+
+fn completionFlagCallback(user_data: ?*anyopaque, _: ?*anyopaque) void {
+    const flag: *std.atomic.Value(bool) = @ptrCast(@alignCast(user_data.?));
+    flag.store(true, .release);
 }

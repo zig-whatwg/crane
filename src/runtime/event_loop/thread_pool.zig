@@ -9,6 +9,17 @@
 //! - Work queue using MPSC queue
 //! - Completion notifications back to main loop
 //! - Graceful shutdown
+//! - Signal masking: worker threads inherit blocked signals
+//!
+//! ## Signal Handling (Phase 1.18)
+//!
+//! Worker threads should NOT handle signals. Before spawning workers:
+//! 1. Main thread blocks all signals
+//! 2. Workers inherit blocked signal mask (POSIX behavior)
+//! 3. Main thread handles signals via signalfd/kqueue
+//!
+//! This prevents worker threads from being interrupted by signals,
+//! ensuring predictable behavior and avoiding complex signal-safe code.
 //!
 //! ## Usage
 //!
@@ -19,9 +30,77 @@
 //!
 //! - Node.js libuv thread pool
 //! - Tokio's blocking thread pool
+//! - POSIX signal handling best practices
 
 const std = @import("std");
 const mpsc_queue = @import("mpsc_queue.zig");
+const builtin = @import("builtin");
+const posix = std.posix;
+
+// Signal mask constants (POSIX)
+const SIG_BLOCK: u32 = 1;
+const SIG_SETMASK: u32 = 3;
+
+// ============================================================================
+// Signal Masking (Phase 1.18)
+// ============================================================================
+
+/// Check if signal masking is supported on this platform
+const signal_masking_supported = builtin.os.tag == .linux or builtin.os.tag == .macos or
+    builtin.os.tag == .freebsd or builtin.os.tag == .netbsd or builtin.os.tag == .openbsd;
+
+/// Platform-specific signal mask storage
+/// On macOS sigset_t is u32, on Linux it's a struct with __val array
+pub const SignalMask = struct {
+    inner: if (signal_masking_supported) posix.sigset_t else void = if (signal_masking_supported) @as(posix.sigset_t, 0) else {},
+    valid: bool = false,
+};
+
+/// Block all signals on the current thread
+///
+/// Returns the previous signal mask for restoration.
+/// On POSIX systems, uses pthread_sigmask (via sigprocmask).
+pub fn blockAllSignals() !SignalMask {
+    if (comptime signal_masking_supported) {
+        var block_set: posix.sigset_t = 0;
+        var old_set: posix.sigset_t = 0;
+
+        // Fill the signal set (block common signals that might interrupt workers)
+        const signals_to_block = [_]u8{
+            posix.SIG.INT, // Ctrl+C
+            posix.SIG.TERM, // Termination
+            posix.SIG.HUP, // Hangup
+            posix.SIG.QUIT, // Quit
+            posix.SIG.USR1, // User signal 1
+            posix.SIG.USR2, // User signal 2
+            posix.SIG.ALRM, // Alarm
+            posix.SIG.PIPE, // Broken pipe (important for I/O)
+        };
+
+        for (signals_to_block) |sig| {
+            posix.sigaddset(&block_set, sig);
+        }
+
+        // Apply the mask using raw constant
+        posix.sigprocmask(SIG_BLOCK, &block_set, &old_set);
+
+        return .{ .inner = old_set, .valid = true };
+    } else {
+        // Unsupported platform - return empty struct
+        return .{};
+    }
+}
+
+/// Restore a previously saved signal mask
+pub fn restoreSignalMask(mask: SignalMask) !void {
+    if (comptime signal_masking_supported) {
+        if (!mask.valid) return; // Nothing to restore
+
+        var old_set: posix.sigset_t = 0;
+        posix.sigprocmask(SIG_SETMASK, &mask.inner, &old_set);
+    }
+    // No-op on unsupported platforms
+}
 
 pub const MpscNode = mpsc_queue.MpscNode;
 pub const MpscQueue = mpsc_queue.MpscQueue;
@@ -71,6 +150,16 @@ pub const WorkItem = struct {
     }
 };
 
+/// Signal mask configuration for thread pool
+pub const SignalConfig = struct {
+    /// Block all signals on worker threads (recommended)
+    block_all_signals: bool = true,
+
+    /// Custom signal set to block (if block_all_signals is false)
+    /// For POSIX systems, this would be a sigset_t
+    custom_mask: ?*anyopaque = null,
+};
+
 /// Thread pool for executing blocking/CPU-bound work
 pub const ThreadPool = struct {
     /// Allocator for thread management
@@ -95,13 +184,27 @@ pub const ThreadPool = struct {
     total_submitted: std.atomic.Value(usize),
     total_completed: std.atomic.Value(usize),
 
+    /// Saved signal mask (restored on deinit)
+    saved_signal_mask: SignalMask = .{},
+
+    /// Signal masking enabled
+    signals_blocked: bool = false,
+
     const Self = @This();
 
-    /// Initialize thread pool
+    /// Initialize thread pool with default configuration
     ///
     /// Creates `thread_count` worker threads.
     /// If thread_count is 0, uses number of CPU cores.
     pub fn init(allocator: std.mem.Allocator, thread_count: usize) !*Self {
+        return initWithConfig(allocator, thread_count, .{});
+    }
+
+    /// Initialize thread pool with signal configuration
+    ///
+    /// Creates `thread_count` worker threads with signal masking.
+    /// Workers inherit blocked signals from the spawning thread.
+    pub fn initWithConfig(allocator: std.mem.Allocator, thread_count: usize, config: SignalConfig) !*Self {
         const actual_count = if (thread_count == 0) blk: {
             const cpus = std.Thread.getCpuCount() catch 4;
             break :blk @min(cpus, 16); // Cap at 16 threads
@@ -121,10 +224,26 @@ pub const ThreadPool = struct {
             .total_completed = std.atomic.Value(usize).init(0),
         };
 
-        self.workers = try allocator.alloc(std.Thread, actual_count);
-        errdefer allocator.free(self.workers);
+        // Phase 1.18: Block signals before spawning workers
+        // Workers will inherit the blocked signal mask (POSIX behavior)
+        if (config.block_all_signals) {
+            self.saved_signal_mask = blockAllSignals() catch |err| blk: {
+                // Non-fatal: continue without signal masking
+                std.log.warn("Failed to block signals: {}", .{err});
+                break :blk SignalMask{};
+            };
+            self.signals_blocked = true;
+        }
 
-        // Spawn worker threads
+        self.workers = try allocator.alloc(std.Thread, actual_count);
+        errdefer {
+            allocator.free(self.workers);
+            if (self.signals_blocked) {
+                restoreSignalMask(self.saved_signal_mask) catch {};
+            }
+        }
+
+        // Spawn worker threads (they inherit blocked signal mask)
         var spawned: usize = 0;
         errdefer {
             self.shutdown.store(true, .release);
@@ -139,6 +258,14 @@ pub const ThreadPool = struct {
         for (self.workers) |*worker| {
             worker.* = try std.Thread.spawn(.{}, workerLoop, .{self});
             spawned += 1;
+        }
+
+        // Restore signal mask on main thread after spawning
+        // Main thread needs to handle signals
+        if (self.signals_blocked) {
+            restoreSignalMask(self.saved_signal_mask) catch |err| {
+                std.log.warn("Failed to restore signal mask: {}", .{err});
+            };
         }
 
         return self;

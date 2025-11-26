@@ -63,6 +63,7 @@ pub const MicrotaskNode = microtask.MicrotaskNode;
 /// Event loop scheduler (WHATWG processing model)
 pub const scheduler = @import("scheduler.zig");
 pub const Scheduler = scheduler.Scheduler;
+pub const CrossThreadTask = scheduler.CrossThreadTask;
 
 /// Hierarchical timing wheel (O(1) timer operations)
 pub const timer_wheel = @import("timer_wheel.zig");
@@ -78,6 +79,10 @@ pub const MpscNode = mpsc_queue.MpscNode;
 pub const thread_pool = @import("thread_pool.zig");
 pub const ThreadPool = thread_pool.ThreadPool;
 pub const WorkItem = thread_pool.WorkItem;
+pub const SignalMask = thread_pool.SignalMask;
+pub const SignalConfig = thread_pool.SignalConfig;
+pub const blockAllSignals = thread_pool.blockAllSignals;
+pub const restoreSignalMask = thread_pool.restoreSignalMask;
 
 /// Event loop configuration
 pub const Config = struct {
