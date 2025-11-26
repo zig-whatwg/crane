@@ -272,15 +272,195 @@ const Repl = struct {
             return error.RuntimeError;
         };
 
-        // Convert result to string
-        const result_str = v8.ffi.v8_Value_ToString(result, self.context) orelse {
+        // Format the result for display (REPL-only formatting, doesn't affect JS semantics)
+        return self.formatValueForDisplay(result);
+    }
+
+    /// Format a V8 value for REPL display (like Chrome DevTools)
+    /// This is purely cosmetic - it doesn't change JavaScript semantics
+    fn formatValueForDisplay(self: *Self, value: *v8.ffi.Value) ![]const u8 {
+        // Handle primitives directly
+        if (v8.ffi.v8_Value_IsUndefined(value)) {
             return try self.allocator.dupe(u8, "undefined");
+        }
+        if (v8.ffi.v8_Value_IsNull(value)) {
+            return try self.allocator.dupe(u8, "null");
+        }
+        if (v8.ffi.v8_Value_IsBoolean(value) or v8.ffi.v8_Value_IsNumber(value)) {
+            const str = v8.ffi.v8_Value_ToString(value, self.context) orelse {
+                return try self.allocator.dupe(u8, "undefined");
+            };
+            const len = v8.ffi.v8_String_Utf8Length(str);
+            const buffer = try self.allocator.alloc(u8, @intCast(len));
+            _ = v8.ffi.v8_String_WriteUtf8(str, buffer.ptr, @intCast(len));
+            return buffer;
+        }
+        if (v8.ffi.v8_Value_IsString(value)) {
+            // Wrap strings in quotes for display
+            const str: *v8.ffi.String = @ptrCast(value);
+            const len = v8.ffi.v8_String_Utf8Length(str);
+            // +2 for quotes
+            const buffer = try self.allocator.alloc(u8, @intCast(len + 2));
+            buffer[0] = '\'';
+            _ = v8.ffi.v8_String_WriteUtf8(str, buffer.ptr + 1, @intCast(len));
+            buffer[@intCast(len + 1)] = '\'';
+            return buffer;
+        }
+        if (v8.ffi.v8_Value_IsFunction(value)) {
+            // For functions, show [Function: name] or just [Function]
+            const str = v8.ffi.v8_Value_ToString(value, self.context) orelse {
+                return try self.allocator.dupe(u8, "[Function]");
+            };
+            const len = v8.ffi.v8_String_Utf8Length(str);
+            const buffer = try self.allocator.alloc(u8, @intCast(len));
+            _ = v8.ffi.v8_String_WriteUtf8(str, buffer.ptr, @intCast(len));
+            return buffer;
+        }
+
+        // For objects (including arrays), use our inspector
+        if (v8.ffi.v8_Value_IsObject(value)) {
+            return self.formatObjectForDisplay(value);
+        }
+
+        // Fallback to toString
+        const result_str = v8.ffi.v8_Value_ToString(value, self.context) orelse {
+            return try self.allocator.dupe(u8, "undefined");
+        };
+        const len = v8.ffi.v8_String_Utf8Length(result_str);
+        const buffer = try self.allocator.alloc(u8, @intCast(len));
+        _ = v8.ffi.v8_String_WriteUtf8(result_str, buffer.ptr, @intCast(len));
+        return buffer;
+    }
+
+    /// Format an object for REPL display using JavaScript's own introspection
+    /// Produces output like: Event {isTrusted: false, type: 'foo', target: null, ...}
+    fn formatObjectForDisplay(self: *Self, value: *v8.ffi.Value) ![]const u8 {
+        // Store the value temporarily so our formatter can access it
+        // We use a unique global name that's unlikely to conflict
+        const global = v8.ffi.v8_Context_Global(self.context) orelse {
+            return try self.allocator.dupe(u8, "[object]");
+        };
+        const temp_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "__repl_temp__", 13) orelse {
+            return try self.allocator.dupe(u8, "[object]");
+        };
+        _ = v8.ffi.v8_Object_Set(global, self.context, @ptrCast(temp_key), value);
+        defer {
+            // Clean up temp variable by setting to undefined
+            if (v8.ffi.v8_Undefined(self.isolate)) |undef| {
+                _ = v8.ffi.v8_Object_Set(global, self.context, @ptrCast(temp_key), undef);
+            }
+        }
+
+        // JavaScript code to format the object like Chrome DevTools
+        // This runs in the same context, using JS introspection
+        const format_code =
+            \\(function() {
+            \\  const obj = __repl_temp__;
+            \\  if (obj === null) return 'null';
+            \\  if (obj === undefined) return 'undefined';
+            \\  
+            \\  // Get constructor name
+            \\  let name = '';
+            \\  if (obj.constructor && obj.constructor.name) {
+            \\    name = obj.constructor.name;
+            \\  } else {
+            \\    name = Object.prototype.toString.call(obj).slice(8, -1);
+            \\  }
+            \\  
+            \\  // Handle arrays specially
+            \\  if (Array.isArray(obj)) {
+            \\    if (obj.length === 0) return '[]';
+            \\    if (obj.length <= 10) {
+            \\      const items = obj.map(v => {
+            \\        if (typeof v === 'string') return "'" + v + "'";
+            \\        if (v === null) return 'null';
+            \\        if (v === undefined) return 'undefined';
+            \\        if (typeof v === 'object') return v.constructor ? v.constructor.name : '[object]';
+            \\        return String(v);
+            \\      });
+            \\      return '[' + items.join(', ') + ']';
+            \\    }
+            \\    return 'Array(' + obj.length + ') [...]';
+            \\  }
+            \\  
+            \\  // Get own enumerable properties (limited to first few for display)
+            \\  const props = [];
+            \\  const keys = Object.keys(obj);
+            \\  const maxProps = 5;
+            \\  
+            \\  for (let i = 0; i < Math.min(keys.length, maxProps); i++) {
+            \\    const key = keys[i];
+            \\    let val;
+            \\    try {
+            \\      val = obj[key];
+            \\    } catch (e) {
+            \\      val = '<error>';
+            \\    }
+            \\    
+            \\    let valStr;
+            \\    if (val === null) valStr = 'null';
+            \\    else if (val === undefined) valStr = 'undefined';
+            \\    else if (typeof val === 'string') valStr = "'" + val + "'";
+            \\    else if (typeof val === 'function') valStr = '[Function]';
+            \\    else if (typeof val === 'object') {
+            \\      if (Array.isArray(val)) valStr = 'Array(' + val.length + ')';
+            \\      else valStr = val.constructor ? val.constructor.name : '[object]';
+            \\    }
+            \\    else valStr = String(val);
+            \\    
+            \\    props.push(key + ': ' + valStr);
+            \\  }
+            \\  
+            \\  if (keys.length > maxProps) {
+            \\    props.push('...');
+            \\  }
+            \\  
+            \\  // If no own properties, try to show some interesting inherited ones for DOM objects
+            \\  if (props.length === 0 && typeof obj.type !== 'undefined') {
+            \\    // Likely an Event - show key properties
+            \\    const eventProps = ['type', 'target', 'currentTarget', 'eventPhase', 'bubbles', 'cancelable', 'isTrusted'];
+            \\    for (const key of eventProps) {
+            \\      if (key in obj) {
+            \\        let val = obj[key];
+            \\        let valStr;
+            \\        if (val === null) valStr = 'null';
+            \\        else if (val === undefined) valStr = 'undefined';
+            \\        else if (typeof val === 'string') valStr = "'" + val + "'";
+            \\        else valStr = String(val);
+            \\        props.push(key + ': ' + valStr);
+            \\        if (props.length >= maxProps) break;
+            \\      }
+            \\    }
+            \\    if (props.length < eventProps.length) props.push('...');
+            \\  }
+            \\  
+            \\  if (props.length === 0) {
+            \\    return name + ' {}';
+            \\  }
+            \\  
+            \\  return name + ' {' + props.join(', ') + '}';
+            \\})()
+        ;
+
+        const format_str = v8.ffi.v8_String_NewFromUtf8(self.isolate, format_code.ptr, @intCast(format_code.len)) orelse {
+            return try self.allocator.dupe(u8, "[object]");
+        };
+
+        const format_script = v8.ffi.v8_Script_Compile(self.context, format_str) orelse {
+            return try self.allocator.dupe(u8, "[object]");
+        };
+
+        const format_result = v8.ffi.v8_Script_Run(self.context, format_script) orelse {
+            return try self.allocator.dupe(u8, "[object]");
+        };
+
+        const result_str = v8.ffi.v8_Value_ToString(format_result, self.context) orelse {
+            return try self.allocator.dupe(u8, "[object]");
         };
 
         const len = v8.ffi.v8_String_Utf8Length(result_str);
         const buffer = try self.allocator.alloc(u8, @intCast(len));
         _ = v8.ffi.v8_String_WriteUtf8(result_str, buffer.ptr, @intCast(len));
-
         return buffer;
     }
 
