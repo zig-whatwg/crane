@@ -70,6 +70,14 @@ pub const Instance = struct {
         // Step 2: Allocate state from arena allocator (variable size based on StateType)
         const state = try ArenaAllocator.get().create(StateType);
 
+        // Step 2a: CRITICAL - Zero-initialize state memory to prevent uninitialized reads
+        // This ensures all pointer fields are null, all numbers are 0, etc.
+        // Without this, optional pointer fields contain garbage that crashes when unwrapped.
+        // Rationale: Chrome/Blink uses C++ constructors that explicitly initialize all fields.
+        // In Zig, struct default values (= null) are NOT applied by allocator.create(),
+        // so we must explicitly zero the memory.
+        @memset(std.mem.asBytes(state), 0);
+
         // Step 3: Link state and context to instance
         instance.state = state;
         instance.ctx = ctx;
