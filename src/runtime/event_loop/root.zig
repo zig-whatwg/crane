@@ -46,8 +46,8 @@ const std = @import("std");
 /// Memory management (jemalloc, arena pool, slab allocator)
 pub const mem = @import("mem/root.zig");
 
-// TODO(Phase 1.3-1.6): I/O Polling
-// pub const io = @import("io/root.zig");
+/// I/O subsystem (poller, backends)
+pub const io = @import("io/root.zig");
 
 // TODO(Phase 1.8-1.12): Scheduling
 // pub const scheduler = @import("scheduler/root.zig");
@@ -168,4 +168,5 @@ test "memory module accessible" {
 
 test {
     _ = mem;
+    _ = io;
 }
