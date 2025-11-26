@@ -471,7 +471,22 @@ pub fn fromV8Value(
         return try fromV8String(allocator, isolate, context, string);
     }
     if (T == runtime.Any) return fromV8Any(value);
-    if (T == *const anyopaque) return @ptrCast(value); // Used for variadic ...any parameters
+    if (T == *const anyopaque) {
+        // For anyopaque parameters, we need to detect the actual type and convert appropriately
+        // This handles cases like (TrustedType or DOMString) unions where codegen uses anyopaque
+        if (v8.v8_Value_IsString(value)) {
+            // Convert string to DOMString and return pointer to allocated storage
+            const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
+            const dom_string = try fromV8String(allocator, isolate, context, string);
+
+            // Allocate storage for the DOMString and return pointer
+            const storage = try allocator.create(runtime.DOMString);
+            storage.* = dom_string;
+            return @ptrCast(storage);
+        }
+        // For non-string types, pass through as-is (used for variadic ...any parameters)
+        return @ptrCast(value);
+    }
 
     // Handle CallbackWrapper types (for callback interfaces like EventListener, NodeFilter, etc.)
     // We use the V8-specific callback wrapper and cast to runtime.CallbackWrapper pointer
