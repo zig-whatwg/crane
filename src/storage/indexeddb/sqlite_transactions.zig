@@ -92,6 +92,11 @@ pub const SQLiteTransaction = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        // Free all scope key copies
+        var iter = self.scope.keyIterator();
+        while (iter.next()) |key| {
+            self.allocator.free(key.*);
+        }
         self.scope.deinit();
         if (self.savepoint_name) |name| {
             self.allocator.free(name);
@@ -353,7 +358,7 @@ pub const RequestResult = union(enum) {
 /// Queue of requests for a transaction
 pub const TransactionQueue = struct {
     /// Pending requests
-    requests: std.ArrayList(QueuedRequest),
+    requests: std.ArrayListUnmanaged(QueuedRequest),
     /// Transaction ID
     transaction_id: u64,
     /// Allocator
@@ -365,7 +370,7 @@ pub const TransactionQueue = struct {
 
     pub fn init(allocator: std.mem.Allocator, transaction_id: u64) Self {
         return Self{
-            .requests = std.ArrayList(QueuedRequest).init(allocator),
+            .requests = .{},
             .transaction_id = transaction_id,
             .allocator = allocator,
             .next_request_id = 1,
@@ -373,7 +378,7 @@ pub const TransactionQueue = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        self.requests.deinit();
+        self.requests.deinit(self.allocator);
     }
 
     /// Add a request to the queue
@@ -381,7 +386,7 @@ pub const TransactionQueue = struct {
         const request_id = self.next_request_id;
         self.next_request_id += 1;
 
-        try self.requests.append(QueuedRequest{
+        try self.requests.append(self.allocator, QueuedRequest{
             .id = request_id,
             .operation = operation,
             .store_name = store_name,

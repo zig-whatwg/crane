@@ -122,6 +122,9 @@ pub const EvictionCandidate = persistence.EvictionCandidate;
 pub const EvictionCallback = persistence.EvictionCallback;
 pub const PressureLevel = persistence.PressureLevel;
 
+// IndexedDB (Phase 4-5)
+pub const indexeddb = @import("indexeddb/root.zig");
+
 test {
     _ = @import("backend.zig");
     _ = backends;
@@ -130,4 +133,5 @@ test {
     _ = storage_manager;
     _ = quota;
     _ = persistence;
+    _ = indexeddb;
 }

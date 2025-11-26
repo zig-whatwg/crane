@@ -218,13 +218,13 @@ pub const MVCCManager = struct {
 
     /// Clean up stale snapshots (force release)
     pub fn cleanupStaleSnapshots(self: *Self) usize {
-        var to_remove = std.ArrayList(SnapshotId).init(self.allocator);
-        defer to_remove.deinit();
+        var to_remove: std.ArrayListUnmanaged(SnapshotId) = .{};
+        defer to_remove.deinit(self.allocator);
 
         var iter = self.snapshots.iterator();
         while (iter.next()) |entry| {
             if (entry.value_ptr.ageMs() > self.max_snapshot_age_ms) {
-                to_remove.append(entry.key_ptr.*) catch continue;
+                to_remove.append(self.allocator, entry.key_ptr.*) catch continue;
             }
         }
 
@@ -320,7 +320,8 @@ pub const ConcurrentReadTracker = struct {
     pub const ReaderInfo = struct {
         transaction_id: u64,
         started_at: i64,
-        store_names: std.ArrayList([]const u8),
+        store_names: std.ArrayListUnmanaged([]const u8),
+        allocator: std.mem.Allocator,
     };
 
     pub fn init(allocator: std.mem.Allocator) Self {
@@ -338,7 +339,7 @@ pub const ConcurrentReadTracker = struct {
             for (entry.value_ptr.store_names.items) |name| {
                 self.allocator.free(name);
             }
-            entry.value_ptr.store_names.deinit();
+            entry.value_ptr.store_names.deinit(entry.value_ptr.allocator);
         }
         self.active_readers.deinit();
     }
@@ -348,7 +349,8 @@ pub const ConcurrentReadTracker = struct {
         const info = ReaderInfo{
             .transaction_id = transaction_id,
             .started_at = std.time.milliTimestamp(),
-            .store_names = std.ArrayList([]const u8).init(self.allocator),
+            .store_names = .{},
+            .allocator = self.allocator,
         };
 
         try self.active_readers.put(transaction_id, info);
@@ -367,7 +369,7 @@ pub const ConcurrentReadTracker = struct {
                 self.allocator.free(name);
             }
             var copy = kv.value;
-            copy.store_names.deinit();
+            copy.store_names.deinit(self.allocator);
         }
     }
 

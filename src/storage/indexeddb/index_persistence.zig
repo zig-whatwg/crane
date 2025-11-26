@@ -153,18 +153,18 @@ pub const IndexPersistence = struct {
         index_key: IDBKey,
         primary_key: IDBKey,
     ) ![]IndexEntry {
-        if (self.is_multi_entry and index_key == .array) {
+        if (self.is_multi_entry and index_key.key_type == .array) {
             // Multi-entry: create entry for each array element
-            const arr = index_key.array;
+            const arr = index_key.value.array;
 
             // Use a hash set to track seen keys (for deduplication)
             var seen = std.AutoHashMap(u64, void).init(allocator);
             defer seen.deinit();
 
-            var entries = std.ArrayList(IndexEntry).init(allocator);
+            var entries: std.ArrayListUnmanaged(IndexEntry) = .{};
             errdefer {
                 for (entries.items) |*e| e.deinit();
-                entries.deinit();
+                entries.deinit(allocator);
             }
 
             for (arr) |elem| {
@@ -173,11 +173,11 @@ pub const IndexPersistence = struct {
                 if (!seen.contains(hash)) {
                     try seen.put(hash, {});
                     const entry = try IndexEntry.init(allocator, elem, primary_key);
-                    try entries.append(entry);
+                    try entries.append(allocator, entry);
                 }
             }
 
-            return try entries.toOwnedSlice();
+            return try entries.toOwnedSlice(allocator);
         } else {
             // Single entry
             var entries = try allocator.alloc(IndexEntry, 1);
@@ -188,13 +188,12 @@ pub const IndexPersistence = struct {
 
     /// Simple hash for key deduplication
     fn hashKey(key: IDBKey) u64 {
-        return switch (key) {
-            .number => |n| @bitCast(n),
-            .string => |s| std.hash.Wyhash.hash(0, s),
-            .date => |d| @bitCast(d),
-            .binary => |b| std.hash.Wyhash.hash(0, b),
-            .array => |_| 0, // Arrays shouldn't appear in multi-entry expansion
-            .none => 0,
+        return switch (key.key_type) {
+            .number => @bitCast(key.value.number),
+            .string => std.hash.Wyhash.hash(0, key.value.string),
+            .date => @bitCast(key.value.date),
+            .binary => std.hash.Wyhash.hash(0, key.value.binary),
+            .array => 0, // Arrays shouldn't appear in multi-entry expansion
         };
     }
 };
@@ -269,17 +268,19 @@ pub const IndexManager = struct {
         return self.indexes.count();
     }
 
+    const IndexEntryItem = struct { index_name: []const u8, entry: IndexEntry };
+
     /// Generate all index entries for a value
     pub fn generateAllEntries(
         self: *Self,
         allocator: std.mem.Allocator,
         primary_key: IDBKey,
         index_keys: std.StringHashMap(IDBKey),
-    ) !std.ArrayList(struct { index_name: []const u8, entry: IndexEntry }) {
-        var all_entries = std.ArrayList(struct { index_name: []const u8, entry: IndexEntry }).init(allocator);
+    ) !std.ArrayListUnmanaged(IndexEntryItem) {
+        var all_entries: std.ArrayListUnmanaged(IndexEntryItem) = .{};
         errdefer {
             for (all_entries.items) |*item| item.entry.deinit();
-            all_entries.deinit();
+            all_entries.deinit(allocator);
         }
 
         var iter = self.indexes.iterator();
@@ -291,7 +292,7 @@ pub const IndexManager = struct {
                 defer allocator.free(entries);
 
                 for (entries) |entry| {
-                    try all_entries.append(.{
+                    try all_entries.append(allocator, .{
                         .index_name = index.name,
                         .entry = entry,
                     });
@@ -390,8 +391,8 @@ pub const IndexSQL = struct {
 test "IndexEntry - init and deinit" {
     const allocator = std.testing.allocator;
 
-    const idx_key = IDBKey{ .string = "email@test.com" };
-    const pk = IDBKey{ .number = 1 };
+    const idx_key = IDBKey.string("email@test.com");
+    const pk = IDBKey.number(1);
 
     var entry = try IndexEntry.init(allocator, idx_key, pk);
     defer entry.deinit();
@@ -434,8 +435,8 @@ test "IndexPersistence - generateEntries single" {
     );
     defer persistence.deinit();
 
-    const idx_key = IDBKey{ .string = "Alice" };
-    const pk = IDBKey{ .number = 42 };
+    const idx_key = IDBKey.string("Alice");
+    const pk = IDBKey.number(42);
 
     const entries = try persistence.generateEntries(allocator, idx_key, pk);
     defer {
@@ -465,12 +466,12 @@ test "IndexPersistence - generateEntries multi-entry" {
 
     // Array of tags
     var arr = [_]IDBKey{
-        IDBKey{ .string = "red" },
-        IDBKey{ .string = "blue" },
-        IDBKey{ .string = "green" },
+        IDBKey.string("red"),
+        IDBKey.string("blue"),
+        IDBKey.string("green"),
     };
-    const idx_key = IDBKey{ .array = &arr };
-    const pk = IDBKey{ .number = 1 };
+    const idx_key = IDBKey.array(&arr);
+    const pk = IDBKey.number(1);
 
     const entries = try persistence.generateEntries(allocator, idx_key, pk);
     defer {

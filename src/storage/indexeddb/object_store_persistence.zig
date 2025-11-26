@@ -56,15 +56,17 @@ pub const KeyTypeTag = enum(u8) {
     pos_infinity = 255,
 };
 
+/// Key encoding error type
+pub const KeyEncodingError = error{OutOfMemory};
+
 /// Encode an IDBKey to bytes for SQLite storage
-pub fn encodeKey(allocator: std.mem.Allocator, key: IDBKey) ![]u8 {
-    return switch (key) {
-        .number => |n| try encodeNumber(allocator, n),
-        .string => |s| try encodeString(allocator, s),
-        .date => |d| try encodeDate(allocator, d),
-        .binary => |b| try encodeBinary(allocator, b),
-        .array => |arr| try encodeArray(allocator, arr),
-        .none => error.InvalidKey,
+pub fn encodeKey(allocator: std.mem.Allocator, key: IDBKey) KeyEncodingError![]u8 {
+    return switch (key.key_type) {
+        .number => try encodeNumber(allocator, key.value.number),
+        .string => try encodeString(allocator, key.value.string),
+        .date => try encodeDate(allocator, key.value.date),
+        .binary => try encodeBinary(allocator, key.value.binary),
+        .array => try encodeArray(allocator, key.value.array),
     };
 }
 
@@ -171,8 +173,11 @@ fn encodeArray(allocator: std.mem.Allocator, arr: []const IDBKey) ![]u8 {
     return result;
 }
 
+/// Key decoding error type
+pub const KeyDecodingError = error{ OutOfMemory, InvalidKey };
+
 /// Decode bytes to an IDBKey
-pub fn decodeKey(allocator: std.mem.Allocator, data: []const u8) !IDBKey {
+pub fn decodeKey(allocator: std.mem.Allocator, data: []const u8) KeyDecodingError!IDBKey {
     if (data.len == 0) return error.InvalidKey;
 
     const tag: KeyTypeTag = @enumFromInt(data[0]);
@@ -204,12 +209,11 @@ fn decodeNumber(data: []const u8) !IDBKey {
     }
 
     const value: f64 = @bitCast(bits);
-    return IDBKey{ .number = value };
+    return IDBKey.number(value);
 }
 
 fn decodeString(allocator: std.mem.Allocator, data: []const u8) !IDBKey {
-    const str = try allocator.dupe(u8, data);
-    return IDBKey{ .string = str };
+    return IDBKey.stringOwned(allocator, data);
 }
 
 fn decodeDate(data: []const u8) !IDBKey {
@@ -220,13 +224,13 @@ fn decodeDate(data: []const u8) !IDBKey {
         u |= @as(u64, data[i]) << @intCast(56 - i * 8);
     }
 
-    const millis: i64 = @bitCast(u -% @as(u64, @bitCast(std.math.minInt(i64))));
-    return IDBKey{ .date = millis };
+    const offset: u64 = @bitCast(@as(i64, std.math.minInt(i64)));
+    const millis: i64 = @bitCast(u -% offset);
+    return IDBKey.date(millis);
 }
 
 fn decodeBinary(allocator: std.mem.Allocator, data: []const u8) !IDBKey {
-    const bin = try allocator.dupe(u8, data);
-    return IDBKey{ .binary = bin };
+    return IDBKey.binaryOwned(allocator, data);
 }
 
 fn decodeArray(allocator: std.mem.Allocator, data: []const u8) !IDBKey {
@@ -258,7 +262,12 @@ fn decodeArray(allocator: std.mem.Allocator, data: []const u8) !IDBKey {
         pos += elem_len;
     }
 
-    return IDBKey{ .array = elements };
+    // Array keys with owned elements
+    return IDBKey{
+        .key_type = .array,
+        .value = .{ .array = elements },
+        .allocator = allocator,
+    };
 }
 
 // ============================================================================
@@ -469,7 +478,7 @@ pub const ObjectStoreSQL = struct {
 test "encodeKey and decodeKey - number" {
     const allocator = std.testing.allocator;
 
-    const key = IDBKey{ .number = 42.5 };
+    const key = IDBKey.number(42.5);
     const encoded = try encodeKey(allocator, key);
     defer allocator.free(encoded);
 
@@ -477,41 +486,41 @@ test "encodeKey and decodeKey - number" {
     try std.testing.expectEqual(@as(usize, 9), encoded.len);
 
     const decoded = try decodeKey(allocator, encoded);
-    try std.testing.expectEqual(key.number, decoded.number);
+    try std.testing.expectEqual(key.value.number, decoded.value.number);
 }
 
 test "encodeKey and decodeKey - string" {
     const allocator = std.testing.allocator;
 
-    const key = IDBKey{ .string = "hello" };
+    const key = IDBKey.string("hello");
     const encoded = try encodeKey(allocator, key);
     defer allocator.free(encoded);
 
     try std.testing.expectEqual(@as(u8, @intFromEnum(KeyTypeTag.string)), encoded[0]);
 
-    const decoded = try decodeKey(allocator, encoded);
-    defer allocator.free(decoded.string);
+    var decoded = try decodeKey(allocator, encoded);
+    defer decoded.deinit();
 
-    try std.testing.expectEqualStrings("hello", decoded.string);
+    try std.testing.expectEqualStrings("hello", decoded.value.string);
 }
 
 test "encodeKey - number ordering" {
     const allocator = std.testing.allocator;
 
     // Test that encoded numbers sort correctly
-    const neg_inf = try encodeKey(allocator, IDBKey{ .number = -std.math.inf(f64) });
+    const neg_inf = try encodeKey(allocator, IDBKey.number(-std.math.inf(f64)));
     defer allocator.free(neg_inf);
 
-    const neg_one = try encodeKey(allocator, IDBKey{ .number = -1 });
+    const neg_one = try encodeKey(allocator, IDBKey.number(-1));
     defer allocator.free(neg_one);
 
-    const zero = try encodeKey(allocator, IDBKey{ .number = 0 });
+    const zero = try encodeKey(allocator, IDBKey.number(0));
     defer allocator.free(zero);
 
-    const one = try encodeKey(allocator, IDBKey{ .number = 1 });
+    const one = try encodeKey(allocator, IDBKey.number(1));
     defer allocator.free(one);
 
-    const pos_inf = try encodeKey(allocator, IDBKey{ .number = std.math.inf(f64) });
+    const pos_inf = try encodeKey(allocator, IDBKey.number(std.math.inf(f64)));
     defer allocator.free(pos_inf);
 
     // Byte-by-byte comparison should give correct ordering
@@ -580,11 +589,11 @@ test "ObjectStorePersistence - out-of-line keys" {
 test "ObjectStoreRecord - init and deinit" {
     const allocator = std.testing.allocator;
 
-    const key = IDBKey{ .number = 1 };
+    const key = IDBKey.number(1);
     var record = try ObjectStoreRecord.init(allocator, key, "test value");
     defer record.deinit();
 
-    try std.testing.expectEqual(@as(f64, 1), record.key.number);
+    try std.testing.expectEqual(@as(f64, 1), record.key.value.number);
     try std.testing.expectEqualStrings("test value", record.value);
     try std.testing.expect(record.encoded_key.len > 0);
 }
