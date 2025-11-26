@@ -133,6 +133,19 @@ pub const DatabaseTaskQueue = async_operations.DatabaseTaskQueue;
 pub const resolveRequest = async_operations.resolveRequest;
 pub const rejectRequest = async_operations.rejectRequest;
 
+// WebIDL type definitions for codegen integration
+pub const webidl_types = @import("webidl_types.zig");
+pub const WebIDLIDBRequest = webidl_types.WebIDLIDBRequest;
+pub const WebIDLIDBDatabase = webidl_types.WebIDLIDBDatabase;
+pub const WebIDLIDBKeyRange = webidl_types.WebIDLIDBKeyRange;
+pub const InterfaceRegistry = webidl_types.InterfaceRegistry;
+// WebIDL dictionary types
+pub const IDBVersionChangeEventInit = webidl_types.IDBVersionChangeEventInit;
+pub const IDBTransactionOptions = webidl_types.IDBTransactionOptions;
+pub const IDBObjectStoreParameters = webidl_types.IDBObjectStoreParameters;
+pub const IDBIndexParameters = webidl_types.IDBIndexParameters;
+pub const IDBGetAllOptions = webidl_types.IDBGetAllOptions;
+
 // Error types
 pub const IDBError = @import("errors.zig").IDBError;
 
@@ -151,4 +164,5 @@ test {
     _ = version_change_event;
     _ = events;
     _ = async_operations;
+    _ = webidl_types;
 }
