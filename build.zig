@@ -149,6 +149,12 @@ pub fn build(b: *std.Build) void {
     storage_mod.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/sqlite/include" });
     storage_mod.linkSystemLibrary("sqlite3", .{});
 
+    // Link LevelDB for storage backends
+    storage_mod.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/leveldb/lib" });
+    storage_mod.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/leveldb/include" });
+    storage_mod.linkSystemLibrary("leveldb", .{});
+    // Note: LevelDB C API should work without explicit C++ linking on most systems
+
     // Runtime module (WebIDL runtime infrastructure)
     const runtime_mod = b.addModule("runtime", .{
         .root_source_file = b.path("src/runtime/root.zig"),
