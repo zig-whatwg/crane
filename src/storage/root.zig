@@ -113,6 +113,15 @@ pub const MINIMUM_QUOTA = quota.MINIMUM_QUOTA;
 pub const MAXIMUM_ORIGIN_QUOTA = quota.MAXIMUM_ORIGIN_QUOTA;
 pub const formatBytes = quota.formatBytes;
 
+// Persistence modes (Phase 3.13)
+pub const persistence = @import("persistence.zig");
+pub const PersistenceManager = persistence.PersistenceManager;
+pub const EvictionPolicy = persistence.EvictionPolicy;
+pub const EvictionPriority = persistence.EvictionPriority;
+pub const EvictionCandidate = persistence.EvictionCandidate;
+pub const EvictionCallback = persistence.EvictionCallback;
+pub const PressureLevel = persistence.PressureLevel;
+
 test {
     _ = @import("backend.zig");
     _ = backends;
@@ -120,4 +129,5 @@ test {
     _ = standard;
     _ = storage_manager;
     _ = quota;
+    _ = persistence;
 }
