@@ -102,10 +102,22 @@ pub const deinitGlobalStorageShed = standard.deinitGlobalStorageShed;
 pub const storage_manager = @import("storage_manager.zig");
 pub const StorageManager = storage_manager.StorageManager;
 
+// Quota management (Phase 3.12)
+pub const quota = @import("quota.zig");
+pub const QuotaManager = quota.QuotaManager;
+pub const QuotaConfig = quota.QuotaConfig;
+pub const QuotaCheckResult = quota.QuotaCheckResult;
+pub const PressureCallback = quota.PressureCallback;
+pub const DEFAULT_ORIGIN_QUOTA = quota.DEFAULT_ORIGIN_QUOTA;
+pub const MINIMUM_QUOTA = quota.MINIMUM_QUOTA;
+pub const MAXIMUM_ORIGIN_QUOTA = quota.MAXIMUM_ORIGIN_QUOTA;
+pub const formatBytes = quota.formatBytes;
+
 test {
     _ = @import("backend.zig");
     _ = backends;
     _ = migration;
     _ = standard;
     _ = storage_manager;
+    _ = quota;
 }
