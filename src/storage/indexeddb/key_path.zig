@@ -182,8 +182,13 @@ pub fn evaluateKeyPath(
         .array => |paths| {
             // Step 1: keyPath is a list of strings
             var results: std.ArrayListUnmanaged(ExtractedValue) = .empty;
-            errdefer {
-                results.deinit(allocator);
+            var success = false;
+
+            // Use defer to clean up if we don't reach success
+            defer {
+                if (!success) {
+                    results.deinit(allocator);
+                }
             }
 
             for (paths) |path| {
@@ -194,6 +199,7 @@ pub fn evaluateKeyPath(
                 }
             }
 
+            success = true;
             return .{ .value = .{ .array = try results.toOwnedSlice(allocator) } };
         },
         .single => |path| {
@@ -308,7 +314,7 @@ pub fn extractKey(
     }
 }
 
-/// Convert an extracted value to a key
+/// Convert an extracted value to a key (borrowed - not for storage)
 /// https://w3c.github.io/IndexedDB/#convert-a-value-to-a-key
 fn convertToKey(value: ExtractedValue) ExtractionResult {
     return switch (value) {
@@ -337,6 +343,174 @@ fn convertToKey(value: ExtractedValue) ExtractionResult {
         },
         .null_value, .undefined, .object => .invalid,
     };
+}
+
+/// Result of owned key extraction - the key owns its data
+pub const OwnedExtractionResult = union(enum) {
+    /// Successfully extracted an owned key
+    key: IDBKey,
+    /// Key path doesn't exist in the value
+    failure: void,
+    /// Value cannot be converted to a valid key
+    invalid: void,
+};
+
+/// Extract a key from a value using a key path (owned - for storage)
+/// https://w3c.github.io/IndexedDB/#extract-a-key-from-a-value-using-a-key-path
+///
+/// This version returns an owned key with allocated data, suitable for storage.
+/// For compound key paths (arrays), creates an owned array key.
+/// The caller is responsible for calling deinit() on the returned key.
+pub fn extractKeyOwned(
+    allocator: std.mem.Allocator,
+    value: ExtractedValue,
+    key_path: KeyPath,
+    multi_entry: bool,
+) IDBError!OwnedExtractionResult {
+    // Track if we need to free the intermediate result
+    // evaluateKeyPath allocates a new array ONLY when key_path is an array
+    const key_path_is_array = switch (key_path) {
+        .array => true,
+        .single => false,
+    };
+
+    // Step 1: Evaluate key path
+    const eval_result = try evaluateKeyPath(allocator, value, key_path);
+
+    // Step 2: Check for failure
+    switch (eval_result) {
+        .failure => {
+            // For array key paths, evaluateKeyPath may have allocated memory
+            // that needs to be freed even on failure. However, failure means
+            // no allocation was made (it returns early), so nothing to free.
+            return .failure;
+        },
+        .value => |v| {
+            // For array key paths, evaluateKeyPath allocates an intermediate array
+            // that we need to free after converting to the owned key.
+            // Single key paths return borrowed data from the input value.
+            defer {
+                if (key_path_is_array) {
+                    switch (v) {
+                        .array => |arr| allocator.free(arr),
+                        else => {},
+                    }
+                }
+            }
+
+            // Step 3: Convert to owned key
+            if (multi_entry) {
+                return convertToMultiEntryKeyOwned(allocator, v);
+            } else {
+                return convertToKeyOwned(allocator, v);
+            }
+        },
+    }
+}
+
+/// Convert an extracted value to an owned key (for storage)
+/// https://w3c.github.io/IndexedDB/#convert-a-value-to-a-key
+///
+/// This creates deep copies of string/binary data and properly allocates
+/// array keys so the resulting key owns all its data.
+fn convertToKeyOwned(allocator: std.mem.Allocator, value: ExtractedValue) IDBError!OwnedExtractionResult {
+    return switch (value) {
+        .number => |n| {
+            // NaN is invalid
+            if (std.math.isNan(n)) return .invalid;
+            return .{ .key = IDBKey.number(n) };
+        },
+        .date => |d| .{ .key = IDBKey.date(d) },
+        .string => |s| .{ .key = try IDBKey.stringOwned(allocator, s) },
+        .binary => |b| .{ .key = try IDBKey.binaryOwned(allocator, b) },
+        .array => |arr| {
+            // Convert array elements to owned keys
+            var keys: std.ArrayListUnmanaged(IDBKey) = .empty;
+            errdefer {
+                for (keys.items) |*k| {
+                    k.deinit();
+                }
+                keys.deinit(allocator);
+            }
+
+            for (arr) |elem| {
+                const result = try convertToKeyOwned(allocator, elem);
+                switch (result) {
+                    .key => |k| try keys.append(allocator, k),
+                    .failure, .invalid => {
+                        // Clean up already converted keys
+                        for (keys.items) |*k| {
+                            k.deinit();
+                        }
+                        keys.deinit(allocator);
+                        return .invalid;
+                    },
+                }
+            }
+
+            // Create owned array key from the keys
+            const key_slice = try keys.toOwnedSlice(allocator);
+            return .{ .key = .{
+                .key_type = .array,
+                .value = .{ .array = key_slice },
+                .allocator = allocator,
+            } };
+        },
+        .null_value, .undefined, .object => .invalid,
+    };
+}
+
+/// Convert a value to an owned multiEntry key
+/// https://w3c.github.io/IndexedDB/#convert-a-value-to-a-multientry-key
+fn convertToMultiEntryKeyOwned(allocator: std.mem.Allocator, value: ExtractedValue) IDBError!OwnedExtractionResult {
+    switch (value) {
+        .array => |arr| {
+            // For arrays with multiEntry, extract valid keys from elements
+            var keys: std.ArrayListUnmanaged(IDBKey) = .empty;
+            errdefer {
+                for (keys.items) |*k| {
+                    k.deinit();
+                }
+                keys.deinit(allocator);
+            }
+
+            for (arr) |elem| {
+                const result = try convertToKeyOwned(allocator, elem);
+                switch (result) {
+                    .key => |k| {
+                        // Skip duplicates
+                        var duplicate = false;
+                        for (keys.items) |existing| {
+                            if (key_mod.compare(k, existing) == 0) {
+                                duplicate = true;
+                                break;
+                            }
+                        }
+                        if (duplicate) {
+                            // Clean up the duplicate key
+                            var k_mut = k;
+                            k_mut.deinit();
+                        } else {
+                            try keys.append(allocator, k);
+                        }
+                    },
+                    // Invalid values are ignored in multiEntry
+                    .failure, .invalid => {},
+                }
+            }
+
+            const key_slice = try keys.toOwnedSlice(allocator);
+            return .{ .key = .{
+                .key_type = .array,
+                .value = .{ .array = key_slice },
+                .allocator = allocator,
+            } };
+        },
+        else => {
+            // Non-arrays use regular conversion
+            return convertToKeyOwned(allocator, value);
+        },
+    }
 }
 
 /// Convert a value to a multiEntry key
@@ -685,4 +859,162 @@ test "checkKeyInjectable - cannot inject into primitive" {
     const value = ExtractedValue{ .number = 42.0 };
 
     try std.testing.expect(!checkKeyInjectable(value, "id"));
+}
+
+// ============================================================================
+// Owned Key Extraction Tests (for storage)
+// ============================================================================
+
+test "extractKeyOwned - number value" {
+    const allocator = std.testing.allocator;
+    const value = ExtractedValue{ .number = 42.0 };
+
+    const result = try extractKeyOwned(allocator, value, .{ .single = "" }, false);
+    switch (result) {
+        .key => |k| {
+            // Number keys don't own data, but we still check it works
+            try std.testing.expectEqual(IDBKeyType.number, k.key_type);
+            try std.testing.expectEqual(@as(f64, 42.0), k.value.number);
+        },
+        .failure, .invalid => return error.UnexpectedResult,
+    }
+}
+
+test "extractKeyOwned - string value creates owned copy" {
+    const allocator = std.testing.allocator;
+    const value = ExtractedValue{ .string = "hello" };
+
+    const result = try extractKeyOwned(allocator, value, .{ .single = "" }, false);
+    switch (result) {
+        .key => |k| {
+            var key = k;
+            defer key.deinit();
+
+            try std.testing.expectEqual(IDBKeyType.string, key.key_type);
+            try std.testing.expectEqualStrings("hello", key.value.string);
+            // Verify it's owned (has allocator)
+            try std.testing.expect(key.allocator != null);
+        },
+        .failure, .invalid => return error.UnexpectedResult,
+    }
+}
+
+test "extractKeyOwned - compound key path creates array key" {
+    const allocator = std.testing.allocator;
+
+    // Create object with firstName and lastName properties
+    const props = [_]ExtractedValue.Property{
+        .{ .key = "firstName", .value = .{ .string = "John" } },
+        .{ .key = "lastName", .value = .{ .string = "Smith" } },
+    };
+    const value = ExtractedValue{ .object = &props };
+
+    // Use compound key path ["firstName", "lastName"]
+    const paths = [_][]const u8{ "firstName", "lastName" };
+    const result = try extractKeyOwned(allocator, value, .{ .array = &paths }, false);
+
+    switch (result) {
+        .key => |k| {
+            var key = k;
+            defer key.deinit();
+
+            // Should be an array key
+            try std.testing.expectEqual(IDBKeyType.array, key.key_type);
+            try std.testing.expectEqual(@as(usize, 2), key.value.array.len);
+
+            // First element should be "John"
+            try std.testing.expectEqual(IDBKeyType.string, key.value.array[0].key_type);
+            try std.testing.expectEqualStrings("John", key.value.array[0].value.string);
+
+            // Second element should be "Smith"
+            try std.testing.expectEqual(IDBKeyType.string, key.value.array[1].key_type);
+            try std.testing.expectEqualStrings("Smith", key.value.array[1].value.string);
+        },
+        .failure, .invalid => return error.UnexpectedResult,
+    }
+}
+
+test "extractKeyOwned - compound key with nested path" {
+    const allocator = std.testing.allocator;
+
+    // Create object with nested properties
+    const address_props = [_]ExtractedValue.Property{
+        .{ .key = "city", .value = .{ .string = "Boston" } },
+        .{ .key = "zip", .value = .{ .string = "02101" } },
+    };
+    const props = [_]ExtractedValue.Property{
+        .{ .key = "name", .value = .{ .string = "John" } },
+        .{ .key = "address", .value = .{ .object = &address_props } },
+    };
+    const value = ExtractedValue{ .object = &props };
+
+    // Use compound key path ["name", "address.city"]
+    const paths = [_][]const u8{ "name", "address.city" };
+    const result = try extractKeyOwned(allocator, value, .{ .array = &paths }, false);
+
+    switch (result) {
+        .key => |k| {
+            var key = k;
+            defer key.deinit();
+
+            try std.testing.expectEqual(IDBKeyType.array, key.key_type);
+            try std.testing.expectEqual(@as(usize, 2), key.value.array.len);
+
+            try std.testing.expectEqualStrings("John", key.value.array[0].value.string);
+            try std.testing.expectEqualStrings("Boston", key.value.array[1].value.string);
+        },
+        .failure, .invalid => return error.UnexpectedResult,
+    }
+}
+
+test "extractKeyOwned - compound key fails if any path missing" {
+    const allocator = std.testing.allocator;
+
+    const props = [_]ExtractedValue.Property{
+        .{ .key = "firstName", .value = .{ .string = "John" } },
+        // lastName is missing
+    };
+    const value = ExtractedValue{ .object = &props };
+
+    const paths = [_][]const u8{ "firstName", "lastName" };
+    const result = try extractKeyOwned(allocator, value, .{ .array = &paths }, false);
+
+    // Should fail because lastName doesn't exist
+    switch (result) {
+        .failure => {},
+        .key, .invalid => return error.ExpectedFailure,
+    }
+}
+
+test "extractKeyOwned - multiEntry with array value" {
+    const allocator = std.testing.allocator;
+
+    // Create object with tags array
+    const tag1 = ExtractedValue{ .string = "red" };
+    const tag2 = ExtractedValue{ .string = "blue" };
+    const tag3 = ExtractedValue{ .string = "red" }; // duplicate
+    const tags = [_]ExtractedValue{ tag1, tag2, tag3 };
+
+    const props = [_]ExtractedValue.Property{
+        .{ .key = "tags", .value = .{ .array = &tags } },
+    };
+    const value = ExtractedValue{ .object = &props };
+
+    // Extract with multiEntry flag
+    const result = try extractKeyOwned(allocator, value, .{ .single = "tags" }, true);
+
+    switch (result) {
+        .key => |k| {
+            var key = k;
+            defer key.deinit();
+
+            // Should be array key with duplicates removed
+            try std.testing.expectEqual(IDBKeyType.array, key.key_type);
+            try std.testing.expectEqual(@as(usize, 2), key.value.array.len); // Only 2, duplicate removed
+
+            try std.testing.expectEqualStrings("red", key.value.array[0].value.string);
+            try std.testing.expectEqualStrings("blue", key.value.array[1].value.string);
+        },
+        .failure, .invalid => return error.UnexpectedResult,
+    }
 }

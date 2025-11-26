@@ -41,6 +41,9 @@ const IDBCursorDirection = @import("cursor.zig").IDBCursorDirection;
 const IDBKey = @import("key.zig").IDBKey;
 const IDBKeyRange = @import("key_range.zig").IDBKeyRange;
 const IDBError = @import("errors.zig").IDBError;
+const key_path_mod = @import("key_path.zig");
+const KeyPath = key_path_mod.KeyPath;
+const ExtractedValue = key_path_mod.ExtractedValue;
 
 /// Options for createIndex
 pub const IDBIndexParameters = struct {
@@ -77,8 +80,17 @@ pub const IDBObjectStore = struct {
     /// Associated transaction
     transaction: *IDBTransaction,
 
-    /// Key path (null for out-of-line keys)
+    /// Simple key path (null for out-of-line keys)
+    /// This is for backward compatibility with existing code.
+    /// For compound key paths, use compound_key_path.
     key_path: ?[]const u8,
+
+    /// Compound key path (array of key paths)
+    /// https://w3c.github.io/IndexedDB/#object-store-key-path
+    ///
+    /// When set, this takes precedence over key_path.
+    /// Compound keys allow indexing by multiple properties, e.g., ["firstName", "lastName"]
+    compound_key_path: ?[]const []const u8,
 
     /// Whether auto-increment is enabled
     auto_increment: bool,
@@ -99,10 +111,85 @@ pub const IDBObjectStore = struct {
             .name = name,
             .transaction = transaction,
             .key_path = null,
+            .compound_key_path = null,
             .auto_increment = false,
             .indexes = std.StringHashMap(*IDBIndex).init(allocator),
             .records = .{},
             .key_generator = 1,
+        };
+    }
+
+    /// Set a single key path (simple key)
+    pub fn setKeyPath(self: *Self, path: []const u8) void {
+        self.key_path = path;
+        self.compound_key_path = null;
+    }
+
+    /// Set a compound key path (array of paths)
+    /// https://w3c.github.io/IndexedDB/#object-store-key-path
+    ///
+    /// Compound keys allow indexing by multiple properties, e.g., ["firstName", "lastName"]
+    /// Results in array keys like [firstName_value, lastName_value]
+    pub fn setCompoundKeyPath(self: *Self, paths: []const []const u8) void {
+        self.compound_key_path = paths;
+        self.key_path = null;
+    }
+
+    /// Check if this object store uses in-line keys
+    /// https://w3c.github.io/IndexedDB/#object-store-in-line-keys
+    ///
+    /// An object store has in-line keys if it has a key path.
+    pub fn usesInlineKeys(self: *const Self) bool {
+        return self.key_path != null or self.compound_key_path != null;
+    }
+
+    /// Check if this object store uses a compound key path
+    /// https://w3c.github.io/IndexedDB/#object-store-key-path
+    pub fn hasCompoundKeyPath(self: *const Self) bool {
+        return self.compound_key_path != null;
+    }
+
+    /// Get the key path as a string (for single paths only)
+    /// Returns null for compound or missing key paths
+    pub fn getKeyPathString(self: *const Self) ?[]const u8 {
+        return self.key_path;
+    }
+
+    /// Get the key path as an array of strings (for compound paths)
+    /// Returns null for single or missing key paths
+    pub fn getKeyPathArray(self: *const Self) ?[]const []const u8 {
+        return self.compound_key_path;
+    }
+
+    /// Get the effective key path (internal helper)
+    /// Returns the key path in KeyPath union form
+    fn getEffectiveKeyPath(self: *const Self) ?KeyPath {
+        if (self.compound_key_path) |paths| {
+            return .{ .array = paths };
+        }
+        if (self.key_path) |path| {
+            return .{ .single = path };
+        }
+        return null;
+    }
+
+    /// Extract a key from a value using the object store's key path
+    /// https://w3c.github.io/IndexedDB/#extract-a-key-from-a-value-using-a-key-path
+    ///
+    /// For compound key paths, returns an array key containing the values
+    /// extracted from each path in order.
+    ///
+    /// Returns null if:
+    /// - The object store doesn't use in-line keys
+    /// - Any path in a compound key path doesn't exist in the value
+    /// - The extracted value cannot be converted to a valid key
+    pub fn extractKeyFromValue(self: *Self, value: ExtractedValue) IDBError!?IDBKey {
+        const kp = self.getEffectiveKeyPath() orelse return null;
+
+        const result = try key_path_mod.extractKeyOwned(self.allocator, value, kp, false);
+        return switch (result) {
+            .key => |k| k,
+            .failure, .invalid => null,
         };
     }
 
@@ -531,4 +618,161 @@ test "IDBObjectStore - count empty" {
 
     try std.testing.expect(request.done_flag);
     try std.testing.expectEqual(@as(u64, 0), request.result.?.count);
+}
+
+test "IDBObjectStore - setKeyPath single" {
+    const allocator = std.testing.allocator;
+
+    var db = @import("database.zig").IDBDatabase.init(allocator, "testdb", 1);
+    defer db.deinit();
+
+    const scope = [_][]const u8{"store1"};
+    var txn = IDBTransaction.init(allocator, &db, &scope, .readwrite);
+    defer txn.deinit();
+
+    var store = IDBObjectStore.init(allocator, "store1", &txn);
+    defer store.deinit();
+
+    store.setKeyPath("id");
+
+    try std.testing.expect(store.usesInlineKeys());
+    try std.testing.expect(!store.hasCompoundKeyPath());
+    try std.testing.expectEqualStrings("id", store.getKeyPathString().?);
+    try std.testing.expect(store.getKeyPathArray() == null);
+    try std.testing.expect(store.compound_key_path == null);
+}
+
+test "IDBObjectStore - setCompoundKeyPath" {
+    const allocator = std.testing.allocator;
+
+    var db = @import("database.zig").IDBDatabase.init(allocator, "testdb", 1);
+    defer db.deinit();
+
+    const scope = [_][]const u8{"store1"};
+    var txn = IDBTransaction.init(allocator, &db, &scope, .readwrite);
+    defer txn.deinit();
+
+    var store = IDBObjectStore.init(allocator, "store1", &txn);
+    defer store.deinit();
+
+    const paths = [_][]const u8{ "firstName", "lastName" };
+    store.setCompoundKeyPath(&paths);
+
+    try std.testing.expect(store.usesInlineKeys());
+    try std.testing.expect(store.hasCompoundKeyPath());
+    try std.testing.expect(store.getKeyPathString() == null);
+
+    const arr = store.getKeyPathArray().?;
+    try std.testing.expectEqual(@as(usize, 2), arr.len);
+    try std.testing.expectEqualStrings("firstName", arr[0]);
+    try std.testing.expectEqualStrings("lastName", arr[1]);
+}
+
+test "IDBObjectStore - extractKeyFromValue with single path" {
+    const allocator = std.testing.allocator;
+
+    var db = @import("database.zig").IDBDatabase.init(allocator, "testdb", 1);
+    defer db.deinit();
+
+    const scope = [_][]const u8{"store1"};
+    var txn = IDBTransaction.init(allocator, &db, &scope, .readwrite);
+    defer txn.deinit();
+
+    var store = IDBObjectStore.init(allocator, "store1", &txn);
+    defer store.deinit();
+
+    store.setKeyPath("id");
+
+    const props = [_]ExtractedValue.Property{
+        .{ .key = "id", .value = .{ .number = 123 } },
+        .{ .key = "name", .value = .{ .string = "test" } },
+    };
+    const value = ExtractedValue{ .object = &props };
+
+    var key = (try store.extractKeyFromValue(value)).?;
+    defer key.deinit();
+
+    try std.testing.expectEqual(@import("key.zig").IDBKeyType.number, key.key_type);
+    try std.testing.expectEqual(@as(f64, 123), key.value.number);
+}
+
+test "IDBObjectStore - extractKeyFromValue with compound path" {
+    const allocator = std.testing.allocator;
+
+    var db = @import("database.zig").IDBDatabase.init(allocator, "testdb", 1);
+    defer db.deinit();
+
+    const scope = [_][]const u8{"store1"};
+    var txn = IDBTransaction.init(allocator, &db, &scope, .readwrite);
+    defer txn.deinit();
+
+    var store = IDBObjectStore.init(allocator, "store1", &txn);
+    defer store.deinit();
+
+    const paths = [_][]const u8{ "firstName", "lastName" };
+    store.setCompoundKeyPath(&paths);
+
+    const props = [_]ExtractedValue.Property{
+        .{ .key = "firstName", .value = .{ .string = "John" } },
+        .{ .key = "lastName", .value = .{ .string = "Smith" } },
+    };
+    const value = ExtractedValue{ .object = &props };
+
+    var key = (try store.extractKeyFromValue(value)).?;
+    defer key.deinit();
+
+    // Should be an array key ["John", "Smith"]
+    try std.testing.expectEqual(@import("key.zig").IDBKeyType.array, key.key_type);
+    try std.testing.expectEqual(@as(usize, 2), key.value.array.len);
+    try std.testing.expectEqualStrings("John", key.value.array[0].value.string);
+    try std.testing.expectEqualStrings("Smith", key.value.array[1].value.string);
+}
+
+test "IDBObjectStore - extractKeyFromValue returns null for missing path" {
+    const allocator = std.testing.allocator;
+
+    var db = @import("database.zig").IDBDatabase.init(allocator, "testdb", 1);
+    defer db.deinit();
+
+    const scope = [_][]const u8{"store1"};
+    var txn = IDBTransaction.init(allocator, &db, &scope, .readwrite);
+    defer txn.deinit();
+
+    var store = IDBObjectStore.init(allocator, "store1", &txn);
+    defer store.deinit();
+
+    const paths = [_][]const u8{ "firstName", "lastName" };
+    store.setCompoundKeyPath(&paths);
+
+    // Object is missing lastName
+    const props = [_]ExtractedValue.Property{
+        .{ .key = "firstName", .value = .{ .string = "John" } },
+    };
+    const value = ExtractedValue{ .object = &props };
+
+    const key = try store.extractKeyFromValue(value);
+    try std.testing.expect(key == null);
+}
+
+test "IDBObjectStore - extractKeyFromValue returns null without key path" {
+    const allocator = std.testing.allocator;
+
+    var db = @import("database.zig").IDBDatabase.init(allocator, "testdb", 1);
+    defer db.deinit();
+
+    const scope = [_][]const u8{"store1"};
+    var txn = IDBTransaction.init(allocator, &db, &scope, .readwrite);
+    defer txn.deinit();
+
+    var store = IDBObjectStore.init(allocator, "store1", &txn);
+    defer store.deinit();
+
+    // No key path set - uses out-of-line keys
+    const props = [_]ExtractedValue.Property{
+        .{ .key = "id", .value = .{ .number = 123 } },
+    };
+    const value = ExtractedValue{ .object = &props };
+
+    const key = try store.extractKeyFromValue(value);
+    try std.testing.expect(key == null);
 }

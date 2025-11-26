@@ -131,6 +131,41 @@ pub const IDBKey = struct {
         };
     }
 
+    /// Create an array key (owned) - deep copies all elements
+    /// https://w3c.github.io/IndexedDB/#key-construct
+    ///
+    /// This is used for compound keys where the key path is a sequence.
+    /// Each element is cloned to ensure the array key owns its data.
+    pub fn arrayOwned(allocator: std.mem.Allocator, elements: []const IDBKey) !Self {
+        const arr = try allocator.alloc(IDBKey, elements.len);
+        errdefer allocator.free(arr);
+
+        var cloned_count: usize = 0;
+        errdefer {
+            // Clean up any successfully cloned keys on error
+            for (arr[0..cloned_count]) |*k| {
+                k.deinit();
+            }
+        }
+
+        for (elements, 0..) |elem, i| {
+            arr[i] = try elem.clone(allocator);
+            cloned_count += 1;
+        }
+
+        return Self{
+            .key_type = .array,
+            .value = .{ .array = arr },
+            .allocator = allocator,
+        };
+    }
+
+    /// Create an array key from a slice of values (builds owned array)
+    /// Convenience function for building compound keys
+    pub fn fromSlice(allocator: std.mem.Allocator, keys: []const IDBKey) !Self {
+        return arrayOwned(allocator, keys);
+    }
+
     /// Clean up owned resources
     pub fn deinit(self: *Self) void {
         if (self.allocator) |alloc| {
@@ -401,4 +436,91 @@ test "IDBKey - clone" {
 
     try std.testing.expectEqual(@as(i16, 0), compare(original, cloned));
     try std.testing.expectEqualStrings("test", cloned.value.string);
+}
+
+test "IDBKey - arrayOwned creates deep copy" {
+    const allocator = std.testing.allocator;
+
+    // Create source keys
+    const elements = [_]IDBKey{
+        IDBKey.number(1.0),
+        IDBKey.string("test"),
+        IDBKey.number(3.0),
+    };
+
+    // Create owned array key
+    var owned = try IDBKey.arrayOwned(allocator, &elements);
+    defer owned.deinit();
+
+    try std.testing.expectEqual(IDBKeyType.array, owned.key_type);
+    try std.testing.expectEqual(@as(usize, 3), owned.value.array.len);
+
+    // Verify elements
+    try std.testing.expectEqual(IDBKeyType.number, owned.value.array[0].key_type);
+    try std.testing.expectEqual(@as(f64, 1.0), owned.value.array[0].value.number);
+
+    try std.testing.expectEqual(IDBKeyType.string, owned.value.array[1].key_type);
+    try std.testing.expectEqualStrings("test", owned.value.array[1].value.string);
+
+    try std.testing.expectEqual(IDBKeyType.number, owned.value.array[2].key_type);
+    try std.testing.expectEqual(@as(f64, 3.0), owned.value.array[2].value.number);
+}
+
+test "IDBKey - arrayOwned with nested arrays" {
+    const allocator = std.testing.allocator;
+
+    // Create nested array structure
+    const inner = [_]IDBKey{
+        IDBKey.number(1.0),
+        IDBKey.number(2.0),
+    };
+    const inner_key = IDBKey.array(&inner);
+
+    const elements = [_]IDBKey{
+        inner_key,
+        IDBKey.string("outer"),
+    };
+
+    // Create owned array key
+    var owned = try IDBKey.arrayOwned(allocator, &elements);
+    defer owned.deinit();
+
+    try std.testing.expectEqual(IDBKeyType.array, owned.key_type);
+    try std.testing.expectEqual(@as(usize, 2), owned.value.array.len);
+
+    // Verify nested array
+    try std.testing.expectEqual(IDBKeyType.array, owned.value.array[0].key_type);
+    try std.testing.expectEqual(@as(usize, 2), owned.value.array[0].value.array.len);
+}
+
+test "IDBKey - fromSlice convenience function" {
+    const allocator = std.testing.allocator;
+
+    const elements = [_]IDBKey{
+        IDBKey.number(10.0),
+        IDBKey.number(20.0),
+    };
+
+    var key = try IDBKey.fromSlice(allocator, &elements);
+    defer key.deinit();
+
+    try std.testing.expectEqual(IDBKeyType.array, key.key_type);
+    try std.testing.expectEqual(@as(usize, 2), key.value.array.len);
+}
+
+test "IDBKey - compound key comparison" {
+    // Test comparing compound keys (arrays) for proper ordering
+    const arr1 = [_]IDBKey{ IDBKey.string("Smith"), IDBKey.string("John") };
+    const arr2 = [_]IDBKey{ IDBKey.string("Smith"), IDBKey.string("Jane") };
+    const arr3 = [_]IDBKey{ IDBKey.string("Adams"), IDBKey.string("John") };
+
+    const key1 = IDBKey.array(&arr1); // ["Smith", "John"]
+    const key2 = IDBKey.array(&arr2); // ["Smith", "Jane"]
+    const key3 = IDBKey.array(&arr3); // ["Adams", "John"]
+
+    // ["Adams", "John"] < ["Smith", "Jane"] < ["Smith", "John"]
+    // Because "Adams" < "Smith" and "Jane" < "John"
+    try std.testing.expectEqual(@as(i16, -1), compare(key3, key2)); // Adams < Smith
+    try std.testing.expectEqual(@as(i16, -1), compare(key2, key1)); // Jane < John (Smith == Smith)
+    try std.testing.expectEqual(@as(i16, -1), compare(key3, key1)); // Adams < Smith
 }
