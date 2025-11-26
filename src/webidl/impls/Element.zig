@@ -2107,11 +2107,15 @@ pub fn call_getAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOM
     // Search attributes by local name (no namespace)
     for (internal.attributes.items) |entry| {
         if (entry.namespace_uri == null and std.mem.eql(u8, entry.local_name, name)) {
-            return runtime.DOMString.initInterned(entry.value);
+            std.debug.print("[DEBUG] getAttribute found: local_name='{s}', value='{s}'\n", .{ entry.local_name, entry.value });
+            const result = runtime.DOMString.initInterned(entry.value);
+            std.debug.print("[DEBUG] getAttribute result.asSlice()='{s}'\n", .{result.asSlice()});
+            return result;
         }
     }
 
     // Return null for not found per WebIDL nullable
+    std.debug.print("[DEBUG] getAttribute not found for name='{s}'\n", .{name});
     return null;
 }
 

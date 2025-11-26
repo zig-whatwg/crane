@@ -3,6 +3,9 @@ const infra = @import("infra");
 const Allocator = std.mem.Allocator;
 const Tokenizer = @import("tokenizer.zig").Tokenizer;
 const Token = @import("tokenizer.zig").Token;
+const AncestorHashes = infra.AncestorHashes;
+const hashString = infra.hashString;
+const hashStringLower = infra.hashStringLower;
 
 // ============================================================================
 // AST Node Types
@@ -54,15 +57,40 @@ pub const Specificity = struct {
 };
 
 /// Complex selector (combinator chain)
+///
+/// ## Storage Order: Right-to-Left (RTL)
+///
+/// Selectors are stored in **matching order** (right-to-left) for cache efficiency.
+/// This matches Firefox's Stylo implementation.
+///
+/// Example: "div > p.active"
+/// - `compound` = "p.active" (rightmost - subject element)
+/// - `combinators` = [{Child, "div"}] (going toward ancestors)
+///
+/// For matching, iterate `combinators` forward:
+/// 1. Match element against `compound`
+/// 2. For each combinator pair, find ancestor/sibling matching the compound
 pub const ComplexSelector = struct {
+    /// The rightmost (subject) compound selector.
+    /// This is what we match first against the target element.
     compound: CompoundSelector,
+
+    /// Combinator chain going right-to-left (toward ancestors).
+    /// Each pair is {combinator, compound} where compound is to the LEFT of combinator.
     combinators: []CombinatorPair,
+
     allocator: Allocator,
+
     /// If true, this is a relative selector (starts with combinator)
     /// Used in :has() for relative matching
     is_relative: bool = false,
+
     /// For relative selectors, the initial combinator
     initial_combinator: ?Combinator = null,
+
+    /// Precomputed hashes from ancestor selector components.
+    /// Used for O(1) bloom filter rejection before tree traversal.
+    ancestor_hashes: AncestorHashes = AncestorHashes.init(),
 
     pub fn deinit(self: *ComplexSelector) void {
         self.compound.deinit();
@@ -82,6 +110,37 @@ pub const ComplexSelector = struct {
         }
 
         return spec;
+    }
+
+    /// Compute ancestor hashes from the combinator chain.
+    /// Call this after parsing to enable bloom filter fast-rejection.
+    pub fn computeAncestorHashes(self: *ComplexSelector) void {
+        self.ancestor_hashes = AncestorHashes.init();
+
+        // Collect hashes from ancestor compounds (not the subject compound)
+        for (self.combinators) |*pair| {
+            self.collectHashesFromCompound(&pair.compound);
+            if (self.ancestor_hashes.len >= 4) break; // Max 4 hashes
+        }
+    }
+
+    /// Collect hashes from a compound selector's simple selectors.
+    fn collectHashesFromCompound(self: *ComplexSelector, compound: *const CompoundSelector) void {
+        for (compound.simple_selectors) |*simple| {
+            switch (simple.*) {
+                .Type => |type_sel| {
+                    self.ancestor_hashes.addTagName(type_sel.tag_name);
+                },
+                .Id => |id_sel| {
+                    self.ancestor_hashes.addId(id_sel.id);
+                },
+                .Class => |class_sel| {
+                    self.ancestor_hashes.addClass(class_sel.class_name);
+                },
+                else => {},
+            }
+            if (self.ancestor_hashes.len >= 4) return;
+        }
     }
 };
 
@@ -413,13 +472,22 @@ pub const Parser = struct {
     }
 
     /// Parse complex selector (combinator chain)
+    ///
+    /// Parses left-to-right but stores in RTL order for efficient matching.
+    /// Example: "div > p.active" parses as:
+    /// - compound = "p.active" (rightmost)
+    /// - combinators = [{Child, "div"}]
     fn parseComplexSelector(self: *Parser) ParserError!ComplexSelector {
-        var combinators = infra.List(CombinatorPair).init(self.allocator);
+        // Temporary storage for LTR parsing
+        var ltr_compounds = infra.List(CompoundSelector).init(self.allocator);
+        defer ltr_compounds.deinit();
+        var ltr_combinators = infra.List(Combinator).init(self.allocator);
+        defer ltr_combinators.deinit();
+
         errdefer {
-            for (0..combinators.len) |i| {
-                combinators.toSliceMut()[i].compound.deinit();
+            for (ltr_compounds.toSliceMut()) |*compound| {
+                compound.deinit();
             }
-            combinators.deinit();
         }
 
         // Check for relative selector (starts with combinator)
@@ -435,32 +503,77 @@ pub const Parser = struct {
         }
 
         // Parse first compound selector
-        const first_compound = try self.parseCompoundSelector();
+        try ltr_compounds.append(try self.parseCompoundSelector());
 
-        // Parse combinator chain
+        // Parse combinator chain (LTR)
         while (true) {
-            // Check for combinator
             const combinator = try self.parseCombinator();
             if (combinator == null) break;
 
             self.skipWhitespace();
+            try ltr_combinators.append(combinator.?);
+            try ltr_compounds.append(try self.parseCompoundSelector());
+        }
 
-            // Parse next compound selector
-            const next_compound = try self.parseCompoundSelector();
+        // Convert to RTL storage order
+        // If we have: [div, p, span] with combinators [>, +]
+        // We want: compound=span, combinators=[{+, p}, {>, div}]
 
-            try combinators.append(CombinatorPair{
-                .combinator = combinator.?,
-                .compound = next_compound,
+        const compounds_slice = ltr_compounds.toSlice();
+        const combinators_slice = ltr_combinators.toSlice();
+
+        if (compounds_slice.len == 1) {
+            // No combinators - just return the single compound
+            const result_compound = compounds_slice[0];
+            // Clear the list without freeing (we're transferring ownership)
+            ltr_compounds.clearRetainingCapacity();
+            return ComplexSelector{
+                .compound = result_compound,
+                .combinators = &.{},
+                .allocator = self.allocator,
+                .is_relative = is_relative,
+                .initial_combinator = initial_combinator,
+            };
+        }
+
+        // Rightmost compound is the subject
+        const subject_compound = compounds_slice[compounds_slice.len - 1];
+
+        // Build RTL combinator pairs
+        var rtl_combinators = infra.List(CombinatorPair).init(self.allocator);
+        errdefer {
+            for (rtl_combinators.toSliceMut()) |*pair| {
+                pair.compound.deinit();
+            }
+            rtl_combinators.deinit();
+        }
+
+        // Iterate from right to left (excluding rightmost compound)
+        var i: usize = compounds_slice.len - 1;
+        while (i > 0) {
+            i -= 1;
+            // Combinator at index i connects compounds[i] and compounds[i+1]
+            try rtl_combinators.append(CombinatorPair{
+                .combinator = combinators_slice[i],
+                .compound = compounds_slice[i],
             });
         }
 
-        return ComplexSelector{
-            .compound = first_compound,
-            .combinators = try combinators.toOwnedSlice(),
+        // Clear the original list without freeing (ownership transferred)
+        ltr_compounds.clearRetainingCapacity();
+
+        var result = ComplexSelector{
+            .compound = subject_compound,
+            .combinators = try rtl_combinators.toOwnedSlice(),
             .allocator = self.allocator,
             .is_relative = is_relative,
             .initial_combinator = initial_combinator,
         };
+
+        // Precompute ancestor hashes for bloom filter rejection
+        result.computeAncestorHashes();
+
+        return result;
     }
 
     /// Parse combinator (>, +, ~, or whitespace)

@@ -37,6 +37,12 @@ pub const PseudoClassSelector = parser.PseudoClassSelector;
 pub const PseudoClassKind = parser.PseudoClassKind;
 pub const NthPattern = parser.NthPattern;
 pub const PseudoElementSelector = parser.PseudoElementSelector;
+pub const Specificity = parser.Specificity;
+
+// Re-export ancestor hashes from infra for convenience
+const infra = @import("infra");
+pub const AncestorHashes = infra.AncestorHashes;
+pub const AncestorBloomFilter = infra.AncestorBloomFilter;
 
 pub const matcher = @import("matcher.zig");
 pub const Matcher = matcher.Matcher;

@@ -152,29 +152,29 @@ pub const Matcher = struct {
     }
 
     /// Check if element matches complex selector (combinator chain)
+    ///
+    /// Selectors are stored in RTL order (matching order):
+    /// - `compound` = rightmost (subject) selector
+    /// - `combinators` = pairs going toward ancestors [{comb, ancestor_compound}, ...]
+    ///
+    /// For "div > p.active":
+    /// - compound = "p.active"
+    /// - combinators = [{Child, "div"}]
     fn matchesComplexSelector(self: *const Matcher, element: *Element, complex: *const ComplexSelector) MatcherError!bool {
-        // Right-to-left matching (standard CSS strategy)
-        // Parser gives us: "div > p" as compound="div", combinators=[{Child, "p"}]
-        // But we need to match from right: element must match "p", parent must match "div"
-
-        // No combinators - element must match the only compound
-        if (complex.combinators.len == 0) {
-            return try self.matchesCompoundSelector(element, &complex.compound);
-        }
-
-        // With combinators: element must match rightmost compound (last in array)
-        const rightmost = &complex.combinators[complex.combinators.len - 1].compound;
-        if (!try self.matchesCompoundSelector(element, rightmost)) {
+        // First: element must match the subject compound (rightmost in original selector)
+        if (!try self.matchesCompoundSelector(element, &complex.compound)) {
             return false;
         }
 
-        // Match combinators right-to-left (iterate backwards)
+        // No combinators - we're done
+        if (complex.combinators.len == 0) {
+            return true;
+        }
+
+        // Match combinators in forward order (they're already RTL)
         var current_element = element;
-        var i: usize = complex.combinators.len;
-        while (i > 0) {
-            i -= 1;
-            const pair = &complex.combinators[i];
-            const matched = try self.matchesCombinator(current_element, pair.combinator, if (i == 0) &complex.compound else &complex.combinators[i - 1].compound);
+        for (complex.combinators) |*pair| {
+            const matched = try self.matchesCombinator(current_element, pair.combinator, &pair.compound);
             if (matched == null) return false;
             current_element = matched.?;
         }
