@@ -299,6 +299,80 @@ pub const IDBIndex = struct {
         });
     }
 
+    /// Add entries for a value, handling multiEntry indexes
+    /// https://w3c.github.io/IndexedDB/#store-a-record-into-an-object-store
+    ///
+    /// For multiEntry indexes:
+    /// - If the extracted value is an array, creates an index entry for each element
+    /// - Duplicate keys within the array are skipped
+    /// - Nested arrays are ignored (only primitive values create entries)
+    ///
+    /// For regular indexes:
+    /// - Creates a single index entry for the extracted key
+    pub fn addEntriesForValue(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        value: @import("key_path.zig").ExtractedValue,
+        primary_key: IDBKey,
+    ) IDBError!void {
+        const key_path_mod = @import("key_path.zig");
+
+        // Get the key path
+        const kp = self.key_path orelse return;
+
+        // Extract key using the key path
+        const result = try key_path_mod.extractKeyOwned(
+            allocator,
+            value,
+            .{ .single = kp },
+            self.multi_entry,
+        );
+
+        switch (result) {
+            .failure, .invalid => {
+                // Per spec step 5.2: If extraction fails or is invalid, skip this index
+                return;
+            },
+            .key => |extracted_key| {
+                defer {
+                    var k = extracted_key;
+                    k.deinit();
+                }
+
+                if (self.multi_entry and extracted_key.key_type == .array) {
+                    // MultiEntry with array: add entry for each element
+                    // Track seen keys to avoid duplicates
+                    var seen_keys: std.ArrayListUnmanaged(IDBKey) = .empty;
+                    defer seen_keys.deinit(allocator);
+
+                    for (extracted_key.value.array) |elem| {
+                        // Skip nested arrays per spec
+                        if (elem.key_type == .array) continue;
+
+                        // Check for duplicate
+                        var is_duplicate = false;
+                        for (seen_keys.items) |seen| {
+                            if (@import("key.zig").compare(elem, seen) == 0) {
+                                is_duplicate = true;
+                                break;
+                            }
+                        }
+                        if (is_duplicate) continue;
+
+                        // Track this key
+                        try seen_keys.append(allocator, elem);
+
+                        // Add entry
+                        try self.addEntry(elem, primary_key);
+                    }
+                } else {
+                    // Regular index or non-array value: single entry
+                    try self.addEntry(extracted_key, primary_key);
+                }
+            },
+        }
+    }
+
     /// Remove entries for a primary key (internal use)
     pub fn removeEntriesForPrimaryKey(self: *Self, primary_key: IDBKey) void {
         var i: usize = 0;
@@ -360,4 +434,165 @@ test "IDBIndex - count empty" {
 
     try std.testing.expect(request.done_flag);
     try std.testing.expectEqual(@as(u64, 0), request.result.?.count);
+}
+
+test "IDBIndex - multiEntry creates multiple entries" {
+    const allocator = std.testing.allocator;
+    const key_path_mod = @import("key_path.zig");
+
+    var db = @import("database.zig").IDBDatabase.init(allocator, "testdb", 1);
+    defer db.deinit();
+
+    const scope = [_][]const u8{"store1"};
+    var txn = @import("transaction.zig").IDBTransaction.init(allocator, &db, &scope, .readwrite);
+    defer txn.deinit();
+
+    var store = IDBObjectStore.init(allocator, "store1", &txn);
+    defer store.deinit();
+
+    var idx = IDBIndex.init(allocator, "tags_idx", &store);
+    defer idx.deinit();
+    idx.key_path = "tags";
+    idx.multi_entry = true;
+
+    // Create value with tags array
+    const tags = [_]key_path_mod.ExtractedValue{
+        .{ .string = "red" },
+        .{ .string = "blue" },
+        .{ .string = "green" },
+    };
+    const props = [_]key_path_mod.ExtractedValue.Property{
+        .{ .key = "id", .value = .{ .number = 1 } },
+        .{ .key = "tags", .value = .{ .array = &tags } },
+    };
+    const value = key_path_mod.ExtractedValue{ .object = &props };
+
+    // Add entries for the value
+    try idx.addEntriesForValue(allocator, value, IDBKey.number(1));
+
+    // Should have 3 entries (one per tag)
+    try std.testing.expectEqual(@as(usize, 3), idx.entries.items.len);
+
+    // Verify index keys
+    try std.testing.expectEqualStrings("red", idx.entries.items[0].index_key.value.string);
+    try std.testing.expectEqualStrings("blue", idx.entries.items[1].index_key.value.string);
+    try std.testing.expectEqualStrings("green", idx.entries.items[2].index_key.value.string);
+
+    // All should point to same primary key
+    try std.testing.expectEqual(@as(f64, 1), idx.entries.items[0].primary_key.value.number);
+    try std.testing.expectEqual(@as(f64, 1), idx.entries.items[1].primary_key.value.number);
+    try std.testing.expectEqual(@as(f64, 1), idx.entries.items[2].primary_key.value.number);
+}
+
+test "IDBIndex - multiEntry deduplicates array elements" {
+    const allocator = std.testing.allocator;
+    const key_path_mod = @import("key_path.zig");
+
+    var db = @import("database.zig").IDBDatabase.init(allocator, "testdb", 1);
+    defer db.deinit();
+
+    const scope = [_][]const u8{"store1"};
+    var txn = @import("transaction.zig").IDBTransaction.init(allocator, &db, &scope, .readwrite);
+    defer txn.deinit();
+
+    var store = IDBObjectStore.init(allocator, "store1", &txn);
+    defer store.deinit();
+
+    var idx = IDBIndex.init(allocator, "tags_idx", &store);
+    defer idx.deinit();
+    idx.key_path = "tags";
+    idx.multi_entry = true;
+
+    // Create value with duplicate tags
+    const tags = [_]key_path_mod.ExtractedValue{
+        .{ .string = "red" },
+        .{ .string = "blue" },
+        .{ .string = "red" }, // duplicate
+        .{ .string = "green" },
+        .{ .string = "blue" }, // duplicate
+    };
+    const props = [_]key_path_mod.ExtractedValue.Property{
+        .{ .key = "tags", .value = .{ .array = &tags } },
+    };
+    const value = key_path_mod.ExtractedValue{ .object = &props };
+
+    try idx.addEntriesForValue(allocator, value, IDBKey.number(1));
+
+    // Should have 3 entries (duplicates skipped)
+    try std.testing.expectEqual(@as(usize, 3), idx.entries.items.len);
+}
+
+test "IDBIndex - multiEntry skips nested arrays" {
+    const allocator = std.testing.allocator;
+    const key_path_mod = @import("key_path.zig");
+
+    var db = @import("database.zig").IDBDatabase.init(allocator, "testdb", 1);
+    defer db.deinit();
+
+    const scope = [_][]const u8{"store1"};
+    var txn = @import("transaction.zig").IDBTransaction.init(allocator, &db, &scope, .readwrite);
+    defer txn.deinit();
+
+    var store = IDBObjectStore.init(allocator, "store1", &txn);
+    defer store.deinit();
+
+    var idx = IDBIndex.init(allocator, "data_idx", &store);
+    defer idx.deinit();
+    idx.key_path = "data";
+    idx.multi_entry = true;
+
+    // Create value with mixed array (includes nested array which should be skipped)
+    const nested = [_]key_path_mod.ExtractedValue{
+        .{ .number = 99 },
+    };
+    const data = [_]key_path_mod.ExtractedValue{
+        .{ .string = "valid" },
+        .{ .array = &nested }, // nested array - should be skipped
+        .{ .number = 42 },
+    };
+    const props = [_]key_path_mod.ExtractedValue.Property{
+        .{ .key = "data", .value = .{ .array = &data } },
+    };
+    const value = key_path_mod.ExtractedValue{ .object = &props };
+
+    try idx.addEntriesForValue(allocator, value, IDBKey.number(1));
+
+    // Should have 2 entries (nested array skipped)
+    try std.testing.expectEqual(@as(usize, 2), idx.entries.items.len);
+}
+
+test "IDBIndex - non-multiEntry with array creates single entry" {
+    const allocator = std.testing.allocator;
+    const key_path_mod = @import("key_path.zig");
+
+    var db = @import("database.zig").IDBDatabase.init(allocator, "testdb", 1);
+    defer db.deinit();
+
+    const scope = [_][]const u8{"store1"};
+    var txn = @import("transaction.zig").IDBTransaction.init(allocator, &db, &scope, .readwrite);
+    defer txn.deinit();
+
+    var store = IDBObjectStore.init(allocator, "store1", &txn);
+    defer store.deinit();
+
+    var idx = IDBIndex.init(allocator, "tags_idx", &store);
+    defer idx.deinit();
+    idx.key_path = "tags";
+    idx.multi_entry = false; // NOT multiEntry
+
+    // Create value with tags array
+    const tags = [_]key_path_mod.ExtractedValue{
+        .{ .string = "red" },
+        .{ .string = "blue" },
+    };
+    const props = [_]key_path_mod.ExtractedValue.Property{
+        .{ .key = "tags", .value = .{ .array = &tags } },
+    };
+    const value = key_path_mod.ExtractedValue{ .object = &props };
+
+    try idx.addEntriesForValue(allocator, value, IDBKey.number(1));
+
+    // Should have 1 entry (the whole array as key)
+    try std.testing.expectEqual(@as(usize, 1), idx.entries.items.len);
+    try std.testing.expectEqual(@import("key.zig").IDBKeyType.array, idx.entries.items[0].index_key.key_type);
 }
