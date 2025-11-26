@@ -56,6 +56,16 @@ pub const context = @import("context.zig");
 pub const MatchingContext = context.MatchingContext;
 pub const MatchResult = context.MatchResult;
 
+pub const fast_paths = @import("fast_paths.zig");
+pub const FastPathType = fast_paths.FastPathType;
+pub const SelectorAnalysis = fast_paths.SelectorAnalysis;
+pub const analyzeSelector = fast_paths.analyzeSelector;
+pub const extractIdFromSelector = fast_paths.extractIdFromSelector;
+pub const isSimpleSelector = fast_paths.isSimpleSelector;
+pub const isIdOnlySelector = fast_paths.isIdOnlySelector;
+pub const isClassOnlySelector = fast_paths.isClassOnlySelector;
+pub const isTagOnlySelector = fast_paths.isTagOnlySelector;
+
 test {
     @import("std").testing.refAllDecls(@This());
 }
