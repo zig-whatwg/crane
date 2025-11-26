@@ -68,8 +68,9 @@ pub const LibuvTimerManager = struct {
         errdefer allocator.destroy(self);
 
         // Allocate the libuv loop
+        // libuv tells us the size via uv_loop_size(), use pointer alignment
         const loop_size = libuv.getLoopSize();
-        const loop_bytes = try allocator.alignedAlloc(u8, @alignOf(libuv.uv_loop_t), loop_size);
+        const loop_bytes = try allocator.alignedAlloc(u8, .@"8", loop_size);
         errdefer allocator.free(loop_bytes);
 
         const loop: *libuv.uv_loop_t = @ptrCast(loop_bytes.ptr);
@@ -114,7 +115,8 @@ pub const LibuvTimerManager = struct {
         libuv.loopClose(self.loop) catch {};
 
         // Free the loop memory
-        const loop_bytes: [*]u8 = @ptrCast(self.loop);
+        // Cast back to aligned slice for proper deallocation
+        const loop_bytes: [*]align(8) u8 = @ptrCast(@alignCast(self.loop));
         self.allocator.free(loop_bytes[0..libuv.getLoopSize()]);
 
         self.timers.deinit();
@@ -224,7 +226,7 @@ pub const LibuvTimerManager = struct {
 // ============================================================================
 
 /// Called by libuv when a timer fires.
-fn timerCallback(handle: *libuv.uv_timer_t) callconv(.C) void {
+fn timerCallback(handle: *libuv.uv_timer_t) callconv(.c) void {
     const ctx: *TimerContext = @ptrCast(@alignCast(handle.data));
 
     // Don't invoke callback if cancelled
@@ -241,7 +243,7 @@ fn timerCallback(handle: *libuv.uv_timer_t) callconv(.C) void {
 }
 
 /// Called by libuv when a handle is fully closed.
-fn closeCallback(handle: *libuv.uv_handle_t) callconv(.C) void {
+fn closeCallback(handle: *libuv.uv_handle_t) callconv(.c) void {
     // Get the timer handle (same address due to embedding)
     const timer_handle: *libuv.uv_timer_t = @ptrCast(@alignCast(handle));
     const ctx: *TimerContext = @ptrCast(@alignCast(timer_handle.data));

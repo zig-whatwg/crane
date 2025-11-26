@@ -29,10 +29,10 @@ pub const uv_timer_t = extern struct {
 pub const uv_handle_t = opaque {};
 
 /// Timer callback signature as expected by libuv
-pub const uv_timer_cb = ?*const fn (handle: *uv_timer_t) callconv(.C) void;
+pub const uv_timer_cb = ?*const fn (handle: *uv_timer_t) callconv(.c) void;
 
 /// Close callback signature
-pub const uv_close_cb = ?*const fn (handle: *uv_handle_t) callconv(.C) void;
+pub const uv_close_cb = ?*const fn (handle: *uv_handle_t) callconv(.c) void;
 
 /// Run modes for uv_run
 pub const uv_run_mode = enum(c_int) {

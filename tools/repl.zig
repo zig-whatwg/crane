@@ -49,7 +49,8 @@ const Repl = struct {
 
         // Register the V8 context with context manager to enable wrapper caching
         // This creates a runtime context with wrapper cache for object identity
-        _ = context_manager.getOrCreate(context, allocator) catch |err| {
+        // Use getOrCreateWithIsolate to enable timer support (for AbortSignal.timeout, etc.)
+        _ = context_manager.getOrCreateWithIsolate(context, isolate, allocator) catch |err| {
             std.debug.print("Warning: Context registration failed: {}\n", .{err});
             // Continue anyway - wrapper caching won't work but basic functionality will
         };

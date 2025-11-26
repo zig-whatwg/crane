@@ -45,6 +45,7 @@
 const std = @import("std");
 const v8 = @import("ffi.zig");
 const runtime = @import("runtime");
+const V8EventLoop = @import("event_loop.zig").V8EventLoop;
 
 /// Context mapping entry
 const ContextEntry = struct {
@@ -57,6 +58,9 @@ const ContextEntry = struct {
     /// Whether this entry owns the runtime context
     /// (and should deinit it when removed)
     owns_context: bool,
+
+    /// V8 event loop with timer support (owned if owns_context is true)
+    event_loop: ?*V8EventLoop,
 };
 
 /// Thread-local context manager state
@@ -117,6 +121,12 @@ pub fn deinit() void {
                     ctx_data.getAllocator().destroy(cache_ptr);
                 }
 
+                // Clean up V8 event loop (must be done before context deinit)
+                if (entry.event_loop) |ev_loop| {
+                    ev_loop.deinit();
+                    ctx_data.getAllocator().destroy(ev_loop);
+                }
+
                 ctx_data.deinit();
             }
         }
@@ -144,6 +154,28 @@ pub fn deinit() void {
 ///
 /// Returns: Runtime context pointer (borrowed, do not free)
 pub fn getOrCreate(v8_ctx: *v8.Context, allocator: std.mem.Allocator) !runtime.Context {
+    // For backwards compatibility, call with null isolate (no timer support)
+    return getOrCreateWithIsolate(v8_ctx, null, allocator);
+}
+
+/// Get or create a runtime context for the given V8 context with full timer support
+///
+/// If a runtime context already exists for this V8 context, returns it.
+/// Otherwise, creates a new runtime context with V8EventLoop for timer support.
+///
+/// The returned context is valid until:
+/// - removeContext() is called for this V8 context
+/// - deinit() is called
+///
+/// Thread safety: Thread-local, no synchronization needed
+///
+/// Arguments:
+/// - v8_ctx: V8 context pointer
+/// - isolate: V8 isolate (optional, needed for timer support)
+/// - allocator: Allocator to use for the runtime context (if created)
+///
+/// Returns: Runtime context pointer (borrowed, do not free)
+pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, allocator: std.mem.Allocator) !runtime.Context {
     const state = &(manager_state orelse return error.NotInitialized);
 
     // Use the raw V8 internal address as the key (stable across Global/Local conversions)
@@ -155,12 +187,31 @@ pub fn getOrCreate(v8_ctx: *v8.Context, allocator: std.mem.Allocator) !runtime.C
         return &entry.runtime_ctx;
     }
 
+    // Create V8 event loop with timer support if isolate is provided
+    var event_loop_ptr: ?*V8EventLoop = null;
+    var timer_interface: ?runtime.TimerInterface = null;
+    var event_loop_interface: ?@import("event_loop").EventLoop = null;
+
+    if (isolate) |iso| {
+        const ev_loop = try allocator.create(V8EventLoop);
+        errdefer allocator.destroy(ev_loop);
+
+        ev_loop.* = try V8EventLoop.init(iso, allocator);
+        errdefer ev_loop.deinit();
+
+        event_loop_ptr = ev_loop;
+        timer_interface = ev_loop.timerInterface();
+        event_loop_interface = ev_loop.eventLoop();
+    }
+
     // Create new runtime context
     var ctx_data = try runtime.ContextData.init(allocator, .{
         .colored = false, // V8 callbacks shouldn't use colored output
         .show_timestamp = false,
         .show_labels = false,
         .engine_ctx = @ptrCast(v8_ctx), // Store V8 context as engine context
+        .timer = timer_interface,
+        .event_loop = event_loop_interface,
     });
     errdefer ctx_data.deinit();
 
@@ -180,6 +231,7 @@ pub fn getOrCreate(v8_ctx: *v8.Context, allocator: std.mem.Allocator) !runtime.C
         .v8_ctx = v8_ctx,
         .runtime_ctx = ctx_data,
         .owns_context = true,
+        .event_loop = event_loop_ptr,
     });
 
     // Return pointer to context data in the hash map
@@ -228,6 +280,7 @@ pub fn register(v8_ctx: *v8.Context, ctx: runtime.Context) !void {
         .v8_ctx = v8_ctx,
         .runtime_ctx = ctx.*, // Copy the context data
         .owns_context = false, // Don't deinit this one
+        .event_loop = null, // Registered contexts don't have event loop
     });
 }
 
@@ -253,6 +306,12 @@ pub fn removeContext(v8_ctx: *v8.Context) void {
                 cache_ptr.deinit();
                 ctx_data.getAllocator().destroy(cache_ptr);
                 ctx_data.clearV8WrapperCacheStorage();
+            }
+
+            // Clean up V8 event loop
+            if (kv.value.event_loop) |ev_loop| {
+                ev_loop.deinit();
+                ctx_data.getAllocator().destroy(ev_loop);
             }
 
             ctx_data.deinit();
