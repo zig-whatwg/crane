@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Quirks Mode and CSS Property Value Parser (v0.6.0 - 2025-11-26)
+
+#### Quirks Mode Module (`src/quirks/`)
+- **QuirksMode enum** - Document compatibility modes: `no_quirks`, `quirks`, `limited_quirks`
+- **QuirksModeContext** - Context object for threading quirks mode through parsers
+- **Property allowlists** - Hashless hex color and unitless length property lists per WHATWG Quirks spec
+- **Selector quirks** - `:active`/`:hover` selector quirk analysis for quirks mode
+
+#### CSS Property Value Parser (`src/css/`)
+- **CSS Tokenizer** - CSS Syntax Module Level 3 tokenization
+  - Token types: ident, function, hash, string, number, dimension, percentage, delim, whitespace
+  - Zero-copy design (tokens are slices into source)
+  - Line/column tracking for error messages
+  
+- **Color Parser** - CSS Color Level 4 value parsing
+  - Hex colors: `#fff`, `#ffffff`, `#ffffffff`
+  - RGB/RGBA: `rgb(255, 0, 0)`, `rgba(255, 0, 0, 0.5)`
+  - Named colors: `red`, `blue`, `transparent`, etc.
+  - Hashless hex quirk: `color: ff0000` → `#ff0000` in quirks mode
+  
+- **Length Parser** - CSS Values and Units Level 4 value parsing
+  - Absolute units: px, cm, mm, in, pt, pc, Q
+  - Font-relative: em, rem, ex, ch, lh, rlh
+  - Viewport-relative: vw, vh, vmin, vmax, vi, vb
+  - Percentages: `50%`
+  - Unitless quirk: `width: 100` → `100px` in quirks mode
+  
+- **Property Parser Framework** - Property-level routing
+  - PropertyValue tagged union (color, length, length_or_auto, keyword, ident)
+  - CSS-wide keywords: inherit, initial, unset, revert, revert-layer
+  - Property type classification for routing to correct parser
+  - Quirks mode integration for both hashless hex and unitless length quirks
+
+#### DOM Integration
+- **Document quirks mode** - Added `quirks_mode` field to Document InternalState
+  - `getQuirksMode()` / `setQuirksMode()` - Get/set document mode
+  - `getQuirksModeContext()` - Get context for parser threading
+  - `isQuirksMode()` / `isLimitedQuirksMode()` / `isNoQuirksMode()` - Mode checks
+  
+- **Selector MatchingContext** - Added `quirks_mode` field with `hasActiveHoverQuirk()`
+
+#### WHATWG Specification Compliance
+- Quirks Mode Standard §3.1: The hashless hex color quirk
+- Quirks Mode Standard §3.2: The unitless length quirk  
+- Quirks Mode Standard §3.3: The `:active` and `:hover` quirk
+- CSS Syntax Module Level 3: Tokenization algorithms
+- CSS Color Level 4: Color value parsing
+- CSS Values and Units Level 4: Length value parsing
+
 ### Added - WebIDL async_iterable Codegen Support (v0.5.1 - 2025-11-24)
 
 #### WebIDL Code Generator
