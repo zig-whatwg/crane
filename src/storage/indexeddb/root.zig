@@ -179,6 +179,16 @@ pub const MVCCManager = mvcc.MVCCManager;
 pub const ReadConsistencyChecker = mvcc.ReadConsistencyChecker;
 pub const ConcurrentReadTracker = mvcc.ConcurrentReadTracker;
 
+// Object store persistence (Phase 5.4)
+pub const object_store_persistence = @import("object_store_persistence.zig");
+pub const KeyTypeTag = object_store_persistence.KeyTypeTag;
+pub const encodeKey = object_store_persistence.encodeKey;
+pub const decodeKey = object_store_persistence.decodeKey;
+pub const ObjectStoreRecord = object_store_persistence.ObjectStoreRecord;
+pub const AutoIncrementGenerator = object_store_persistence.AutoIncrementGenerator;
+pub const ObjectStorePersistence = object_store_persistence.ObjectStorePersistence;
+pub const ObjectStoreSQL = object_store_persistence.ObjectStoreSQL;
+
 // Error types
 pub const IDBError = @import("errors.zig").IDBError;
 
@@ -201,4 +211,5 @@ test {
     _ = storage_integration;
     _ = sqlite_transactions;
     _ = mvcc;
+    _ = object_store_persistence;
 }
