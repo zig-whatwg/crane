@@ -23,7 +23,7 @@ const WriteRequest = @import("streams_write_request").WriteRequest;
 pub const State = WritableStream.State;
 
 pub const ImplError = error{
-    NotImplemented,
+
     TypeError,
     RangeError,
     InvalidState,

@@ -22,7 +22,7 @@ const AsyncPromise = @import("streams_async_promise").AsyncPromise;
 pub const State = ReadableStreamDefaultReader.State;
 
 pub const ImplError = error{
-    NotImplemented,
+
     TypeError,
     RangeError,
     InvalidState,

@@ -42,7 +42,7 @@ const ViewType = ArrayBufferViewModule.ViewType;
 pub const State = ReadableByteStreamController.State;
 
 pub const ImplError = error{
-    NotImplemented,
+
     TypeError,
     OutOfMemory,
     InvalidState,

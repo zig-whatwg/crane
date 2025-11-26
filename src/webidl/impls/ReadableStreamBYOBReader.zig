@@ -31,7 +31,7 @@ pub const ImplError = error{
     TypeError,
     InvalidState,
     OutOfMemory,
-    NotImplemented,
+
     RangeError,
     NullValue,
     BufferDetached, // From ReadableByteStreamController.pullInto

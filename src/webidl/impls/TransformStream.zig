@@ -22,7 +22,7 @@ const Promise = streams_common.Promise;
 pub const State = TransformStream.State;
 
 pub const ImplError = error{
-    NotImplemented,
+
     TypeError,
     RangeError,
     OutOfMemory,

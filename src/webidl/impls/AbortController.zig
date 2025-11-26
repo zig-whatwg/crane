@@ -17,7 +17,6 @@ const AbortController = interfaces.AbortController;
 pub const State = AbortController.State;
 
 pub const ImplError = error{
-    NotImplemented,
     InvalidState,
     OutOfMemory,
 };

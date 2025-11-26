@@ -25,7 +25,7 @@ const CancelAlgorithm = streams_common.CancelAlgorithm;
 pub const State = TransformStreamDefaultController.State;
 
 pub const ImplError = error{
-    NotImplemented,
+
     TypeError,
     OutOfMemory,
     InvalidState,

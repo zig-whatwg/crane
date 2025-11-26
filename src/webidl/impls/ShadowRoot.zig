@@ -20,7 +20,10 @@ const ShadowRoot = interfaces.ShadowRoot;
 pub const State = ShadowRoot.State;
 
 pub const ImplError = error{
-    NotImplemented,
+    /// InvalidStateError DOMException - operation not valid in current state
+    InvalidState,
+    /// NotSupportedError DOMException - feature not yet implemented
+    NotSupported,
     OutOfMemory,
 };
 
@@ -229,9 +232,11 @@ pub fn get_serializable(instance: *runtime.Instance) ImplError!bool {
 
 /// DOM §4.8.1 - ShadowRoot.host
 /// Returns the element that hosts this shadow root.
+/// Per spec, host is always set when a ShadowRoot is created via attachShadow().
 pub fn get_host(instance: *runtime.Instance) ImplError!*runtime.Instance {
     const internal = getInternal(instance);
-    return internal.host orelse return error.NotImplemented;
+    // Host should always be set - this is an invariant violation if null
+    return internal.host orelse return error.InvalidState;
 }
 
 // ============================================================================
@@ -271,11 +276,13 @@ pub fn get_innerHTML(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// InnerHTML.innerHTML setter
+/// Spec: https://w3c.github.io/DOM-Parsing/#dom-innerhtml-innerhtml
 pub fn set_innerHTML(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
     // TODO: Implement HTML parsing and fragment replacement
+    // For now, throw NotSupportedError per WebIDL for unimplemented features
     _ = instance;
     _ = value;
-    return error.NotImplemented;
+    return error.NotSupported;
 }
 
 // ============================================================================
@@ -363,11 +370,13 @@ pub fn call_getHTML(instance: *runtime.Instance, options: dictionaries.GetHTMLOp
 }
 
 /// setHTMLUnsafe(html) - Parse and replace shadow tree contents
+/// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-element-sethtmlunsafe
 pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: *const anyopaque) ImplError!void {
     // TODO: Implement unsafe HTML parsing
+    // For now, throw NotSupportedError per WebIDL for unimplemented features
     _ = instance;
     _ = html;
-    return error.NotImplemented;
+    return error.NotSupported;
 }
 
 /// getAnimations() - Get all animations in shadow tree

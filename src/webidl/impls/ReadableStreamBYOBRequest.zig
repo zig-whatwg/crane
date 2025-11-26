@@ -20,7 +20,7 @@ pub const ImplError = error{
     InvalidState,
     OutOfMemory,
     BufferDetached, // From ReadableByteStreamController
-    NotImplemented, // From ReadableByteStreamController
+
     RangeError, // From ReadableByteStreamController
     NullValue, // From ReadableByteStreamController
     NoEventLoop,

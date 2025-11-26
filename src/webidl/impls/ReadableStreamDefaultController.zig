@@ -24,7 +24,7 @@ const Algorithm = @import("streams_algorithm").Algorithm;
 pub const State = ReadableStreamDefaultController.State;
 
 pub const ImplError = error{
-    NotImplemented,
+
     TypeError,
     RangeError,
     InvalidState,

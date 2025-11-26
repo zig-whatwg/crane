@@ -28,7 +28,6 @@ const from_iterable = @import("streams_from_iterable_algorithm");
 pub const State = ReadableStream.State;
 
 pub const ImplError = error{
-    NotImplemented,
     TypeError,
     RangeError,
     InvalidState,
@@ -596,11 +595,12 @@ pub fn call_getReader(instance: *runtime.Instance, options: dictionaries.Readabl
         instance,
     ) catch |err| {
         // Remap errors to ImplError
+        // Per WHATWG Streams spec, unexpected errors are TypeError
         return switch (err) {
             error.TypeError => error.TypeError,
             error.OutOfMemory => error.OutOfMemory,
             error.InvalidState => error.InvalidState,
-            else => error.NotImplemented,
+            else => error.TypeError,
         };
     };
 
@@ -1394,10 +1394,11 @@ pub fn call_values(
             ) catch |err| {
                 // Clean up the Zig iterator on wrapping failure
                 zig_iterator.deinit();
+                // Per WHATWG Streams spec, unexpected errors are TypeError
                 return switch (err) {
                     error.OutOfMemory => error.OutOfMemory,
                     error.AsyncIteratorError => error.InvalidState,
-                    else => error.NotImplemented,
+                    else => error.TypeError,
                 };
             };
             return @ptrCast(wrapped);

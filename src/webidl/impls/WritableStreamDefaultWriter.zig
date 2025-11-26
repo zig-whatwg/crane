@@ -20,7 +20,7 @@ const AsyncPromise = @import("streams_async_promise").AsyncPromise;
 pub const State = WritableStreamDefaultWriter.State;
 
 pub const ImplError = error{
-    NotImplemented,
+
     TypeError,
     OutOfMemory,
     InvalidState,
