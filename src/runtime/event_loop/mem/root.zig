@@ -52,9 +52,11 @@ pub const ArenaPool = arena_pool.ArenaPool;
 pub const ArenaPoolConfig = arena_pool.Config;
 pub const ArenaPoolStats = arena_pool.Stats;
 
-// TODO(Phase 1.2): Slab allocator
-// pub const slab = @import("slab.zig");
-// pub const SlabAllocator = slab.SlabAllocator;
+/// Slab allocator for fixed-size I/O buffers
+pub const slab = @import("slab.zig");
+pub const SlabAllocator = slab.SlabAllocator;
+pub const SlabConfig = slab.Config;
+pub const SlabStats = slab.Stats;
 
 /// Get the best available root allocator
 ///
@@ -125,4 +127,5 @@ test {
     // Run child module tests
     _ = jemalloc;
     _ = arena_pool;
+    _ = slab;
 }
