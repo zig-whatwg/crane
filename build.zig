@@ -889,6 +889,9 @@ pub fn build(b: *std.Build) void {
     // DOM module for XPath implementations
     impls_mod.addImport("dom", dom_mod);
 
+    // Quirks module for Document quirks mode support
+    impls_mod.addImport("quirks", quirks_mod);
+
     // ArrayBufferView is part of runtime module, no separate module needed
     // (ReadableStreamBYOBReader accesses it via runtime.arraybuffer_view)
 

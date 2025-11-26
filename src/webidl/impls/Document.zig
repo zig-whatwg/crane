@@ -18,6 +18,11 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const Document = interfaces.Document;
 
+// Quirks mode support
+const quirks = @import("quirks");
+const QuirksMode = quirks.QuirksMode;
+const QuirksModeContext = quirks.QuirksModeContext;
+
 // Import related impls for factory methods
 const NodeImpl = @import("Node.zig");
 const TextImpl = @import("Text.zig");
@@ -149,6 +154,16 @@ pub const InternalState = struct {
     // === StyleSheetList (DocumentOrShadowRoot mixin) ===
     style_sheets: ?*runtime.Instance,
 
+    // === Quirks Mode (WHATWG Quirks Mode Standard) ===
+    /// Document's quirks mode, set during HTML parsing based on DOCTYPE.
+    /// - no_quirks: Standards mode (modern DOCTYPE present)
+    /// - quirks: Full quirks mode (legacy/missing DOCTYPE)
+    /// - limited_quirks: Limited quirks mode (certain legacy DOCTYPEs)
+    ///
+    /// Spec: https://quirks.spec.whatwg.org/
+    /// HTML parsing: https://html.spec.whatwg.org/multipage/parsing.html#the-initial-insertion-mode
+    quirks_mode: QuirksMode,
+
     // === Event handlers storage (using string keys for handler names) ===
     event_handlers: std.StringHashMap(typedefs.EventHandler),
 
@@ -193,6 +208,8 @@ pub const InternalState = struct {
             .active_element = null,
             // StyleSheetList
             .style_sheets = null,
+            // Quirks mode (default: no-quirks/standards mode)
+            .quirks_mode = .no_quirks,
             // Event handlers
             .event_handlers = std.StringHashMap(typedefs.EventHandler).init(allocator),
         };
@@ -649,6 +666,70 @@ pub fn get_lastModified(instance: *runtime.Instance) ImplError!runtime.DOMString
 pub fn get_readyState(instance: *runtime.Instance) ImplError!enums.DocumentReadyState {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.ready_state;
+}
+
+// =============================================================================
+// Quirks Mode (WHATWG Quirks Mode Standard)
+// =============================================================================
+
+/// Get the document's quirks mode.
+///
+/// ## Returns
+/// The document's quirks mode: no_quirks, quirks, or limited_quirks.
+///
+/// ## Spec Reference
+/// https://quirks.spec.whatwg.org/
+pub fn getQuirksMode(instance: *runtime.Instance) ImplError!QuirksMode {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.quirks_mode;
+}
+
+/// Set the document's quirks mode.
+///
+/// This is typically called during HTML parsing based on the DOCTYPE.
+///
+/// ## Parameters
+/// - `mode`: The quirks mode to set
+///
+/// ## Spec Reference
+/// https://html.spec.whatwg.org/multipage/parsing.html#the-initial-insertion-mode
+pub fn setQuirksMode(instance: *runtime.Instance, mode: QuirksMode) ImplError!void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    internal.quirks_mode = mode;
+}
+
+/// Get a QuirksModeContext for use with parsers and matchers.
+///
+/// The context provides convenient methods for querying quirks behavior.
+///
+/// ## Example
+/// ```zig
+/// const ctx = try doc.getQuirksModeContext();
+/// if (ctx.allowsHashlessHexColor("color")) {
+///     // Parse "ffffff" as "#ffffff"
+/// }
+/// ```
+pub fn getQuirksModeContext(instance: *runtime.Instance) ImplError!QuirksModeContext {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return QuirksModeContext.init(internal.quirks_mode);
+}
+
+/// Check if the document is in quirks mode.
+pub fn isQuirksMode(instance: *runtime.Instance) ImplError!bool {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.quirks_mode.isQuirks();
+}
+
+/// Check if the document is in limited quirks mode.
+pub fn isLimitedQuirksMode(instance: *runtime.Instance) ImplError!bool {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.quirks_mode.isLimitedQuirks();
+}
+
+/// Check if the document is in no-quirks (standards) mode.
+pub fn isNoQuirksMode(instance: *runtime.Instance) ImplError!bool {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.quirks_mode.isNoQuirks();
 }
 
 /// Getter for title
