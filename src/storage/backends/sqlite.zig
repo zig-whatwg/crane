@@ -83,12 +83,12 @@
 //! - Firefox IndexedDB: https://searchfox.org/mozilla-central/source/dom/indexedDB
 //! - WebKit IndexedDB: https://github.com/nicolo-ribaudo/nicolo-nicolo-nicolo/nicolo
 //!
-//! ## TODO(SQLite Backend)
+//! ## Implementation Status
 //!
-//! - [ ] Phase 2.3: Basic SQLite FFI bindings
-//! - [ ] Phase 2.4: IDBKEY collation function
-//! - [ ] Phase 2.5: WAL mode and pragmas
-//! - [ ] Phase 2.6: Prepared statements for CRUD
+//! - [x] Phase 2.3: Basic SQLite FFI bindings
+//! - [x] Phase 2.4: IDBKEY collation function
+//! - [x] Phase 2.5: WAL mode and pragmas
+//! - [x] Phase 2.6: Prepared statements for CRUD (cached for performance)
 //!
 
 const std = @import("std");
@@ -372,26 +372,131 @@ pub const Statements = struct {
     // Database operations
     pub const insert_database = "INSERT INTO database_info (name, version, created_at, modified_at) VALUES (?, ?, ?, ?)";
     pub const select_database = "SELECT id, name, version, created_at, modified_at FROM database_info WHERE name = ?";
+    pub const select_database_by_id = "SELECT id FROM database_info WHERE name = ?";
     pub const update_database_version = "UPDATE database_info SET version = ?, modified_at = ? WHERE id = ?";
 
     // Object store operations
     pub const insert_object_store = "INSERT INTO object_stores (database_id, name, key_path, auto_increment) VALUES (?, ?, ?, ?)";
+    pub const insert_default_object_store = "INSERT INTO object_stores (id, database_id, name, key_path, auto_increment) VALUES (1, ?, '_default', NULL, 0)";
     pub const select_object_stores = "SELECT id, name, key_path, auto_increment, current_key FROM object_stores WHERE database_id = ?";
+    pub const select_object_store_by_name = "SELECT id FROM object_stores WHERE database_id = ? AND name = ?";
+    pub const select_default_object_store = "SELECT id FROM object_stores WHERE database_id = ? AND name = '_default'";
     pub const delete_object_store = "DELETE FROM object_stores WHERE database_id = ? AND name = ?";
 
-    // Data operations
+    // Data operations (key-value CRUD)
     pub const insert_data = "INSERT OR REPLACE INTO object_store_data (object_store_id, key, value) VALUES (?, ?, ?)";
     pub const select_data = "SELECT value FROM object_store_data WHERE object_store_id = ? AND key = ?";
     pub const delete_data = "DELETE FROM object_store_data WHERE object_store_id = ? AND key = ?";
-    pub const select_data_range = "SELECT key, value FROM object_store_data WHERE object_store_id = ? AND key >= ? AND key <= ? ORDER BY key";
-    pub const select_data_range_desc = "SELECT key, value FROM object_store_data WHERE object_store_id = ? AND key >= ? AND key <= ? ORDER BY key DESC";
+    pub const exists_data = "SELECT 1 FROM object_store_data WHERE object_store_id = ? AND key = ? LIMIT 1";
     pub const count_data = "SELECT COUNT(*) FROM object_store_data WHERE object_store_id = ?";
+
+    // Range queries for cursors (built dynamically based on range)
+    pub const select_data_all_asc = "SELECT key, value FROM object_store_data WHERE object_store_id = 1 ORDER BY key ASC";
+    pub const select_data_all_desc = "SELECT key, value FROM object_store_data WHERE object_store_id = 1 ORDER BY key DESC";
 
     // Index operations
     pub const insert_index = "INSERT INTO indexes (object_store_id, name, key_path, is_unique, is_multi_entry) VALUES (?, ?, ?, ?, ?)";
     pub const delete_index = "DELETE FROM indexes WHERE object_store_id = ? AND name = ?";
     pub const insert_index_entry = "INSERT INTO index_data (index_id, index_key, primary_key, object_store_id) VALUES (?, ?, ?, ?)";
     pub const delete_index_entry = "DELETE FROM index_data WHERE index_id = ? AND primary_key = ?";
+
+    // Stats queries
+    pub const estimate_size = "SELECT page_count * page_size FROM pragma_page_count(), pragma_page_size()";
+};
+
+/// Cached prepared statements for performance (Phase 2.6)
+///
+/// Pre-compiled statements avoid repeated SQL parsing overhead.
+/// Statements are prepared once on database open and reused throughout
+/// the session. Each statement is reset after use to allow rebinding.
+pub const PreparedStmtCache = struct {
+    // Data operations (most frequently used)
+    insert_data: ?*c.sqlite3_stmt = null,
+    select_data: ?*c.sqlite3_stmt = null,
+    delete_data: ?*c.sqlite3_stmt = null,
+    exists_data: ?*c.sqlite3_stmt = null,
+    count_data: ?*c.sqlite3_stmt = null,
+
+    // Cursor queries (frequently used for iteration)
+    select_data_all_asc: ?*c.sqlite3_stmt = null,
+    select_data_all_desc: ?*c.sqlite3_stmt = null,
+
+    // Database operations (less frequent)
+    select_database_by_id: ?*c.sqlite3_stmt = null,
+    insert_database: ?*c.sqlite3_stmt = null,
+
+    // Object store operations (less frequent)
+    select_default_object_store: ?*c.sqlite3_stmt = null,
+    insert_default_object_store: ?*c.sqlite3_stmt = null,
+    insert_object_store: ?*c.sqlite3_stmt = null,
+    select_object_store_by_name: ?*c.sqlite3_stmt = null,
+    delete_object_store: ?*c.sqlite3_stmt = null,
+
+    // Index operations (less frequent)
+    insert_index: ?*c.sqlite3_stmt = null,
+    delete_index: ?*c.sqlite3_stmt = null,
+
+    // Stats
+    estimate_size: ?*c.sqlite3_stmt = null,
+
+    const Self = @This();
+
+    /// Prepare all cached statements
+    pub fn init(db: *c.sqlite3) !Self {
+        var cache = Self{};
+        errdefer cache.deinit();
+
+        // Data operations
+        cache.insert_data = try prepareStmt(db, Statements.insert_data);
+        cache.select_data = try prepareStmt(db, Statements.select_data);
+        cache.delete_data = try prepareStmt(db, Statements.delete_data);
+        cache.exists_data = try prepareStmt(db, Statements.exists_data);
+        cache.count_data = try prepareStmt(db, Statements.count_data);
+
+        // Cursor queries
+        cache.select_data_all_asc = try prepareStmt(db, Statements.select_data_all_asc);
+        cache.select_data_all_desc = try prepareStmt(db, Statements.select_data_all_desc);
+
+        // Database operations
+        cache.select_database_by_id = try prepareStmt(db, Statements.select_database_by_id);
+        cache.insert_database = try prepareStmt(db, Statements.insert_database);
+
+        // Object store operations
+        cache.select_default_object_store = try prepareStmt(db, Statements.select_default_object_store);
+        cache.insert_default_object_store = try prepareStmt(db, Statements.insert_default_object_store);
+        cache.insert_object_store = try prepareStmt(db, Statements.insert_object_store);
+        cache.select_object_store_by_name = try prepareStmt(db, Statements.select_object_store_by_name);
+        cache.delete_object_store = try prepareStmt(db, Statements.delete_object_store);
+
+        // Index operations
+        cache.insert_index = try prepareStmt(db, Statements.insert_index);
+        cache.delete_index = try prepareStmt(db, Statements.delete_index);
+
+        // Stats
+        cache.estimate_size = try prepareStmt(db, Statements.estimate_size);
+
+        return cache;
+    }
+
+    /// Prepare a single statement
+    fn prepareStmt(db: *c.sqlite3, sql: []const u8) !*c.sqlite3_stmt {
+        var stmt: *c.sqlite3_stmt = undefined;
+        const rc = c.sqlite3_prepare_v2(db, sql.ptr, @intCast(sql.len), &stmt, null);
+        if (rc != c.SQLITE_OK) {
+            return error.PrepareStatementFailed;
+        }
+        return stmt;
+    }
+
+    /// Finalize all cached statements
+    pub fn deinit(self: *Self) void {
+        inline for (@typeInfo(Self).@"struct".fields) |field| {
+            if (@field(self, field.name)) |stmt| {
+                _ = c.sqlite3_finalize(stmt);
+                @field(self, field.name) = null;
+            }
+        }
+    }
 };
 
 // ============================================================================
@@ -401,6 +506,7 @@ pub const Statements = struct {
 /// SQLite storage backend
 ///
 /// Full implementation with WAL mode and prepared statements.
+/// Prepared statements are cached for performance (Phase 2.6).
 pub const SQLiteBackend = struct {
     allocator: std.mem.Allocator,
     db: ?*c.sqlite3 = null,
@@ -409,6 +515,9 @@ pub const SQLiteBackend = struct {
     next_txn_id: u64 = 1,
     next_cursor_id: u64 = 1,
     in_transaction: bool = false,
+
+    // Prepared statement cache (Phase 2.6)
+    stmt_cache: ?PreparedStmtCache = null,
 
     // Active cursor state
     cursors: std.AutoHashMap(u64, CursorState),
@@ -419,6 +528,8 @@ pub const SQLiteBackend = struct {
         stmt: *c.sqlite3_stmt,
         direction: CursorDirection,
         exhausted: bool,
+        // Track if this cursor uses a cached statement (don't finalize on close)
+        uses_cached_stmt: bool = false,
     };
 
     /// Create a new SQLite backend
@@ -609,17 +720,35 @@ pub const SQLiteBackend = struct {
 
             self.database_id = c.sqlite3_last_insert_rowid(db);
         }
+
+        // Initialize prepared statement cache (Phase 2.6)
+        self.stmt_cache = PreparedStmtCache.init(db) catch {
+            self.allocator.free(self.database_name.?);
+            self.database_name = null;
+            self.database_id = null;
+            _ = c.sqlite3_close(db);
+            self.db = null;
+            return BackendError.BackendSpecific;
+        };
     }
 
     fn close(ctx: *anyopaque) void {
         const self: *Self = @ptrCast(@alignCast(ctx));
 
-        // Close any open cursors
+        // Close any open cursors (don't finalize cached statements)
         var cursor_iter = self.cursors.iterator();
         while (cursor_iter.next()) |entry| {
-            _ = c.sqlite3_finalize(entry.value_ptr.stmt);
+            if (!entry.value_ptr.uses_cached_stmt) {
+                _ = c.sqlite3_finalize(entry.value_ptr.stmt);
+            }
         }
         self.cursors.clearAndFree();
+
+        // Finalize prepared statement cache (Phase 2.6)
+        if (self.stmt_cache) |*cache| {
+            cache.deinit();
+            self.stmt_cache = null;
+        }
 
         // Free database name
         if (self.database_name) |name| {
@@ -689,25 +818,23 @@ pub const SQLiteBackend = struct {
         const self: *Self = @ptrCast(@alignCast(ctx));
         _ = handle;
 
-        const db = self.db orelse return BackendError.Closed;
-        const db_id = self.database_id orelse return BackendError.Closed;
+        if (self.db == null) return BackendError.Closed;
 
-        // We use a simplified key-value approach: store in default object store (id=1)
-        // For full IndexedDB, would need to parse object store from key
-        const sql = "SELECT value FROM object_store_data WHERE object_store_id = 1 AND key = ?";
+        // Use cached prepared statement (Phase 2.6)
+        const stmt = if (self.stmt_cache) |cache| cache.select_data else return BackendError.BackendSpecific;
+        if (stmt == null) return BackendError.BackendSpecific;
 
-        var stmt: *c.sqlite3_stmt = undefined;
-        const prep_rc = c.sqlite3_prepare_v2(db, sql, @intCast(sql.len), &stmt, null);
-        if (prep_rc != c.SQLITE_OK) return BackendError.BackendSpecific;
-        defer _ = c.sqlite3_finalize(stmt);
+        // Reset and bind (required for reuse)
+        _ = c.sqlite3_reset(stmt.?);
 
-        _ = db_id; // Will be used for multi-database support
-        _ = c.sqlite3_bind_blob(stmt, 1, key.ptr, @intCast(key.len), null);
+        // Bind object_store_id = 1 (default store) and key
+        _ = c.sqlite3_bind_int64(stmt.?, 1, 1);
+        _ = c.sqlite3_bind_blob(stmt.?, 2, key.ptr, @intCast(key.len), null);
 
-        const step_rc = c.sqlite3_step(stmt);
+        const step_rc = c.sqlite3_step(stmt.?);
         if (step_rc == c.SQLITE_ROW) {
-            const blob = c.sqlite3_column_blob(stmt, 0);
-            const len: usize = @intCast(c.sqlite3_column_bytes(stmt, 0));
+            const blob = c.sqlite3_column_blob(stmt.?, 0);
+            const len: usize = @intCast(c.sqlite3_column_bytes(stmt.?, 0));
 
             if (blob) |data| {
                 const result = allocator.alloc(u8, len) catch return BackendError.OutOfMemory;
@@ -723,22 +850,24 @@ pub const SQLiteBackend = struct {
         const self: *Self = @ptrCast(@alignCast(ctx));
         _ = handle;
 
-        const db = self.db orelse return BackendError.Closed;
+        if (self.db == null) return BackendError.Closed;
 
         // Ensure default object store exists (id=1)
         try self.ensureDefaultObjectStore();
 
-        const sql = "INSERT OR REPLACE INTO object_store_data (object_store_id, key, value) VALUES (1, ?, ?)";
+        // Use cached prepared statement (Phase 2.6)
+        const stmt = if (self.stmt_cache) |cache| cache.insert_data else return BackendError.BackendSpecific;
+        if (stmt == null) return BackendError.BackendSpecific;
 
-        var stmt: *c.sqlite3_stmt = undefined;
-        const prep_rc = c.sqlite3_prepare_v2(db, sql, @intCast(sql.len), &stmt, null);
-        if (prep_rc != c.SQLITE_OK) return BackendError.BackendSpecific;
-        defer _ = c.sqlite3_finalize(stmt);
+        // Reset and bind (required for reuse)
+        _ = c.sqlite3_reset(stmt.?);
 
-        _ = c.sqlite3_bind_blob(stmt, 1, key.ptr, @intCast(key.len), null);
-        _ = c.sqlite3_bind_blob(stmt, 2, value.ptr, @intCast(value.len), null);
+        // Bind object_store_id = 1 (default store), key, and value
+        _ = c.sqlite3_bind_int64(stmt.?, 1, 1);
+        _ = c.sqlite3_bind_blob(stmt.?, 2, key.ptr, @intCast(key.len), null);
+        _ = c.sqlite3_bind_blob(stmt.?, 3, value.ptr, @intCast(value.len), null);
 
-        const step_rc = c.sqlite3_step(stmt);
+        const step_rc = c.sqlite3_step(stmt.?);
         if (step_rc != c.SQLITE_DONE) {
             return mapSqliteError(step_rc);
         }
@@ -748,18 +877,20 @@ pub const SQLiteBackend = struct {
         const self: *Self = @ptrCast(@alignCast(ctx));
         _ = handle;
 
-        const db = self.db orelse return BackendError.Closed;
+        if (self.db == null) return BackendError.Closed;
 
-        const sql = "DELETE FROM object_store_data WHERE object_store_id = 1 AND key = ?";
+        // Use cached prepared statement (Phase 2.6)
+        const stmt = if (self.stmt_cache) |cache| cache.delete_data else return BackendError.BackendSpecific;
+        if (stmt == null) return BackendError.BackendSpecific;
 
-        var stmt: *c.sqlite3_stmt = undefined;
-        const prep_rc = c.sqlite3_prepare_v2(db, sql, @intCast(sql.len), &stmt, null);
-        if (prep_rc != c.SQLITE_OK) return BackendError.BackendSpecific;
-        defer _ = c.sqlite3_finalize(stmt);
+        // Reset and bind (required for reuse)
+        _ = c.sqlite3_reset(stmt.?);
 
-        _ = c.sqlite3_bind_blob(stmt, 1, key.ptr, @intCast(key.len), null);
+        // Bind object_store_id = 1 (default store) and key
+        _ = c.sqlite3_bind_int64(stmt.?, 1, 1);
+        _ = c.sqlite3_bind_blob(stmt.?, 2, key.ptr, @intCast(key.len), null);
 
-        const step_rc = c.sqlite3_step(stmt);
+        const step_rc = c.sqlite3_step(stmt.?);
         if (step_rc != c.SQLITE_DONE) {
             return mapSqliteError(step_rc);
         }
@@ -769,18 +900,20 @@ pub const SQLiteBackend = struct {
         const self: *Self = @ptrCast(@alignCast(ctx));
         _ = handle;
 
-        const db = self.db orelse return BackendError.Closed;
+        if (self.db == null) return BackendError.Closed;
 
-        const sql = "SELECT 1 FROM object_store_data WHERE object_store_id = 1 AND key = ? LIMIT 1";
+        // Use cached prepared statement (Phase 2.6)
+        const stmt = if (self.stmt_cache) |cache| cache.exists_data else return BackendError.BackendSpecific;
+        if (stmt == null) return BackendError.BackendSpecific;
 
-        var stmt: *c.sqlite3_stmt = undefined;
-        const prep_rc = c.sqlite3_prepare_v2(db, sql, @intCast(sql.len), &stmt, null);
-        if (prep_rc != c.SQLITE_OK) return BackendError.BackendSpecific;
-        defer _ = c.sqlite3_finalize(stmt);
+        // Reset and bind (required for reuse)
+        _ = c.sqlite3_reset(stmt.?);
 
-        _ = c.sqlite3_bind_blob(stmt, 1, key.ptr, @intCast(key.len), null);
+        // Bind object_store_id = 1 (default store) and key
+        _ = c.sqlite3_bind_int64(stmt.?, 1, 1);
+        _ = c.sqlite3_bind_blob(stmt.?, 2, key.ptr, @intCast(key.len), null);
 
-        const step_rc = c.sqlite3_step(stmt);
+        const step_rc = c.sqlite3_step(stmt.?);
         return step_rc == c.SQLITE_ROW;
     }
 
@@ -789,40 +922,54 @@ pub const SQLiteBackend = struct {
 
         const db = self.db orelse return BackendError.Closed;
 
-        // Build query based on range and direction
-        const order = if (direction == .next or direction == .nextunique) "ASC" else "DESC";
-
-        var sql_buf: [512]u8 = undefined;
-        var sql_len: usize = 0;
-
-        // Build WHERE clause based on range
-        if (range.lower != null and range.upper != null) {
-            const lower_op = if (range.lower_open) ">" else ">=";
-            const upper_op = if (range.upper_open) "<" else "<=";
-            sql_len = (std.fmt.bufPrint(&sql_buf, "SELECT key, value FROM object_store_data WHERE object_store_id = 1 AND key {s} ? AND key {s} ? ORDER BY key {s}", .{ lower_op, upper_op, order }) catch return BackendError.BackendSpecific).len;
-        } else if (range.lower != null) {
-            const lower_op = if (range.lower_open) ">" else ">=";
-            sql_len = (std.fmt.bufPrint(&sql_buf, "SELECT key, value FROM object_store_data WHERE object_store_id = 1 AND key {s} ? ORDER BY key {s}", .{ lower_op, order }) catch return BackendError.BackendSpecific).len;
-        } else if (range.upper != null) {
-            const upper_op = if (range.upper_open) "<" else "<=";
-            sql_len = (std.fmt.bufPrint(&sql_buf, "SELECT key, value FROM object_store_data WHERE object_store_id = 1 AND key {s} ? ORDER BY key {s}", .{ upper_op, order }) catch return BackendError.BackendSpecific).len;
-        } else {
-            sql_len = (std.fmt.bufPrint(&sql_buf, "SELECT key, value FROM object_store_data WHERE object_store_id = 1 ORDER BY key {s}", .{order}) catch return BackendError.BackendSpecific).len;
-        }
-
+        const is_asc = direction == .next or direction == .nextunique;
+        var uses_cached_stmt = false;
         var stmt: *c.sqlite3_stmt = undefined;
-        const prep_rc = c.sqlite3_prepare_v2(db, &sql_buf, @intCast(sql_len), &stmt, null);
-        if (prep_rc != c.SQLITE_OK) return BackendError.BackendSpecific;
-        errdefer _ = c.sqlite3_finalize(stmt);
 
-        // Bind range parameters
-        var param_idx: c_int = 1;
-        if (range.lower) |lower| {
-            _ = c.sqlite3_bind_blob(stmt, param_idx, lower.ptr, @intCast(lower.len), null);
-            param_idx += 1;
-        }
-        if (range.upper) |upper| {
-            _ = c.sqlite3_bind_blob(stmt, param_idx, upper.ptr, @intCast(upper.len), null);
+        // For simple full-table scans without range, use cached statements (Phase 2.6)
+        if (range.lower == null and range.upper == null) {
+            const cache = self.stmt_cache orelse return BackendError.BackendSpecific;
+            const cached_stmt = if (is_asc) cache.select_data_all_asc else cache.select_data_all_desc;
+            if (cached_stmt) |s| {
+                _ = c.sqlite3_reset(s);
+                stmt = s;
+                uses_cached_stmt = true;
+            } else {
+                return BackendError.BackendSpecific;
+            }
+        } else {
+            // For range queries, prepare dynamically (too many combinations to cache)
+            const order = if (is_asc) "ASC" else "DESC";
+
+            var sql_buf: [512]u8 = undefined;
+            var sql_len: usize = 0;
+
+            // Build WHERE clause based on range
+            if (range.lower != null and range.upper != null) {
+                const lower_op = if (range.lower_open) ">" else ">=";
+                const upper_op = if (range.upper_open) "<" else "<=";
+                sql_len = (std.fmt.bufPrint(&sql_buf, "SELECT key, value FROM object_store_data WHERE object_store_id = 1 AND key {s} ? AND key {s} ? ORDER BY key {s}", .{ lower_op, upper_op, order }) catch return BackendError.BackendSpecific).len;
+            } else if (range.lower != null) {
+                const lower_op = if (range.lower_open) ">" else ">=";
+                sql_len = (std.fmt.bufPrint(&sql_buf, "SELECT key, value FROM object_store_data WHERE object_store_id = 1 AND key {s} ? ORDER BY key {s}", .{ lower_op, order }) catch return BackendError.BackendSpecific).len;
+            } else if (range.upper != null) {
+                const upper_op = if (range.upper_open) "<" else "<=";
+                sql_len = (std.fmt.bufPrint(&sql_buf, "SELECT key, value FROM object_store_data WHERE object_store_id = 1 AND key {s} ? ORDER BY key {s}", .{ upper_op, order }) catch return BackendError.BackendSpecific).len;
+            }
+
+            const prep_rc = c.sqlite3_prepare_v2(db, &sql_buf, @intCast(sql_len), &stmt, null);
+            if (prep_rc != c.SQLITE_OK) return BackendError.BackendSpecific;
+            errdefer _ = c.sqlite3_finalize(stmt);
+
+            // Bind range parameters
+            var param_idx: c_int = 1;
+            if (range.lower) |lower| {
+                _ = c.sqlite3_bind_blob(stmt, param_idx, lower.ptr, @intCast(lower.len), null);
+                param_idx += 1;
+            }
+            if (range.upper) |upper| {
+                _ = c.sqlite3_bind_blob(stmt, param_idx, upper.ptr, @intCast(upper.len), null);
+            }
         }
 
         const cursor_id = self.next_cursor_id;
@@ -832,8 +979,11 @@ pub const SQLiteBackend = struct {
             .stmt = stmt,
             .direction = direction,
             .exhausted = false,
+            .uses_cached_stmt = uses_cached_stmt,
         }) catch {
-            _ = c.sqlite3_finalize(stmt);
+            if (!uses_cached_stmt) {
+                _ = c.sqlite3_finalize(stmt);
+            }
             return BackendError.OutOfMemory;
         };
 
@@ -893,24 +1043,28 @@ pub const SQLiteBackend = struct {
         const self: *Self = @ptrCast(@alignCast(ctx));
 
         if (self.cursors.fetchRemove(cursor.id)) |entry| {
-            _ = c.sqlite3_finalize(entry.value.stmt);
+            // Only finalize non-cached statements (Phase 2.6)
+            // Cached statements are reused and finalized on close()
+            if (!entry.value.uses_cached_stmt) {
+                _ = c.sqlite3_finalize(entry.value.stmt);
+            }
         }
     }
 
     fn estimateSize(ctx: *anyopaque) BackendError!u64 {
         const self: *Self = @ptrCast(@alignCast(ctx));
 
-        const db = self.db orelse return 0;
+        if (self.db == null) return 0;
 
-        // Get page count and page size
-        const sql = "SELECT page_count * page_size FROM pragma_page_count(), pragma_page_size()";
-        var stmt: *c.sqlite3_stmt = undefined;
-        const prep_rc = c.sqlite3_prepare_v2(db, sql, @intCast(sql.len), &stmt, null);
-        if (prep_rc != c.SQLITE_OK) return 0;
-        defer _ = c.sqlite3_finalize(stmt);
+        // Use cached prepared statement (Phase 2.6)
+        const stmt = if (self.stmt_cache) |cache| cache.estimate_size else return 0;
+        if (stmt == null) return 0;
 
-        if (c.sqlite3_step(stmt) == c.SQLITE_ROW) {
-            return @intCast(c.sqlite3_column_int64(stmt, 0));
+        // Reset for reuse
+        _ = c.sqlite3_reset(stmt.?);
+
+        if (c.sqlite3_step(stmt.?) == c.SQLITE_ROW) {
+            return @intCast(c.sqlite3_column_int64(stmt.?, 0));
         }
         return 0;
     }
@@ -920,16 +1074,15 @@ pub const SQLiteBackend = struct {
 
         var stats = BackendStats{};
 
-        const db = self.db orelse return stats;
+        if (self.db == null) return stats;
 
-        // Count entries
-        const count_sql = "SELECT COUNT(*) FROM object_store_data WHERE object_store_id = 1";
-        var stmt: *c.sqlite3_stmt = undefined;
-        const prep_rc = c.sqlite3_prepare_v2(db, count_sql, @intCast(count_sql.len), &stmt, null);
-        if (prep_rc == c.SQLITE_OK) {
-            defer _ = c.sqlite3_finalize(stmt);
-            if (c.sqlite3_step(stmt) == c.SQLITE_ROW) {
-                stats.key_count = @intCast(c.sqlite3_column_int64(stmt, 0));
+        // Use cached prepared statement for count (Phase 2.6)
+        const stmt = if (self.stmt_cache) |cache| cache.count_data else return stats;
+        if (stmt) |s| {
+            _ = c.sqlite3_reset(s);
+            _ = c.sqlite3_bind_int64(s, 1, 1); // object_store_id = 1
+            if (c.sqlite3_step(s) == c.SQLITE_ROW) {
+                stats.key_count = @intCast(c.sqlite3_column_int64(s, 0));
             }
         }
 
@@ -1098,32 +1251,25 @@ pub const SQLiteBackend = struct {
 
     /// Ensure default object store exists for simple key-value operations
     fn ensureDefaultObjectStore(self: *Self) BackendError!void {
-        const db = self.db orelse return BackendError.Closed;
+        if (self.db == null) return BackendError.Closed;
         const db_id = self.database_id orelse return BackendError.Closed;
+        const cache = self.stmt_cache orelse return BackendError.BackendSpecific;
 
-        // Check if default store exists
-        const check_sql = "SELECT id FROM object_stores WHERE database_id = ? AND name = '_default'";
-        var check_stmt: *c.sqlite3_stmt = undefined;
-        var prep_rc = c.sqlite3_prepare_v2(db, check_sql, @intCast(check_sql.len), &check_stmt, null);
-        if (prep_rc != c.SQLITE_OK) return BackendError.BackendSpecific;
-        defer _ = c.sqlite3_finalize(check_stmt);
-
+        // Check if default store exists using cached statement (Phase 2.6)
+        const check_stmt = cache.select_default_object_store orelse return BackendError.BackendSpecific;
+        _ = c.sqlite3_reset(check_stmt);
         _ = c.sqlite3_bind_int64(check_stmt, 1, db_id);
 
         if (c.sqlite3_step(check_stmt) == c.SQLITE_ROW) {
             return; // Already exists
         }
 
-        // Create default object store with id=1
-        const sql = "INSERT INTO object_stores (id, database_id, name, key_path, auto_increment) VALUES (1, ?, '_default', NULL, 0)";
-        var stmt: *c.sqlite3_stmt = undefined;
-        prep_rc = c.sqlite3_prepare_v2(db, sql, @intCast(sql.len), &stmt, null);
-        if (prep_rc != c.SQLITE_OK) return BackendError.BackendSpecific;
-        defer _ = c.sqlite3_finalize(stmt);
+        // Create default object store with id=1 using cached statement (Phase 2.6)
+        const insert_stmt = cache.insert_default_object_store orelse return BackendError.BackendSpecific;
+        _ = c.sqlite3_reset(insert_stmt);
+        _ = c.sqlite3_bind_int64(insert_stmt, 1, db_id);
 
-        _ = c.sqlite3_bind_int64(stmt, 1, db_id);
-
-        _ = c.sqlite3_step(stmt);
+        _ = c.sqlite3_step(insert_stmt);
     }
 };
 
@@ -1301,4 +1447,62 @@ test "SQLiteBackend - cursor iteration" {
 
     try std.testing.expectEqual(@as(usize, 3), count);
     try backend_inst.commit(txn2);
+}
+
+test "SQLiteBackend - prepared statement cache reuse" {
+    // Phase 2.6: Test that prepared statements are properly cached and reused
+    const allocator = std.testing.allocator;
+    var backend_inst = try SQLiteBackend.create(allocator);
+    defer backend_inst.destroy();
+
+    try backend_inst.open("test_sqlite_stmt_cache", .{ .create_if_missing = true });
+    defer {
+        backend_inst.close();
+        std.fs.cwd().deleteFile("test_sqlite_stmt_cache.sqlite3") catch {};
+        std.fs.cwd().deleteFile("test_sqlite_stmt_cache.sqlite3-wal") catch {};
+        std.fs.cwd().deleteFile("test_sqlite_stmt_cache.sqlite3-shm") catch {};
+    }
+
+    // Verify statement cache was initialized
+    const self: *SQLiteBackend = @ptrCast(@alignCast(backend_inst.ptr));
+    try std.testing.expect(self.stmt_cache != null);
+
+    // Multiple write/read cycles should reuse the same prepared statements
+    for (0..10) |i| {
+        const txn = try backend_inst.beginTransaction(.readwrite);
+
+        // Generate unique key for each iteration
+        var key_buf: [32]u8 = undefined;
+        const key = std.fmt.bufPrint(&key_buf, "key_{d}", .{i}) catch unreachable;
+
+        try backend_inst.write(txn, key, "test_value");
+
+        const value = try backend_inst.read(txn, key);
+        try std.testing.expect(value != null);
+        try std.testing.expectEqualStrings("test_value", value.?);
+        allocator.free(value.?);
+
+        try std.testing.expect(try backend_inst.exists(txn, key));
+
+        try backend_inst.commit(txn);
+    }
+
+    // Multiple cursor operations should also reuse cached statements
+    for (0..5) |_| {
+        const txn = try backend_inst.beginTransaction(.readonly);
+
+        // Full table scan (uses cached statement)
+        const cursor = try backend_inst.cursorOpen(txn, .{}, .next);
+        defer backend_inst.cursorClose(cursor);
+
+        var count: usize = 0;
+        while (try backend_inst.cursorNext(cursor)) |*kv| {
+            var entry = kv.*;
+            defer entry.deinit();
+            count += 1;
+        }
+
+        try std.testing.expectEqual(@as(usize, 10), count);
+        try backend_inst.commit(txn);
+    }
 }
