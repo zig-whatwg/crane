@@ -23,6 +23,7 @@ pub const base64 = @import("base64.zig");
 pub const namespaces = @import("namespaces.zig");
 pub const time = @import("time.zig");
 pub const bloom_filter = @import("bloom_filter.zig");
+pub const ancestor_bloom_filter = @import("ancestor_bloom_filter.zig");
 
 pub const String = string.String;
 pub const CodePoint = code_point.CodePoint;
@@ -38,6 +39,10 @@ pub const InfraError = string.InfraError;
 pub const Moment = time.Moment;
 pub const Duration = time.Duration;
 pub const BloomFilter = bloom_filter.BloomFilter;
+pub const AncestorBloomFilter = ancestor_bloom_filter.AncestorBloomFilter;
+pub const AncestorHashes = ancestor_bloom_filter.AncestorHashes;
+pub const hashString = ancestor_bloom_filter.hashString;
+pub const hashStringLower = ancestor_bloom_filter.hashStringLower;
 
 // Numeric type aliases for clarity
 // WHATWG Infra Standard §4.3

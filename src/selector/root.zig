@@ -41,6 +41,15 @@ pub const PseudoElementSelector = parser.PseudoElementSelector;
 pub const matcher = @import("matcher.zig");
 pub const Matcher = matcher.Matcher;
 
+pub const cache = @import("cache.zig");
+pub const SelectorQueryCache = cache.SelectorQueryCache;
+pub const NthIndexCache = cache.NthIndexCache;
+pub const HasSelectorCache = cache.HasSelectorCache;
+
+pub const context = @import("context.zig");
+pub const MatchingContext = context.MatchingContext;
+pub const MatchResult = context.MatchResult;
+
 test {
     @import("std").testing.refAllDecls(@This());
 }
