@@ -23,6 +23,8 @@ const selector_mod = @import("selector");
 const Tokenizer = selector_mod.Tokenizer;
 const Parser = selector_mod.Parser;
 const SelectorList = selector_mod.SelectorList;
+const FastPathType = selector_mod.FastPathType;
+const analyzeSelector = selector_mod.analyzeSelector;
 
 // Import impl modules for accessing internal state
 const impls = @import("impls");
@@ -126,6 +128,8 @@ pub fn children(allocator: std.mem.Allocator, node: *runtime.Instance, ctx: runt
 /// 1. Let s be the result of parse a selector selectors
 /// 2. If s is failure, throw SyntaxError
 /// 3. Return first element in tree order matching s, or null if none
+///
+/// Optimization: Uses fast paths for simple selectors (ID, class, tag)
 pub fn querySelector(
     allocator: std.mem.Allocator,
     scoping_root: *runtime.Instance,
@@ -143,8 +147,46 @@ pub fn querySelector(
     };
     defer selector_list.deinit();
 
-    // Step 3: Find first matching element in tree order
-    return findFirstMatch(scoping_root, &selector_list);
+    // Analyze selector for fast path opportunities
+    const analysis = analyzeSelector(&selector_list);
+
+    // Step 3: Find first matching element using appropriate strategy
+    switch (analysis.fast_path) {
+        .single_id => {
+            // Fast path: ID selector - find by ID, optionally verify other selectors
+            if (analysis.id) |id| {
+                if (findElementById(scoping_root, id)) |element| {
+                    if (analysis.needs_verification) {
+                        // Need to verify element matches full selector
+                        if (elementMatchesSelectorList(element, &selector_list)) {
+                            return element;
+                        }
+                    } else {
+                        return element;
+                    }
+                }
+            }
+            return null;
+        },
+        .single_class => {
+            // Fast path: Class-only selector - iterate elements with class
+            if (analysis.class_name) |class_name| {
+                return findFirstElementByClass(scoping_root, class_name);
+            }
+            return null;
+        },
+        .single_tag => {
+            // Fast path: Tag-only selector - iterate elements with tag name
+            if (analysis.tag_name) |tag_name| {
+                return findFirstElementByTagName(scoping_root, tag_name);
+            }
+            return null;
+        },
+        .none, .complex => {
+            // No fast path - use full tree traversal
+            return findFirstMatch(scoping_root, &selector_list);
+        },
+    }
 }
 
 /// querySelectorAll - Returns all elements matching the selector
@@ -154,6 +196,8 @@ pub fn querySelector(
 /// 1. Let s be the result of parse a selector selectors
 /// 2. If s is failure, throw SyntaxError
 /// 3. Return a static NodeList of all elements matching s in tree order
+///
+/// Optimization: Uses fast paths for simple selectors (ID, class, tag)
 pub fn querySelectorAll(
     allocator: std.mem.Allocator,
     scoping_root: *runtime.Instance,
@@ -172,6 +216,9 @@ pub fn querySelectorAll(
     };
     defer selector_list.deinit();
 
+    // Analyze selector for fast path opportunities
+    const analysis = analyzeSelector(&selector_list);
+
     // Step 3: Create static NodeList and collect all matching elements
     const NodeListImpl = impls.NodeList;
     const node_list = NodeListImpl.init(
@@ -182,10 +229,154 @@ pub fn querySelectorAll(
     ) catch return error.OutOfMemory;
     errdefer NodeListImpl.deinit(node_list);
 
-    // Collect all matches
-    collectAllMatches(scoping_root, &selector_list, node_list) catch return error.OutOfMemory;
+    // Collect matches using appropriate strategy
+    switch (analysis.fast_path) {
+        .single_id => {
+            // Fast path: ID selector - find by ID, add if matches
+            if (analysis.id) |id| {
+                if (findElementById(scoping_root, id)) |element| {
+                    if (analysis.needs_verification) {
+                        if (elementMatchesSelectorList(element, &selector_list)) {
+                            NodeListImpl.addNode(node_list, element) catch return error.OutOfMemory;
+                        }
+                    } else {
+                        NodeListImpl.addNode(node_list, element) catch return error.OutOfMemory;
+                    }
+                }
+            }
+        },
+        .single_class => {
+            // Fast path: Class-only selector
+            if (analysis.class_name) |class_name| {
+                collectElementsByClass(scoping_root, class_name, node_list) catch return error.OutOfMemory;
+            }
+        },
+        .single_tag => {
+            // Fast path: Tag-only selector
+            if (analysis.tag_name) |tag_name| {
+                collectElementsByTagName(scoping_root, tag_name, node_list) catch return error.OutOfMemory;
+            }
+        },
+        .none, .complex => {
+            // No fast path - use full tree traversal
+            collectAllMatches(scoping_root, &selector_list, node_list) catch return error.OutOfMemory;
+        },
+    }
 
     return node_list;
+}
+
+// =============================================================================
+// Fast Path Query Functions
+// =============================================================================
+
+/// Fast path: Find element by ID within subtree
+/// Uses depth-first traversal, returns first match
+fn findElementById(root: *runtime.Instance, id: []const u8) ?*runtime.Instance {
+    var child = NodeImpl.getFirstChild(root);
+    while (child) |c| {
+        const node_type = NodeImpl.getNodeType(c) orelse 0;
+        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+            // Check ID
+            if (ElementImpl.getInternal(c)) |internal| {
+                if (std.mem.eql(u8, internal.id.asSlice(), id)) {
+                    return c;
+                }
+            }
+            // Recurse into children
+            if (findElementById(c, id)) |found| {
+                return found;
+            }
+        }
+        child = NodeImpl.getNextSibling(c);
+    }
+    return null;
+}
+
+/// Fast path: Find first element with given class name
+fn findFirstElementByClass(root: *runtime.Instance, class_name: []const u8) ?*runtime.Instance {
+    var child = NodeImpl.getFirstChild(root);
+    while (child) |c| {
+        const node_type = NodeImpl.getNodeType(c) orelse 0;
+        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+            // Check class
+            if (matchesClassSelector(c, class_name)) {
+                return c;
+            }
+            // Recurse into children
+            if (findFirstElementByClass(c, class_name)) |found| {
+                return found;
+            }
+        }
+        child = NodeImpl.getNextSibling(c);
+    }
+    return null;
+}
+
+/// Fast path: Find first element with given tag name
+fn findFirstElementByTagName(root: *runtime.Instance, tag_name: []const u8) ?*runtime.Instance {
+    var child = NodeImpl.getFirstChild(root);
+    while (child) |c| {
+        const node_type = NodeImpl.getNodeType(c) orelse 0;
+        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+            // Check tag name
+            if (matchesTypeSelector(c, tag_name)) {
+                return c;
+            }
+            // Recurse into children
+            if (findFirstElementByTagName(c, tag_name)) |found| {
+                return found;
+            }
+        }
+        child = NodeImpl.getNextSibling(c);
+    }
+    return null;
+}
+
+/// Fast path: Collect all elements with given class name
+fn collectElementsByClass(
+    root: *runtime.Instance,
+    class_name: []const u8,
+    node_list: *runtime.Instance,
+) !void {
+    const NodeListImpl = impls.NodeList;
+
+    var child = NodeImpl.getFirstChild(root);
+    while (child) |c| {
+        const node_type = NodeImpl.getNodeType(c) orelse 0;
+        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+            // Check class
+            if (matchesClassSelector(c, class_name)) {
+                try NodeListImpl.addNode(node_list, c);
+            }
+            // Recurse into children
+            try collectElementsByClass(c, class_name, node_list);
+        }
+        child = NodeImpl.getNextSibling(c);
+    }
+}
+
+/// Fast path: Collect all elements with given tag name
+fn collectElementsByTagName(
+    root: *runtime.Instance,
+    tag_name: []const u8,
+    node_list: *runtime.Instance,
+) !void {
+    const NodeListImpl = impls.NodeList;
+
+    var child = NodeImpl.getFirstChild(root);
+    while (child) |c| {
+        const node_type = NodeImpl.getNodeType(c) orelse 0;
+        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+            // Check tag name
+            if (matchesTypeSelector(c, tag_name)) {
+                try NodeListImpl.addNode(node_list, c);
+            }
+            // Recurse into children
+            try collectElementsByTagName(c, tag_name, node_list);
+        }
+        child = NodeImpl.getNextSibling(c);
+    }
 }
 
 // =============================================================================
