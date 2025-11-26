@@ -27,6 +27,11 @@ pub const IDBKeyType = sqlite.IDBKeyType;
 pub const Schema = sqlite.Schema;
 pub const Statements = sqlite.Statements;
 
+pub const leveldb = @import("leveldb.zig");
+pub const LevelDBBackend = leveldb.LevelDBBackend;
+pub const LevelDBKeyEncoder = leveldb.LevelDBKeyEncoder;
+pub const KeyPrefix = leveldb.KeyPrefix;
+
 // Re-export parent types for convenience
 const parent = @import("../backend.zig");
 pub const StorageBackend = parent.StorageBackend;
@@ -47,4 +52,5 @@ pub const IndexOptions = parent.IndexOptions;
 test {
     _ = memory;
     _ = sqlite;
+    _ = leveldb;
 }

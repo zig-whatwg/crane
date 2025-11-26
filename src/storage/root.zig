@@ -53,6 +53,13 @@ pub const ObjectStoreOptions = backend_mod.ObjectStoreOptions;
 pub const IndexOptions = backend_mod.IndexOptions;
 pub const createBackend = backend_mod.createBackend;
 
+// Backend selection and configuration
+pub const Platform = backend_mod.Platform;
+pub const BackendConfig = backend_mod.BackendConfig;
+pub const createBackendWithConfig = backend_mod.createBackendWithConfig;
+pub const getDefaultBackendType = backend_mod.getDefaultBackendType;
+pub const isBackendAvailable = backend_mod.isBackendAvailable;
+
 // Backend implementations
 pub const backends = @import("backends/root.zig");
 

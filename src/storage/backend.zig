@@ -640,7 +640,71 @@ pub const BackendType = enum {
 
     /// In-memory backend (for testing, no persistence)
     memory,
+
+    /// Automatic selection based on platform
+    auto,
 };
+
+/// Platform detection for automatic backend selection
+pub const Platform = enum {
+    ios,
+    android,
+    macos,
+    linux,
+    windows,
+    wasm,
+    unknown,
+
+    /// Detect current platform at comptime
+    pub fn detect() Platform {
+        const builtin = @import("builtin");
+        const os = builtin.os.tag;
+
+        return switch (os) {
+            .ios => .ios,
+            .macos => .macos,
+            .linux => if (builtin.abi == .android) .android else .linux,
+            .windows => .windows,
+            .wasi, .freestanding => if (builtin.cpu.arch == .wasm32 or builtin.cpu.arch == .wasm64) .wasm else .unknown,
+            else => .unknown,
+        };
+    }
+
+    /// Get recommended backend for this platform
+    pub fn recommendedBackend(self: Platform) BackendType {
+        return switch (self) {
+            // Mobile: Use SQLite (system-provided, zero cost)
+            .ios, .android => .sqlite,
+
+            // Desktop: Use LevelDB (best performance)
+            .macos, .linux, .windows => .leveldb,
+
+            // WASM: Use Memory (no persistent storage available)
+            .wasm => .memory,
+
+            // Unknown: Fall back to Memory for safety
+            .unknown => .memory,
+        };
+    }
+};
+
+/// Backend configuration for runtime customization
+pub const BackendConfig = struct {
+    /// Override automatic backend selection
+    backend_type: ?BackendType = null,
+
+    /// Custom data directory (null = use platform default)
+    data_dir: ?[]const u8 = null,
+
+    /// Enable debug logging
+    debug: bool = false,
+
+    /// Force memory backend for testing
+    force_memory: bool = false,
+};
+
+// Import backend implementations
+const backends = @import("backends/root.zig");
 
 /// Create a storage backend of the specified type
 ///
@@ -650,23 +714,55 @@ pub const BackendType = enum {
 /// defer backend.destroy();
 /// ```
 pub fn createBackend(allocator: std.mem.Allocator, backend_type: BackendType) BackendError!StorageBackend {
-    _ = allocator;
+    const effective_type = switch (backend_type) {
+        .auto => Platform.detect().recommendedBackend(),
+        else => backend_type,
+    };
+
+    return switch (effective_type) {
+        .sqlite => backends.SQLiteBackend.create(allocator),
+        .leveldb => backends.LevelDBBackend.create(allocator),
+        .memory => backends.MemoryBackend.create(allocator),
+        .auto => unreachable, // Already resolved above
+    };
+}
+
+/// Create a storage backend with custom configuration
+///
+/// Usage:
+/// ```zig
+/// const backend = try createBackendWithConfig(allocator, .{
+///     .backend_type = .sqlite,
+///     .debug = true,
+/// });
+/// defer backend.destroy();
+/// ```
+pub fn createBackendWithConfig(allocator: std.mem.Allocator, config: BackendConfig) BackendError!StorageBackend {
+    // Force memory backend for testing if requested
+    if (config.force_memory) {
+        return backends.MemoryBackend.create(allocator);
+    }
+
+    // Use explicit backend type or auto-detect
+    const backend_type = config.backend_type orelse .auto;
+    return createBackend(allocator, backend_type);
+}
+
+/// Get the default backend type for the current platform
+pub fn getDefaultBackendType() BackendType {
+    return Platform.detect().recommendedBackend();
+}
+
+/// Check if a backend type is available on this platform
+///
+/// Note: Currently all backends are compiled in. This function
+/// is for future use when we may conditionally compile backends.
+pub fn isBackendAvailable(backend_type: BackendType) bool {
     return switch (backend_type) {
-        .sqlite => {
-            // TODO(SQLite Backend): Implement SQLite backend
-            // return sqlite.createBackend(allocator);
-            return BackendError.BackendSpecific;
-        },
-        .leveldb => {
-            // TODO(LevelDB Backend): Implement LevelDB backend
-            // return leveldb.createBackend(allocator);
-            return BackendError.BackendSpecific;
-        },
-        .memory => {
-            // TODO(Memory Backend): Implement Memory backend
-            // return memory.createBackend(allocator);
-            return BackendError.BackendSpecific;
-        },
+        .sqlite => true, // SQLite stub always available
+        .leveldb => true, // LevelDB stub always available
+        .memory => true, // Memory always available
+        .auto => true, // Auto always resolves to something
     };
 }
 
@@ -710,4 +806,71 @@ test "KeyRange.isUnbounded" {
 
     const bounded = KeyRange.only("test");
     try std.testing.expect(!bounded.isUnbounded());
+}
+
+test "Platform.detect returns valid platform" {
+    const platform = Platform.detect();
+    // Should return one of the valid platforms
+    try std.testing.expect(platform == .ios or
+        platform == .android or
+        platform == .macos or
+        platform == .linux or
+        platform == .windows or
+        platform == .wasm or
+        platform == .unknown);
+}
+
+test "Platform.recommendedBackend returns valid backend" {
+    const platforms = [_]Platform{ .ios, .android, .macos, .linux, .windows, .wasm, .unknown };
+
+    for (platforms) |platform| {
+        const backend_type = platform.recommendedBackend();
+        try std.testing.expect(backend_type == .sqlite or
+            backend_type == .leveldb or
+            backend_type == .memory);
+    }
+}
+
+test "getDefaultBackendType returns non-auto" {
+    const default_type = getDefaultBackendType();
+    try std.testing.expect(default_type != .auto);
+}
+
+test "isBackendAvailable" {
+    try std.testing.expect(isBackendAvailable(.memory));
+    try std.testing.expect(isBackendAvailable(.sqlite));
+    try std.testing.expect(isBackendAvailable(.leveldb));
+    try std.testing.expect(isBackendAvailable(.auto));
+}
+
+test "createBackend with memory backend" {
+    const allocator = std.testing.allocator;
+
+    const backend = try createBackend(allocator, .memory);
+    defer backend.destroy();
+
+    // Memory backend should work immediately
+    try std.testing.expect(!backend.isOpen());
+}
+
+test "createBackend with auto selection" {
+    const allocator = std.testing.allocator;
+
+    const backend = try createBackend(allocator, .auto);
+    defer backend.destroy();
+
+    // Auto should resolve to a working backend
+    try std.testing.expect(!backend.isOpen());
+}
+
+test "createBackendWithConfig force_memory" {
+    const allocator = std.testing.allocator;
+
+    const backend = try createBackendWithConfig(allocator, .{
+        .backend_type = .leveldb,
+        .force_memory = true, // Should override backend_type
+    });
+    defer backend.destroy();
+
+    try std.testing.expect(!backend.isOpen());
 }
