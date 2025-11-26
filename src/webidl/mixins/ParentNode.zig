@@ -449,32 +449,40 @@ fn elementMatchesSelectorList(
 }
 
 /// Check if an element matches a complex selector (combinator chain)
+///
+/// Storage order is Right-to-Left (RTL) per Stylo conventions:
+/// - complex.compound = rightmost (subject) compound selector
+/// - complex.combinators = array of {combinator, compound} pairs going toward ancestors
+///
+/// Example: "body > header"
+/// - complex.compound = "header" (subject)
+/// - complex.combinators = [{Child, "body"}]
+///
+/// Matching proceeds right-to-left:
+/// 1. Element must match complex.compound (subject)
+/// 2. For each combinator pair, traverse DOM and match the compound
 fn elementMatchesComplexSelector(
     element: *runtime.Instance,
     complex: *const selector_mod.ComplexSelector,
 ) bool {
-    // Right-to-left matching (standard CSS strategy)
-
-    // No combinators - element must match the only compound
-    if (complex.combinators.len == 0) {
-        return elementMatchesCompoundSelector(element, &complex.compound);
-    }
-
-    // With combinators: element must match rightmost compound (last in array)
-    const rightmost = &complex.combinators[complex.combinators.len - 1].compound;
-    if (!elementMatchesCompoundSelector(element, rightmost)) {
+    // Step 1: Element must match the subject (rightmost) compound
+    // The subject is always complex.compound, regardless of whether combinators exist
+    if (!elementMatchesCompoundSelector(element, &complex.compound)) {
         return false;
     }
 
-    // Match combinators right-to-left
-    var current_element = element;
-    var i: usize = complex.combinators.len;
-    while (i > 0) {
-        i -= 1;
-        const pair = &complex.combinators[i];
-        const target_compound = if (i == 0) &complex.compound else &complex.combinators[i - 1].compound;
+    // No combinators - we're done (single compound selector)
+    if (complex.combinators.len == 0) {
+        return true;
+    }
 
-        const matched = matchCombinator(current_element, pair.combinator, target_compound);
+    // Step 2: Match combinators from right to left
+    // Iterate through combinators array, which stores ancestors in order
+    var current_element = element;
+    for (complex.combinators) |*pair| {
+        // pair.combinator = relationship to traverse (Child, Descendant, etc.)
+        // pair.compound = compound selector the ancestor/sibling must match
+        const matched = matchCombinator(current_element, pair.combinator, &pair.compound);
         if (matched == null) return false;
         current_element = matched.?;
     }
