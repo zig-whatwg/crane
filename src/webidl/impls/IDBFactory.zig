@@ -14,6 +14,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const v8 = @import("v8");
 const IDBFactoryInterface = interfaces.IDBFactory;
 
 // Backend imports
@@ -206,27 +207,68 @@ pub fn call_deleteDatabase(instance: *runtime.Instance, name: runtime.DOMString)
 /// -  0 if first == second
 pub fn call_cmp(instance: *runtime.Instance, first: *const anyopaque, second: *const anyopaque) ImplError!i16 {
     const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
+    _ = state.own._internal orelse return error.InvalidState;
 
-    // Convert anyopaque pointers to IDBKey
-    // The V8 layer should have already converted JS values to IDBKey
-    const first_key = convertToKey(first) catch return error.DataError;
-    const second_key = convertToKey(second) catch return error.DataError;
+    // Convert V8 values to IDBKey
+    // The anyopaque pointers are actually V8 Value pointers passed through from the V8 layer
+    const first_key = convertV8ToKey(first) orelse return error.DataError;
+    const second_key = convertV8ToKey(second) orelse return error.DataError;
 
-    return internal.factory.cmp(first_key, second_key);
+    // Use the standalone compare function from the key module
+    return storage.indexeddb.key.compare(first_key, second_key);
 }
 
-/// Convert anyopaque to IDBKey
+/// Convert a V8 value (passed as anyopaque) to an IDBKey
 ///
-/// This handles the conversion from V8 values (passed as opaque pointers)
-/// to the backend IDBKey type.
-fn convertToKey(ptr: *const anyopaque) !BackendKey {
-    // For now, assume the pointer is directly an IDBKey
-    // In full implementation, this would inspect the JS value type
-    // and construct the appropriate IDBKey variant
-    _ = ptr;
+/// Per IndexedDB spec, valid keys are:
+/// - Number (excluding NaN)
+/// - String
+/// - Date
+/// - ArrayBuffer/ArrayBufferView (binary)
+/// - Array of keys
+fn convertV8ToKey(ptr: *const anyopaque) ?BackendKey {
+    // The anyopaque pointer handling depends on the V8 conversion layer:
+    // - For numbers: ptr is a V8 Value pointer (Global<Value>*)
+    // - For strings: ptr is a DOMString* (allocated by conversion layer)
+    //
+    // We distinguish by attempting to interpret as DOMString first.
+    // DOMString is a tagged union. We try calling asSlice() which will
+    // return the string data regardless of which variant it is.
+    //
+    // If the pointer is actually a V8 Value, calling asSlice() may return
+    // garbage or crash. So we use a heuristic: check if the "length" field
+    // (bytes 8-15 in a slice) is a reasonable string length (< 1MB and > 0
+    // for non-empty strings).
 
-    // TODO: Implement proper JS value to IDBKey conversion
-    // This requires integration with the V8 conversions layer
-    return BackendKey.number(0); // Placeholder
+    const slice_struct = @as(*const extern struct { ptr: [*]const u8, len: usize }, @ptrCast(@alignCast(ptr)));
+    const maybe_len = slice_struct.len;
+
+    // Heuristic: if length looks like a reasonable string length (1 to 1MB),
+    // assume this is a DOMString
+    if (maybe_len > 0 and maybe_len < 1024 * 1024) {
+        // Check if the pointer value also looks reasonable
+        const ptr_val = @intFromPtr(slice_struct.ptr);
+        if (ptr_val > 0x1000) {
+            // Likely a DOMString - read the string data directly from the slice
+            const str_slice = slice_struct.ptr[0..maybe_len];
+            return BackendKey.string(str_slice);
+        }
+    }
+
+    // Otherwise, it's a V8 Value pointer
+    const v8_value: *v8.ffi.Value = @ptrCast(@constCast(ptr));
+
+    // Check type and convert accordingly
+    if (v8.ffi.v8_Value_IsNumber(v8_value)) {
+        // Extract number value using raw function that gets current context from isolate
+        const num = v8.ffi.v8_Value_NumberValue_Raw(ptr);
+        if (std.math.isNan(num)) {
+            return null; // NaN is not a valid key
+        }
+        return BackendKey.number(num);
+    }
+
+    // TODO: Handle Date, ArrayBuffer, and Array types
+    // For now, return null for unsupported types
+    return null;
 }

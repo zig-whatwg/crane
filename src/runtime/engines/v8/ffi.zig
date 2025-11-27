@@ -375,6 +375,9 @@ pub extern fn v8_Name_IsString(name: *Name) bool;
 pub extern fn v8_String_Utf8Length_Raw(str: *const String) c_int;
 pub extern fn v8_String_WriteUtf8_Raw(str: *const String, buffer: [*]u8, length: c_int) c_int;
 
+// Number value extraction for raw pointers (from callbacks/anyopaque)
+pub extern fn v8_Value_NumberValue_Raw(value: *const anyopaque) f64;
+
 // Object operations
 pub extern fn v8_Object_New(isolate: *Isolate) ?*Object;
 pub extern fn v8_Object_Set(object: *Object, context: *Context, key: *Value, value: *Value) bool;

@@ -944,7 +944,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 return @ptrCast(v8.v8_Boolean_New(isolate, result));
             }
 
-            if (ReturnType == i32 or ReturnType == i64 or ReturnType == u32 or ReturnType == u64 or ReturnType == u16) {
+            if (ReturnType == i16 or ReturnType == i32 or ReturnType == i64 or ReturnType == u16 or ReturnType == u32 or ReturnType == u64) {
                 return @ptrCast(v8.v8_Number_New(isolate, @floatFromInt(result)));
             }
 

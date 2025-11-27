@@ -36,7 +36,7 @@ var navList = doc.createElement("ul");
 for (var i = 1; i <= 3; i++) {
     var li = doc.createElement("li");
     var a = doc.createElement("a");
-    a.href = "#section" + i;
+    a.setAttribute("href", "#section" + i);  // Use setAttribute so [href] selector works
     a.className = "nav-link";
     a.textContent = "Section " + i;
     li.appendChild(a);

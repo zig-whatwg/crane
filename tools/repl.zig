@@ -19,6 +19,8 @@ const Repl = struct {
     context: *v8.ffi.Context,
     input_buffer: std.ArrayListUnmanaged(u8),
     history: std.ArrayListUnmanaged([]const u8),
+    /// Singleton instances that need to be cleaned up on exit
+    indexeddb_instance: ?*runtime.Instance = null,
 
     const Self = @This();
 
@@ -190,8 +192,17 @@ const Repl = struct {
                             const constructor = v8.ffi.v8_FunctionTemplate_GetFunction(template, context);
 
                             // Attach as property: WebAssembly.Instance = constructor
+                            // Per WebIDL spec, namespace properties are non-writable, non-enumerable, non-configurable
                             const iface_key = v8.ffi.v8_String_NewFromUtf8(isolate, iface_decl.name.ptr, @intCast(iface_decl.name.len));
-                            _ = v8.ffi.v8_Object_Set(@ptrCast(ns_obj), context, @ptrCast(iface_key), @ptrCast(constructor));
+                            _ = v8.ffi.v8_Object_DefineProperty(
+                                @ptrCast(ns_obj),
+                                context,
+                                @ptrCast(iface_key),
+                                @ptrCast(constructor),
+                                false, // writable
+                                false, // enumerable
+                                false, // configurable
+                            );
                         }
                     }
                 }
@@ -205,13 +216,66 @@ const Repl = struct {
         // This makes Element.__proto__ === Node, Node.__proto__ === EventTarget, etc.
         v8.interface_bindings.setupConstructorInheritance(isolate, context);
 
-        return Self{
+        // Register singleton instances (e.g., indexedDB)
+        // These are WebIDL interfaces that are exposed as pre-created instances on the global scope
+        // rather than as constructors. Per WindowOrWorkerGlobalScope: readonly attribute IDBFactory indexedDB;
+        var self = Self{
             .allocator = allocator,
             .isolate = isolate,
             .context = context,
             .input_buffer = .{},
             .history = .{},
         };
+
+        try self.registerSingletons();
+
+        return self;
+    }
+
+    /// Register singleton instances on the global object
+    ///
+    /// Per WebIDL, some interfaces are exposed as pre-created instances rather than
+    /// constructors. For example, WindowOrWorkerGlobalScope defines:
+    ///   readonly attribute IDBFactory indexedDB;
+    ///
+    /// This creates those singleton instances and attaches them to the global scope.
+    fn registerSingletons(self: *Self) !void {
+        const global_obj = v8.ffi.v8_Context_Global(self.context) orelse return error.NoGlobal;
+
+        // Get the runtime context for wrapper caching (required for IDBFactory.init)
+        const runtime_ctx = context_manager.getOrCreate(self.context, self.allocator) catch |err| {
+            std.debug.print("Warning: Failed to get runtime context for singletons: {}\n", .{err});
+            return;
+        };
+
+        // Register indexedDB singleton (IDBFactory instance)
+        // Per spec: readonly attribute IDBFactory indexedDB; on WindowOrWorkerGlobalScope
+        {
+            const IDBFactory = @import("interfaces").IDBFactory;
+
+            // Create IDBFactory instance
+            const idb_factory_instance = IDBFactory.init(self.allocator, runtime_ctx) catch |err| {
+                std.debug.print("Warning: Failed to create indexedDB singleton: {}\n", .{err});
+                return;
+            };
+            // Store for cleanup on exit
+            self.indexeddb_instance = idb_factory_instance;
+
+            // Wrap it as a V8 object using the template registry
+            const v8_idb_factory = v8.template_registry.wrapInstanceAsV8Object(
+                idb_factory_instance,
+                "IDBFactory",
+                self.isolate,
+                self.context,
+            ) catch |err| {
+                std.debug.print("Warning: Failed to wrap indexedDB singleton: {}\n", .{err});
+                return;
+            };
+
+            // Set it as 'indexedDB' property on the global object
+            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "indexedDB", 9) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(v8_idb_factory));
+        }
     }
 
     pub fn deinit(self: *Self) void {
@@ -221,6 +285,13 @@ const Repl = struct {
         }
         self.history.deinit(self.allocator);
         self.input_buffer.deinit(self.allocator);
+
+        // Cleanup singleton instances
+        if (self.indexeddb_instance) |instance| {
+            const IDBFactory = @import("interfaces").IDBFactory;
+            IDBFactory.deinit(instance);
+            self.indexeddb_instance = null;
+        }
 
         // Cleanup context manager
         context_manager.deinit();
@@ -776,7 +847,7 @@ const Repl = struct {
     /// Returns true if the code can be evaluated, false if more input is needed
     ///
     /// This uses a simple heuristic: count brackets, braces, and parens.
-    /// If they're balanced and we're not inside a string/template literal, the code is likely complete.
+    /// If they're balanced and we're not inside a string/template literal/comment, the code is likely complete.
     fn isCompleteCode(_: *Self, code: []const u8) bool {
         if (code.len == 0) return true;
 
@@ -786,17 +857,44 @@ const Repl = struct {
 
         var in_string: u8 = 0; // 0 = not in string, '"' or '\'' = in that string type
         var in_template: bool = false; // Inside template literal ``
+        var in_line_comment: bool = false; // Inside // comment
+        var in_block_comment: bool = false; // Inside /* */ comment
         var escape_next: bool = false;
+        var prev_char: u8 = 0;
 
         for (code) |c| {
+            // Handle newlines - they end single-line comments
+            if (c == '\n') {
+                in_line_comment = false;
+                prev_char = c;
+                continue;
+            }
+
+            // Skip everything inside single-line comments
+            if (in_line_comment) {
+                prev_char = c;
+                continue;
+            }
+
+            // Handle block comment end
+            if (in_block_comment) {
+                if (prev_char == '*' and c == '/') {
+                    in_block_comment = false;
+                }
+                prev_char = c;
+                continue;
+            }
+
             // Handle escape sequences
             if (escape_next) {
                 escape_next = false;
+                prev_char = c;
                 continue;
             }
 
             if (c == '\\' and (in_string != 0 or in_template)) {
                 escape_next = true;
+                prev_char = c;
                 continue;
             }
 
@@ -805,6 +903,7 @@ const Repl = struct {
                 if (c == in_string) {
                     in_string = 0;
                 }
+                prev_char = c;
                 continue;
             }
 
@@ -814,36 +913,60 @@ const Repl = struct {
                     in_template = false;
                 }
                 // Note: We're ignoring ${} inside templates for simplicity
+                prev_char = c;
                 continue;
+            }
+
+            // Check for comment start (must be before string check since // could be in code)
+            if (prev_char == '/') {
+                if (c == '/') {
+                    // Single-line comment starts
+                    in_line_comment = true;
+                    prev_char = c;
+                    continue;
+                } else if (c == '*') {
+                    // Block comment starts
+                    in_block_comment = true;
+                    prev_char = c;
+                    continue;
+                }
             }
 
             // Check for string/template start
             if (c == '"' or c == '\'') {
                 in_string = c;
+                prev_char = c;
                 continue;
             }
             if (c == '`') {
                 in_template = true;
+                prev_char = c;
                 continue;
             }
 
-            // Handle single-line comment
-            // Note: This is simplified - doesn't handle all comment cases perfectly
-
-            // Count brackets
-            switch (c) {
-                '{' => brace_count += 1,
-                '}' => brace_count -= 1,
-                '[' => bracket_count += 1,
-                ']' => bracket_count -= 1,
-                '(' => paren_count += 1,
-                ')' => paren_count -= 1,
-                else => {},
+            // Count brackets (but not if this is a potential comment start)
+            if (c != '/') {
+                switch (c) {
+                    '{' => brace_count += 1,
+                    '}' => brace_count -= 1,
+                    '[' => bracket_count += 1,
+                    ']' => bracket_count -= 1,
+                    '(' => paren_count += 1,
+                    ')' => paren_count -= 1,
+                    else => {},
+                }
             }
+
+            prev_char = c;
         }
 
         // If we're inside a string or template, need more input
         if (in_string != 0 or in_template) {
+            return false;
+        }
+
+        // If we're inside a block comment, need more input
+        if (in_block_comment) {
             return false;
         }
 

@@ -124,6 +124,9 @@ pub const libuv = @import("libuv.zig");
 pub const libuv_timer = @import("libuv_timer.zig");
 pub const LibuvTimerManager = libuv_timer.LibuvTimerManager;
 
+/// Template registry for wrapping Zig instances as V8 objects
+pub const template_registry = @import("template_registry.zig");
+
 // Re-export commonly used types for convenience
 pub const Isolate = ffi.Isolate;
 pub const Context = ffi.Context;

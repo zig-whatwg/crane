@@ -1068,6 +1068,23 @@ int v8_String_WriteUtf8_Raw(const void* str, char* buffer, int length) {
     return string_ptr->WriteUtf8(isolate, buffer, length);
 }
 
+// Number value extraction for raw pointers (from callbacks/anyopaque)
+// This works with Global<Value>* handles that are passed through as void*
+double v8_Value_NumberValue_Raw(const void* value) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    // The value is a Global<Value>* passed as void*
+    const Global<Value>* global_value = reinterpret_cast<const Global<Value>*>(value);
+    Local<Value> val = global_value->Get(isolate);
+    
+    // Get the current context
+    Local<Context> ctx = isolate->GetCurrentContext();
+    
+    Maybe<double> maybe_num = val->NumberValue(ctx);
+    return maybe_num.FromMaybe(std::nan(""));
+}
+
 // ============================================================================
 // Object Property Descriptor Functions
 // ============================================================================
