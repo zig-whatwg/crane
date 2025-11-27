@@ -1069,6 +1069,10 @@ pub fn build(b: *std.Build) void {
     // fs_mod.addImport("storage", storage_mod);
     // fs_mod.addImport("streams", streams_mod);
 
+    // Add fs to storage module for StorageManager.getDirectory()
+    // Per WHATWG File System spec, navigator.storage.getDirectory() returns FileSystemDirectoryHandle
+    storage_mod.addImport("fs", fs_mod);
+
     // Wire spec modules into whatwg module
     whatwg_mod.addImport("infra", infra_mod);
     whatwg_mod.addImport("webidl", webidl_mod);

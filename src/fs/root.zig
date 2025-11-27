@@ -153,6 +153,11 @@ pub const FileSystemSyncAccessHandle = sync_access.FileSystemSyncAccessHandle;
 pub const FileSystemReadWriteOptions = sync_access.FileSystemReadWriteOptions;
 pub const SyncAccessError = sync_access.SyncAccessError;
 
+// Bucket file system (Phase 6)
+pub const bucket = @import("bucket.zig");
+pub const BucketFileSystem = bucket.BucketFileSystem;
+pub const BucketManager = bucket.BucketManager;
+
 test {
     std.testing.refAllDecls(@This());
     _ = errors;
@@ -167,4 +172,5 @@ test {
     _ = directory_handle;
     _ = writable_stream;
     _ = sync_access;
+    _ = bucket;
 }

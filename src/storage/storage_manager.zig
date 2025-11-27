@@ -28,6 +28,7 @@
 
 const std = @import("std");
 const standard = @import("standard.zig");
+const fs = @import("fs");
 
 /// StorageManager interface
 /// https://storage.spec.whatwg.org/#storagemanager
@@ -185,6 +186,29 @@ pub const StorageManager = struct {
     /// that matches the NavigatorStorage mixin pattern
     pub fn forNavigator(allocator: std.mem.Allocator, origin: []const u8) !Self {
         return init(allocator, origin);
+    }
+
+    /// Get the root directory of the bucket file system for this origin.
+    /// https://fs.spec.whatwg.org/#dom-storagemanager-getdirectory
+    ///
+    /// Returns a FileSystemDirectoryHandle for the origin's bucket file system.
+    /// This file system is:
+    /// - Origin-private (not visible to user on disk)
+    /// - Automatically permission-granted (no prompts)
+    /// - Subject to storage quota
+    ///
+    /// Algorithm:
+    /// 1. Let shelf be the result of obtaining a local storage shelf for origin
+    /// 2. If shelf is failure, reject with SecurityError
+    /// 3. Let bucket be shelf's bucket map["default"]
+    /// 4. Let root be bucket's file system root directory
+    /// 5. Return a FileSystemDirectoryHandle for root
+    pub fn getDirectory(self: *Self) !fs.FileSystemDirectoryHandle {
+        // Step 1-3: Get the bucket file system for this origin
+        const bucket_fs = try standard.getBucketFileSystem(self.allocator, self.origin);
+
+        // Step 4-5: Return handle to root directory
+        return bucket_fs.getDirectory();
     }
 };
 

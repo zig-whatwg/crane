@@ -38,6 +38,7 @@
 //! - Storage Spec Model: https://storage.spec.whatwg.org/#model
 
 const std = @import("std");
+const fs = @import("fs");
 
 // ============================================================================
 // Storage Types (Phase 3.1)
@@ -69,6 +70,7 @@ pub const BucketMode = enum {
 /// https://storage.spec.whatwg.org/#storage-identifier
 pub const StorageIdentifier = enum {
     caches,
+    fileSystem,
     indexedDB,
     localStorage,
     serviceWorkerRegistrations,
@@ -77,6 +79,7 @@ pub const StorageIdentifier = enum {
     pub fn toString(self: StorageIdentifier) []const u8 {
         return switch (self) {
             .caches => "caches",
+            .fileSystem => "fileSystem",
             .indexedDB => "indexedDB",
             .localStorage => "localStorage",
             .serviceWorkerRegistrations => "serviceWorkerRegistrations",
@@ -101,8 +104,10 @@ pub const FIVE_MEBIBYTES: u64 = 5 * 1024 * 1024;
 
 /// Registered storage endpoints per the spec
 /// https://storage.spec.whatwg.org/#registered-storage-endpoints
+/// Note: fileSystem is from the File System Standard
 pub const registered_storage_endpoints = [_]StorageEndpoint{
     .{ .identifier = .caches, .types = &.{.local}, .quota = null },
+    .{ .identifier = .fileSystem, .types = &.{.local}, .quota = null },
     .{ .identifier = .indexedDB, .types = &.{.local}, .quota = null },
     .{ .identifier = .localStorage, .types = &.{.local}, .quota = FIVE_MEBIBYTES },
     .{ .identifier = .serviceWorkerRegistrations, .types = &.{.local}, .quota = null },
@@ -569,6 +574,10 @@ pub const StorageShed = struct {
 /// This would typically be a singleton in a real implementation
 var global_local_storage_shed: ?*StorageShed = null;
 
+/// Global bucket file system manager
+/// Manages per-origin bucket file systems for the File System Access API
+var global_bucket_manager: ?*fs.BucketManager = null;
+
 /// Initialize the global local storage shed
 pub fn initGlobalStorageShed(allocator: std.mem.Allocator) !*StorageShed {
     if (global_local_storage_shed) |shed| {
@@ -593,6 +602,46 @@ pub fn deinitGlobalStorageShed(allocator: std.mem.Allocator) void {
         allocator.destroy(shed);
         global_local_storage_shed = null;
     }
+    // Also clean up bucket manager
+    if (global_bucket_manager) |manager| {
+        manager.deinit();
+        allocator.destroy(manager);
+        global_bucket_manager = null;
+    }
+}
+
+// ============================================================================
+// Bucket File System Integration (File System Standard)
+// ============================================================================
+
+/// Initialize the global bucket file system manager
+pub fn initGlobalBucketManager(allocator: std.mem.Allocator) !*fs.BucketManager {
+    if (global_bucket_manager) |manager| {
+        return manager;
+    }
+
+    const manager = try allocator.create(fs.BucketManager);
+    manager.* = fs.BucketManager.init(allocator);
+    global_bucket_manager = manager;
+    return manager;
+}
+
+/// Get the bucket file system for an origin
+/// https://fs.spec.whatwg.org/#dom-storagemanager-getdirectory
+///
+/// This returns the BucketFileSystem associated with the origin's storage bucket.
+/// Each origin gets its own isolated file system.
+pub fn getBucketFileSystem(allocator: std.mem.Allocator, origin: []const u8) !*fs.BucketFileSystem {
+    // Validate origin (same rules as storage key)
+    if (origin.len == 0 or std.mem.eql(u8, origin, "null")) {
+        return error.SecurityError;
+    }
+
+    // Get or initialize the bucket manager
+    const manager = try initGlobalBucketManager(allocator);
+
+    // Get or create bucket for this origin
+    return manager.getOrCreate(origin);
 }
 
 // ============================================================================
