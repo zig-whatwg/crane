@@ -35,6 +35,12 @@ pub const ContextData = @import("context.zig").ContextData;
 pub const ConsoleState = @import("context.zig").ConsoleState;
 pub const createNullContext = @import("context.zig").createNullContext;
 pub const Logger = @import("logger.zig").Logger;
+
+// Realm and context type infrastructure (WHATWG HTML/WebIDL)
+pub const realm = @import("realm.zig");
+pub const ContextType = realm.ContextType;
+pub const Exposure = realm.Exposure;
+pub const RealmInfo = realm.RealmInfo;
 pub const LogLevel = @import("logger.zig").LogLevel;
 pub const ConsoleValue = @import("console_value.zig").ConsoleValue;
 
