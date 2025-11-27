@@ -321,11 +321,16 @@ pub extern fn v8_Isolate_Dispose(isolate: *Isolate) void;
 pub extern fn v8_Isolate_Enter(isolate: *Isolate) void;
 pub extern fn v8_Isolate_Exit(isolate: *Isolate) void;
 pub extern fn v8_Isolate_GetCurrentContext(isolate: *Isolate) ?*Context;
+pub extern fn v8_Isolate_GetCurrent() ?*Isolate;
 pub extern fn v8_Isolate_ThrowException(isolate: *Isolate, exception: *Value) void;
 
 // Isolate embedder data (for storing per-isolate state)
 pub extern fn v8_Isolate_SetData(isolate: *Isolate, slot: c_int, data: ?*anyopaque) void;
 pub extern fn v8_Isolate_GetData(isolate: *Isolate, slot: c_int) ?*anyopaque;
+
+// Garbage collection (for WHATWG TestUtils Standard)
+// NOTE: Only for testing, not for production use
+pub extern fn v8_Isolate_RequestGarbageCollection(isolate: *Isolate) void;
 
 // Context management
 pub extern fn v8_Context_New(isolate: *Isolate) ?*Context;

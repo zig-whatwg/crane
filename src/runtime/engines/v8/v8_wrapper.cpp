@@ -104,6 +104,10 @@ Global<Context>* v8_Isolate_GetCurrentContext(Isolate* isolate) {
     return new Global<Context>(isolate, ctx);
 }
 
+Isolate* v8_Isolate_GetCurrent() {
+    return Isolate::GetCurrent();
+}
+
 // Get the raw internal address of a context (for stable identity)
 // Returns a unique identifier for the context that stays constant across Global/Local conversions
 void* v8_Context_GetRawAddress(Global<Context>* context_handle) {
@@ -2193,5 +2197,28 @@ void v8_AsyncIterator_Dispose(Global<Object>* iterator) {
     delete iterator;
 }
 
+
+// ============================================================================
+// TestUtils API - GC for testing (WHATWG TestUtils Standard)
+// ============================================================================
+
+/// Request a full garbage collection on the isolate
+///
+/// This is for testing purposes only and should NOT be exposed to web content.
+/// Per WHATWG TestUtils spec: https://testutils.spec.whatwg.org/
+///
+/// Note: V8's public API does not expose RequestGarbageCollectionForTesting
+/// in production builds. We use LowMemoryNotification() which hints to V8
+/// that it should perform GC as soon as possible.
+///
+/// This function is synchronous - LowMemoryNotification triggers immediate GC.
+void v8_Isolate_RequestGarbageCollection(Isolate* isolate) {
+    if (!isolate) return;
+    
+    // LowMemoryNotification triggers V8 to perform garbage collection
+    // as aggressively as possible. Per V8 docs, this is a synchronous
+    // call that attempts to reclaim as much memory as possible.
+    isolate->LowMemoryNotification();
+}
 
 } // extern "C"
