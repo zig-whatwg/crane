@@ -235,6 +235,17 @@ pub const TransactionScheduler = transaction_ordering.TransactionScheduler;
 pub const VersionchangeCoordinator = transaction_ordering.VersionchangeCoordinator;
 pub const TransactionOrderingManager = transaction_ordering.TransactionOrderingManager;
 
+// Structured Clone serialization (Phase 6.8)
+pub const serialization = @import("serialization.zig");
+pub const SerializedType = serialization.SerializedType;
+pub const SerializedValue = serialization.SerializedValue;
+pub const SerializedData = serialization.SerializedData;
+pub const Serializer = serialization.Serializer;
+pub const Deserializer = serialization.Deserializer;
+pub const BinaryFormat = serialization.BinaryFormat;
+pub const TypedArrayConstructor = serialization.TypedArrayConstructor;
+pub const ErrorName = serialization.ErrorName;
+
 // Error types
 pub const IDBError = @import("errors.zig").IDBError;
 
@@ -263,4 +274,5 @@ test {
     _ = schema;
     _ = worker_threads;
     _ = transaction_ordering;
+    _ = serialization;
 }
