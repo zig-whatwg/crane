@@ -225,6 +225,7 @@ pub fn build(b: *std.Build) void {
             "runtime",
             "codegen",
             "v8",
+            "file",
         };
         var is_valid = false;
         for (valid_specs) |valid_spec| {
@@ -235,7 +236,7 @@ pub fn build(b: *std.Build) void {
         }
         if (!is_valid) {
             std.debug.print("Error: Invalid spec '{s}'\n", .{spec});
-            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, console, streams, mimesniff, quirks, css, storage, runtime, codegen, v8\n", .{});
+            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, console, streams, mimesniff, quirks, css, storage, runtime, codegen, v8, file\n", .{});
             std.process.exit(1);
         }
     }
@@ -1045,6 +1046,16 @@ pub fn build(b: *std.Build) void {
     });
     mimesniff_mod.addImport("infra", infra_mod);
 
+    // File API module (W3C File API - Blob, File, FileReader)
+    const file_mod = b.addModule("file", .{
+        .root_source_file = b.path("src/file/root.zig"),
+        .target = target,
+    });
+    // File module dependencies can be added here when needed:
+    // file_mod.addImport("infra", infra_mod);
+    // file_mod.addImport("encoding", encoding_mod);
+    // file_mod.addImport("streams", streams_mod);
+
     // Wire spec modules into whatwg module
     whatwg_mod.addImport("infra", infra_mod);
     whatwg_mod.addImport("webidl", webidl_mod);
@@ -1059,6 +1070,7 @@ pub fn build(b: *std.Build) void {
     whatwg_mod.addImport("impls", impls_mod);
     whatwg_mod.addImport("quirks", quirks_mod);
     whatwg_mod.addImport("css", css_mod);
+    whatwg_mod.addImport("file", file_mod);
 
     // ========================================================================
     // TESTS - GENERIC SPEC FILTERING
@@ -1257,6 +1269,21 @@ pub fn build(b: *std.Build) void {
         };
         addTestFilesFromDir(b, test_step, "tests/css", target, &css_imports, false) catch |err| {
             std.debug.print("Warning: Failed to add css test files: {}\n", .{err});
+        };
+    }
+
+    // File API tests
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "file")) {
+        const file_tests = b.addTest(.{ .root_module = file_mod });
+        const run_file_tests = b.addRunArtifact(file_tests);
+        test_step.dependOn(&run_file_tests.step);
+
+        // Add dedicated test files from tests/file/ when they exist
+        const file_imports = [_]std.Build.Module.Import{
+            .{ .name = "file", .module = file_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/file", target, &file_imports, false) catch |err| {
+            std.debug.print("Warning: Failed to add file test files: {}\n", .{err});
         };
     }
 
