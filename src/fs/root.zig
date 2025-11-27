@@ -158,6 +158,26 @@ pub const bucket = @import("bucket.zig");
 pub const BucketFileSystem = bucket.BucketFileSystem;
 pub const BucketManager = bucket.BucketManager;
 
+// Algorithms (Phase 7)
+pub const algorithms = @import("algorithms.zig");
+pub const isValidPath = algorithms.isValidPath;
+pub const normalizePath = algorithms.normalizePath;
+pub const freeNormalizedPath = algorithms.freeNormalizedPath;
+pub const resolvePath = algorithms.resolvePath;
+pub const relativePath = algorithms.relativePath;
+pub const locateEntry = algorithms.locateEntry;
+pub const locateFile = algorithms.locateFile;
+pub const locateDirectory = algorithms.locateDirectory;
+pub const getParentPath = algorithms.getParentPath;
+pub const createFileAtPath = algorithms.createFileAtPath;
+pub const createDirectoryAtPath = algorithms.createDirectoryAtPath;
+pub const removeAtPath = algorithms.removeAtPath;
+pub const joinPath = algorithms.joinPath;
+pub const splitPath = algorithms.splitPath;
+pub const freeSplitPath = algorithms.freeSplitPath;
+pub const baseName = algorithms.baseName;
+pub const dirName = algorithms.dirName;
+
 test {
     std.testing.refAllDecls(@This());
     _ = errors;
@@ -173,4 +193,5 @@ test {
     _ = writable_stream;
     _ = sync_access;
     _ = bucket;
+    _ = algorithms;
 }
