@@ -86,6 +86,30 @@ pub const TaskPriority = context.TaskPriority;
 pub const isValidFileName = context.isValidFileName;
 pub const path_separator = context.path_separator;
 
+// Backend trait
+pub const backend = @import("backend.zig");
+pub const FileSystemBackend = backend.FileSystemBackend;
+pub const BackendError = backend.BackendError;
+pub const BackendResult = backend.BackendResult;
+pub const ChildIterator = backend.ChildIterator;
+pub const ChildEntry = backend.ChildEntry;
+pub const SerializedHandle = backend.SerializedHandle;
+pub const StorageKey = backend.StorageKey;
+
+// Picker provider trait
+pub const picker = @import("picker.zig");
+pub const PickerProvider = picker.PickerProvider;
+pub const PickerError = picker.PickerError;
+pub const PickerResult = picker.PickerResult;
+pub const WellKnownDirectory = picker.WellKnownDirectory;
+pub const StartInDirectory = picker.StartInDirectory;
+pub const FilePickerAcceptType = picker.FilePickerAcceptType;
+pub const FilePickerOptions = picker.FilePickerOptions;
+pub const OpenFilePickerOptions = picker.OpenFilePickerOptions;
+pub const SaveFilePickerOptions = picker.SaveFilePickerOptions;
+pub const DirectoryPickerOptions = picker.DirectoryPickerOptions;
+pub const PermissionMode = picker.PermissionMode;
+
 test {
     std.testing.refAllDecls(@This());
     _ = errors;
@@ -93,4 +117,6 @@ test {
     _ = entry;
     _ = lock;
     _ = context;
+    _ = backend;
+    _ = picker;
 }
