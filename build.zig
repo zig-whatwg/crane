@@ -1,5 +1,114 @@
 const std = @import("std");
 
+// ============================================================================
+// Platform-Specific Storage Backend Configuration (Phase 9)
+// ============================================================================
+
+/// Configure storage backend library linking based on target platform
+///
+/// Phase 9.1: iOS SQLite Integration - Uses system-provided SQLite
+/// Phase 9.2: Android SQLite Integration - Uses system-provided SQLite
+/// Phase 9.3: Desktop LevelDB Static Linking - Statically links LevelDB
+///
+/// Platform Strategy:
+/// - iOS: System SQLite (always available, zero binary size cost)
+/// - Android: System SQLite (NDK provides libsqlite3)
+/// - macOS: Homebrew SQLite + LevelDB (development), system SQLite (production)
+/// - Linux: System SQLite + LevelDB via pkg-config
+/// - Windows: Bundled SQLite + LevelDB (static linking)
+/// - WASM: Memory backend only (no native libraries)
+fn configureStorageBackends(
+    module: *std.Build.Module,
+    target: std.Build.ResolvedTarget,
+) void {
+    const os = target.result.os.tag;
+    const cpu_arch = target.result.cpu.arch;
+
+    // Detect if this is an Android build (Linux ABI with Android)
+    const is_android = os == .linux and target.result.abi == .android;
+
+    if (os == .ios) {
+        // ====================================================================
+        // Phase 9.1: iOS SQLite Integration
+        // ====================================================================
+        // iOS provides SQLite as a system framework - no additional linking needed
+        // The SQLite C API is available via libsqlite3.tbd
+        module.linkSystemLibrary("sqlite3", .{});
+        // Note: On iOS, SQLite is part of the SDK, no path configuration needed
+
+        // LevelDB is not used on iOS (SQLite is the default backend)
+        // Memory backend is always available as fallback
+
+    } else if (is_android) {
+        // ====================================================================
+        // Phase 9.2: Android SQLite Integration
+        // ====================================================================
+        // Android NDK provides libsqlite3.so
+        // Link against the system SQLite library
+        module.linkSystemLibrary("sqlite3", .{});
+        // Note: Android's SQLite is provided by the system, linked dynamically
+
+        // LevelDB is not used on Android (SQLite is the default backend)
+        // Memory backend is always available as fallback
+
+    } else if (os == .macos) {
+        // ====================================================================
+        // macOS: Homebrew development / System production
+        // ====================================================================
+        // For development on macOS with Homebrew-installed libraries
+        // Production builds could use system SQLite or bundled libraries
+
+        // SQLite: Use Homebrew installation (development)
+        // System SQLite is also available at /usr/lib/libsqlite3.dylib
+        module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/sqlite/lib" });
+        module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/sqlite/include" });
+        module.linkSystemLibrary("sqlite3", .{});
+
+        // Phase 9.3: LevelDB Static Linking for Desktop
+        // Use Homebrew LevelDB (static library preferred)
+        module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/leveldb/lib" });
+        module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/leveldb/include" });
+        module.linkSystemLibrary("leveldb", .{});
+    } else if (os == .linux) {
+        // ====================================================================
+        // Linux: System libraries via pkg-config
+        // ====================================================================
+        // Most Linux distributions provide SQLite and LevelDB packages
+
+        // SQLite: System library (libsqlite3-dev on Debian/Ubuntu)
+        module.linkSystemLibrary("sqlite3", .{});
+
+        // Phase 9.3: LevelDB Static Linking for Desktop
+        // System library (libleveldb-dev on Debian/Ubuntu)
+        module.linkSystemLibrary("leveldb", .{});
+    } else if (os == .windows) {
+        // ====================================================================
+        // Windows: Static linking with bundled libraries
+        // ====================================================================
+        // Windows builds typically bundle SQLite and LevelDB statically
+        // TODO: Add paths to bundled Windows libraries when available
+
+        // For now, attempt system library linking (MSYS2, vcpkg, etc.)
+        module.linkSystemLibrary("sqlite3", .{});
+        module.linkSystemLibrary("leveldb", .{});
+    } else if (cpu_arch == .wasm32 or cpu_arch == .wasm64) {
+        // ====================================================================
+        // WASM: Memory backend only
+        // ====================================================================
+        // No native SQLite or LevelDB available in WASM
+        // The Memory backend will be used automatically
+        // No library linking needed
+
+    } else {
+        // ====================================================================
+        // Unknown/Other platforms: Best effort
+        // ====================================================================
+        // Attempt system library linking, fall back to memory backend at runtime
+        module.linkSystemLibrary("sqlite3", .{});
+        module.linkSystemLibrary("leveldb", .{});
+    }
+}
+
 /// Helper function to add all .zig test files from a directory
 fn addTestFilesFromDir(
     builder: *std.Build,
@@ -144,16 +253,11 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
-    // Link SQLite for storage backends
-    storage_mod.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/sqlite/lib" });
-    storage_mod.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/sqlite/include" });
-    storage_mod.linkSystemLibrary("sqlite3", .{});
-
-    // Link LevelDB for storage backends
-    storage_mod.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/leveldb/lib" });
-    storage_mod.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/leveldb/include" });
-    storage_mod.linkSystemLibrary("leveldb", .{});
-    // Note: LevelDB C API should work without explicit C++ linking on most systems
+    // Configure platform-specific storage backend linking (Phase 9)
+    // - iOS: System SQLite (Phase 9.1)
+    // - Android: System SQLite (Phase 9.2)
+    // - Desktop: SQLite + LevelDB static linking (Phase 9.3)
+    configureStorageBackends(storage_mod, target);
 
     // Runtime module (WebIDL runtime infrastructure)
     const runtime_mod = b.addModule("runtime", .{
