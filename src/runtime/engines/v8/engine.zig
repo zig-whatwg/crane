@@ -40,6 +40,8 @@ pub const v8_engine_interface: EngineInterface = .{
     .createCallbackWrapper = v8CreateCallbackWrapper,
     .invokeCallback = v8InvokeCallback,
     .destroyCallbackWrapper = v8DestroyCallbackWrapper,
+    .requestGarbageCollection = v8RequestGarbageCollection,
+    .scheduleOnMainThread = v8ScheduleOnMainThread,
     .name = "V8",
     .version = "12.x", // TODO: Get actual version from V8
 };
@@ -244,6 +246,43 @@ fn v8DestroyCallbackWrapper(
 ) void {
     const wrapper: *callback_wrapper_mod.CallbackWrapper = @ptrCast(@alignCast(callback_wrapper));
     wrapper.deinit();
+}
+
+// ============================================================================
+// Garbage Collection (TestUtils support)
+// ============================================================================
+
+/// Request garbage collection via V8
+///
+/// Uses LowMemoryNotification() which triggers a full GC cycle.
+/// Per WHATWG TestUtils spec: "Run implementation-defined steps to perform
+/// a garbage collection covering at least the entry Realm."
+fn v8RequestGarbageCollection(engine_ctx: *anyopaque) EngineError!void {
+    const isolate: *ffi.Isolate = @ptrCast(@alignCast(engine_ctx));
+
+    // Use LowMemoryNotification which triggers a full GC
+    // This is more reliable than RequestGarbageCollectionForTesting
+    // and doesn't require special build flags
+    ffi.v8_Isolate_RequestGarbageCollection(isolate);
+}
+
+// ============================================================================
+// Main Thread Scheduling
+// ============================================================================
+
+/// Schedule a callback on the main thread
+///
+/// For V8, we execute the callback immediately since we're typically
+/// already on the main thread. A full implementation would use
+/// platform->GetForegroundTaskRunner(isolate)->PostTask().
+fn v8ScheduleOnMainThread(
+    _: *anyopaque,
+    callback: EngineInterface.MainThreadCallback,
+    user_data: *anyopaque,
+) EngineError!void {
+    // For now, execute immediately (assumes we're on main thread)
+    // TODO: Use V8 platform task runner for true async scheduling
+    callback(user_data);
 }
 
 // ============================================================================

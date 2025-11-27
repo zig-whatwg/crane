@@ -35,6 +35,12 @@
 
 const std = @import("std");
 
+/// Callback signature for main thread scheduling
+///
+/// This is the function that will be called on the main thread.
+/// The user_data pointer is passed through from scheduleOnMainThread.
+pub const MainThreadCallback = *const fn (user_data: *anyopaque) void;
+
 /// Error set for engine operations
 pub const EngineError = error{
     /// No engine is configured in the context
@@ -200,6 +206,80 @@ pub const EngineInterface = struct {
         callback_wrapper: *anyopaque,
     ) void,
 
+    // ========================================================================
+    // Garbage Collection (TestUtils support)
+    // ========================================================================
+
+    /// Request garbage collection (implementation-defined)
+    ///
+    /// Per WHATWG TestUtils spec, this performs "implementation-defined steps
+    /// to perform a garbage collection". Each engine decides the GC strategy:
+    /// - V8: May use LowMemoryNotification() or RequestGarbageCollectionForTesting()
+    /// - JSC: May use JSGarbageCollect()
+    /// - SpiderMonkey: May use JS_GC()
+    ///
+    /// The GC should cover "at least the entry Realm" but engines typically
+    /// perform GC at the isolate/VM level which exceeds this requirement.
+    ///
+    /// Arguments:
+    ///   - engine_ctx: Engine-specific context (V8 Isolate, JSC VM, etc.)
+    ///
+    /// Returns:
+    ///   - void on success
+    ///   - EngineError.OperationFailed if GC could not be performed
+    ///   - EngineError.NoEngine if GC is not supported
+    ///
+    /// Thread Safety:
+    ///   This function may be called from any thread. The engine implementation
+    ///   must handle thread safety appropriately (e.g., V8 requires Locker).
+    ///
+    /// Note: This is for testing only. Must not be enabled in production builds.
+    /// See: https://testutils.spec.whatwg.org/
+    requestGarbageCollection: ?*const fn (
+        engine_ctx: *anyopaque,
+    ) EngineError!void,
+
+    // ========================================================================
+    // Main Thread Scheduling (Cross-thread coordination)
+    // ========================================================================
+
+    /// Schedule a callback to run on the main JavaScript thread
+    ///
+    /// This is used for cross-thread coordination when async operations
+    /// complete on background threads and need to interact with the JS engine
+    /// (e.g., resolving Promises, firing events).
+    ///
+    /// The callback will be invoked on the next tick of the engine's event loop,
+    /// in the context of the main thread where JavaScript executes.
+    ///
+    /// Arguments:
+    ///   - engine_ctx: Engine-specific context (V8 Isolate, JSC VM, etc.)
+    ///   - callback: Function to call on main thread
+    ///   - user_data: Opaque data passed to callback
+    ///
+    /// Returns:
+    ///   - void on success (callback scheduled)
+    ///   - EngineError.OperationFailed if scheduling failed
+    ///
+    /// Thread Safety:
+    ///   This function is SAFE to call from any thread. That's the entire point -
+    ///   it allows background threads to post work to the main thread.
+    ///
+    /// Memory:
+    ///   The caller is responsible for ensuring user_data remains valid until
+    ///   the callback is invoked. Typically this means allocating user_data on
+    ///   the heap and freeing it in the callback.
+    ///
+    /// Engine Implementation Notes:
+    ///   - V8: Use platform->GetForegroundTaskRunner(isolate)->PostTask()
+    ///   - JSC: Use dispatch_async to main queue
+    ///   - SpiderMonkey: Use JS_RequestInterruptCallback
+    scheduleOnMainThread: ?*const fn (
+        engine_ctx: *anyopaque,
+        callback: MainThreadCallback,
+        user_data: *anyopaque,
+    ) EngineError!void,
+
     /// Engine name for debugging/logging
     name: []const u8,
 
@@ -221,6 +301,8 @@ pub const stub_engine: EngineInterface = .{
     .createCallbackWrapper = null,
     .invokeCallback = null,
     .destroyCallbackWrapper = null,
+    .requestGarbageCollection = stubRequestGarbageCollection,
+    .scheduleOnMainThread = stubScheduleOnMainThread,
     .name = "stub",
     .version = "0.0.0",
 };
@@ -244,6 +326,22 @@ fn stubRejectPromise(_: *anyopaque, _: *anyopaque, _: anyerror) EngineError!void
 fn stubGetPromiseObject(_: *anyopaque) *anyopaque {
     // This should never be called if createPromise returns error
     unreachable;
+}
+
+fn stubRequestGarbageCollection(_: *anyopaque) EngineError!void {
+    // Stub engine has no GC - return success (no-op)
+    // This allows testing without a real engine
+    return;
+}
+
+fn stubScheduleOnMainThread(
+    _: *anyopaque,
+    callback: MainThreadCallback,
+    user_data: *anyopaque,
+) EngineError!void {
+    // Stub: Execute callback immediately (for testing without real engine)
+    // In real engines, this would post to the event loop
+    callback(user_data);
 }
 
 // ============================================================================
