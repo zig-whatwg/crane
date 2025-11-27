@@ -36,8 +36,16 @@ pub const extractHeaderListValues = parsing.extractHeaderListValues;
 pub const parseMimeType = parsing.parseMimeType;
 pub const MimeType = parsing.MimeType;
 
+pub const guards = @import("guards.zig");
+pub const HeaderGuard = guards.HeaderGuard;
+pub const canAppend = guards.canAppend;
+pub const canSet = guards.canSet;
+pub const canDelete = guards.canDelete;
+pub const canGet = guards.canGet;
+
 test {
     _ = header_list;
     _ = validation;
     _ = parsing;
+    _ = guards;
 }
