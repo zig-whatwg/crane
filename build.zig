@@ -227,6 +227,7 @@ pub fn build(b: *std.Build) void {
             "v8",
             "file",
             "fs",
+            "fetch",
         };
         var is_valid = false;
         for (valid_specs) |valid_spec| {
@@ -237,7 +238,7 @@ pub fn build(b: *std.Build) void {
         }
         if (!is_valid) {
             std.debug.print("Error: Invalid spec '{s}'\n", .{spec});
-            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, console, streams, mimesniff, quirks, css, storage, runtime, codegen, v8, file, fs\n", .{});
+            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, console, streams, mimesniff, quirks, css, storage, runtime, codegen, v8, file, fs, fetch\n", .{});
             std.process.exit(1);
         }
     }
@@ -1073,6 +1074,17 @@ pub fn build(b: *std.Build) void {
     // Per WHATWG File System spec, navigator.storage.getDirectory() returns FileSystemDirectoryHandle
     storage_mod.addImport("fs", fs_mod);
 
+    // Fetch API module (WHATWG Fetch Standard)
+    const fetch_mod = b.addModule("fetch", .{
+        .root_source_file = b.path("src/fetch/root.zig"),
+        .target = target,
+    });
+    // fetch_mod dependencies will be added as implementation progresses:
+    // fetch_mod.addImport("infra", infra_mod);
+    // fetch_mod.addImport("url", url_mod);
+    // fetch_mod.addImport("streams", streams_mod);
+    // fetch_mod.addImport("encoding", encoding_mod);
+
     // Wire spec modules into whatwg module
     whatwg_mod.addImport("infra", infra_mod);
     whatwg_mod.addImport("webidl", webidl_mod);
@@ -1089,6 +1101,7 @@ pub fn build(b: *std.Build) void {
     whatwg_mod.addImport("css", css_mod);
     whatwg_mod.addImport("file", file_mod);
     whatwg_mod.addImport("fs", fs_mod);
+    whatwg_mod.addImport("fetch", fetch_mod);
 
     // ========================================================================
     // TESTS - GENERIC SPEC FILTERING
@@ -1302,6 +1315,21 @@ pub fn build(b: *std.Build) void {
         };
         addTestFilesFromDir(b, test_step, "tests/file", target, &file_imports, false) catch |err| {
             std.debug.print("Warning: Failed to add file test files: {}\n", .{err});
+        };
+    }
+
+    // Fetch API tests
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "fetch")) {
+        const fetch_tests = b.addTest(.{ .root_module = fetch_mod });
+        const run_fetch_tests = b.addRunArtifact(fetch_tests);
+        test_step.dependOn(&run_fetch_tests.step);
+
+        // Add dedicated test files from tests/fetch/ when they exist
+        const fetch_imports = [_]std.Build.Module.Import{
+            .{ .name = "fetch", .module = fetch_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/fetch", target, &fetch_imports, false) catch |err| {
+            std.debug.print("Warning: Failed to add fetch test files: {}\n", .{err});
         };
     }
 
