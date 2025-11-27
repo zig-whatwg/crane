@@ -236,6 +236,7 @@ pub const IDBObjectStore = struct {
     }
 
     /// Internal: Store a record
+    /// https://w3c.github.io/IndexedDB/#store-a-record-into-an-object-store
     fn storeRecord(self: *Self, value: []const u8, key: ?IDBKey, no_overwrite: bool) IDBError!*IDBRequest {
         // Check transaction state
         if (self.transaction.state != .active) {
@@ -249,15 +250,17 @@ pub const IDBObjectStore = struct {
 
         // Get or generate key
         var record_key: IDBKey = undefined;
+
         if (key) |k| {
             record_key = try k.clone(self.allocator);
-        } else if (self.auto_increment) {
-            // Generate key
-            if (self.key_generator > 9007199254740992) { // 2^53
-                return IDBError.ConstraintError;
+
+            // If auto-increment and key is a number, possibly update generator
+            if (self.auto_increment and k.key_type == .number) {
+                self.maybeUpdateKeyGenerator(k.value.number);
             }
-            record_key = IDBKey.number(@floatFromInt(self.key_generator));
-            self.key_generator += 1;
+        } else if (self.auto_increment) {
+            // Generate key using key generator
+            record_key = try self.generateKey();
         } else {
             return IDBError.DataError;
         }
@@ -310,7 +313,61 @@ pub const IDBObjectStore = struct {
 
         try self.transaction.addRequest(request);
 
+        // Note: key_was_generated is reserved for future key injection into value
+        // when in-line keys are used. Currently we don't modify the value.
+
         return request;
+    }
+
+    /// Generate a new key using the key generator
+    /// https://w3c.github.io/IndexedDB/#key-generator-construct
+    ///
+    /// Key generator current number starts at 1 and increments.
+    /// Maximum safe integer is 2^53 (9007199254740992).
+    fn generateKey(self: *Self) IDBError!IDBKey {
+        // Check if key generator is exhausted
+        // Per spec: "If store uses a key generator and the key generator's
+        // current number is greater than 2^53 (9007199254740992)"
+        if (self.key_generator > 9007199254740992) {
+            return IDBError.ConstraintError;
+        }
+
+        const key_value = self.key_generator;
+        self.key_generator += 1;
+
+        return IDBKey.number(@floatFromInt(key_value));
+    }
+
+    /// Possibly update key generator after storing a record with explicit key
+    /// https://w3c.github.io/IndexedDB/#store-a-record-into-an-object-store
+    ///
+    /// Per spec step 16: "If key is greater than or equal to the current number
+    /// of the key generator, then set the current number to the smallest
+    /// integer that is greater than key."
+    fn maybeUpdateKeyGenerator(self: *Self, key_value: f64) void {
+        // Only update if key is a positive integer
+        if (key_value < 0 or @floor(key_value) != key_value) {
+            return;
+        }
+
+        const key_int: u64 = @intFromFloat(key_value);
+
+        // Update generator if key >= current number
+        if (key_int >= self.key_generator) {
+            // Set to smallest integer greater than key
+            // But don't exceed 2^53
+            if (key_int < 9007199254740992) {
+                self.key_generator = key_int + 1;
+            } else {
+                // Generator exhausted
+                self.key_generator = 9007199254740993;
+            }
+        }
+    }
+
+    /// Get the current key generator value (for testing/debugging)
+    pub fn getCurrentKeyGeneratorValue(self: *const Self) u64 {
+        return self.key_generator;
     }
 
     /// Delete records
@@ -775,4 +832,142 @@ test "IDBObjectStore - extractKeyFromValue returns null without key path" {
 
     const key = try store.extractKeyFromValue(value);
     try std.testing.expect(key == null);
+}
+
+// ============================================================================
+// Auto-Increment Tests
+// ============================================================================
+
+test "IDBObjectStore - auto-increment generates sequential keys" {
+    const allocator = std.testing.allocator;
+
+    var db = @import("database.zig").IDBDatabase.init(allocator, "testdb", 1);
+    defer db.deinit();
+
+    const scope = [_][]const u8{"store1"};
+    var txn = IDBTransaction.init(allocator, &db, &scope, .readwrite);
+    defer txn.deinit();
+
+    var store = IDBObjectStore.init(allocator, "store1", &txn);
+    defer store.deinit();
+    store.auto_increment = true;
+
+    // First key should be 1
+    const key1 = try store.generateKey();
+    try std.testing.expectEqual(@as(f64, 1), key1.value.number);
+
+    // Second key should be 2
+    const key2 = try store.generateKey();
+    try std.testing.expectEqual(@as(f64, 2), key2.value.number);
+
+    // Third key should be 3
+    const key3 = try store.generateKey();
+    try std.testing.expectEqual(@as(f64, 3), key3.value.number);
+
+    // Current generator should be 4
+    try std.testing.expectEqual(@as(u64, 4), store.getCurrentKeyGeneratorValue());
+}
+
+test "IDBObjectStore - auto-increment updates generator for explicit keys" {
+    const allocator = std.testing.allocator;
+
+    var db = @import("database.zig").IDBDatabase.init(allocator, "testdb", 1);
+    defer db.deinit();
+
+    const scope = [_][]const u8{"store1"};
+    var txn = IDBTransaction.init(allocator, &db, &scope, .readwrite);
+    defer txn.deinit();
+
+    var store = IDBObjectStore.init(allocator, "store1", &txn);
+    defer store.deinit();
+    store.auto_increment = true;
+
+    // Current generator starts at 1
+    try std.testing.expectEqual(@as(u64, 1), store.getCurrentKeyGeneratorValue());
+
+    // Store record with explicit key 100
+    store.maybeUpdateKeyGenerator(100);
+
+    // Generator should now be 101
+    try std.testing.expectEqual(@as(u64, 101), store.getCurrentKeyGeneratorValue());
+
+    // Next generated key should be 101
+    const key = try store.generateKey();
+    try std.testing.expectEqual(@as(f64, 101), key.value.number);
+}
+
+test "IDBObjectStore - auto-increment ignores non-integer keys" {
+    const allocator = std.testing.allocator;
+
+    var db = @import("database.zig").IDBDatabase.init(allocator, "testdb", 1);
+    defer db.deinit();
+
+    const scope = [_][]const u8{"store1"};
+    var txn = IDBTransaction.init(allocator, &db, &scope, .readwrite);
+    defer txn.deinit();
+
+    var store = IDBObjectStore.init(allocator, "store1", &txn);
+    defer store.deinit();
+    store.auto_increment = true;
+
+    // Fractional numbers should not update generator
+    store.maybeUpdateKeyGenerator(5.5);
+    try std.testing.expectEqual(@as(u64, 1), store.getCurrentKeyGeneratorValue());
+
+    // Negative numbers should not update generator
+    store.maybeUpdateKeyGenerator(-10);
+    try std.testing.expectEqual(@as(u64, 1), store.getCurrentKeyGeneratorValue());
+}
+
+test "IDBObjectStore - auto-increment lower key doesn't update generator" {
+    const allocator = std.testing.allocator;
+
+    var db = @import("database.zig").IDBDatabase.init(allocator, "testdb", 1);
+    defer db.deinit();
+
+    const scope = [_][]const u8{"store1"};
+    var txn = IDBTransaction.init(allocator, &db, &scope, .readwrite);
+    defer txn.deinit();
+
+    var store = IDBObjectStore.init(allocator, "store1", &txn);
+    defer store.deinit();
+    store.auto_increment = true;
+
+    // Generate some keys to advance generator
+    _ = try store.generateKey(); // 1
+    _ = try store.generateKey(); // 2
+    _ = try store.generateKey(); // 3
+    try std.testing.expectEqual(@as(u64, 4), store.getCurrentKeyGeneratorValue());
+
+    // Explicit key lower than current should not update
+    store.maybeUpdateKeyGenerator(2);
+    try std.testing.expectEqual(@as(u64, 4), store.getCurrentKeyGeneratorValue());
+}
+
+test "IDBObjectStore - auto-increment add generates key" {
+    const allocator = std.testing.allocator;
+
+    var db = @import("database.zig").IDBDatabase.init(allocator, "testdb", 1);
+    defer db.deinit();
+
+    const scope = [_][]const u8{"store1"};
+    var txn = IDBTransaction.init(allocator, &db, &scope, .readwrite);
+    defer txn.deinit();
+
+    var store = IDBObjectStore.init(allocator, "store1", &txn);
+    defer store.deinit();
+    store.auto_increment = true;
+
+    // Add record without key - should generate key
+    const req = try store.add("value1", null);
+    defer allocator.destroy(req);
+
+    try std.testing.expect(req.result != null);
+    try std.testing.expectEqual(@as(f64, 1), req.result.?.key.value.number);
+
+    // Add another - should get key 2
+    const req2 = try store.add("value2", null);
+    defer allocator.destroy(req2);
+
+    try std.testing.expectEqual(@as(f64, 2), req2.result.?.key.value.number);
 }
