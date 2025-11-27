@@ -95,12 +95,14 @@ fn destroyMockInstance(allocator: std.mem.Allocator, instance: *runtime.Instance
 ///
 /// This is needed because mock V8 objects aren't real V8 Global handles,
 /// so calling v8.v8_Object_Dispose() on them will crash V8.
-fn cleanupMockCacheEntries(cache: *WrapperCache, allocator: std.mem.Allocator) void {
-    var iter = cache.cache.valueIterator();
-    while (iter.next()) |entry_ptr| {
-        allocator.destroy(entry_ptr.*);
+/// We use fetchRemove to get entries and free CacheEntry allocations properly.
+fn cleanupMockCacheEntries(cache: *WrapperCache, instances: []const *runtime.Instance, allocator: std.mem.Allocator) void {
+    for (instances) |instance| {
+        if (cache.cache.fetchRemove(instance)) |kv| {
+            // Free the CacheEntry (normally done in weak callback or remove())
+            allocator.destroy(kv.value);
+        }
     }
-    cache.cache.clearRetainingCapacity();
 }
 
 // ============================================================================
@@ -144,7 +146,7 @@ test "WrapperCache - lifecycle with 10 entries" {
     for (wrappers) |wrapper| {
         destroyMockWrapper(testing.allocator, wrapper);
     }
-    cleanupMockCacheEntries(&cache, testing.allocator);
+    cleanupMockCacheEntries(&cache, &instances, testing.allocator);
 
     for (instances) |instance| {
         destroyMockInstance(testing.allocator, instance);
@@ -232,7 +234,7 @@ test "WrapperCache - no memory leaks with 100 cycles" {
         for (wrappers) |wrapper| {
             destroyMockWrapper(testing.allocator, wrapper);
         }
-        cleanupMockCacheEntries(&cache, testing.allocator);
+        cleanupMockCacheEntries(&cache, &instances, testing.allocator);
 
         for (instances) |instance| {
             destroyMockInstance(testing.allocator, instance);
@@ -282,7 +284,7 @@ test "WrapperCache - stress test with 100 entries" {
     for (wrappers) |wrapper| {
         destroyMockWrapper(testing.allocator, wrapper);
     }
-    cleanupMockCacheEntries(&cache, testing.allocator);
+    cleanupMockCacheEntries(&cache, &instances, testing.allocator);
 
     for (instances) |instance| {
         destroyMockInstance(testing.allocator, instance);
@@ -322,7 +324,7 @@ test "WrapperCache - clear removes all entries without leaking" {
     }
 
     // Clear cache (manually without V8 dispose)
-    cleanupMockCacheEntries(&cache, testing.allocator);
+    cleanupMockCacheEntries(&cache, &instances, testing.allocator);
 
     // Verify empty
     try testing.expectEqual(@as(usize, 0), cache.size());
@@ -393,51 +395,55 @@ test "WrapperCache - clear removes all entries without leaking" {
 // Test 8: Cache Integrity After Partial Clear
 // ============================================================================
 
-// SKIP: Known memory leak tracked in issue whatwg-11dz
-// When entry is manually removed via cache.cache.remove(), the CacheEntry
-// allocated by set() isn't freed. Fix requires updating WrapperCache.
-// test "WrapperCache - integrity after removing specific entries" {
-//     const context = createMockContext();
-//     defer destroyMockContext(context);
-//
-//     const isolate = createMockIsolate();
-//     defer destroyMockIsolate(isolate);
-//
-//     var cache = try WrapperCache.init(testing.allocator, context);
-//     defer cache.deinit();
-//
-//     var instances: [5]*runtime.Instance = undefined;
-//     var wrappers: [5]*v8.Object = undefined;
-//
-//     // Add 5 entries
-//     for (0..5) |i| {
-//         instances[i] = try createMockInstance(testing.allocator);
-//         wrappers[i] = try createMockWrapper(testing.allocator);
-//         try cache.set(instances[i], wrappers[i], isolate);
-//     }
-//
-//     try testing.expectEqual(@as(usize, 5), cache.size());
-//
-//     // Manually remove entry at index 2 (simulates weak callback for one element)
-//     _ = cache.cache.remove(instances[2]);
-//     destroyMockWrapper(testing.allocator, wrappers[2]);
-//
-//     // Verify cache integrity
-//     try testing.expectEqual(@as(usize, 4), cache.size());
-//
-//     // Others should still be cached
-//     try testing.expect(cache.get(instances[0]) != null);
-//     try testing.expect(cache.get(instances[1]) != null);
-//     try testing.expect(cache.get(instances[2]) == null); // Removed
-//     try testing.expect(cache.get(instances[3]) != null);
-//     try testing.expect(cache.get(instances[4]) != null);
-//
-//     // Cleanup
-//     for (0..5) |i| {
-//         if (i != 2) { // Skip the wrapper we already cleaned up
-//             destroyMockWrapper(testing.allocator, wrappers[i]);
-//         }
-//         destroyMockInstance(testing.allocator, instances[i]);
-//     }
-//     cleanupMockCacheEntries(&cache, testing.allocator);
-// }
+test "WrapperCache - integrity after removing specific entries" {
+    const context = createMockContext();
+    defer destroyMockContext(context);
+
+    const isolate = createMockIsolate();
+    defer destroyMockIsolate(isolate);
+
+    var cache = try WrapperCache.init(testing.allocator, context);
+    defer cache.deinit();
+
+    var instances: [5]*runtime.Instance = undefined;
+    var wrappers: [5]*v8.Object = undefined;
+
+    // Add 5 entries
+    for (0..5) |i| {
+        instances[i] = try createMockInstance(testing.allocator);
+        wrappers[i] = try createMockWrapper(testing.allocator);
+        try cache.set(instances[i], wrappers[i], isolate);
+    }
+
+    try testing.expectEqual(@as(usize, 5), cache.size());
+
+    // Manually remove entry at index 2 (simulates weak callback for one element)
+    // Use fetchRemove to get the CacheEntry and free it properly
+    if (cache.cache.fetchRemove(instances[2])) |kv| {
+        // Free the CacheEntry (this is what was leaking before)
+        testing.allocator.destroy(kv.value);
+    }
+    destroyMockWrapper(testing.allocator, wrappers[2]);
+
+    // Verify cache integrity
+    try testing.expectEqual(@as(usize, 4), cache.size());
+
+    // Others should still be cached
+    try testing.expect(cache.get(instances[0]) != null);
+    try testing.expect(cache.get(instances[1]) != null);
+    try testing.expect(cache.get(instances[2]) == null); // Removed
+    try testing.expect(cache.get(instances[3]) != null);
+    try testing.expect(cache.get(instances[4]) != null);
+
+    // Cleanup remaining entries
+    for (0..5) |i| {
+        if (i != 2) { // Skip the wrapper we already cleaned up
+            destroyMockWrapper(testing.allocator, wrappers[i]);
+        }
+        destroyMockInstance(testing.allocator, instances[i]);
+    }
+
+    // Clean up remaining cache entries (indices 0, 1, 3, 4)
+    var remaining_instances = [_]*runtime.Instance{ instances[0], instances[1], instances[3], instances[4] };
+    cleanupMockCacheEntries(&cache, &remaining_instances, testing.allocator);
+}

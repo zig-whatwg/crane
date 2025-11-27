@@ -227,6 +227,31 @@ pub const WrapperCache = struct {
         self.cache.clearRetainingCapacity();
     }
 
+    /// Remove a specific entry from the cache
+    ///
+    /// Removes the entry for the given instance, disposes the V8 handle,
+    /// and frees the CacheEntry. Returns true if entry was found and removed.
+    ///
+    /// ## Parameters
+    /// - instance: The Zig instance to remove from cache
+    ///
+    /// ## Returns
+    /// true if entry was found and removed, false if not in cache
+    pub fn remove(self: *Self, instance: *runtime.Instance) bool {
+        if (self.cache.fetchRemove(instance)) |kv| {
+            const entry = kv.value;
+
+            // Dispose the Global<Object>* handle
+            v8.v8_Object_Dispose(@ptrCast(entry.wrapper));
+
+            // Free the CacheEntry
+            self.allocator.destroy(entry);
+
+            return true;
+        }
+        return false;
+    }
+
     /// Get cache statistics
     ///
     /// Returns the number of cached wrappers.
@@ -347,4 +372,43 @@ test "WrapperCache - no memory leaks" {
     try testing.expectEqual(@as(usize, 10), cache.size());
 
     // deinit() should clean up all entries without leaking
+}
+
+test "WrapperCache - remove specific entry" {
+    var dummy_context: u32 = 42;
+    const context: *v8.Context = @ptrCast(&dummy_context);
+
+    var cache = try WrapperCache.init(testing.allocator, context);
+    defer cache.deinit();
+
+    // Mock instances and wrappers
+    var instance1: runtime.Instance = undefined;
+    var instance2: runtime.Instance = undefined;
+    var instance3: runtime.Instance = undefined;
+    var wrapper1: u64 = 0xDEAD;
+    var wrapper2: u64 = 0xBEEF;
+    var wrapper3: u64 = 0xCAFE;
+    var dummy_isolate: u32 = 99;
+    const isolate: *v8.Isolate = @ptrCast(&dummy_isolate);
+
+    try cache.set(&instance1, @ptrCast(&wrapper1), isolate);
+    try cache.set(&instance2, @ptrCast(&wrapper2), isolate);
+    try cache.set(&instance3, @ptrCast(&wrapper3), isolate);
+
+    try testing.expectEqual(@as(usize, 3), cache.size());
+
+    // Remove middle entry
+    const removed = cache.remove(&instance2);
+    try testing.expect(removed);
+    try testing.expectEqual(@as(usize, 2), cache.size());
+
+    // Verify correct entries remain
+    try testing.expect(cache.get(&instance1) != null);
+    try testing.expectEqual(@as(?*v8.Object, null), cache.get(&instance2)); // Removed
+    try testing.expect(cache.get(&instance3) != null);
+
+    // Remove non-existent entry
+    const removed_again = cache.remove(&instance2);
+    try testing.expect(!removed_again);
+    try testing.expectEqual(@as(usize, 2), cache.size());
 }
