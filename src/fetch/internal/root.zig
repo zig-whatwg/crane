@@ -8,6 +8,21 @@ pub const HeaderList = header_list.HeaderList;
 pub const Header = header_list.Header;
 pub const normalize = header_list.normalize;
 
+pub const validation = @import("validation.zig");
+pub const isValidHeaderName = validation.isValidHeaderName;
+pub const isValidHeaderValue = validation.isValidHeaderValue;
+pub const isCORSSafelistedRequestHeader = validation.isCORSSafelistedRequestHeader;
+pub const containsCORSUnsafeBytes = validation.containsCORSUnsafeBytes;
+pub const getCORSUnsafeRequestHeaderNames = validation.getCORSUnsafeRequestHeaderNames;
+pub const isForbiddenRequestHeader = validation.isForbiddenRequestHeader;
+pub const isForbiddenResponseHeaderName = validation.isForbiddenResponseHeaderName;
+pub const isNoCORSSafelistedRequestHeader = validation.isNoCORSSafelistedRequestHeader;
+pub const isCORSSafelistedResponseHeaderName = validation.isCORSSafelistedResponseHeaderName;
+pub const isRequestBodyHeaderName = validation.isRequestBodyHeaderName;
+pub const isCORSNonWildcardRequestHeaderName = validation.isCORSNonWildcardRequestHeaderName;
+pub const isPrivilegedNoCORSRequestHeaderName = validation.isPrivilegedNoCORSRequestHeaderName;
+
 test {
     _ = header_list;
+    _ = validation;
 }
