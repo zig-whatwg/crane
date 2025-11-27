@@ -58,7 +58,7 @@ pub const Record = struct {
     key: IDBKey,
     value: []const u8, // Serialized value
 
-    fn deinit(self: *Record, allocator: std.mem.Allocator) void {
+    pub fn deinit(self: *Record, allocator: std.mem.Allocator) void {
         var key_mut = self.key;
         key_mut.deinit();
         allocator.free(self.value);
