@@ -226,6 +226,7 @@ pub fn build(b: *std.Build) void {
             "codegen",
             "v8",
             "file",
+            "fs",
         };
         var is_valid = false;
         for (valid_specs) |valid_spec| {
@@ -236,7 +237,7 @@ pub fn build(b: *std.Build) void {
         }
         if (!is_valid) {
             std.debug.print("Error: Invalid spec '{s}'\n", .{spec});
-            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, console, streams, mimesniff, quirks, css, storage, runtime, codegen, v8, file\n", .{});
+            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, console, streams, mimesniff, quirks, css, storage, runtime, codegen, v8, file, fs\n", .{});
             std.process.exit(1);
         }
     }
@@ -1059,6 +1060,15 @@ pub fn build(b: *std.Build) void {
     // Add file module to impls (for Blob, File, FileReader implementations)
     impls_mod.addImport("file", file_mod);
 
+    // File System Access API module (WHATWG File System Standard)
+    const fs_mod = b.addModule("fs", .{
+        .root_source_file = b.path("src/fs/root.zig"),
+        .target = target,
+    });
+    // fs_mod dependencies will be added as implementation progresses:
+    // fs_mod.addImport("storage", storage_mod);
+    // fs_mod.addImport("streams", streams_mod);
+
     // Wire spec modules into whatwg module
     whatwg_mod.addImport("infra", infra_mod);
     whatwg_mod.addImport("webidl", webidl_mod);
@@ -1074,6 +1084,7 @@ pub fn build(b: *std.Build) void {
     whatwg_mod.addImport("quirks", quirks_mod);
     whatwg_mod.addImport("css", css_mod);
     whatwg_mod.addImport("file", file_mod);
+    whatwg_mod.addImport("fs", fs_mod);
 
     // ========================================================================
     // TESTS - GENERIC SPEC FILTERING
@@ -1287,6 +1298,21 @@ pub fn build(b: *std.Build) void {
         };
         addTestFilesFromDir(b, test_step, "tests/file", target, &file_imports, false) catch |err| {
             std.debug.print("Warning: Failed to add file test files: {}\n", .{err});
+        };
+    }
+
+    // File System Access API tests
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "fs")) {
+        const fs_tests = b.addTest(.{ .root_module = fs_mod });
+        const run_fs_tests = b.addRunArtifact(fs_tests);
+        test_step.dependOn(&run_fs_tests.step);
+
+        // Add dedicated test files from tests/fs/ when they exist
+        const fs_imports = [_]std.Build.Module.Import{
+            .{ .name = "fs", .module = fs_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/fs", target, &fs_imports, false) catch |err| {
+            std.debug.print("Warning: Failed to add fs test files: {}\n", .{err});
         };
     }
 
