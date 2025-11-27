@@ -137,6 +137,22 @@ pub const GetDirectoryHandleError = directory_handle.GetDirectoryHandleError;
 pub const RemoveEntryError = directory_handle.RemoveEntryError;
 pub const EntriesError = directory_handle.EntriesError;
 
+// Writable file stream (Phase 4)
+pub const writable_stream = @import("writable_stream.zig");
+pub const FileSystemWritableFileStream = writable_stream.FileSystemWritableFileStream;
+pub const WriteCommandType = writable_stream.WriteCommandType;
+pub const WriteParams = writable_stream.WriteParams;
+pub const WriteData = writable_stream.WriteData;
+pub const BlobRef = writable_stream.BlobRef;
+pub const FileSystemWriteChunkType = writable_stream.FileSystemWriteChunkType;
+pub const WriteError = writable_stream.WriteError;
+
+// Sync access handle (Phase 5)
+pub const sync_access = @import("sync_access.zig");
+pub const FileSystemSyncAccessHandle = sync_access.FileSystemSyncAccessHandle;
+pub const FileSystemReadWriteOptions = sync_access.FileSystemReadWriteOptions;
+pub const SyncAccessError = sync_access.SyncAccessError;
+
 test {
     std.testing.refAllDecls(@This());
     _ = errors;
@@ -149,4 +165,6 @@ test {
     _ = handle;
     _ = file_handle;
     _ = directory_handle;
+    _ = writable_stream;
+    _ = sync_access;
 }
