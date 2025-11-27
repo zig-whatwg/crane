@@ -190,6 +190,23 @@ pub fn build(b: *std.Build) void {
         "Run tests for a specific spec (infra, webidl, dom, encoding, url, console, streams, mimesniff, or 'all')",
     );
 
+    // WHATWG TestUtils Standard - Build-time gating
+    // Per spec: "must not be enabled in the default shipping configuration of user agents"
+    // See: https://testutils.spec.whatwg.org/
+    const enable_test_utils = b.option(
+        bool,
+        "enable-test-utils",
+        "Enable TestUtils namespace (WHATWG TestUtils Standard). " ++
+            "WARNING: Only enable for testing builds, not production.",
+    ) orelse false;
+
+    // ========================================================================
+    // BUILD OPTIONS MODULE
+    // ========================================================================
+
+    const build_options = b.addOptions();
+    build_options.addOption(bool, "enable_test_utils", enable_test_utils);
+
     // Validate spec filter
     if (spec_filter) |spec| {
         const valid_specs = [_][]const u8{
@@ -267,6 +284,7 @@ pub fn build(b: *std.Build) void {
     runtime_mod.addImport("webidl", webidl_mod);
     runtime_mod.addImport("infra", infra_mod);
     runtime_mod.addImport("storage", storage_mod);
+    runtime_mod.addOptions("build_options", build_options);
 
     // V8 bindings module
     const v8_mod = b.addModule("v8", .{
@@ -329,6 +347,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     namespaces_mod.addImport("runtime", runtime_mod);
+    namespaces_mod.addOptions("build_options", build_options);
 
     // ========================================================================
     // WEBIDL TYPEDEFS MODULE
@@ -364,6 +383,7 @@ pub fn build(b: *std.Build) void {
     impls_mod.addImport("runtime", runtime_mod);
     impls_mod.addImport("v8", v8_mod);
     impls_mod.addImport("storage", storage_mod); // For IndexedDB and Storage impl connections
+    impls_mod.addOptions("build_options", build_options);
 
     // Cross-imports for WebIDL modules
     interfaces_mod.addImport("interfaces", interfaces_mod); // Self-import for cross-interface refs
