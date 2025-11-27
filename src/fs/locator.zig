@@ -270,6 +270,22 @@ pub const FileSystemLocator = struct {
         };
     }
 
+    /// Create a bucket file system file locator (path = ["", filename])
+    /// Convenience method for creating a file in the bucket root
+    pub fn bucketFile(allocator: std.mem.Allocator, root_id: []const u8, filename: []const u8) !Self {
+        const path_components = [_][]const u8{ "", filename };
+        var path = try FileSystemPath.fromComponents(allocator, &path_components);
+        errdefer path.deinit();
+        var root_obj = try FileSystemRoot.init(allocator, root_id);
+        errdefer root_obj.deinit();
+        return .{
+            .kind = .file,
+            .path = path,
+            .root = root_obj,
+            .allocator = allocator,
+        };
+    }
+
     /// Clone this locator
     pub fn clone(self: *const Self, allocator: std.mem.Allocator) !Self {
         var path = try self.path.clone(allocator);
