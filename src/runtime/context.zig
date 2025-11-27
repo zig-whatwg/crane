@@ -50,6 +50,12 @@ const EngineInterface = @import("engine_interface.zig").EngineInterface;
 const infra = @import("infra");
 const timer_mod = @import("timer.zig");
 
+// Realm infrastructure for context type and exposure checking
+const realm_mod = @import("realm.zig");
+pub const RealmInfo = realm_mod.RealmInfo;
+pub const ContextType = realm_mod.ContextType;
+pub const Exposure = realm_mod.Exposure;
+
 // Import event loop for streams and async operations
 // Note: This is an optional dependency - event_loop is only needed for async features
 const event_loop_mod = @import("event_loop");
@@ -188,6 +194,11 @@ pub const ContextData = struct {
     /// Maintains 1:1 mapping between Zig instances and V8 wrappers for identity
     _v8_wrapper_cache_storage: ?*anyopaque,
 
+    /// Realm information for this context
+    /// Identifies execution environment (Window, Worker, etc.)
+    /// Used for WebIDL [Exposed] attribute checking
+    realm_info: RealmInfo,
+
     const Self = @This();
 
     /// Context initialization options
@@ -224,6 +235,10 @@ pub const ContextData = struct {
         /// Storage configuration
         /// Default is memory backend with no quota (for testing)
         storage_config: ?StorageConfig = null,
+
+        /// Realm information for this context
+        /// Defaults to unknown (for testing)
+        realm_info: ?RealmInfo = null,
     };
 
     /// Initialize a new runtime context
@@ -266,6 +281,7 @@ pub const ContextData = struct {
             .storage_config = options.storage_config orelse StorageConfig.forTesting(),
             ._engine_event_loop_storage = engine_event_loop_storage,
             ._v8_wrapper_cache_storage = null, // Initialized later via initV8WrapperCache
+            .realm_info = options.realm_info orelse RealmInfo.forTesting(),
         };
     }
 
@@ -399,6 +415,46 @@ pub const ContextData = struct {
     pub fn setStorageConfig(self: *Self, config: StorageConfig) void {
         self.storage_config = config;
     }
+
+    // ========================================================================
+    // Realm and Context Type Methods
+    // ========================================================================
+
+    /// Get the realm info for this context
+    pub fn getRealmInfo(self: *const Self) RealmInfo {
+        return self.realm_info;
+    }
+
+    /// Check if an API with given exposure is available in this context
+    ///
+    /// Per WebIDL spec, [Exposed] attribute determines availability:
+    /// - [Exposed=Window] -> only in Window
+    /// - [Exposed=Worker] -> only in Workers
+    /// - [Exposed=(Window,Worker)] -> both
+    /// - [Exposed=*] -> all contexts
+    pub fn isExposedTo(self: *const Self, exposure: Exposure) bool {
+        return self.realm_info.isExposedTo(exposure);
+    }
+
+    /// Check if this is a Window context
+    pub fn isWindow(self: *const Self) bool {
+        return self.realm_info.isWindow();
+    }
+
+    /// Check if this is any Worker context (Dedicated, Shared, or Service)
+    pub fn isWorker(self: *const Self) bool {
+        return self.realm_info.isWorker();
+    }
+
+    /// Check if this is a Worklet context
+    pub fn isWorklet(self: *const Self) bool {
+        return self.realm_info.isWorklet();
+    }
+
+    /// Get human-readable context name for debugging
+    pub fn contextName(self: *const Self) []const u8 {
+        return self.realm_info.contextName();
+    }
 };
 
 /// Runtime context - pointer to ContextData
@@ -411,11 +467,13 @@ pub const Context = *ContextData;
 /// Null context helper for testing
 ///
 /// Creates a minimal context without a JS engine.
+/// Uses unknown context type (for testing).
 /// Useful for testing WebIDL implementations in isolation.
 pub fn createNullContext(allocator: std.mem.Allocator) !ContextData {
     return ContextData.init(allocator, .{
         .colored = false,
         .engine_ctx = null,
+        .realm_info = RealmInfo.forTesting(),
     });
 }
 
@@ -473,4 +531,84 @@ test "Context - logger is accessible" {
 
     // Should be able to log through context
     try ctx.logger.log("Test message", .{});
+}
+
+// ============================================================================
+// Realm Integration Tests
+// ============================================================================
+
+test "ContextData - realm info default" {
+    var ctx = try ContextData.init(testing.allocator, .{});
+    defer ctx.deinit();
+
+    // Default should be testing/unknown context
+    try testing.expectEqual(ContextType.unknown, ctx.realm_info.context_type);
+    try testing.expectEqual(ContextType.unknown, ctx.getRealmInfo().context_type);
+}
+
+test "ContextData - window context" {
+    var ctx = try ContextData.init(testing.allocator, .{
+        .realm_info = RealmInfo.forWindow(),
+    });
+    defer ctx.deinit();
+
+    try testing.expect(ctx.isWindow());
+    try testing.expect(!ctx.isWorker());
+    try testing.expect(!ctx.isWorklet());
+    try testing.expect(ctx.isExposedTo(.window));
+    try testing.expect(!ctx.isExposedTo(.worker));
+    try testing.expect(ctx.isExposedTo(.window_and_worker));
+    try testing.expect(ctx.isExposedTo(.all));
+    try testing.expectEqualStrings("Window", ctx.contextName());
+}
+
+test "ContextData - dedicated worker context" {
+    var ctx = try ContextData.init(testing.allocator, .{
+        .realm_info = RealmInfo.forDedicatedWorker(),
+    });
+    defer ctx.deinit();
+
+    try testing.expect(!ctx.isWindow());
+    try testing.expect(ctx.isWorker());
+    try testing.expect(!ctx.isWorklet());
+    try testing.expect(!ctx.isExposedTo(.window));
+    try testing.expect(ctx.isExposedTo(.worker));
+    try testing.expect(ctx.isExposedTo(.window_and_worker));
+    try testing.expect(ctx.isExposedTo(.all));
+    try testing.expectEqualStrings("DedicatedWorkerGlobalScope", ctx.contextName());
+}
+
+test "ContextData - service worker context" {
+    var ctx = try ContextData.init(testing.allocator, .{
+        .realm_info = RealmInfo.forServiceWorker(),
+    });
+    defer ctx.deinit();
+
+    try testing.expect(!ctx.isWindow());
+    try testing.expect(ctx.isWorker());
+    try testing.expect(ctx.isExposedTo(.worker));
+    try testing.expectEqualStrings("ServiceWorkerGlobalScope", ctx.contextName());
+}
+
+test "ContextData - worklet context" {
+    var ctx = try ContextData.init(testing.allocator, .{
+        .realm_info = RealmInfo.forWorklet(),
+    });
+    defer ctx.deinit();
+
+    try testing.expect(!ctx.isWindow());
+    try testing.expect(!ctx.isWorker());
+    try testing.expect(ctx.isWorklet());
+    try testing.expect(!ctx.isExposedTo(.window));
+    try testing.expect(!ctx.isExposedTo(.worker));
+    try testing.expect(!ctx.isExposedTo(.window_and_worker));
+    try testing.expect(ctx.isExposedTo(.all)); // Only .all exposes to worklets
+    try testing.expectEqualStrings("Worklet", ctx.contextName());
+}
+
+test "createNullContext - has testing realm" {
+    var ctx = try createNullContext(testing.allocator);
+    defer ctx.deinit();
+
+    try testing.expectEqual(ContextType.unknown, ctx.realm_info.context_type);
 }
