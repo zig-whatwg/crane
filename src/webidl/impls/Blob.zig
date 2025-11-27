@@ -1,4 +1,10 @@
 //! Implementation for Blob interface
+//!
+//! W3C File API: https://www.w3.org/TR/FileAPI/#blob-section
+//!
+//! A Blob represents immutable raw binary data. This implementation
+//! wires the WebIDL interface to the internal BlobData storage and
+//! the W3C File API algorithms.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -7,19 +13,32 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const file = @import("file");
 const Blob = interfaces.Blob;
 
 pub const State = Blob.State;
 
 pub const ImplError = error{
     NotImplemented,
+    InvalidState,
+    OutOfMemory,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Internal state for Blob implementation
+///
+/// Holds the BlobData pointer which stores the actual bytes and MIME type.
+/// This follows the InternalState pattern used by ReadableStream and other impls.
+pub const InternalState = struct {
+    /// The internal blob data (bytes + type)
+    blob_data: *file.BlobData,
+    /// Allocator for memory management
+    allocator: std.mem.Allocator,
+
+    pub fn deinit(self: *InternalState) void {
+        self.blob_data.deinit();
+        // Don't destroy self here - let the caller handle it
+    }
+};
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -29,72 +48,331 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.deinit();
+        internal.allocator.destroy(internal);
+    }
     runtime.Instance.deinit(instance);
 }
 
 /// Constructor implementation
-/// This is called when the interface is constructed from JavaScript
+///
+/// Spec: https://www.w3.org/TR/FileAPI/#constructorBlob
+///
+/// Steps:
+/// 1. If blobParts is empty or missing, create empty Blob
+/// 2. Process blobParts using "process blob parts" algorithm
+/// 3. Normalize type from options
+/// 4. Return new Blob
 pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, blobParts: *const anyopaque, options: dictionaries.BlobPropertyBag) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &Blob.vtable, ctx);
     errdefer deinit(instance);
 
-    _ = blobParts;
-    _ = options;
-    // TODO: Implement constructor logic with parameters
+    // Determine if we have blob parts and what endings mode to use
+    const endings_mode: file.algorithms.Endings = blk: {
+        if (options.endings) |endings_ptr| {
+            // endings is a pointer to the endings string value
+            // For now, check if it's "native"
+            const endings_str: *const []const u8 = @ptrCast(@alignCast(endings_ptr));
+            if (std.mem.eql(u8, endings_str.*, "native")) {
+                break :blk .native;
+            }
+        }
+        break :blk .transparent;
+    };
+
+    // Get MIME type from options
+    const mime_type: []const u8 = if (options.type) |t| t.asSlice() else "";
+
+    // Process blob parts if provided
+    // The blobParts parameter comes as an opaque pointer to a sequence
+    // For now, we'll handle the case where it might be null/empty
+    const bytes: []const u8 = blk: {
+        // Check if blobParts is actually provided (non-null pointer to valid data)
+        // In the WebIDL binding, an empty sequence would still be a valid pointer
+        // We need to handle this carefully - for now treat as potentially empty
+
+        // Try to interpret as a slice of BlobPart
+        // The actual structure depends on how the V8 binding passes this
+        // For safety, we'll create empty bytes if we can't process it
+        _ = blobParts;
+        _ = endings_mode;
+
+        // TODO: Full BlobPart processing requires V8 integration to extract
+        // the actual parts. For now, create empty blob.
+        // When V8 integration is complete, this will iterate through blobParts
+        // and call file.algorithms.processBlobParts()
+        break :blk "";
+    };
+
+    // Create the internal BlobData
+    const blob_data = try file.BlobData.init(allocator, bytes, mime_type);
+    errdefer blob_data.deinit();
+
+    // Create and store internal state
+    const internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(internal);
+
+    internal.* = .{
+        .blob_data = blob_data,
+        .allocator = allocator,
+    };
+
+    // Store internal state in the instance
+    const state = instance.getState(State);
+    state.own._internal = internal;
 
     return instance;
 }
 
+/// Create a Blob from raw bytes (internal helper)
+///
+/// This is used by other APIs (File, slice) that need to create Blobs
+/// directly from bytes without going through the WebIDL constructor.
+pub fn createFromBytes(allocator: std.mem.Allocator, ctx: runtime.Context, bytes: []const u8, mime_type: []const u8) !*runtime.Instance {
+    const instance = try init(allocator, State, &Blob.vtable, ctx);
+    errdefer deinit(instance);
+
+    const blob_data = try file.BlobData.init(allocator, bytes, mime_type);
+    errdefer blob_data.deinit();
+
+    const internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(internal);
+
+    internal.* = .{
+        .blob_data = blob_data,
+        .allocator = allocator,
+    };
+
+    const state = instance.getState(State);
+    state.own._internal = internal;
+
+    return instance;
+}
+
+/// Create a Blob from existing BlobData (internal helper)
+///
+/// Takes ownership of the BlobData - caller should NOT deinit it.
+pub fn createFromBlobData(allocator: std.mem.Allocator, ctx: runtime.Context, blob_data: *file.BlobData) !*runtime.Instance {
+    const instance = try init(allocator, State, &Blob.vtable, ctx);
+    errdefer deinit(instance);
+
+    const internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(internal);
+
+    internal.* = .{
+        .blob_data = blob_data,
+        .allocator = allocator,
+    };
+
+    const state = instance.getState(State);
+    state.own._internal = internal;
+
+    return instance;
+}
+
+/// Get internal state from instance
+pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    const state = instance.getState(State);
+    return state.own._internal;
+}
+
 /// Getter for size
+///
+/// Spec: https://www.w3.org/TR/FileAPI/#dfn-size
+/// Returns the size of the byte sequence in number of bytes.
 pub fn get_size(instance: *runtime.Instance) ImplError!u64 {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return 0;
+    return internal.blob_data.size();
 }
 
 /// Getter for type
+///
+/// Spec: https://www.w3.org/TR/FileAPI/#dfn-type
+/// Returns ASCII-encoded string in lower case representing the media type.
 pub fn get_type(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: text
-pub fn call_text(instance: *runtime.Instance) ImplError!*const anyopaque {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
+    const type_str = internal.blob_data.getType();
+    if (type_str.len == 0) {
+        return runtime.DOMString.initEmpty();
+    }
+    return runtime.DOMString.initInterned(type_str);
 }
 
 /// Operation: slice
+///
+/// Spec: https://www.w3.org/TR/FileAPI/#slice-method-algo
+/// Returns a new Blob object with bytes from start to end and optional contentType.
 pub fn call_slice(instance: *runtime.Instance, start: i64, end: i64, contentType: runtime.DOMString) ImplError!*runtime.Instance {
+    const internal = getInternal(instance) orelse return error.InvalidState;
+    const allocator = internal.allocator;
+    const ctx = instance.ctx;
+
+    // Get contentType as optional slice
+    const ct: ?[]const u8 = blk: {
+        const slice = contentType.asSlice();
+        if (slice.len > 0) {
+            break :blk slice;
+        }
+        break :blk null;
+    };
+
+    // Run slice blob algorithm
+    const sliced_data = file.algorithms.sliceBlob(
+        allocator,
+        internal.blob_data,
+        start,
+        end,
+        ct,
+    ) catch {
+        return error.OutOfMemory;
+    };
+    errdefer sliced_data.deinit();
+
+    // Create new Blob instance with the sliced data
+    return createFromBlobData(allocator, ctx, sliced_data) catch {
+        return error.OutOfMemory;
+    };
+}
+
+/// Operation: text
+///
+/// Spec: https://www.w3.org/TR/FileAPI/#dom-blob-text
+/// Returns a Promise that resolves with the blob contents as a UTF-8 string.
+///
+/// TODO: Requires Promise integration with V8/runtime
+pub fn call_text(instance: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
-    _ = start;
-    _ = end;
-    _ = contentType;
+    // TODO: Implement when Promise/async support is available
+    // This should:
+    // 1. Package data as Text using packageData algorithm
+    // 2. Return a Promise that resolves with the string
     return error.NotImplemented;
 }
 
 /// Operation: stream
+///
+/// Spec: https://www.w3.org/TR/FileAPI/#stream-method-algo
+/// Returns a ReadableStream for reading blob contents.
+///
+/// TODO: Requires ReadableStream integration
 pub fn call_stream(instance: *runtime.Instance) ImplError!*runtime.Instance {
     _ = instance;
+    // TODO: Implement when ReadableStream integration is ready
+    // This should create a ReadableByteStream that reads from blob_data.bytes
     return error.NotImplemented;
 }
 
 /// Operation: bytes
+///
+/// Spec: https://www.w3.org/TR/FileAPI/#dom-blob-bytes
+/// Returns a Promise that resolves with a Uint8Array of the blob contents.
+///
+/// TODO: Requires Promise integration with V8/runtime
 pub fn call_bytes(instance: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
+    // TODO: Implement when Promise/async support is available
     return error.NotImplemented;
 }
 
 /// Operation: arrayBuffer
+///
+/// Spec: https://www.w3.org/TR/FileAPI/#dom-blob-arraybuffer
+/// Returns a Promise that resolves with an ArrayBuffer of the blob contents.
+///
+/// TODO: Requires Promise integration with V8/runtime
 pub fn call_arrayBuffer(instance: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
+    // TODO: Implement when Promise/async support is available
     return error.NotImplemented;
 }
 
+// ============================================================================
+// Tests
+// ============================================================================
+
+test "Blob - empty constructor" {
+    const allocator = std.testing.allocator;
+
+    // Create a minimal context
+    const ctx = runtime.createNullContext();
+
+    // Create empty blob (simulating constructor with no parts)
+    const blob = try createFromBytes(allocator, ctx, "", "");
+    defer deinit(blob);
+
+    const size = try get_size(blob);
+    try std.testing.expectEqual(@as(u64, 0), size);
+
+    const type_str = try get_type(blob);
+    try std.testing.expectEqualStrings("", type_str.asSlice());
+}
+
+test "Blob - with bytes and type" {
+    const allocator = std.testing.allocator;
+    const ctx = runtime.createNullContext();
+
+    const blob = try createFromBytes(allocator, ctx, "Hello, World!", "text/plain");
+    defer deinit(blob);
+
+    const size = try get_size(blob);
+    try std.testing.expectEqual(@as(u64, 13), size);
+
+    const type_str = try get_type(blob);
+    try std.testing.expectEqualStrings("text/plain", type_str.asSlice());
+}
+
+test "Blob - slice basic" {
+    const allocator = std.testing.allocator;
+    const ctx = runtime.createNullContext();
+
+    const blob = try createFromBytes(allocator, ctx, "Hello, World!", "text/plain");
+    defer deinit(blob);
+
+    // Slice to get "Hello"
+    const sliced = try call_slice(blob, 0, 5, runtime.DOMString.initEmpty());
+    defer deinit(sliced);
+
+    const size = try get_size(sliced);
+    try std.testing.expectEqual(@as(u64, 5), size);
+
+    // Type should be empty (not inherited) when contentType not specified
+    const type_str = try get_type(sliced);
+    try std.testing.expectEqualStrings("", type_str.asSlice());
+}
+
+test "Blob - slice with contentType" {
+    const allocator = std.testing.allocator;
+    const ctx = runtime.createNullContext();
+
+    const blob = try createFromBytes(allocator, ctx, "Hello", "text/plain");
+    defer deinit(blob);
+
+    const sliced = try call_slice(blob, 0, 5, runtime.DOMString.initInterned("application/json"));
+    defer deinit(sliced);
+
+    const type_str = try get_type(sliced);
+    try std.testing.expectEqualStrings("application/json", type_str.asSlice());
+}
+
+test "Blob - slice negative indices" {
+    const allocator = std.testing.allocator;
+    const ctx = runtime.createNullContext();
+
+    const blob = try createFromBytes(allocator, ctx, "Hello, World!", "");
+    defer deinit(blob);
+
+    // Slice with -6 should give us "World!"
+    const sliced = try call_slice(blob, -6, 13, runtime.DOMString.initEmpty());
+    defer deinit(sliced);
+
+    const size = try get_size(sliced);
+    try std.testing.expectEqual(@as(u64, 6), size);
+}

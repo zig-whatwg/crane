@@ -1056,6 +1056,9 @@ pub fn build(b: *std.Build) void {
     // file_mod.addImport("encoding", encoding_mod);
     // file_mod.addImport("streams", streams_mod);
 
+    // Add file module to impls (for Blob, File, FileReader implementations)
+    impls_mod.addImport("file", file_mod);
+
     // Wire spec modules into whatwg module
     whatwg_mod.addImport("infra", infra_mod);
     whatwg_mod.addImport("webidl", webidl_mod);
