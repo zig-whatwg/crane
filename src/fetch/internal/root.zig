@@ -43,9 +43,27 @@ pub const canSet = guards.canSet;
 pub const canDelete = guards.canDelete;
 pub const canGet = guards.canGet;
 
+pub const body = @import("body.zig");
+pub const Body = body.Body;
+pub const BodySource = body.BodySource;
+pub const BodyWithType = body.BodyWithType;
+pub const nullBody = body.nullBody;
+pub const isNullBody = body.isNullBody;
+
+pub const fetch_timing = @import("fetch_timing.zig");
+pub const FetchTimingInfo = fetch_timing.FetchTimingInfo;
+pub const ConnectionTimingInfo = fetch_timing.ConnectionTimingInfo;
+pub const ResponseBodyInfo = fetch_timing.ResponseBodyInfo;
+pub const DOMHighResTimeStamp = fetch_timing.DOMHighResTimeStamp;
+pub const createOpaqueTimingInfo = fetch_timing.createOpaqueTimingInfo;
+pub const coarsenTime = fetch_timing.coarsenTime;
+pub const clampAndCoarsenConnectionTimingInfo = fetch_timing.clampAndCoarsenConnectionTimingInfo;
+
 test {
     _ = header_list;
     _ = validation;
     _ = parsing;
     _ = guards;
+    _ = body;
+    _ = fetch_timing;
 }
