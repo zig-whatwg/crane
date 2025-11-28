@@ -1095,6 +1095,7 @@ pub fn build(b: *std.Build) void {
 
     // Allow impls to access fetch for Headers, Request, Response implementations
     impls_mod.addImport("fetch", fetch_mod);
+    impls_mod.addImport("url", url_mod); // For Request constructor URL parsing
 
     // Wire spec modules into whatwg module
     whatwg_mod.addImport("infra", infra_mod);

@@ -58,6 +58,33 @@ pub fn init(
     return instance;
 }
 
+/// Initialize with existing HeaderList and guard (for Request/Response)
+pub fn initWithHeaderList(
+    allocator: std.mem.Allocator,
+    ctx: runtime.Context,
+    header_list: *HeaderList,
+    guard: HeaderGuard,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, State, &Headers.vtable, ctx);
+    errdefer runtime.Instance.deinit(instance);
+
+    // Create internal state that wraps existing header list
+    const internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(internal);
+
+    internal.* = .{
+        .allocator = allocator,
+        .header_list = header_list.*, // Copy the header list
+        .guard = guard,
+    };
+
+    // Store in instance
+    const state = instance.getState(State);
+    state.own._internal = internal;
+
+    return instance;
+}
+
 /// Deinitialize
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
