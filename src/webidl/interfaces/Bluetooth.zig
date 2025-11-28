@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-28T19:11:18Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -227,13 +227,13 @@ pub const Bluetooth = struct {
 
     pub fn call_requestDevice(instance: *runtime.Instance, options: webidl.Opt(RequestDeviceOptions)) anyerror!*const anyopaque {
         
-        return try BluetoothImpl.call_requestDevice(instance, options);
+        return try BluetoothImpl.call_requestDevice(instance, options.value);
     }
 
     /// Extended attributes: [SecureContext]
     pub fn call_requestLEScan(instance: *runtime.Instance, options: webidl.Opt(BluetoothLEScanOptions)) anyerror!*const anyopaque {
         
-        return try BluetoothImpl.call_requestLEScan(instance, options);
+        return try BluetoothImpl.call_requestLEScan(instance, options.value);
     }
 
     pub fn call_getAvailability(instance: *runtime.Instance) anyerror!*const anyopaque {

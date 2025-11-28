@@ -1,5 +1,5 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-28T19:11:20Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -83,7 +83,7 @@ pub const ReadableStreamGenericReader = struct {
 
     pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
         
-        return try ReadableStreamGenericReaderImpl.call_cancel(instance, reason);
+        return try ReadableStreamGenericReaderImpl.call_cancel(instance, reason.value);
     }
 
 };

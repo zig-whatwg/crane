@@ -1,5 +1,5 @@
 //! Generated from: fenced-frame.idl
-//! Generated at: 2025-11-28T19:11:20Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -95,7 +95,7 @@ pub const Fence = struct {
 
     pub fn call_reportEvent(instance: *runtime.Instance, event: webidl.Opt(ReportEventType)) anyerror!void {
         
-        return try FenceImpl.call_reportEvent(instance, event);
+        return try FenceImpl.call_reportEvent(instance, event.value);
     }
 
     pub fn call_getNestedConfigs(instance: *runtime.Instance) anyerror!*const anyopaque {
@@ -104,7 +104,7 @@ pub const Fence = struct {
 
     pub fn call_setReportEventDataForAutomaticBeacons(instance: *runtime.Instance, event: webidl.Opt(FenceEvent)) anyerror!void {
         
-        return try FenceImpl.call_setReportEventDataForAutomaticBeacons(instance, event);
+        return try FenceImpl.call_setReportEventDataForAutomaticBeacons(instance, event.value);
     }
 
     pub fn call_disableUntrustedNetwork(instance: *runtime.Instance) anyerror!*const anyopaque {

@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -171,12 +171,12 @@ pub const OffscreenCanvas = struct {
 
     pub fn call_getContext(instance: *runtime.Instance, contextId: OffscreenRenderingContextId, options: webidl.Opt(*const anyopaque)) anyerror!?OffscreenRenderingContext {
         
-        return try OffscreenCanvasImpl.call_getContext(instance, contextId, options);
+        return try OffscreenCanvasImpl.call_getContext(instance, contextId, options.value);
     }
 
     pub fn call_convertToBlob(instance: *runtime.Instance, options: webidl.Opt(ImageEncodeOptions)) anyerror!*const anyopaque {
         
-        return try OffscreenCanvasImpl.call_convertToBlob(instance, options);
+        return try OffscreenCanvasImpl.call_convertToBlob(instance, options.value);
     }
 
     pub fn call_transferToImageBitmap(instance: *runtime.Instance) anyerror!*runtime.Instance {

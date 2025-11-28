@@ -1,5 +1,5 @@
 //! Generated from: shape-detection-api.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -86,7 +86,7 @@ pub const FaceDetector = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, faceDetectorOptions: webidl.Opt(FaceDetectorOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try FaceDetectorImpl.call_constructor(allocator, ctx, faceDetectorOptions);
+        return try FaceDetectorImpl.call_constructor(allocator, ctx, faceDetectorOptions.value);
     }
 
     pub fn call_detect(instance: *runtime.Instance, image: ImageBitmapSource) anyerror!*const anyopaque {

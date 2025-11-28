@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-28T19:11:20Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -112,7 +112,7 @@ pub const CSSOKLCH = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, l: CSSColorPercent, c: CSSColorPercent, h: CSSColorAngle, alpha: webidl.Opt(CSSColorPercent)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try CSSOKLCHImpl.call_constructor(allocator, ctx, l, c, h, alpha);
+        return try CSSOKLCHImpl.call_constructor(allocator, ctx, l, c, h, alpha.value);
     }
 
     pub fn get_l(instance: *runtime.Instance) anyerror!CSSColorPercent {

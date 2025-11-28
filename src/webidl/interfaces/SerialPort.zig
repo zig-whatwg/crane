@@ -1,5 +1,5 @@
 //! Generated from: serial.idl
-//! Generated at: 2025-11-28T19:11:18Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -182,7 +182,7 @@ pub const SerialPort = struct {
 
     pub fn call_setSignals(instance: *runtime.Instance, signals: webidl.Opt(SerialOutputSignals)) anyerror!*const anyopaque {
         
-        return try SerialPortImpl.call_setSignals(instance, signals);
+        return try SerialPortImpl.call_setSignals(instance, signals.value);
     }
 
     pub fn call_getSignals(instance: *runtime.Instance) anyerror!*const anyopaque {

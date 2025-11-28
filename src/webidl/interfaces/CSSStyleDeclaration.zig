@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-28T19:11:18Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -181,7 +181,7 @@ pub const CSSStyleDeclaration = struct {
         defer runtime.CEReactions.end();
         
         
-        return try CSSStyleDeclarationImpl.call_setProperty(instance, property, value, priority);
+        return try CSSStyleDeclarationImpl.call_setProperty(instance, property, value, priority.value);
     }
 
     pub fn call_getPropertyValue(instance: *runtime.Instance, property: CSSOMString) anyerror!CSSOMString {

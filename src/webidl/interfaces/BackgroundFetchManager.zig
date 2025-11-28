@@ -1,5 +1,5 @@
 //! Generated from: background-fetch.idl
-//! Generated at: 2025-11-28T19:11:20Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -98,7 +98,7 @@ pub const BackgroundFetchManager = struct {
 
     pub fn call_fetch(instance: *runtime.Instance, id: DOMString, requests: *const anyopaque, options: webidl.Opt(BackgroundFetchOptions)) anyerror!*const anyopaque {
         
-        return try BackgroundFetchManagerImpl.call_fetch(instance, id, requests, options);
+        return try BackgroundFetchManagerImpl.call_fetch(instance, id, requests, options.value);
     }
 
     pub fn call_getIds(instance: *runtime.Instance) anyerror!*const anyopaque {

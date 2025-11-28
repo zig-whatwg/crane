@@ -1,5 +1,5 @@
 //! Generated from: uievents.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -102,7 +102,7 @@ pub const CompositionEvent = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(CompositionEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try CompositionEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
+        return try CompositionEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict.value);
     }
 
     pub fn get_data(instance: *runtime.Instance) anyerror!runtime.USVString {
@@ -111,7 +111,7 @@ pub const CompositionEvent = struct {
 
     pub fn call_initCompositionEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: webidl.Opt(bool), cancelableArg: webidl.Opt(bool), viewArg: webidl.Opt(?WindowProxy), dataArg: webidl.Opt(DOMString)) anyerror!void {
         
-        return try CompositionEventImpl.call_initCompositionEvent(instance, typeArg, bubblesArg, cancelableArg, viewArg, dataArg);
+        return try CompositionEventImpl.call_initCompositionEvent(instance, typeArg, bubblesArg.value, cancelableArg.value, viewArg.value, dataArg.value);
     }
 
 };

@@ -1,5 +1,5 @@
 //! Generated from: entries-api.idl
-//! Generated at: 2025-11-28T19:11:21Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -93,12 +93,12 @@ pub const FileSystemDirectoryEntry = struct {
 
     pub fn call_getDirectory(instance: *runtime.Instance, path: webidl.Opt(?runtime.USVString), options: webidl.Opt(FileSystemFlags), successCallback: webidl.Opt(FileSystemEntryCallback), errorCallback: webidl.Opt(ErrorCallback)) anyerror!void {
         
-        return try FileSystemDirectoryEntryImpl.call_getDirectory(instance, path, options, successCallback, errorCallback);
+        return try FileSystemDirectoryEntryImpl.call_getDirectory(instance, path.value, options.value, successCallback.value, errorCallback.value);
     }
 
     pub fn call_getFile(instance: *runtime.Instance, path: webidl.Opt(?runtime.USVString), options: webidl.Opt(FileSystemFlags), successCallback: webidl.Opt(FileSystemEntryCallback), errorCallback: webidl.Opt(ErrorCallback)) anyerror!void {
         
-        return try FileSystemDirectoryEntryImpl.call_getFile(instance, path, options, successCallback, errorCallback);
+        return try FileSystemDirectoryEntryImpl.call_getFile(instance, path.value, options.value, successCallback.value, errorCallback.value);
     }
 
     pub fn call_createReader(instance: *runtime.Instance) anyerror!*runtime.Instance {

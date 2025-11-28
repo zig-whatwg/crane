@@ -1,5 +1,5 @@
 //! Generated from: entries-api.idl
-//! Generated at: 2025-11-28T19:11:18Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -86,7 +86,7 @@ pub const FileSystemFileEntry = struct {
 
     pub fn call_file(instance: *runtime.Instance, successCallback: FileCallback, errorCallback: webidl.Opt(ErrorCallback)) anyerror!void {
         
-        return try FileSystemFileEntryImpl.call_file(instance, successCallback, errorCallback);
+        return try FileSystemFileEntryImpl.call_file(instance, successCallback, errorCallback.value);
     }
 
 };

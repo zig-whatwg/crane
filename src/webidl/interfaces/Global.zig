@@ -1,5 +1,5 @@
 //! Generated from: wasm-js-api.idl
-//! Generated at: 2025-11-28T19:11:20Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -89,7 +89,7 @@ pub const Global = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, descriptor: GlobalDescriptor, v: webidl.Opt(*const anyopaque)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try GlobalImpl.call_constructor(allocator, ctx, descriptor, v);
+        return try GlobalImpl.call_constructor(allocator, ctx, descriptor, v.value);
     }
 
     pub fn get_value(instance: *runtime.Instance) anyerror!*const anyopaque {

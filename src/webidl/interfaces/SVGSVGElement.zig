@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-28T19:11:18Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -782,7 +782,7 @@ pub const SVGSVGElement = struct {
     pub fn call_createSVGTransformFromMatrix(instance: *runtime.Instance, matrix: webidl.Opt(DOMMatrix2DInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try SVGSVGElementImpl.call_createSVGTransformFromMatrix(instance, matrix);
+        return try SVGSVGElementImpl.call_createSVGTransformFromMatrix(instance, matrix.value);
     }
 
     pub fn call_forceRedraw(instance: *runtime.Instance) anyerror!void {

@@ -1,5 +1,5 @@
 //! Generated from: reporting.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -92,7 +92,7 @@ pub const ReportingObserver = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, callback: ReportingObserverCallback, options: webidl.Opt(ReportingObserverOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try ReportingObserverImpl.call_constructor(allocator, ctx, callback, options);
+        return try ReportingObserverImpl.call_constructor(allocator, ctx, callback, options.value);
     }
 
     pub fn call_observe(instance: *runtime.Instance) anyerror!void {

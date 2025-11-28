@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -491,7 +491,7 @@ pub const HTMLFormElement = struct {
 
     pub fn call_requestSubmit(instance: *runtime.Instance, submitter: webidl.Opt(?*runtime.Instance)) anyerror!void {
         
-        return try HTMLFormElementImpl.call_requestSubmit(instance, submitter);
+        return try HTMLFormElementImpl.call_requestSubmit(instance, submitter.value);
     }
 
     /// Extended attributes: [CEReactions]

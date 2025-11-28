@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-28T19:11:18Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -127,7 +127,7 @@ pub const GPUQueue = struct {
 
     pub fn call_writeBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, bufferOffset: GPUSize64, data: AllowSharedBufferSource, dataOffset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!void {
         
-        return try GPUQueueImpl.call_writeBuffer(instance, buffer, bufferOffset, data, dataOffset, size);
+        return try GPUQueueImpl.call_writeBuffer(instance, buffer, bufferOffset, data, dataOffset.value, size.value);
     }
 
     pub fn call_writeTexture(instance: *runtime.Instance, destination: GPUTexelCopyTextureInfo, data: AllowSharedBufferSource, dataLayout: GPUTexelCopyBufferLayout, size: GPUExtent3D) anyerror!void {

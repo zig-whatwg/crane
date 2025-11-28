@@ -1,5 +1,5 @@
 //! Generated from: performance-timeline.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -99,7 +99,7 @@ pub const PerformanceObserverEntryList = struct {
 
     pub fn call_getEntriesByName(instance: *runtime.Instance, name: DOMString, @"type": webidl.Opt(DOMString)) anyerror!PerformanceEntryList {
         
-        return try PerformanceObserverEntryListImpl.call_getEntriesByName(instance, name, @"type");
+        return try PerformanceObserverEntryListImpl.call_getEntriesByName(instance, name, @"type".value);
     }
 
 };

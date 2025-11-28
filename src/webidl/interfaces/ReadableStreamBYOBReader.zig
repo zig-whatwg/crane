@@ -1,5 +1,5 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-28T19:11:21Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -107,7 +107,7 @@ pub const ReadableStreamBYOBReader = struct {
 
     pub fn call_read(instance: *runtime.Instance, view: ArrayBufferView, options: webidl.Opt(ReadableStreamBYOBReaderReadOptions)) anyerror!*const anyopaque {
         
-        return try ReadableStreamBYOBReaderImpl.call_read(instance, view, options);
+        return try ReadableStreamBYOBReaderImpl.call_read(instance, view, options.value);
     }
 
     pub fn call_releaseLock(instance: *runtime.Instance) anyerror!void {
@@ -116,7 +116,7 @@ pub const ReadableStreamBYOBReader = struct {
 
     pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
         
-        return try ReadableStreamBYOBReaderImpl.call_cancel(instance, reason);
+        return try ReadableStreamBYOBReaderImpl.call_cancel(instance, reason.value);
     }
 
 };

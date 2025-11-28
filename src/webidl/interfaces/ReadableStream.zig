@@ -1,5 +1,5 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -125,7 +125,7 @@ pub const ReadableStream = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, underlyingSource: webidl.Opt(*const anyopaque), strategy: webidl.Opt(QueuingStrategy)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try ReadableStreamImpl.call_constructor(allocator, ctx, underlyingSource, strategy);
+        return try ReadableStreamImpl.call_constructor(allocator, ctx, underlyingSource.value, strategy.value);
     }
 
     pub fn get_locked(instance: *runtime.Instance) anyerror!bool {
@@ -134,12 +134,12 @@ pub const ReadableStream = struct {
 
     pub fn call_pipeTo(instance: *runtime.Instance, destination: *runtime.Instance, options: webidl.Opt(StreamPipeOptions)) anyerror!*const anyopaque {
         
-        return try ReadableStreamImpl.call_pipeTo(instance, destination, options);
+        return try ReadableStreamImpl.call_pipeTo(instance, destination, options.value);
     }
 
     pub fn call_pipeThrough(instance: *runtime.Instance, transform: ReadableWritablePair, options: webidl.Opt(StreamPipeOptions)) anyerror!*runtime.Instance {
         
-        return try ReadableStreamImpl.call_pipeThrough(instance, transform, options);
+        return try ReadableStreamImpl.call_pipeThrough(instance, transform, options.value);
     }
 
     pub fn call_from(instance: *runtime.Instance, asyncIterable: *const anyopaque) anyerror!*runtime.Instance {
@@ -153,22 +153,22 @@ pub const ReadableStream = struct {
 
     pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
         
-        return try ReadableStreamImpl.call_cancel(instance, reason);
+        return try ReadableStreamImpl.call_cancel(instance, reason.value);
     }
 
     pub fn call_getReader(instance: *runtime.Instance, options: webidl.Opt(ReadableStreamGetReaderOptions)) anyerror!ReadableStreamReader {
         
-        return try ReadableStreamImpl.call_getReader(instance, options);
+        return try ReadableStreamImpl.call_getReader(instance, options.value);
     }
 
     pub fn call_values(instance: *runtime.Instance, options: webidl.Opt(ReadableStreamIteratorOptions)) anyerror!*const anyopaque {
         
-        return try ReadableStreamImpl.call_values(instance, options);
+        return try ReadableStreamImpl.call_values(instance, options.value);
     }
 
     pub fn call_getAsyncIterator(instance: *runtime.Instance, options: webidl.Opt(ReadableStreamIteratorOptions)) anyerror!*const anyopaque {
         
-        return try ReadableStreamImpl.call_getAsyncIterator(instance, options);
+        return try ReadableStreamImpl.call_getAsyncIterator(instance, options.value);
     }
 
 };

@@ -1,5 +1,5 @@
 //! Generated from: webrtc-encoded-transform.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -98,7 +98,7 @@ pub const RTCEncodedVideoFrame = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, originalFrame: *runtime.Instance, options: webidl.Opt(RTCEncodedVideoFrameOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try RTCEncodedVideoFrameImpl.call_constructor(allocator, ctx, originalFrame, options);
+        return try RTCEncodedVideoFrameImpl.call_constructor(allocator, ctx, originalFrame, options.value);
     }
 
     pub fn get_type(instance: *runtime.Instance) anyerror!RTCEncodedVideoFrameType {

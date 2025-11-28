@@ -1,5 +1,5 @@
 //! Generated from: turtledove.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -94,7 +94,7 @@ pub const InterestGroupBiddingScriptRunnerGlobalScope = struct {
 
     pub fn call_setBid(instance: *runtime.Instance, oneOrManyBids: webidl.Opt(*const anyopaque)) anyerror!bool {
         
-        return try InterestGroupBiddingScriptRunnerGlobalScopeImpl.call_setBid(instance, oneOrManyBids);
+        return try InterestGroupBiddingScriptRunnerGlobalScopeImpl.call_setBid(instance, oneOrManyBids.value);
     }
 
     pub fn call_setPriority(instance: *runtime.Instance, priority: f64) anyerror!void {
@@ -104,7 +104,7 @@ pub const InterestGroupBiddingScriptRunnerGlobalScope = struct {
 
     pub fn call_setPrioritySignalsOverride(instance: *runtime.Instance, key: DOMString, priority: webidl.Opt(?f64)) anyerror!void {
         
-        return try InterestGroupBiddingScriptRunnerGlobalScopeImpl.call_setPrioritySignalsOverride(instance, key, priority);
+        return try InterestGroupBiddingScriptRunnerGlobalScopeImpl.call_setPrioritySignalsOverride(instance, key, priority.value);
     }
 
 };

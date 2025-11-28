@@ -1,5 +1,5 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -94,7 +94,7 @@ pub const WritableStream = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, underlyingSink: webidl.Opt(*const anyopaque), strategy: webidl.Opt(QueuingStrategy)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try WritableStreamImpl.call_constructor(allocator, ctx, underlyingSink, strategy);
+        return try WritableStreamImpl.call_constructor(allocator, ctx, underlyingSink.value, strategy.value);
     }
 
     pub fn get_locked(instance: *runtime.Instance) anyerror!bool {
@@ -107,7 +107,7 @@ pub const WritableStream = struct {
 
     pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
         
-        return try WritableStreamImpl.call_abort(instance, reason);
+        return try WritableStreamImpl.call_abort(instance, reason.value);
     }
 
     pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {

@@ -1762,7 +1762,9 @@ pub fn V8Interface(comptime Interface: type) type {
                         // call_values(instance, options) - has options
                         const OptionsType = @import("dictionaries").ReadableStreamIteratorOptions;
                         const options: OptionsType = .{ .preventCancel = false };
-                        break :blk Interface.call_values(instance, options) catch |err| {
+                        const webidl = @import("webidl");
+                        const opt_options = webidl.Opt(OptionsType).passed(options);
+                        break :blk Interface.call_values(instance, opt_options) catch |err| {
                             const err_name = @errorName(err);
                             conv.throwError(isolate, err_name);
                             return;

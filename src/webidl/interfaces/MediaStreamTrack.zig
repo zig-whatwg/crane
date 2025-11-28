@@ -1,5 +1,5 @@
 //! Generated from: mediacapture-streams.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -296,7 +296,7 @@ pub const MediaStreamTrack = struct {
 
     pub fn call_applyConstraints(instance: *runtime.Instance, constraints: webidl.Opt(MediaTrackConstraints)) anyerror!*const anyopaque {
         
-        return try MediaStreamTrackImpl.call_applyConstraints(instance, constraints);
+        return try MediaStreamTrackImpl.call_applyConstraints(instance, constraints.value);
     }
 
 };

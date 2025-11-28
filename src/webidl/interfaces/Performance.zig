@@ -1,5 +1,5 @@
 //! Generated from: hr-time.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -220,7 +220,7 @@ pub const Performance = struct {
 
     pub fn call_measure(instance: *runtime.Instance, measureName: DOMString, startOrMeasureOptions: webidl.Opt(*const anyopaque), endMark: webidl.Opt(DOMString)) anyerror!*runtime.Instance {
         
-        return try PerformanceImpl.call_measure(instance, measureName, startOrMeasureOptions, endMark);
+        return try PerformanceImpl.call_measure(instance, measureName, startOrMeasureOptions.value, endMark.value);
     }
 
     pub fn call_clearResourceTimings(instance: *runtime.Instance) anyerror!void {
@@ -234,12 +234,12 @@ pub const Performance = struct {
 
     pub fn call_clearMeasures(instance: *runtime.Instance, measureName: webidl.Opt(DOMString)) anyerror!void {
         
-        return try PerformanceImpl.call_clearMeasures(instance, measureName);
+        return try PerformanceImpl.call_clearMeasures(instance, measureName.value);
     }
 
     pub fn call_mark(instance: *runtime.Instance, markName: DOMString, markOptions: webidl.Opt(PerformanceMarkOptions)) anyerror!*runtime.Instance {
         
-        return try PerformanceImpl.call_mark(instance, markName, markOptions);
+        return try PerformanceImpl.call_mark(instance, markName, markOptions.value);
     }
 
     pub fn call_getEntries(instance: *runtime.Instance) anyerror!PerformanceEntryList {
@@ -267,12 +267,12 @@ pub const Performance = struct {
 
     pub fn call_clearMarks(instance: *runtime.Instance, markName: webidl.Opt(DOMString)) anyerror!void {
         
-        return try PerformanceImpl.call_clearMarks(instance, markName);
+        return try PerformanceImpl.call_clearMarks(instance, markName.value);
     }
 
     pub fn call_getEntriesByName(instance: *runtime.Instance, name: DOMString, @"type": webidl.Opt(DOMString)) anyerror!PerformanceEntryList {
         
-        return try PerformanceImpl.call_getEntriesByName(instance, name, @"type");
+        return try PerformanceImpl.call_getEntriesByName(instance, name, @"type".value);
     }
 
 };

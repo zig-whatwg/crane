@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -104,14 +104,14 @@ pub const XPathEvaluator = struct {
 
     pub fn call_evaluate(instance: *runtime.Instance, expression: DOMString, contextNode: *runtime.Instance, resolver: webidl.Opt(??*runtime.CallbackWrapper), @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
         
-        return try XPathEvaluatorImpl.call_evaluate(instance, expression, contextNode, resolver, @"type", result);
+        return try XPathEvaluatorImpl.call_evaluate(instance, expression, contextNode, resolver.value, @"type".value, result.value);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_createExpression(instance: *runtime.Instance, expression: DOMString, resolver: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try XPathEvaluatorImpl.call_createExpression(instance, expression, resolver);
+        return try XPathEvaluatorImpl.call_createExpression(instance, expression, resolver.value);
     }
 
 };

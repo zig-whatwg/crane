@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -94,7 +94,7 @@ pub const CSSMatrixComponent = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, matrix: *runtime.Instance, options: webidl.Opt(CSSMatrixComponentOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try CSSMatrixComponentImpl.call_constructor(allocator, ctx, matrix, options);
+        return try CSSMatrixComponentImpl.call_constructor(allocator, ctx, matrix, options.value);
     }
 
     pub fn get_matrix(instance: *runtime.Instance) anyerror!*runtime.Instance {

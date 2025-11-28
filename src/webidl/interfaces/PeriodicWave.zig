@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -78,7 +78,7 @@ pub const PeriodicWave = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: webidl.Opt(PeriodicWaveOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try PeriodicWaveImpl.call_constructor(allocator, ctx, context, options);
+        return try PeriodicWaveImpl.call_constructor(allocator, ctx, context, options.value);
     }
 
 };

@@ -22,6 +22,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const infra = @import("infra");
 const encoding_mod = @import("encoding");
+const webidl = @import("webidl");
 const TextDecoderStream = interfaces.TextDecoderStream;
 
 pub const State = TextDecoderStream.State;
@@ -179,14 +180,18 @@ pub fn call_constructor(
     // Step 7-11: Create the underlying transform stream
     // The transform and flush algorithms are implemented in decodeChunk and flush
     var empty_transformer: u8 = 0; // Placeholder for null transformer
+    const transformer_ptr: *const anyopaque = &empty_transformer;
+    const opt_transformer = webidl.Opt(*const anyopaque).passed(transformer_ptr);
     const writable_strategy = dictionaries.QueuingStrategy{};
     const readable_strategy = dictionaries.QueuingStrategy{};
+    const opt_writable_strategy = webidl.Opt(dictionaries.QueuingStrategy).passed(writable_strategy);
+    const opt_readable_strategy = webidl.Opt(dictionaries.QueuingStrategy).passed(readable_strategy);
     const transform = try interfaces.TransformStream.call_constructor(
         allocator,
         ctx,
-        &empty_transformer,
-        writable_strategy,
-        readable_strategy,
+        opt_transformer,
+        opt_writable_strategy,
+        opt_readable_strategy,
     );
     errdefer interfaces.TransformStream.deinit(transform);
 

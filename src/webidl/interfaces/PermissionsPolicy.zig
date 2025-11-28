@@ -1,5 +1,5 @@
 //! Generated from: permissions-policy.idl
-//! Generated at: 2025-11-28T19:11:16Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -89,7 +89,7 @@ pub const PermissionsPolicy = struct {
 
     pub fn call_allowsFeature(instance: *runtime.Instance, feature: DOMString, origin: webidl.Opt(DOMString)) anyerror!bool {
         
-        return try PermissionsPolicyImpl.call_allowsFeature(instance, feature, origin);
+        return try PermissionsPolicyImpl.call_allowsFeature(instance, feature, origin.value);
     }
 
     pub fn call_allowedFeatures(instance: *runtime.Instance) anyerror!*const anyopaque {

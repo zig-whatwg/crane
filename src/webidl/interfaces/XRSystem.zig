@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -116,7 +116,7 @@ pub const XRSystem = struct {
     pub fn call_requestSession(instance: *runtime.Instance, mode: XRSessionMode, options: webidl.Opt(XRSessionInit)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
-        return try XRSystemImpl.call_requestSession(instance, mode, options);
+        return try XRSystemImpl.call_requestSession(instance, mode, options.value);
     }
 
     pub fn call_isSessionSupported(instance: *runtime.Instance, mode: XRSessionMode) anyerror!*const anyopaque {

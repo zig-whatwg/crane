@@ -23,7 +23,6 @@ const WriteRequest = @import("streams_write_request").WriteRequest;
 pub const State = WritableStream.State;
 
 pub const ImplError = error{
-
     TypeError,
     RangeError,
     InvalidState,
@@ -434,9 +433,10 @@ pub fn writableStreamFinishErroring(instance: *runtime.Instance, internal: *Inte
                 const abort_callback: callbacks.UnderlyingSinkAbortCallback = @ptrCast(@alignCast(abort_fn));
                 // Use reason if provided, or pass a placeholder pointer (for undefined)
                 const reason_to_pass: *const anyopaque = abort_request.reason orelse @as(*const anyopaque, @ptrFromInt(1));
+                const opt_reason = webidl.Opt(*const anyopaque).passed(reason_to_pass);
                 // Call the abort callback - it returns a promise result
                 // The callback should return a valid pointer (representing a promise)
-                _ = abort_callback(reason_to_pass);
+                _ = abort_callback(opt_reason);
                 // Callback invoked successfully
                 abort_succeeded = true;
             }
@@ -736,7 +736,8 @@ fn writableStreamAbort(
             const controller_internal: *WritableStreamDefaultControllerImpl.InternalState = @ptrCast(@alignCast(controller_internal_ptr));
             if (controller_internal.abort_controller) |abort_controller| {
                 // Signal abort on the AbortController
-                interfaces.AbortController.call_abort(abort_controller, reason) catch {};
+                const opt_reason = webidl.Opt(*const anyopaque).passed(reason);
+                interfaces.AbortController.call_abort(abort_controller, opt_reason) catch {};
             }
         }
     }

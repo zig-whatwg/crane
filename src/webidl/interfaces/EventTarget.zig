@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T19:11:20Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -106,17 +106,17 @@ pub const EventTarget = struct {
 
     pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: webidl.Opt(ObservableEventListenerOptions)) anyerror!*runtime.Instance {
         
-        return try EventTargetImpl.call_when(instance, @"type", options);
+        return try EventTargetImpl.call_when(instance, @"type", options.value);
     }
 
     pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(*const anyopaque)) anyerror!void {
         
-        return try EventTargetImpl.call_addEventListener(instance, @"type", callback, options);
+        return try EventTargetImpl.call_addEventListener(instance, @"type", callback, options.value);
     }
 
     pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(*const anyopaque)) anyerror!void {
         
-        return try EventTargetImpl.call_removeEventListener(instance, @"type", callback, options);
+        return try EventTargetImpl.call_removeEventListener(instance, @"type", callback, options.value);
     }
 
 };

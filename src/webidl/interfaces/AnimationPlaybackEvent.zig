@@ -1,5 +1,5 @@
 //! Generated from: web-animations-2.idl
-//! Generated at: 2025-11-28T19:11:20Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -97,7 +97,7 @@ pub const AnimationPlaybackEvent = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(AnimationPlaybackEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try AnimationPlaybackEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
+        return try AnimationPlaybackEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict.value);
     }
 
     pub fn get_currentTime(instance: *runtime.Instance) anyerror!?CSSNumberish {

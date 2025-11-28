@@ -1,5 +1,5 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -168,28 +168,28 @@ pub const IDBIndex = struct {
         // [EnforceRange] on count
         if (!runtime.isInRange(u32, count)) return error.TypeError;
         
-        return try IDBIndexImpl.call_getAll(instance, queryOrOptions, count);
+        return try IDBIndexImpl.call_getAll(instance, queryOrOptions.value, count.value);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_openKeyCursor(instance: *runtime.Instance, query: webidl.Opt(*const anyopaque), direction: webidl.Opt(IDBCursorDirection)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try IDBIndexImpl.call_openKeyCursor(instance, query, direction);
+        return try IDBIndexImpl.call_openKeyCursor(instance, query.value, direction.value);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_getAllRecords(instance: *runtime.Instance, options: webidl.Opt(IDBGetAllOptions)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try IDBIndexImpl.call_getAllRecords(instance, options);
+        return try IDBIndexImpl.call_getAllRecords(instance, options.value);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_count(instance: *runtime.Instance, query: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try IDBIndexImpl.call_count(instance, query);
+        return try IDBIndexImpl.call_count(instance, query.value);
     }
 
     /// Extended attributes: [NewObject]
@@ -212,14 +212,14 @@ pub const IDBIndex = struct {
         // [EnforceRange] on count
         if (!runtime.isInRange(u32, count)) return error.TypeError;
         
-        return try IDBIndexImpl.call_getAllKeys(instance, queryOrOptions, count);
+        return try IDBIndexImpl.call_getAllKeys(instance, queryOrOptions.value, count.value);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_openCursor(instance: *runtime.Instance, query: webidl.Opt(*const anyopaque), direction: webidl.Opt(IDBCursorDirection)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try IDBIndexImpl.call_openCursor(instance, query, direction);
+        return try IDBIndexImpl.call_openCursor(instance, query.value, direction.value);
     }
 
 };

@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-28T19:11:18Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -302,7 +302,7 @@ pub const SVGGraphicsElement = struct {
 
     pub fn call_getBBox(instance: *runtime.Instance, options: webidl.Opt(SVGBoundingBoxOptions)) anyerror!*runtime.Instance {
         
-        return try SVGGraphicsElementImpl.call_getBBox(instance, options);
+        return try SVGGraphicsElementImpl.call_getBBox(instance, options.value);
     }
 
 };

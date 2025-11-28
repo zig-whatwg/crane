@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-28T19:11:18Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -1786,7 +1786,7 @@ pub const SVGElement = struct {
 
     pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(FocusOptions)) anyerror!void {
         
-        return try SVGElementImpl.call_focus(instance, options);
+        return try SVGElementImpl.call_focus(instance, options.value);
     }
 
 };

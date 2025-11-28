@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -633,7 +633,7 @@ pub const HTMLTextAreaElement = struct {
 
     pub fn call_setSelectionRange(instance: *runtime.Instance, start: u32, end: u32, direction: webidl.Opt(DOMString)) anyerror!void {
         
-        return try HTMLTextAreaElementImpl.call_setSelectionRange(instance, start, end, direction);
+        return try HTMLTextAreaElementImpl.call_setSelectionRange(instance, start, end, direction.value);
     }
 
     pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {

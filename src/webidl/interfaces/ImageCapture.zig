@@ -1,5 +1,5 @@
 //! Generated from: image-capture.idl
-//! Generated at: 2025-11-28T19:11:20Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -121,7 +121,7 @@ pub const ImageCapture = struct {
 
     pub fn call_takePhoto(instance: *runtime.Instance, photoSettings: webidl.Opt(PhotoSettings)) anyerror!*const anyopaque {
         
-        return try ImageCaptureImpl.call_takePhoto(instance, photoSettings);
+        return try ImageCaptureImpl.call_takePhoto(instance, photoSettings.value);
     }
 
 };

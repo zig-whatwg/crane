@@ -1,5 +1,5 @@
 //! Generated from: shared-storage.idl
-//! Generated at: 2025-11-28T19:11:18Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -92,12 +92,12 @@ pub const SharedStorageWorklet = struct {
 
     pub fn call_run(instance: *runtime.Instance, name: DOMString, options: webidl.Opt(SharedStorageRunOperationMethodOptions)) anyerror!*const anyopaque {
         
-        return try SharedStorageWorkletImpl.call_run(instance, name, options);
+        return try SharedStorageWorkletImpl.call_run(instance, name, options.value);
     }
 
     pub fn call_selectURL(instance: *runtime.Instance, name: DOMString, urls: *const anyopaque, options: webidl.Opt(SharedStorageRunOperationMethodOptions)) anyerror!*const anyopaque {
         
-        return try SharedStorageWorkletImpl.call_selectURL(instance, name, urls, options);
+        return try SharedStorageWorkletImpl.call_selectURL(instance, name, urls, options.value);
     }
 
 };

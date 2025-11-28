@@ -1,5 +1,5 @@
 //! Generated from: performance-timeline.idl
-//! Generated at: 2025-11-28T19:11:18Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -114,7 +114,7 @@ pub const PerformanceObserver = struct {
 
     pub fn call_observe(instance: *runtime.Instance, options: webidl.Opt(PerformanceObserverInit)) anyerror!void {
         
-        return try PerformanceObserverImpl.call_observe(instance, options);
+        return try PerformanceObserverImpl.call_observe(instance, options.value);
     }
 
     pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {

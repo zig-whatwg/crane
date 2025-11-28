@@ -1,5 +1,5 @@
 //! Generated from: FileAPI.idl
-//! Generated at: 2025-11-28T19:11:20Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -105,7 +105,7 @@ pub const File = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, fileBits: *const anyopaque, fileName: runtime.USVString, options: webidl.Opt(FilePropertyBag)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try FileImpl.call_constructor(allocator, ctx, fileBits, fileName, options);
+        return try FileImpl.call_constructor(allocator, ctx, fileBits, fileName, options.value);
     }
 
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {

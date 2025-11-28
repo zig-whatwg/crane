@@ -1,5 +1,5 @@
 //! Generated from: WEBGL_draw_instanced_base_vertex_base_instance.idl
-//! Generated at: 2025-11-28T19:11:20Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 

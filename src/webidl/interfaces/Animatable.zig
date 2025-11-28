@@ -1,5 +1,5 @@
 //! Generated from: web-animations.idl
-//! Generated at: 2025-11-28T19:11:16Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -80,12 +80,12 @@ pub const Animatable = struct {
 
     pub fn call_animate(instance: *runtime.Instance, keyframes: ?*const anyopaque, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
         
-        return try AnimatableImpl.call_animate(instance, keyframes, options);
+        return try AnimatableImpl.call_animate(instance, keyframes, options.value);
     }
 
     pub fn call_getAnimations(instance: *runtime.Instance, options: webidl.Opt(GetAnimationsOptions)) anyerror!*const anyopaque {
         
-        return try AnimatableImpl.call_getAnimations(instance, options);
+        return try AnimatableImpl.call_getAnimations(instance, options.value);
     }
 
 };

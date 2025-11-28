@@ -1,5 +1,5 @@
 //! Generated from: saa-non-cookie-storage.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -166,7 +166,7 @@ pub const StorageAccessHandle = struct {
 
     pub fn call_SharedWorker(instance: *runtime.Instance, scriptURL: runtime.USVString, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
         
-        return try StorageAccessHandleImpl.call_SharedWorker(instance, scriptURL, options);
+        return try StorageAccessHandleImpl.call_SharedWorker(instance, scriptURL, options.value);
     }
 
     pub fn call_revokeObjectURL(instance: *runtime.Instance, url: DOMString) anyerror!void {

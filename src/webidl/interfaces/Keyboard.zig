@@ -1,5 +1,5 @@
 //! Generated from: keyboard-lock.idl
-//! Generated at: 2025-11-28T19:11:18Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -119,7 +119,7 @@ pub const Keyboard = struct {
 
     pub fn call_lock(instance: *runtime.Instance, keyCodes: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
         
-        return try KeyboardImpl.call_lock(instance, keyCodes);
+        return try KeyboardImpl.call_lock(instance, keyCodes.value);
     }
 
     pub fn call_getLayoutMap(instance: *runtime.Instance) anyerror!*const anyopaque {

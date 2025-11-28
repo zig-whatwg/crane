@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -122,7 +122,7 @@ pub const BluetoothRemoteGATTServer = struct {
 
     pub fn call_getPrimaryServices(instance: *runtime.Instance, service: webidl.Opt(BluetoothServiceUUID)) anyerror!*const anyopaque {
         
-        return try BluetoothRemoteGATTServerImpl.call_getPrimaryServices(instance, service);
+        return try BluetoothRemoteGATTServerImpl.call_getPrimaryServices(instance, service.value);
     }
 
     pub fn call_connect(instance: *runtime.Instance) anyerror!*const anyopaque {

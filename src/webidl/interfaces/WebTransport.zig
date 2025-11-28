@@ -1,5 +1,5 @@
 //! Generated from: webtransport.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -164,7 +164,7 @@ pub const WebTransport = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url: runtime.USVString, options: webidl.Opt(WebTransportOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try WebTransportImpl.call_constructor(allocator, ctx, url, options);
+        return try WebTransportImpl.call_constructor(allocator, ctx, url, options.value);
     }
 
     pub fn get_ready(instance: *runtime.Instance) anyerror!*const anyopaque {
@@ -239,22 +239,22 @@ pub const WebTransport = struct {
     pub fn call_exportKeyingMaterial(instance: *runtime.Instance, label: BufferSource, context: webidl.Opt(BufferSource)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
-        return try WebTransportImpl.call_exportKeyingMaterial(instance, label, context);
+        return try WebTransportImpl.call_exportKeyingMaterial(instance, label, context.value);
     }
 
     pub fn call_close(instance: *runtime.Instance, closeInfo: webidl.Opt(WebTransportCloseInfo)) anyerror!void {
         
-        return try WebTransportImpl.call_close(instance, closeInfo);
+        return try WebTransportImpl.call_close(instance, closeInfo.value);
     }
 
     pub fn call_createBidirectionalStream(instance: *runtime.Instance, options: webidl.Opt(WebTransportSendStreamOptions)) anyerror!*const anyopaque {
         
-        return try WebTransportImpl.call_createBidirectionalStream(instance, options);
+        return try WebTransportImpl.call_createBidirectionalStream(instance, options.value);
     }
 
     pub fn call_createUnidirectionalStream(instance: *runtime.Instance, options: webidl.Opt(WebTransportSendStreamOptions)) anyerror!*const anyopaque {
         
-        return try WebTransportImpl.call_createUnidirectionalStream(instance, options);
+        return try WebTransportImpl.call_createUnidirectionalStream(instance, options.value);
     }
 
 };

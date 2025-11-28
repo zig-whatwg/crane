@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:11:20Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -832,7 +832,7 @@ pub const HTMLMediaElement = struct {
 
     pub fn call_addTextTrack(instance: *runtime.Instance, kind: TextTrackKind, label: webidl.Opt(DOMString), language: webidl.Opt(DOMString)) anyerror!*runtime.Instance {
         
-        return try HTMLMediaElementImpl.call_addTextTrack(instance, kind, label, language);
+        return try HTMLMediaElementImpl.call_addTextTrack(instance, kind, label.value, language.value);
     }
 
 };

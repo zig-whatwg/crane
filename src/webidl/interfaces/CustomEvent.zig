@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -96,7 +96,7 @@ pub const CustomEvent = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(CustomEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try CustomEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
+        return try CustomEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict.value);
     }
 
     pub fn get_detail(instance: *runtime.Instance) anyerror!*const anyopaque {
@@ -105,7 +105,7 @@ pub const CustomEvent = struct {
 
     pub fn call_initCustomEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), detail: webidl.Opt(*const anyopaque)) anyerror!void {
         
-        return try CustomEventImpl.call_initCustomEvent(instance, @"type", bubbles, cancelable, detail);
+        return try CustomEventImpl.call_initCustomEvent(instance, @"type", bubbles.value, cancelable.value, detail.value);
     }
 
 };

@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:11:18Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -82,12 +82,12 @@ pub const CanvasText = struct {
 
     pub fn call_strokeText(instance: *runtime.Instance, text: DOMString, x: f64, y: f64, maxWidth: webidl.Opt(f64)) anyerror!void {
         
-        return try CanvasTextImpl.call_strokeText(instance, text, x, y, maxWidth);
+        return try CanvasTextImpl.call_strokeText(instance, text, x, y, maxWidth.value);
     }
 
     pub fn call_fillText(instance: *runtime.Instance, text: DOMString, x: f64, y: f64, maxWidth: webidl.Opt(f64)) anyerror!void {
         
-        return try CanvasTextImpl.call_fillText(instance, text, x, y, maxWidth);
+        return try CanvasTextImpl.call_fillText(instance, text, x, y, maxWidth.value);
     }
 
     pub fn call_measureText(instance: *runtime.Instance, text: DOMString) anyerror!*runtime.Instance {

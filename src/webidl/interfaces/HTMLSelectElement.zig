@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:11:18Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -531,7 +531,7 @@ pub const HTMLSelectElement = struct {
         defer runtime.CEReactions.end();
         
         
-        return try HTMLSelectElementImpl.call_add(instance, element, before);
+        return try HTMLSelectElementImpl.call_add(instance, element, before.value);
     }
 
     /// Extended attributes: [CEReactions]

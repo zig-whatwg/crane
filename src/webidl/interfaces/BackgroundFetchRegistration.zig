@@ -1,5 +1,5 @@
 //! Generated from: background-fetch.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -185,7 +185,7 @@ pub const BackgroundFetchRegistration = struct {
 
     pub fn call_matchAll(instance: *runtime.Instance, request: webidl.Opt(RequestInfo), options: webidl.Opt(CacheQueryOptions)) anyerror!*const anyopaque {
         
-        return try BackgroundFetchRegistrationImpl.call_matchAll(instance, request, options);
+        return try BackgroundFetchRegistrationImpl.call_matchAll(instance, request.value, options.value);
     }
 
     pub fn call_abort(instance: *runtime.Instance) anyerror!*const anyopaque {
@@ -194,7 +194,7 @@ pub const BackgroundFetchRegistration = struct {
 
     pub fn call_match(instance: *runtime.Instance, request: RequestInfo, options: webidl.Opt(CacheQueryOptions)) anyerror!*const anyopaque {
         
-        return try BackgroundFetchRegistrationImpl.call_match(instance, request, options);
+        return try BackgroundFetchRegistrationImpl.call_match(instance, request, options.value);
     }
 
 };

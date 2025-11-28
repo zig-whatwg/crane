@@ -1,5 +1,5 @@
 //! Generated from: serial.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -134,7 +134,7 @@ pub const Serial = struct {
     /// Extended attributes: [Exposed=Window]
     pub fn call_requestPort(instance: *runtime.Instance, options: webidl.Opt(SerialPortRequestOptions)) anyerror!*const anyopaque {
         
-        return try SerialImpl.call_requestPort(instance, options);
+        return try SerialImpl.call_requestPort(instance, options.value);
     }
 
 };

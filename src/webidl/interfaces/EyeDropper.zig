@@ -1,5 +1,5 @@
 //! Generated from: eyedropper-api.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -88,7 +88,7 @@ pub const EyeDropper = struct {
 
     pub fn call_open(instance: *runtime.Instance, options: webidl.Opt(ColorSelectionOptions)) anyerror!*const anyopaque {
         
-        return try EyeDropperImpl.call_open(instance, options);
+        return try EyeDropperImpl.call_open(instance, options.value);
     }
 
 };

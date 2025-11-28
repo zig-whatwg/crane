@@ -1,5 +1,5 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -124,12 +124,12 @@ pub const WritableStreamDefaultWriter = struct {
 
     pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
         
-        return try WritableStreamDefaultWriterImpl.call_abort(instance, reason);
+        return try WritableStreamDefaultWriterImpl.call_abort(instance, reason.value);
     }
 
     pub fn call_write(instance: *runtime.Instance, chunk: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
         
-        return try WritableStreamDefaultWriterImpl.call_write(instance, chunk);
+        return try WritableStreamDefaultWriterImpl.call_write(instance, chunk.value);
     }
 
     pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {

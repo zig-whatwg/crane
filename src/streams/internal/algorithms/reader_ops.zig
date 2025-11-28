@@ -212,7 +212,8 @@ pub fn readableStreamReaderGenericCancel(
     // Step 3: Cancel the stream
     // If reason is null, use a sentinel undefined value
     const reason_ptr: *const anyopaque = reason orelse @ptrFromInt(0x1);
-    const cancel_promise_ptr = try interfaces.ReadableStream.call_cancel(stream, reason_ptr);
+    const opt_reason = webidl.Opt(*const anyopaque).passed(reason_ptr);
+    const cancel_promise_ptr = try interfaces.ReadableStream.call_cancel(stream, opt_reason);
 
     // Cast the returned pointer to AsyncPromise(void)
     const cancel_promise: *AsyncPromise(void) = @ptrCast(@alignCast(@constCast(cancel_promise_ptr)));

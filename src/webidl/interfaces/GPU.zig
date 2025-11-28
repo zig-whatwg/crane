@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -108,7 +108,7 @@ pub const GPU = struct {
 
     pub fn call_requestAdapter(instance: *runtime.Instance, options: webidl.Opt(GPURequestAdapterOptions)) anyerror!*const anyopaque {
         
-        return try GPUImpl.call_requestAdapter(instance, options);
+        return try GPUImpl.call_requestAdapter(instance, options.value);
     }
 
     pub fn call_getPreferredCanvasFormat(instance: *runtime.Instance) anyerror!GPUTextureFormat {

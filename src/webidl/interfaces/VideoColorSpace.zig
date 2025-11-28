@@ -1,5 +1,5 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -104,7 +104,7 @@ pub const VideoColorSpace = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: webidl.Opt(VideoColorSpaceInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try VideoColorSpaceImpl.call_constructor(allocator, ctx, init_data);
+        return try VideoColorSpaceImpl.call_constructor(allocator, ctx, init_data.value);
     }
 
     pub fn get_primaries(instance: *runtime.Instance) anyerror!?VideoColorPrimaries {

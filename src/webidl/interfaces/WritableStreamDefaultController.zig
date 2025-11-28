@@ -1,5 +1,5 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-28T19:11:18Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -89,7 +89,7 @@ pub const WritableStreamDefaultController = struct {
 
     pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(*const anyopaque)) anyerror!void {
         
-        return try WritableStreamDefaultControllerImpl.call_error(instance, e);
+        return try WritableStreamDefaultControllerImpl.call_error(instance, e.value);
     }
 
 };

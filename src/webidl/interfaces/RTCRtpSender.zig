@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-28T19:11:20Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -170,7 +170,7 @@ pub const RTCRtpSender = struct {
 
     pub fn call_setParameters(instance: *runtime.Instance, parameters: RTCRtpSendParameters, setParameterOptions: webidl.Opt(RTCSetParameterOptions)) anyerror!*const anyopaque {
         
-        return try RTCRtpSenderImpl.call_setParameters(instance, parameters, setParameterOptions);
+        return try RTCRtpSenderImpl.call_setParameters(instance, parameters, setParameterOptions.value);
     }
 
 };

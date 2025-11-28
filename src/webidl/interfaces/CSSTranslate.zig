@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -103,7 +103,7 @@ pub const CSSTranslate = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: *runtime.Instance, y: *runtime.Instance, z: webidl.Opt(*runtime.Instance)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try CSSTranslateImpl.call_constructor(allocator, ctx, x, y, z);
+        return try CSSTranslateImpl.call_constructor(allocator, ctx, x, y, z.value);
     }
 
     pub fn get_x(instance: *runtime.Instance) anyerror!*runtime.Instance {

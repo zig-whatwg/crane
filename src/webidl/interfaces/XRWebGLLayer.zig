@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-28T19:11:20Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -134,7 +134,7 @@ pub const XRWebGLLayer = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, session: *runtime.Instance, context: XRWebGLRenderingContext, layerInit: webidl.Opt(XRWebGLLayerInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try XRWebGLLayerImpl.call_constructor(allocator, ctx, session, context, layerInit);
+        return try XRWebGLLayerImpl.call_constructor(allocator, ctx, session, context, layerInit.value);
     }
 
     pub fn get_antialias(instance: *runtime.Instance) anyerror!bool {

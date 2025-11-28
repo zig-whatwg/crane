@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-28T19:11:18Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -192,7 +192,7 @@ pub const SVGTransform = struct {
 
     pub fn call_setMatrix(instance: *runtime.Instance, matrix: webidl.Opt(DOMMatrix2DInit)) anyerror!void {
         
-        return try SVGTransformImpl.call_setMatrix(instance, matrix);
+        return try SVGTransformImpl.call_setMatrix(instance, matrix.value);
     }
 
     pub fn call_setRotate(instance: *runtime.Instance, angle: f32, cx: f32, cy: f32) anyerror!void {

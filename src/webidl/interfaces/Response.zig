@@ -1,5 +1,5 @@
 //! Generated from: fetch.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -163,7 +163,7 @@ pub const Response = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, body: webidl.Opt(?BodyInit), init_data: webidl.Opt(ResponseInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try ResponseImpl.call_constructor(allocator, ctx, body, init_data);
+        return try ResponseImpl.call_constructor(allocator, ctx, body.value, init_data.value);
     }
 
     pub fn get_type(instance: *runtime.Instance) anyerror!ResponseType {
@@ -250,14 +250,14 @@ pub const Response = struct {
     pub fn call_redirect(instance: *runtime.Instance, url: runtime.USVString, status: webidl.Opt(u16)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try ResponseImpl.call_redirect(instance, url, status);
+        return try ResponseImpl.call_redirect(instance, url, status.value);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_json(instance: *runtime.Instance, data: *const anyopaque, init_data: webidl.Opt(ResponseInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try ResponseImpl.call_json(instance, data, init_data);
+        return try ResponseImpl.call_json(instance, data, init_data.value);
     }
 
     /// Extended attributes: [NewObject]

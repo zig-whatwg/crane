@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -470,7 +470,7 @@ pub const XRSession = struct {
 
     pub fn call_requestLightProbe(instance: *runtime.Instance, options: webidl.Opt(XRLightProbeInit)) anyerror!*const anyopaque {
         
-        return try XRSessionImpl.call_requestLightProbe(instance, options);
+        return try XRSessionImpl.call_requestLightProbe(instance, options.value);
     }
 
     pub fn call_end(instance: *runtime.Instance) anyerror!*const anyopaque {
@@ -498,7 +498,7 @@ pub const XRSession = struct {
 
     pub fn call_updateRenderState(instance: *runtime.Instance, state: webidl.Opt(XRRenderStateInit)) anyerror!void {
         
-        return try XRSessionImpl.call_updateRenderState(instance, state);
+        return try XRSessionImpl.call_updateRenderState(instance, state.value);
     }
 
     pub fn call_restorePersistentAnchor(instance: *runtime.Instance, uuid: DOMString) anyerror!*const anyopaque {

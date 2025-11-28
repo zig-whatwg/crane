@@ -1,5 +1,5 @@
 //! Generated from: FileAPI.idl
-//! Generated at: 2025-11-28T19:11:20Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -270,7 +270,7 @@ pub const FileReader = struct {
 
     pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: webidl.Opt(DOMString)) anyerror!void {
         
-        return try FileReaderImpl.call_readAsText(instance, blob, encoding);
+        return try FileReaderImpl.call_readAsText(instance, blob, encoding.value);
     }
 
 };

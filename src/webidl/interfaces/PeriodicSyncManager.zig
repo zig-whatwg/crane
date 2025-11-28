@@ -1,5 +1,5 @@
 //! Generated from: periodic-background-sync.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -99,7 +99,7 @@ pub const PeriodicSyncManager = struct {
 
     pub fn call_register(instance: *runtime.Instance, tag: DOMString, options: webidl.Opt(BackgroundSyncOptions)) anyerror!*const anyopaque {
         
-        return try PeriodicSyncManagerImpl.call_register(instance, tag, options);
+        return try PeriodicSyncManagerImpl.call_register(instance, tag, options.value);
     }
 
 };

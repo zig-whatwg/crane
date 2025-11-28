@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T19:11:16Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -188,7 +188,7 @@ pub const Event = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(EventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try EventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
+        return try EventImpl.call_constructor(allocator, ctx, @"type", eventInitDict.value);
     }
 
     pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
@@ -258,7 +258,7 @@ pub const Event = struct {
 
     pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool)) anyerror!void {
         
-        return try EventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
+        return try EventImpl.call_initEvent(instance, @"type", bubbles.value, cancelable.value);
     }
 
     pub fn call_composedPath(instance: *runtime.Instance) anyerror!*const anyopaque {

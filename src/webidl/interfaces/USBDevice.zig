@@ -1,5 +1,5 @@
 //! Generated from: webusb.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -285,7 +285,7 @@ pub const USBDevice = struct {
 
     pub fn call_controlTransferOut(instance: *runtime.Instance, setup: USBControlTransferParameters, data: webidl.Opt(BufferSource)) anyerror!*const anyopaque {
         
-        return try USBDeviceImpl.call_controlTransferOut(instance, setup, data);
+        return try USBDeviceImpl.call_controlTransferOut(instance, setup, data.value);
     }
 
     pub fn call_controlTransferIn(instance: *runtime.Instance, setup: USBControlTransferParameters, length: u16) anyerror!*const anyopaque {

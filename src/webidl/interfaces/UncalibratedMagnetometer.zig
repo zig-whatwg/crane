@@ -1,5 +1,5 @@
 //! Generated from: magnetometer.idl
-//! Generated at: 2025-11-28T19:11:20Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -119,7 +119,7 @@ pub const UncalibratedMagnetometer = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, sensorOptions: webidl.Opt(MagnetometerSensorOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try UncalibratedMagnetometerImpl.call_constructor(allocator, ctx, sensorOptions);
+        return try UncalibratedMagnetometerImpl.call_constructor(allocator, ctx, sensorOptions.value);
     }
 
     pub fn get_x(instance: *runtime.Instance) anyerror!?f64 {

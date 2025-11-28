@@ -1,5 +1,5 @@
 //! Generated from: badging.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -81,7 +81,7 @@ pub const NavigatorBadge = struct {
         // [EnforceRange] on contents
         if (!runtime.isInRange(u64, contents)) return error.TypeError;
         
-        return try NavigatorBadgeImpl.call_setAppBadge(instance, contents);
+        return try NavigatorBadgeImpl.call_setAppBadge(instance, contents.value);
     }
 
     pub fn call_clearAppBadge(instance: *runtime.Instance) anyerror!*const anyopaque {

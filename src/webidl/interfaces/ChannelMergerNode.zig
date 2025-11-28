@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-28T19:11:18Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -102,7 +102,7 @@ pub const ChannelMergerNode = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: webidl.Opt(ChannelMergerOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try ChannelMergerNodeImpl.call_constructor(allocator, ctx, context, options);
+        return try ChannelMergerNodeImpl.call_constructor(allocator, ctx, context, options.value);
     }
 
 };

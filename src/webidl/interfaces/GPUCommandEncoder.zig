@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -154,7 +154,7 @@ pub const GPUCommandEncoder = struct {
 
     pub fn call_copyBufferToBuffer(instance: *runtime.Instance, source: *runtime.Instance, destination: *runtime.Instance, size: webidl.Opt(GPUSize64)) anyerror!void {
         
-        return try GPUCommandEncoderImpl.call_copyBufferToBuffer(instance, source, destination, size);
+        return try GPUCommandEncoderImpl.call_copyBufferToBuffer(instance, source, destination, size.value);
     }
 
     pub fn call_copyTextureToBuffer(instance: *runtime.Instance, source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyBufferInfo, copySize: GPUExtent3D) anyerror!void {
@@ -193,12 +193,12 @@ pub const GPUCommandEncoder = struct {
 
     pub fn call_finish(instance: *runtime.Instance, descriptor: webidl.Opt(GPUCommandBufferDescriptor)) anyerror!*runtime.Instance {
         
-        return try GPUCommandEncoderImpl.call_finish(instance, descriptor);
+        return try GPUCommandEncoderImpl.call_finish(instance, descriptor.value);
     }
 
     pub fn call_beginComputePass(instance: *runtime.Instance, descriptor: webidl.Opt(GPUComputePassDescriptor)) anyerror!*runtime.Instance {
         
-        return try GPUCommandEncoderImpl.call_beginComputePass(instance, descriptor);
+        return try GPUCommandEncoderImpl.call_beginComputePass(instance, descriptor.value);
     }
 
     pub fn call_beginRenderPass(instance: *runtime.Instance, descriptor: GPURenderPassDescriptor) anyerror!*runtime.Instance {
@@ -208,7 +208,7 @@ pub const GPUCommandEncoder = struct {
 
     pub fn call_clearBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!void {
         
-        return try GPUCommandEncoderImpl.call_clearBuffer(instance, buffer, offset, size);
+        return try GPUCommandEncoderImpl.call_clearBuffer(instance, buffer, offset.value, size.value);
     }
 
 };

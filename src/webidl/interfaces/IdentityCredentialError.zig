@@ -1,5 +1,5 @@
 //! Generated from: fedcm.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -90,7 +90,7 @@ pub const IdentityCredentialError = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, message: webidl.Opt(DOMString), options: webidl.Opt(IdentityCredentialErrorInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try IdentityCredentialErrorImpl.call_constructor(allocator, ctx, message, options);
+        return try IdentityCredentialErrorImpl.call_constructor(allocator, ctx, message.value, options.value);
     }
 
     pub fn get_error(instance: *runtime.Instance) anyerror!DOMString {

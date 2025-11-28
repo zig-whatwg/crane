@@ -1,5 +1,5 @@
 //! Generated from: mediacapture-streams.idl
-//! Generated at: 2025-11-28T19:11:20Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -149,17 +149,17 @@ pub const MediaDevices = struct {
 
     pub fn call_selectAudioOutput(instance: *runtime.Instance, options: webidl.Opt(AudioOutputOptions)) anyerror!*const anyopaque {
         
-        return try MediaDevicesImpl.call_selectAudioOutput(instance, options);
+        return try MediaDevicesImpl.call_selectAudioOutput(instance, options.value);
     }
 
     pub fn call_getDisplayMedia(instance: *runtime.Instance, options: webidl.Opt(DisplayMediaStreamOptions)) anyerror!*const anyopaque {
         
-        return try MediaDevicesImpl.call_getDisplayMedia(instance, options);
+        return try MediaDevicesImpl.call_getDisplayMedia(instance, options.value);
     }
 
     pub fn call_getUserMedia(instance: *runtime.Instance, constraints: webidl.Opt(MediaStreamConstraints)) anyerror!*const anyopaque {
         
-        return try MediaDevicesImpl.call_getUserMedia(instance, constraints);
+        return try MediaDevicesImpl.call_getUserMedia(instance, constraints.value);
     }
 
     pub fn call_enumerateDevices(instance: *runtime.Instance) anyerror!*const anyopaque {
@@ -172,7 +172,7 @@ pub const MediaDevices = struct {
 
     pub fn call_getViewportMedia(instance: *runtime.Instance, options: webidl.Opt(DisplayMediaStreamOptions)) anyerror!*const anyopaque {
         
-        return try MediaDevicesImpl.call_getViewportMedia(instance, options);
+        return try MediaDevicesImpl.call_getViewportMedia(instance, options.value);
     }
 
     pub fn call_setSupportedCaptureActions(instance: *runtime.Instance, actions: *const anyopaque) anyerror!void {
@@ -182,7 +182,7 @@ pub const MediaDevices = struct {
 
     pub fn call_setCaptureHandleConfig(instance: *runtime.Instance, config: webidl.Opt(CaptureHandleConfig)) anyerror!void {
         
-        return try MediaDevicesImpl.call_setCaptureHandleConfig(instance, config);
+        return try MediaDevicesImpl.call_setCaptureHandleConfig(instance, config.value);
     }
 
 };

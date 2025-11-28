@@ -1,5 +1,5 @@
 //! Generated from: url.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -117,7 +117,7 @@ pub const URLSearchParams = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: webidl.Opt(*const anyopaque)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try URLSearchParamsImpl.call_constructor(allocator, ctx, init_data);
+        return try URLSearchParamsImpl.call_constructor(allocator, ctx, init_data.value);
     }
 
     pub fn get_size(instance: *runtime.Instance) anyerror!u32 {
@@ -126,7 +126,7 @@ pub const URLSearchParams = struct {
 
     pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString, value: webidl.Opt(runtime.USVString)) anyerror!void {
         
-        return try URLSearchParamsImpl.call_delete(instance, name, value);
+        return try URLSearchParamsImpl.call_delete(instance, name, value.value);
     }
 
     pub fn call_append(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!void {
@@ -141,7 +141,7 @@ pub const URLSearchParams = struct {
 
     pub fn call_has(instance: *runtime.Instance, name: runtime.USVString, value: webidl.Opt(runtime.USVString)) anyerror!bool {
         
-        return try URLSearchParamsImpl.call_has(instance, name, value);
+        return try URLSearchParamsImpl.call_has(instance, name, value.value);
     }
 
     pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {

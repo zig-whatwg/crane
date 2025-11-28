@@ -1,5 +1,5 @@
 //! Generated from: credential-management.idl
-//! Generated at: 2025-11-28T19:11:20Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -97,7 +97,7 @@ pub const CredentialsContainer = struct {
 
     pub fn call_get(instance: *runtime.Instance, options: webidl.Opt(CredentialRequestOptions)) anyerror!*const anyopaque {
         
-        return try CredentialsContainerImpl.call_get(instance, options);
+        return try CredentialsContainerImpl.call_get(instance, options.value);
     }
 
     pub fn call_preventSilentAccess(instance: *runtime.Instance) anyerror!*const anyopaque {
@@ -106,7 +106,7 @@ pub const CredentialsContainer = struct {
 
     pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(CredentialCreationOptions)) anyerror!*const anyopaque {
         
-        return try CredentialsContainerImpl.call_create(instance, options);
+        return try CredentialsContainerImpl.call_create(instance, options.value);
     }
 
 };

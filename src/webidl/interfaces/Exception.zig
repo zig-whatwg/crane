@@ -1,5 +1,5 @@
 //! Generated from: wasm-js-api.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -99,7 +99,7 @@ pub const Exception = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, exceptionTag: *runtime.Instance, payload: *const anyopaque, options: webidl.Opt(ExceptionOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try ExceptionImpl.call_constructor(allocator, ctx, exceptionTag, payload, options);
+        return try ExceptionImpl.call_constructor(allocator, ctx, exceptionTag, payload, options.value);
     }
 
     pub fn get_stack(instance: *runtime.Instance) anyerror!*const anyopaque {

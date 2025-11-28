@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -1153,7 +1153,7 @@ pub const HTMLInputElement = struct {
 
     pub fn call_stepUp(instance: *runtime.Instance, n: webidl.Opt(i32)) anyerror!void {
         
-        return try HTMLInputElementImpl.call_stepUp(instance, n);
+        return try HTMLInputElementImpl.call_stepUp(instance, n.value);
     }
 
     pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
@@ -1162,7 +1162,7 @@ pub const HTMLInputElement = struct {
 
     pub fn call_setSelectionRange(instance: *runtime.Instance, start: u32, end: u32, direction: webidl.Opt(DOMString)) anyerror!void {
         
-        return try HTMLInputElementImpl.call_setSelectionRange(instance, start, end, direction);
+        return try HTMLInputElementImpl.call_setSelectionRange(instance, start, end, direction.value);
     }
 
     pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
@@ -1171,7 +1171,7 @@ pub const HTMLInputElement = struct {
 
     pub fn call_stepDown(instance: *runtime.Instance, n: webidl.Opt(i32)) anyerror!void {
         
-        return try HTMLInputElementImpl.call_stepDown(instance, n);
+        return try HTMLInputElementImpl.call_stepDown(instance, n.value);
     }
 
 };

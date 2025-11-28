@@ -1,5 +1,5 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -155,7 +155,7 @@ pub const VideoFrame = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, image: CanvasImageSource, init_data: webidl.Opt(VideoFrameInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try VideoFrameImpl.call_constructor(allocator, ctx, image, init_data);
+        return try VideoFrameImpl.call_constructor(allocator, ctx, image, init_data.value);
     }
 
     pub fn get_format(instance: *runtime.Instance) anyerror!?VideoPixelFormat {
@@ -208,12 +208,12 @@ pub const VideoFrame = struct {
 
     pub fn call_allocationSize(instance: *runtime.Instance, options: webidl.Opt(VideoFrameCopyToOptions)) anyerror!u32 {
         
-        return try VideoFrameImpl.call_allocationSize(instance, options);
+        return try VideoFrameImpl.call_allocationSize(instance, options.value);
     }
 
     pub fn call_copyTo(instance: *runtime.Instance, destination: AllowSharedBufferSource, options: webidl.Opt(VideoFrameCopyToOptions)) anyerror!*const anyopaque {
         
-        return try VideoFrameImpl.call_copyTo(instance, destination, options);
+        return try VideoFrameImpl.call_copyTo(instance, destination, options.value);
     }
 
     pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {

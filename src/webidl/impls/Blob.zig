@@ -19,7 +19,8 @@ const Blob = interfaces.Blob;
 // Import streams infrastructure for Promise support
 const event_loop_mod = @import("streams_event_loop");
 const AsyncPromise = @import("streams_async_promise").AsyncPromise;
-const webidl_errors = @import("webidl").errors;
+const webidl = @import("webidl");
+const webidl_errors = webidl.errors;
 
 pub const State = Blob.State;
 
@@ -322,11 +323,15 @@ pub fn call_stream(instance: *runtime.Instance) ImplError!*runtime.Instance {
     blob_stream_context = source_state;
 
     // Create the ReadableStream
+    const source_ptr: *const anyopaque = @ptrCast(&underlying_source);
+    const opt_source = webidl.Opt(*const anyopaque).passed(source_ptr);
+    const strategy = dictionaries.QueuingStrategy{};
+    const opt_strategy = webidl.Opt(dictionaries.QueuingStrategy).passed(strategy);
     const stream = interfaces.ReadableStream.call_constructor(
         allocator,
         ctx,
-        @ptrCast(&underlying_source),
-        dictionaries.QueuingStrategy{},
+        opt_source,
+        opt_strategy,
     ) catch |err| {
         allocator.destroy(source_state);
         return switch (err) {

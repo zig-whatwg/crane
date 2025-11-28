@@ -1,5 +1,5 @@
 //! Generated from: media-source.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -227,7 +227,7 @@ pub const MediaSource = struct {
 
     pub fn call_endOfStream(instance: *runtime.Instance, @"error": webidl.Opt(EndOfStreamError)) anyerror!void {
         
-        return try MediaSourceImpl.call_endOfStream(instance, @"error");
+        return try MediaSourceImpl.call_endOfStream(instance, @"error".value);
     }
 
     pub fn call_setLiveSeekableRange(instance: *runtime.Instance, start: f64, end: f64) anyerror!void {

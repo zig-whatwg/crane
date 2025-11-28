@@ -1,5 +1,5 @@
 //! Generated from: shared-storage.idl
-//! Generated at: 2025-11-28T19:11:20Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -81,7 +81,7 @@ pub const SharedStorageClearMethod = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(SharedStorageModifierMethodOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try SharedStorageClearMethodImpl.call_constructor(allocator, ctx, options);
+        return try SharedStorageClearMethodImpl.call_constructor(allocator, ctx, options.value);
     }
 
 };

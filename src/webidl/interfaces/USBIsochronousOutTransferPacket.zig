@@ -1,5 +1,5 @@
 //! Generated from: webusb.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -90,7 +90,7 @@ pub const USBIsochronousOutTransferPacket = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, status: USBTransferStatus, bytesWritten: webidl.Opt(u32)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try USBIsochronousOutTransferPacketImpl.call_constructor(allocator, ctx, status, bytesWritten);
+        return try USBIsochronousOutTransferPacketImpl.call_constructor(allocator, ctx, status, bytesWritten.value);
     }
 
     pub fn get_bytesWritten(instance: *runtime.Instance) anyerror!u32 {

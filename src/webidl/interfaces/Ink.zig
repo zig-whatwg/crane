@@ -1,5 +1,5 @@
 //! Generated from: ink-enhancement.idl
-//! Generated at: 2025-11-28T19:11:18Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -81,7 +81,7 @@ pub const Ink = struct {
 
     pub fn call_requestPresenter(instance: *runtime.Instance, param: webidl.Opt(InkPresenterParam)) anyerror!*const anyopaque {
         
-        return try InkImpl.call_requestPresenter(instance, param);
+        return try InkImpl.call_requestPresenter(instance, param.value);
     }
 
 };

@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -94,7 +94,7 @@ pub const DOMImplementation = struct {
     pub fn call_createDocument(instance: *runtime.Instance, namespace: ?DOMString, qualifiedName: DOMString, doctype: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try DOMImplementationImpl.call_createDocument(instance, namespace, qualifiedName, doctype);
+        return try DOMImplementationImpl.call_createDocument(instance, namespace, qualifiedName, doctype.value);
     }
 
     /// Extended attributes: [NewObject]
@@ -108,7 +108,7 @@ pub const DOMImplementation = struct {
     pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(DOMString)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try DOMImplementationImpl.call_createHTMLDocument(instance, title);
+        return try DOMImplementationImpl.call_createHTMLDocument(instance, title.value);
     }
 
     pub fn call_hasFeature(instance: *runtime.Instance) anyerror!bool {

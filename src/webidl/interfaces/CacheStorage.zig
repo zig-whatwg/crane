@@ -1,5 +1,5 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -128,7 +128,7 @@ pub const CacheStorage = struct {
     pub fn call_match(instance: *runtime.Instance, request: RequestInfo, options: webidl.Opt(MultiCacheQueryOptions)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
-        return try CacheStorageImpl.call_match(instance, request, options);
+        return try CacheStorageImpl.call_match(instance, request, options.value);
     }
 
 };

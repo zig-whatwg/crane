@@ -1,5 +1,5 @@
 //! Generated from: uievents.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -191,7 +191,7 @@ pub const MouseEvent = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(MouseEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try MouseEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
+        return try MouseEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict.value);
     }
 
     pub fn get_screenX(instance: *runtime.Instance) anyerror!i32 {
@@ -280,7 +280,7 @@ pub const MouseEvent = struct {
 
     pub fn call_initMouseEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: webidl.Opt(bool), cancelableArg: webidl.Opt(bool), viewArg: webidl.Opt(?*runtime.Instance), detailArg: webidl.Opt(i32), screenXArg: webidl.Opt(i32), screenYArg: webidl.Opt(i32), clientXArg: webidl.Opt(i32), clientYArg: webidl.Opt(i32), ctrlKeyArg: webidl.Opt(bool), altKeyArg: webidl.Opt(bool), shiftKeyArg: webidl.Opt(bool), metaKeyArg: webidl.Opt(bool), buttonArg: webidl.Opt(i16), relatedTargetArg: webidl.Opt(?*runtime.Instance)) anyerror!void {
         
-        return try MouseEventImpl.call_initMouseEvent(instance, typeArg, bubblesArg, cancelableArg, viewArg, detailArg, screenXArg, screenYArg, clientXArg, clientYArg, ctrlKeyArg, altKeyArg, shiftKeyArg, metaKeyArg, buttonArg, relatedTargetArg);
+        return try MouseEventImpl.call_initMouseEvent(instance, typeArg, bubblesArg.value, cancelableArg.value, viewArg.value, detailArg.value, screenXArg.value, screenYArg.value, clientXArg.value, clientYArg.value, ctrlKeyArg.value, altKeyArg.value, shiftKeyArg.value, metaKeyArg.value, buttonArg.value, relatedTargetArg.value);
     }
 
     pub fn call_getModifierState(instance: *runtime.Instance, keyArg: DOMString) anyerror!bool {

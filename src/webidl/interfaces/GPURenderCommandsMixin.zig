@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-28T19:11:16Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -104,17 +104,17 @@ pub const GPURenderCommandsMixin = struct {
 
     pub fn call_draw(instance: *runtime.Instance, vertexCount: GPUSize32, instanceCount: webidl.Opt(GPUSize32), firstVertex: webidl.Opt(GPUSize32), firstInstance: webidl.Opt(GPUSize32)) anyerror!void {
         
-        return try GPURenderCommandsMixinImpl.call_draw(instance, vertexCount, instanceCount, firstVertex, firstInstance);
+        return try GPURenderCommandsMixinImpl.call_draw(instance, vertexCount, instanceCount.value, firstVertex.value, firstInstance.value);
     }
 
     pub fn call_setVertexBuffer(instance: *runtime.Instance, slot: GPUIndex32, buffer: ?*runtime.Instance, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!void {
         
-        return try GPURenderCommandsMixinImpl.call_setVertexBuffer(instance, slot, buffer, offset, size);
+        return try GPURenderCommandsMixinImpl.call_setVertexBuffer(instance, slot, buffer, offset.value, size.value);
     }
 
     pub fn call_setIndexBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, indexFormat: GPUIndexFormat, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!void {
         
-        return try GPURenderCommandsMixinImpl.call_setIndexBuffer(instance, buffer, indexFormat, offset, size);
+        return try GPURenderCommandsMixinImpl.call_setIndexBuffer(instance, buffer, indexFormat, offset.value, size.value);
     }
 
     pub fn call_drawIndirect(instance: *runtime.Instance, indirectBuffer: *runtime.Instance, indirectOffset: GPUSize64) anyerror!void {
@@ -124,7 +124,7 @@ pub const GPURenderCommandsMixin = struct {
 
     pub fn call_drawIndexed(instance: *runtime.Instance, indexCount: GPUSize32, instanceCount: webidl.Opt(GPUSize32), firstIndex: webidl.Opt(GPUSize32), baseVertex: webidl.Opt(GPUSignedOffset32), firstInstance: webidl.Opt(GPUSize32)) anyerror!void {
         
-        return try GPURenderCommandsMixinImpl.call_drawIndexed(instance, indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
+        return try GPURenderCommandsMixinImpl.call_drawIndexed(instance, indexCount, instanceCount.value, firstIndex.value, baseVertex.value, firstInstance.value);
     }
 
     pub fn call_setPipeline(instance: *runtime.Instance, pipeline: *runtime.Instance) anyerror!void {

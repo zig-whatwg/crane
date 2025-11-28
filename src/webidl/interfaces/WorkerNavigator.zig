@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:11:18Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -492,7 +492,7 @@ pub const WorkerNavigator = struct {
         // [EnforceRange] on contents
         if (!runtime.isInRange(u64, contents)) return error.TypeError;
         
-        return try WorkerNavigatorImpl.call_setAppBadge(instance, contents);
+        return try WorkerNavigatorImpl.call_setAppBadge(instance, contents.value);
     }
 
     pub fn call_clearAppBadge(instance: *runtime.Instance) anyerror!*const anyopaque {

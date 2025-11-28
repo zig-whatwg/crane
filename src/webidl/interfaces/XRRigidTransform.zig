@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -99,7 +99,7 @@ pub const XRRigidTransform = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, position: webidl.Opt(DOMPointInit), orientation: webidl.Opt(DOMPointInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try XRRigidTransformImpl.call_constructor(allocator, ctx, position, orientation);
+        return try XRRigidTransformImpl.call_constructor(allocator, ctx, position.value, orientation.value);
     }
 
     /// Extended attributes: [SameObject]

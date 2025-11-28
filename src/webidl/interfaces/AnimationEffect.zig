@@ -1,5 +1,5 @@
 //! Generated from: web-animations.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -126,7 +126,7 @@ pub const AnimationEffect = struct {
 
     pub fn call_updateTiming(instance: *runtime.Instance, timing: webidl.Opt(OptionalEffectTiming)) anyerror!void {
         
-        return try AnimationEffectImpl.call_updateTiming(instance, timing);
+        return try AnimationEffectImpl.call_updateTiming(instance, timing.value);
     }
 
     pub fn call_replace(instance: *runtime.Instance, effects: []const *runtime.Instance) anyerror!void {

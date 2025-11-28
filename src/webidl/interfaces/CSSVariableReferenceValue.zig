@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -94,7 +94,7 @@ pub const CSSVariableReferenceValue = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, variable: runtime.USVString, fallback: webidl.Opt(?*runtime.Instance)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try CSSVariableReferenceValueImpl.call_constructor(allocator, ctx, variable, fallback);
+        return try CSSVariableReferenceValueImpl.call_constructor(allocator, ctx, variable, fallback.value);
     }
 
     pub fn get_variable(instance: *runtime.Instance) anyerror!runtime.USVString {

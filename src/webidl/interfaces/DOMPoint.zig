@@ -1,5 +1,5 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-11-28T19:11:18Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -111,7 +111,7 @@ pub const DOMPoint = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: webidl.Opt(f64), y: webidl.Opt(f64), z: webidl.Opt(f64), w: webidl.Opt(f64)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try DOMPointImpl.call_constructor(allocator, ctx, x, y, z, w);
+        return try DOMPointImpl.call_constructor(allocator, ctx, x.value, y.value, z.value, w.value);
     }
 
     pub fn get_x(instance: *runtime.Instance) anyerror!f64 {
@@ -134,7 +134,7 @@ pub const DOMPoint = struct {
     pub fn call_fromPoint(instance: *runtime.Instance, other: webidl.Opt(DOMPointInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try DOMPointImpl.call_fromPoint(instance, other);
+        return try DOMPointImpl.call_fromPoint(instance, other.value);
     }
 
 };

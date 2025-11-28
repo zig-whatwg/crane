@@ -1,5 +1,5 @@
 //! Generated from: idle-detection.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -144,7 +144,7 @@ pub const IdleDetector = struct {
 
     pub fn call_start(instance: *runtime.Instance, options: webidl.Opt(IdleOptions)) anyerror!*const anyopaque {
         
-        return try IdleDetectorImpl.call_start(instance, options);
+        return try IdleDetectorImpl.call_start(instance, options.value);
     }
 
     /// Extended attributes: [Exposed=Window]

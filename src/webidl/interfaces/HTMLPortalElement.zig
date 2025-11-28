@@ -1,5 +1,5 @@
 //! Generated from: portals.idl
-//! Generated at: 2025-11-28T19:11:20Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -314,12 +314,12 @@ pub const HTMLPortalElement = struct {
     pub fn call_activate(instance: *runtime.Instance, options: webidl.Opt(PortalActivateOptions)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
-        return try HTMLPortalElementImpl.call_activate(instance, options);
+        return try HTMLPortalElementImpl.call_activate(instance, options.value);
     }
 
     pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, options: webidl.Opt(PostMessageOptions)) anyerror!void {
         
-        return try HTMLPortalElementImpl.call_postMessage(instance, message, options);
+        return try HTMLPortalElementImpl.call_postMessage(instance, message, options.value);
     }
 
 };

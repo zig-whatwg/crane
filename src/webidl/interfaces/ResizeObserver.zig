@@ -1,5 +1,5 @@
 //! Generated from: resize-observer.idl
-//! Generated at: 2025-11-28T19:11:18Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -96,7 +96,7 @@ pub const ResizeObserver = struct {
 
     pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, options: webidl.Opt(ResizeObserverOptions)) anyerror!void {
         
-        return try ResizeObserverImpl.call_observe(instance, target, options);
+        return try ResizeObserverImpl.call_observe(instance, target, options.value);
     }
 
     pub fn call_unobserve(instance: *runtime.Instance, target: *runtime.Instance) anyerror!void {

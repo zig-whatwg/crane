@@ -1,5 +1,5 @@
 //! Generated from: notifications.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -206,7 +206,7 @@ pub const Notification = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, title: DOMString, options: webidl.Opt(NotificationOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try NotificationImpl.call_constructor(allocator, ctx, title, options);
+        return try NotificationImpl.call_constructor(allocator, ctx, title, options.value);
     }
 
     pub fn get_permission(instance: *runtime.Instance) anyerror!NotificationPermission {
@@ -344,7 +344,7 @@ pub const Notification = struct {
     /// Extended attributes: [Exposed=Window]
     pub fn call_requestPermission(instance: *runtime.Instance, deprecatedCallback: webidl.Opt(NotificationPermissionCallback)) anyerror!*const anyopaque {
         
-        return try NotificationImpl.call_requestPermission(instance, deprecatedCallback);
+        return try NotificationImpl.call_requestPermission(instance, deprecatedCallback.value);
     }
 
 };

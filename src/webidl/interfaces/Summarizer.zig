@@ -1,5 +1,5 @@
 //! Generated from: writing-assistance-apis.idl
-//! Generated at: 2025-11-28T19:11:21Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -176,22 +176,22 @@ pub const Summarizer = struct {
 
     pub fn call_availability(instance: *runtime.Instance, options: webidl.Opt(SummarizerCreateCoreOptions)) anyerror!*const anyopaque {
         
-        return try SummarizerImpl.call_availability(instance, options);
+        return try SummarizerImpl.call_availability(instance, options.value);
     }
 
     pub fn call_summarizeStreaming(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(SummarizerSummarizeOptions)) anyerror!*runtime.Instance {
         
-        return try SummarizerImpl.call_summarizeStreaming(instance, input, options);
+        return try SummarizerImpl.call_summarizeStreaming(instance, input, options.value);
     }
 
     pub fn call_measureInputUsage(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(SummarizerSummarizeOptions)) anyerror!*const anyopaque {
         
-        return try SummarizerImpl.call_measureInputUsage(instance, input, options);
+        return try SummarizerImpl.call_measureInputUsage(instance, input, options.value);
     }
 
     pub fn call_summarize(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(SummarizerSummarizeOptions)) anyerror!*const anyopaque {
         
-        return try SummarizerImpl.call_summarize(instance, input, options);
+        return try SummarizerImpl.call_summarize(instance, input, options.value);
     }
 
     pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
@@ -200,7 +200,7 @@ pub const Summarizer = struct {
 
     pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(SummarizerCreateOptions)) anyerror!*const anyopaque {
         
-        return try SummarizerImpl.call_create(instance, options);
+        return try SummarizerImpl.call_create(instance, options.value);
     }
 
 };

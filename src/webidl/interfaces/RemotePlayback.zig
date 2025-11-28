@@ -1,5 +1,5 @@
 //! Generated from: remote-playback.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -154,7 +154,7 @@ pub const RemotePlayback = struct {
 
     pub fn call_cancelWatchAvailability(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!*const anyopaque {
         
-        return try RemotePlaybackImpl.call_cancelWatchAvailability(instance, id);
+        return try RemotePlaybackImpl.call_cancelWatchAvailability(instance, id.value);
     }
 
     pub fn call_prompt(instance: *runtime.Instance) anyerror!*const anyopaque {

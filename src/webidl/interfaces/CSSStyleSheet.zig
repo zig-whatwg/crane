@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-28T19:11:16Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -129,7 +129,7 @@ pub const CSSStyleSheet = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(CSSStyleSheetInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try CSSStyleSheetImpl.call_constructor(allocator, ctx, options);
+        return try CSSStyleSheetImpl.call_constructor(allocator, ctx, options.value);
     }
 
     pub fn get_ownerRule(instance: *runtime.Instance) anyerror!?*runtime.Instance {
@@ -177,17 +177,17 @@ pub const CSSStyleSheet = struct {
 
     pub fn call_insertRule(instance: *runtime.Instance, rule: CSSOMString, index: webidl.Opt(u32)) anyerror!u32 {
         
-        return try CSSStyleSheetImpl.call_insertRule(instance, rule, index);
+        return try CSSStyleSheetImpl.call_insertRule(instance, rule, index.value);
     }
 
     pub fn call_addRule(instance: *runtime.Instance, selector: webidl.Opt(DOMString), style: webidl.Opt(DOMString), index: webidl.Opt(u32)) anyerror!i32 {
         
-        return try CSSStyleSheetImpl.call_addRule(instance, selector, style, index);
+        return try CSSStyleSheetImpl.call_addRule(instance, selector.value, style.value, index.value);
     }
 
     pub fn call_removeRule(instance: *runtime.Instance, index: webidl.Opt(u32)) anyerror!void {
         
-        return try CSSStyleSheetImpl.call_removeRule(instance, index);
+        return try CSSStyleSheetImpl.call_removeRule(instance, index.value);
     }
 
 };

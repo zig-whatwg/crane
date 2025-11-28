@@ -1,5 +1,5 @@
 //! Generated from: webusb.idl
-//! Generated at: 2025-11-28T19:11:18Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -90,7 +90,7 @@ pub const USBIsochronousInTransferResult = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, packets: *const anyopaque, data: webidl.Opt(?*const anyopaque)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try USBIsochronousInTransferResultImpl.call_constructor(allocator, ctx, packets, data);
+        return try USBIsochronousInTransferResultImpl.call_constructor(allocator, ctx, packets, data.value);
     }
 
     pub fn get_data(instance: *runtime.Instance) anyerror!?*const anyopaque {

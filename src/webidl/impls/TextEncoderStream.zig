@@ -27,6 +27,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const infra = @import("infra");
+const webidl = @import("webidl");
 const TextEncoderStream = interfaces.TextEncoderStream;
 
 pub const State = TextEncoderStream.State;
@@ -120,12 +121,17 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 
     // Steps 2-6: Create the underlying transform stream
     const empty_ptr: *const anyopaque = @ptrFromInt(1); // Non-null placeholder
+    const opt_transformer = webidl.Opt(*const anyopaque).passed(empty_ptr);
+    const writable_strategy = dictionaries.QueuingStrategy{};
+    const readable_strategy = dictionaries.QueuingStrategy{};
+    const opt_writable_strategy = webidl.Opt(dictionaries.QueuingStrategy).passed(writable_strategy);
+    const opt_readable_strategy = webidl.Opt(dictionaries.QueuingStrategy).passed(readable_strategy);
     const transform = try interfaces.TransformStream.call_constructor(
         allocator,
         ctx,
-        empty_ptr, // transformer placeholder
-        .{}, // writableStrategy (default)
-        .{}, // readableStrategy (default)
+        opt_transformer,
+        opt_writable_strategy,
+        opt_readable_strategy,
     );
     errdefer interfaces.TransformStream.deinit(transform);
 

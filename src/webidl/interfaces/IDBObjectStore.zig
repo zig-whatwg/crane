@@ -1,5 +1,5 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -205,14 +205,14 @@ pub const IDBObjectStore = struct {
         // [EnforceRange] on count
         if (!runtime.isInRange(u32, count)) return error.TypeError;
         
-        return try IDBObjectStoreImpl.call_getAll(instance, queryOrOptions, count);
+        return try IDBObjectStoreImpl.call_getAll(instance, queryOrOptions.value, count.value);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_openKeyCursor(instance: *runtime.Instance, query: webidl.Opt(*const anyopaque), direction: webidl.Opt(IDBCursorDirection)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try IDBObjectStoreImpl.call_openKeyCursor(instance, query, direction);
+        return try IDBObjectStoreImpl.call_openKeyCursor(instance, query.value, direction.value);
     }
 
     pub fn call_index(instance: *runtime.Instance, name: DOMString) anyerror!*runtime.Instance {
@@ -224,14 +224,14 @@ pub const IDBObjectStore = struct {
     pub fn call_count(instance: *runtime.Instance, query: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try IDBObjectStoreImpl.call_count(instance, query);
+        return try IDBObjectStoreImpl.call_count(instance, query.value);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_add(instance: *runtime.Instance, value: *const anyopaque, key: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try IDBObjectStoreImpl.call_add(instance, value, key);
+        return try IDBObjectStoreImpl.call_add(instance, value, key.value);
     }
 
     /// Extended attributes: [NewObject]
@@ -244,7 +244,7 @@ pub const IDBObjectStore = struct {
     pub fn call_openCursor(instance: *runtime.Instance, query: webidl.Opt(*const anyopaque), direction: webidl.Opt(IDBCursorDirection)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try IDBObjectStoreImpl.call_openCursor(instance, query, direction);
+        return try IDBObjectStoreImpl.call_openCursor(instance, query.value, direction.value);
     }
 
     /// Extended attributes: [NewObject]
@@ -253,21 +253,21 @@ pub const IDBObjectStore = struct {
         // [EnforceRange] on count
         if (!runtime.isInRange(u32, count)) return error.TypeError;
         
-        return try IDBObjectStoreImpl.call_getAllKeys(instance, queryOrOptions, count);
+        return try IDBObjectStoreImpl.call_getAllKeys(instance, queryOrOptions.value, count.value);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_put(instance: *runtime.Instance, value: *const anyopaque, key: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try IDBObjectStoreImpl.call_put(instance, value, key);
+        return try IDBObjectStoreImpl.call_put(instance, value, key.value);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_getAllRecords(instance: *runtime.Instance, options: webidl.Opt(IDBGetAllOptions)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try IDBObjectStoreImpl.call_getAllRecords(instance, options);
+        return try IDBObjectStoreImpl.call_getAllRecords(instance, options.value);
     }
 
     /// Extended attributes: [NewObject]
@@ -288,7 +288,7 @@ pub const IDBObjectStore = struct {
     pub fn call_createIndex(instance: *runtime.Instance, name: DOMString, keyPath: *const anyopaque, options: webidl.Opt(IDBIndexParameters)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try IDBObjectStoreImpl.call_createIndex(instance, name, keyPath, options);
+        return try IDBObjectStoreImpl.call_createIndex(instance, name, keyPath, options.value);
     }
 
 };

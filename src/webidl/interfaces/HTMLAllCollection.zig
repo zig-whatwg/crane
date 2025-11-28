@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:11:20Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -95,7 +95,7 @@ pub const HTMLAllCollection = struct {
 
     pub fn call_item(instance: *runtime.Instance, nameOrIndex: webidl.Opt(DOMString)) anyerror!?*const anyopaque {
         
-        return try HTMLAllCollectionImpl.call_item(instance, nameOrIndex);
+        return try HTMLAllCollectionImpl.call_item(instance, nameOrIndex.value);
     }
 
     pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!?*const anyopaque {

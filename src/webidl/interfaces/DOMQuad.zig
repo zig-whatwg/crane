@@ -1,5 +1,5 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -123,7 +123,7 @@ pub const DOMQuad = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, p1: webidl.Opt(DOMPointInit), p2: webidl.Opt(DOMPointInit), p3: webidl.Opt(DOMPointInit), p4: webidl.Opt(DOMPointInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try DOMQuadImpl.call_constructor(allocator, ctx, p1, p2, p3, p4);
+        return try DOMQuadImpl.call_constructor(allocator, ctx, p1.value, p2.value, p3.value, p4.value);
     }
 
     /// Extended attributes: [SameObject]
@@ -184,14 +184,14 @@ pub const DOMQuad = struct {
     pub fn call_fromQuad(instance: *runtime.Instance, other: webidl.Opt(DOMQuadInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try DOMQuadImpl.call_fromQuad(instance, other);
+        return try DOMQuadImpl.call_fromQuad(instance, other.value);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_fromRect(instance: *runtime.Instance, other: webidl.Opt(DOMRectInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try DOMQuadImpl.call_fromRect(instance, other);
+        return try DOMQuadImpl.call_fromRect(instance, other.value);
     }
 
     /// Extended attributes: [Default]

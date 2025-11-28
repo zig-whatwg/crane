@@ -1,5 +1,5 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -157,7 +157,7 @@ pub const IDBCursor = struct {
 
     pub fn call_continue(instance: *runtime.Instance, key: webidl.Opt(*const anyopaque)) anyerror!void {
         
-        return try IDBCursorImpl.call_continue(instance, key);
+        return try IDBCursorImpl.call_continue(instance, key.value);
     }
 
     pub fn call_continuePrimaryKey(instance: *runtime.Instance, key: *const anyopaque, primaryKey: *const anyopaque) anyerror!void {

@@ -22,7 +22,6 @@ const AsyncPromise = @import("streams_async_promise").AsyncPromise;
 pub const State = ReadableStreamDefaultReader.State;
 
 pub const ImplError = error{
-
     TypeError,
     RangeError,
     InvalidState,
@@ -400,9 +399,10 @@ pub fn call_cancel(instance: *runtime.Instance, reason: *const anyopaque) !*cons
 
     // Call stream's cancel method
     // This returns a promise that we return to the caller
+    const opt_reason = webidl.Opt(*const anyopaque).passed(reason);
     const cancel_promise = try interfaces.ReadableStream.call_cancel(
         stream_instance,
-        reason,
+        opt_reason,
     );
 
     return cancel_promise;

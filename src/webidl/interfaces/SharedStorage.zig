@@ -1,5 +1,5 @@
 //! Generated from: shared-storage.idl
-//! Generated at: 2025-11-28T19:11:18Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -146,40 +146,40 @@ pub const SharedStorage = struct {
 
     pub fn call_delete(instance: *runtime.Instance, key: DOMString, options: webidl.Opt(SharedStorageModifierMethodOptions)) anyerror!*const anyopaque {
         
-        return try SharedStorageImpl.call_delete(instance, key, options);
+        return try SharedStorageImpl.call_delete(instance, key, options.value);
     }
 
     pub fn call_batchUpdate(instance: *runtime.Instance, methods: *const anyopaque, options: webidl.Opt(SharedStorageModifierMethodOptions)) anyerror!*const anyopaque {
         
-        return try SharedStorageImpl.call_batchUpdate(instance, methods, options);
+        return try SharedStorageImpl.call_batchUpdate(instance, methods, options.value);
     }
 
     /// Extended attributes: [Exposed=Window]
     pub fn call_run(instance: *runtime.Instance, name: DOMString, options: webidl.Opt(SharedStorageRunOperationMethodOptions)) anyerror!*const anyopaque {
         
-        return try SharedStorageImpl.call_run(instance, name, options);
+        return try SharedStorageImpl.call_run(instance, name, options.value);
     }
 
     /// Extended attributes: [Exposed=Window]
     pub fn call_createWorklet(instance: *runtime.Instance, moduleURL: runtime.USVString, options: webidl.Opt(SharedStorageWorkletOptions)) anyerror!*const anyopaque {
         
-        return try SharedStorageImpl.call_createWorklet(instance, moduleURL, options);
+        return try SharedStorageImpl.call_createWorklet(instance, moduleURL, options.value);
     }
 
     /// Extended attributes: [Exposed=Window]
     pub fn call_selectURL(instance: *runtime.Instance, name: DOMString, urls: *const anyopaque, options: webidl.Opt(SharedStorageRunOperationMethodOptions)) anyerror!*const anyopaque {
         
-        return try SharedStorageImpl.call_selectURL(instance, name, urls, options);
+        return try SharedStorageImpl.call_selectURL(instance, name, urls, options.value);
     }
 
     pub fn call_set(instance: *runtime.Instance, key: DOMString, value: DOMString, options: webidl.Opt(SharedStorageSetMethodOptions)) anyerror!*const anyopaque {
         
-        return try SharedStorageImpl.call_set(instance, key, value, options);
+        return try SharedStorageImpl.call_set(instance, key, value, options.value);
     }
 
     pub fn call_clear(instance: *runtime.Instance, options: webidl.Opt(SharedStorageModifierMethodOptions)) anyerror!*const anyopaque {
         
-        return try SharedStorageImpl.call_clear(instance, options);
+        return try SharedStorageImpl.call_clear(instance, options.value);
     }
 
     pub fn call_values(instance: *runtime.Instance) anyerror!*const anyopaque {
@@ -192,7 +192,7 @@ pub const SharedStorage = struct {
 
     pub fn call_append(instance: *runtime.Instance, key: DOMString, value: DOMString, options: webidl.Opt(SharedStorageModifierMethodOptions)) anyerror!*const anyopaque {
         
-        return try SharedStorageImpl.call_append(instance, key, value, options);
+        return try SharedStorageImpl.call_append(instance, key, value, options.value);
     }
 
     /// Extended attributes: [Exposed=SharedStorageWorklet]

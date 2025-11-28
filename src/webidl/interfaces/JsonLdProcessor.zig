@@ -1,5 +1,5 @@
 //! Generated from: json-ld-api.idl
-//! Generated at: 2025-11-28T19:11:20Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -109,32 +109,32 @@ pub const JsonLdProcessor = struct {
 
     pub fn call_toRdf(instance: *runtime.Instance, input: JsonLdInput, options: webidl.Opt(JsonLdOptions)) anyerror!*const anyopaque {
         
-        return try JsonLdProcessorImpl.call_toRdf(instance, input, options);
+        return try JsonLdProcessorImpl.call_toRdf(instance, input, options.value);
     }
 
     pub fn call_flatten(instance: *runtime.Instance, input: JsonLdInput, context: webidl.Opt(JsonLdContext), options: webidl.Opt(JsonLdOptions)) anyerror!*const anyopaque {
         
-        return try JsonLdProcessorImpl.call_flatten(instance, input, context, options);
+        return try JsonLdProcessorImpl.call_flatten(instance, input, context.value, options.value);
     }
 
     pub fn call_fromRdf(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(JsonLdOptions)) anyerror!*const anyopaque {
         
-        return try JsonLdProcessorImpl.call_fromRdf(instance, input, options);
+        return try JsonLdProcessorImpl.call_fromRdf(instance, input, options.value);
     }
 
     pub fn call_expand(instance: *runtime.Instance, input: JsonLdInput, options: webidl.Opt(JsonLdOptions)) anyerror!*const anyopaque {
         
-        return try JsonLdProcessorImpl.call_expand(instance, input, options);
+        return try JsonLdProcessorImpl.call_expand(instance, input, options.value);
     }
 
     pub fn call_compact(instance: *runtime.Instance, input: JsonLdInput, context: webidl.Opt(JsonLdContext), options: webidl.Opt(JsonLdOptions)) anyerror!*const anyopaque {
         
-        return try JsonLdProcessorImpl.call_compact(instance, input, context, options);
+        return try JsonLdProcessorImpl.call_compact(instance, input, context.value, options.value);
     }
 
     pub fn call_frame(instance: *runtime.Instance, input: JsonLdInput, frame: JsonLdInput, options: webidl.Opt(JsonLdOptions)) anyerror!*const anyopaque {
         
-        return try JsonLdProcessorImpl.call_frame(instance, input, frame, options);
+        return try JsonLdProcessorImpl.call_frame(instance, input, frame, options.value);
     }
 
 };

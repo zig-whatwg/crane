@@ -1,5 +1,5 @@
 //! Generated from: push-api.idl
-//! Generated at: 2025-11-28T19:11:20Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -109,12 +109,12 @@ pub const PushManager = struct {
 
     pub fn call_permissionState(instance: *runtime.Instance, options: webidl.Opt(PushSubscriptionOptionsInit)) anyerror!*const anyopaque {
         
-        return try PushManagerImpl.call_permissionState(instance, options);
+        return try PushManagerImpl.call_permissionState(instance, options.value);
     }
 
     pub fn call_subscribe(instance: *runtime.Instance, options: webidl.Opt(PushSubscriptionOptionsInit)) anyerror!*const anyopaque {
         
-        return try PushManagerImpl.call_subscribe(instance, options);
+        return try PushManagerImpl.call_subscribe(instance, options.value);
     }
 
     pub fn call_getSubscription(instance: *runtime.Instance) anyerror!*const anyopaque {

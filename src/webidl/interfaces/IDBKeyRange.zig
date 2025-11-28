@@ -1,5 +1,5 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-28T19:11:20Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -145,21 +145,21 @@ pub const IDBKeyRange = struct {
     pub fn call_bound(instance: *runtime.Instance, lower: *const anyopaque, upper: *const anyopaque, lowerOpen: webidl.Opt(bool), upperOpen: webidl.Opt(bool)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try IDBKeyRangeImpl.call_bound(instance, lower, upper, lowerOpen, upperOpen);
+        return try IDBKeyRangeImpl.call_bound(instance, lower, upper, lowerOpen.value, upperOpen.value);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_upperBound(instance: *runtime.Instance, upper: *const anyopaque, open: webidl.Opt(bool)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try IDBKeyRangeImpl.call_upperBound(instance, upper, open);
+        return try IDBKeyRangeImpl.call_upperBound(instance, upper, open.value);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_lowerBound(instance: *runtime.Instance, lower: *const anyopaque, open: webidl.Opt(bool)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try IDBKeyRangeImpl.call_lowerBound(instance, lower, open);
+        return try IDBKeyRangeImpl.call_lowerBound(instance, lower, open.value);
     }
 
 };

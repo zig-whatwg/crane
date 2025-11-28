@@ -1,5 +1,5 @@
 //! Generated from: translation-api.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -121,12 +121,12 @@ pub const LanguageDetector = struct {
 
     pub fn call_availability(instance: *runtime.Instance, options: webidl.Opt(LanguageDetectorCreateCoreOptions)) anyerror!*const anyopaque {
         
-        return try LanguageDetectorImpl.call_availability(instance, options);
+        return try LanguageDetectorImpl.call_availability(instance, options.value);
     }
 
     pub fn call_measureInputUsage(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(LanguageDetectorDetectOptions)) anyerror!*const anyopaque {
         
-        return try LanguageDetectorImpl.call_measureInputUsage(instance, input, options);
+        return try LanguageDetectorImpl.call_measureInputUsage(instance, input, options.value);
     }
 
     pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
@@ -135,12 +135,12 @@ pub const LanguageDetector = struct {
 
     pub fn call_detect(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(LanguageDetectorDetectOptions)) anyerror!*const anyopaque {
         
-        return try LanguageDetectorImpl.call_detect(instance, input, options);
+        return try LanguageDetectorImpl.call_detect(instance, input, options.value);
     }
 
     pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(LanguageDetectorCreateOptions)) anyerror!*const anyopaque {
         
-        return try LanguageDetectorImpl.call_create(instance, options);
+        return try LanguageDetectorImpl.call_create(instance, options.value);
     }
 
 };

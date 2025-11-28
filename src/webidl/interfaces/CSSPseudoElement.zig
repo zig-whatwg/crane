@@ -1,5 +1,5 @@
 //! Generated from: css-pseudo.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -144,12 +144,12 @@ pub const CSSPseudoElement = struct {
 
     pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
         
-        return try CSSPseudoElementImpl.call_convertQuadFromNode(instance, quad, from, options);
+        return try CSSPseudoElementImpl.call_convertQuadFromNode(instance, quad, from, options.value);
     }
 
     pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
         
-        return try CSSPseudoElementImpl.call_convertPointFromNode(instance, point, from, options);
+        return try CSSPseudoElementImpl.call_convertPointFromNode(instance, point, from, options.value);
     }
 
     pub fn call_pseudo(instance: *runtime.Instance, @"type": CSSOMString) anyerror!?*runtime.Instance {
@@ -159,12 +159,12 @@ pub const CSSPseudoElement = struct {
 
     pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!*const anyopaque {
         
-        return try CSSPseudoElementImpl.call_getBoxQuads(instance, options);
+        return try CSSPseudoElementImpl.call_getBoxQuads(instance, options.value);
     }
 
     pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
         
-        return try CSSPseudoElementImpl.call_convertRectFromNode(instance, rect, from, options);
+        return try CSSPseudoElementImpl.call_convertRectFromNode(instance, rect, from, options.value);
     }
 
 };

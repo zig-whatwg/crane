@@ -1,5 +1,5 @@
 //! Generated from: shared-storage.idl
-//! Generated at: 2025-11-28T19:11:16Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -82,7 +82,7 @@ pub const SharedStorageSetMethod = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, key: DOMString, value: DOMString, options: webidl.Opt(SharedStorageSetMethodOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try SharedStorageSetMethodImpl.call_constructor(allocator, ctx, key, value, options);
+        return try SharedStorageSetMethodImpl.call_constructor(allocator, ctx, key, value, options.value);
     }
 
 };

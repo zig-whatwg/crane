@@ -1,5 +1,5 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -99,7 +99,7 @@ pub const IDBVersionChangeEvent = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(IDBVersionChangeEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try IDBVersionChangeEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
+        return try IDBVersionChangeEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict.value);
     }
 
     pub fn get_oldVersion(instance: *runtime.Instance) anyerror!u64 {

@@ -1,5 +1,5 @@
 //! Generated from: clipboard-apis.idl
-//! Generated at: 2025-11-28T19:11:16Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -101,7 +101,7 @@ pub const ClipboardItem = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, items: *const anyopaque, options: webidl.Opt(ClipboardItemOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try ClipboardItemImpl.call_constructor(allocator, ctx, items, options);
+        return try ClipboardItemImpl.call_constructor(allocator, ctx, items, options.value);
     }
 
     pub fn get_presentationStyle(instance: *runtime.Instance) anyerror!PresentationStyle {

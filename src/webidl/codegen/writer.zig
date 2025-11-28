@@ -1853,7 +1853,13 @@ pub fn writeConstructor(
     // Pass arguments to impl constructor
     for (constructor.arguments) |arg| {
         try writer.writeAll(", ");
-        try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
+        // Unwrap optional parameters (webidl.Opt(T) -> T.value)
+        if (arg.optional) {
+            try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
+            try writer.writeAll(".value");
+        } else {
+            try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
+        }
     }
 
     try writer.writeAll(");\n");
@@ -2231,6 +2237,10 @@ fn writeSingleOperation(
             try writeZigType(writer, arg.idlType.type);
             try writer.writeAll(", ");
             try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
+            // Unwrap optional parameters for clamp
+            if (arg.optional) {
+                try writer.writeAll(".value");
+            }
             try writer.writeAll(");\n");
         }
     }
@@ -2249,7 +2259,13 @@ fn writeSingleOperation(
             try writer.print(", clamped_{s}", .{arg.name});
         } else {
             try writer.writeAll(", ");
-            try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
+            // Unwrap optional parameters (webidl.Opt(T) -> T.value)
+            if (arg.optional) {
+                try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
+                try writer.writeAll(".value");
+            } else {
+                try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
+            }
         }
     }
 

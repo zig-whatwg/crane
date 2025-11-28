@@ -1,5 +1,5 @@
 //! Generated from: uievents.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -179,7 +179,7 @@ pub const KeyboardEvent = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(KeyboardEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try KeyboardEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
+        return try KeyboardEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict.value);
     }
 
     pub fn get_key(instance: *runtime.Instance) anyerror!DOMString {
@@ -233,7 +233,7 @@ pub const KeyboardEvent = struct {
 
     pub fn call_initKeyboardEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: webidl.Opt(bool), cancelableArg: webidl.Opt(bool), viewArg: webidl.Opt(?*runtime.Instance), keyArg: webidl.Opt(DOMString), locationArg: webidl.Opt(u32), ctrlKey: webidl.Opt(bool), altKey: webidl.Opt(bool), shiftKey: webidl.Opt(bool), metaKey: webidl.Opt(bool)) anyerror!void {
         
-        return try KeyboardEventImpl.call_initKeyboardEvent(instance, typeArg, bubblesArg, cancelableArg, viewArg, keyArg, locationArg, ctrlKey, altKey, shiftKey, metaKey);
+        return try KeyboardEventImpl.call_initKeyboardEvent(instance, typeArg, bubblesArg.value, cancelableArg.value, viewArg.value, keyArg.value, locationArg.value, ctrlKey.value, altKey.value, shiftKey.value, metaKey.value);
     }
 
 };

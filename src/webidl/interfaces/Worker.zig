@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -128,7 +128,7 @@ pub const Worker = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, scriptURL: DOMString, options: webidl.Opt(WorkerOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try WorkerImpl.call_constructor(allocator, ctx, scriptURL, options);
+        return try WorkerImpl.call_constructor(allocator, ctx, scriptURL, options.value);
     }
 
     pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {

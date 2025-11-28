@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -83,7 +83,7 @@ pub const CanvasPattern = struct {
 
     pub fn call_setTransform(instance: *runtime.Instance, transform: webidl.Opt(DOMMatrix2DInit)) anyerror!void {
         
-        return try CanvasPatternImpl.call_setTransform(instance, transform);
+        return try CanvasPatternImpl.call_setTransform(instance, transform.value);
     }
 
 };

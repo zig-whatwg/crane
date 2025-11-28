@@ -1,5 +1,5 @@
 //! Generated from: fetch.idl
-//! Generated at: 2025-11-28T19:11:18Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -200,7 +200,7 @@ pub const Request = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, input: RequestInfo, init_data: webidl.Opt(RequestInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try RequestImpl.call_constructor(allocator, ctx, input, init_data);
+        return try RequestImpl.call_constructor(allocator, ctx, input, init_data.value);
     }
 
     pub fn get_method(instance: *runtime.Instance) anyerror!runtime.ByteString {

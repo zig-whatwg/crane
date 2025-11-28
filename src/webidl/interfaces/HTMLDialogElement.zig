@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:11:20Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -308,7 +308,7 @@ pub const HTMLDialogElement = struct {
         defer runtime.CEReactions.end();
         
         
-        return try HTMLDialogElementImpl.call_requestClose(instance, returnValue);
+        return try HTMLDialogElementImpl.call_requestClose(instance, returnValue.value);
     }
 
     /// Extended attributes: [CEReactions]
@@ -336,7 +336,7 @@ pub const HTMLDialogElement = struct {
         defer runtime.CEReactions.end();
         
         
-        return try HTMLDialogElementImpl.call_close(instance, returnValue);
+        return try HTMLDialogElementImpl.call_close(instance, returnValue.value);
     }
 
 };

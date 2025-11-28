@@ -1,5 +1,5 @@
 //! Generated from: geolocation-sensor.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -136,7 +136,7 @@ pub const GeolocationSensor = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(GeolocationSensorOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try GeolocationSensorImpl.call_constructor(allocator, ctx, options);
+        return try GeolocationSensorImpl.call_constructor(allocator, ctx, options.value);
     }
 
     pub fn get_latitude(instance: *runtime.Instance) anyerror!?f64 {
@@ -169,7 +169,7 @@ pub const GeolocationSensor = struct {
 
     pub fn call_read(instance: *runtime.Instance, readOptions: webidl.Opt(ReadOptions)) anyerror!*const anyopaque {
         
-        return try GeolocationSensorImpl.call_read(instance, readOptions);
+        return try GeolocationSensorImpl.call_read(instance, readOptions.value);
     }
 
 };

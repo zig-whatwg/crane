@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -121,7 +121,7 @@ pub const AudioWorkletNode = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, name: DOMString, options: webidl.Opt(AudioWorkletNodeOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try AudioWorkletNodeImpl.call_constructor(allocator, ctx, context, name, options);
+        return try AudioWorkletNodeImpl.call_constructor(allocator, ctx, context, name, options.value);
     }
 
     pub fn get_parameters(instance: *runtime.Instance) anyerror!*runtime.Instance {

@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -144,12 +144,12 @@ pub const GPUBuffer = struct {
 
     pub fn call_getMappedRange(instance: *runtime.Instance, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!*const anyopaque {
         
-        return try GPUBufferImpl.call_getMappedRange(instance, offset, size);
+        return try GPUBufferImpl.call_getMappedRange(instance, offset.value, size.value);
     }
 
     pub fn call_mapAsync(instance: *runtime.Instance, mode: GPUMapModeFlags, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!*const anyopaque {
         
-        return try GPUBufferImpl.call_mapAsync(instance, mode, offset, size);
+        return try GPUBufferImpl.call_mapAsync(instance, mode, offset.value, size.value);
     }
 
     pub fn call_destroy(instance: *runtime.Instance) anyerror!void {

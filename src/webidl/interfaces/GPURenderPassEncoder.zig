@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-28T19:11:20Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -189,7 +189,7 @@ pub const GPURenderPassEncoder = struct {
 
     pub fn call_setBindGroup(instance: *runtime.Instance, index: GPUIndex32, bindGroup: ?*runtime.Instance, dynamicOffsets: webidl.Opt(*const anyopaque)) anyerror!void {
         
-        return try GPURenderPassEncoderImpl.call_setBindGroup(instance, index, bindGroup, dynamicOffsets);
+        return try GPURenderPassEncoderImpl.call_setBindGroup(instance, index, bindGroup, dynamicOffsets.value);
     }
 
     pub fn call_endOcclusionQuery(instance: *runtime.Instance) anyerror!void {
@@ -198,7 +198,7 @@ pub const GPURenderPassEncoder = struct {
 
     pub fn call_setVertexBuffer(instance: *runtime.Instance, slot: GPUIndex32, buffer: ?*runtime.Instance, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!void {
         
-        return try GPURenderPassEncoderImpl.call_setVertexBuffer(instance, slot, buffer, offset, size);
+        return try GPURenderPassEncoderImpl.call_setVertexBuffer(instance, slot, buffer, offset.value, size.value);
     }
 
     pub fn call_setScissorRect(instance: *runtime.Instance, x: GPUIntegerCoordinate, y: GPUIntegerCoordinate, width: GPUIntegerCoordinate, height: GPUIntegerCoordinate) anyerror!void {
@@ -212,7 +212,7 @@ pub const GPURenderPassEncoder = struct {
 
     pub fn call_drawIndexed(instance: *runtime.Instance, indexCount: GPUSize32, instanceCount: webidl.Opt(GPUSize32), firstIndex: webidl.Opt(GPUSize32), baseVertex: webidl.Opt(GPUSignedOffset32), firstInstance: webidl.Opt(GPUSize32)) anyerror!void {
         
-        return try GPURenderPassEncoderImpl.call_drawIndexed(instance, indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
+        return try GPURenderPassEncoderImpl.call_drawIndexed(instance, indexCount, instanceCount.value, firstIndex.value, baseVertex.value, firstInstance.value);
     }
 
     pub fn call_executeBundles(instance: *runtime.Instance, bundles: *const anyopaque) anyerror!void {
@@ -222,7 +222,7 @@ pub const GPURenderPassEncoder = struct {
 
     pub fn call_draw(instance: *runtime.Instance, vertexCount: GPUSize32, instanceCount: webidl.Opt(GPUSize32), firstVertex: webidl.Opt(GPUSize32), firstInstance: webidl.Opt(GPUSize32)) anyerror!void {
         
-        return try GPURenderPassEncoderImpl.call_draw(instance, vertexCount, instanceCount, firstVertex, firstInstance);
+        return try GPURenderPassEncoderImpl.call_draw(instance, vertexCount, instanceCount.value, firstVertex.value, firstInstance.value);
     }
 
     pub fn call_popDebugGroup(instance: *runtime.Instance) anyerror!void {
@@ -241,7 +241,7 @@ pub const GPURenderPassEncoder = struct {
 
     pub fn call_setIndexBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, indexFormat: GPUIndexFormat, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!void {
         
-        return try GPURenderPassEncoderImpl.call_setIndexBuffer(instance, buffer, indexFormat, offset, size);
+        return try GPURenderPassEncoderImpl.call_setIndexBuffer(instance, buffer, indexFormat, offset.value, size.value);
     }
 
     pub fn call_pushDebugGroup(instance: *runtime.Instance, groupLabel: runtime.USVString) anyerror!void {

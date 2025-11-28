@@ -1,5 +1,5 @@
 //! Generated from: svg-paths.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -84,7 +84,7 @@ pub const SVGPathData = struct {
 
     pub fn call_getPathData(instance: *runtime.Instance, settings: webidl.Opt(SVGPathDataSettings)) anyerror!*const anyopaque {
         
-        return try SVGPathDataImpl.call_getPathData(instance, settings);
+        return try SVGPathDataImpl.call_getPathData(instance, settings.value);
     }
 
 };

@@ -1,5 +1,5 @@
 //! Generated from: orientation-sensor.idl
-//! Generated at: 2025-11-28T19:11:21Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -96,7 +96,7 @@ pub const RelativeOrientationSensor = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, sensorOptions: webidl.Opt(OrientationSensorOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try RelativeOrientationSensorImpl.call_constructor(allocator, ctx, sensorOptions);
+        return try RelativeOrientationSensorImpl.call_constructor(allocator, ctx, sensorOptions.value);
     }
 
 };

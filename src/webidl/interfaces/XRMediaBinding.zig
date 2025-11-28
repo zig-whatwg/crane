@@ -1,5 +1,5 @@
 //! Generated from: webxrlayers.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -99,17 +99,17 @@ pub const XRMediaBinding = struct {
 
     pub fn call_createCylinderLayer(instance: *runtime.Instance, video: *runtime.Instance, init_data: webidl.Opt(XRMediaCylinderLayerInit)) anyerror!*runtime.Instance {
         
-        return try XRMediaBindingImpl.call_createCylinderLayer(instance, video, init_data);
+        return try XRMediaBindingImpl.call_createCylinderLayer(instance, video, init_data.value);
     }
 
     pub fn call_createQuadLayer(instance: *runtime.Instance, video: *runtime.Instance, init_data: webidl.Opt(XRMediaQuadLayerInit)) anyerror!*runtime.Instance {
         
-        return try XRMediaBindingImpl.call_createQuadLayer(instance, video, init_data);
+        return try XRMediaBindingImpl.call_createQuadLayer(instance, video, init_data.value);
     }
 
     pub fn call_createEquirectLayer(instance: *runtime.Instance, video: *runtime.Instance, init_data: webidl.Opt(XRMediaEquirectLayerInit)) anyerror!*runtime.Instance {
         
-        return try XRMediaBindingImpl.call_createEquirectLayer(instance, video, init_data);
+        return try XRMediaBindingImpl.call_createEquirectLayer(instance, video, init_data.value);
     }
 
 };

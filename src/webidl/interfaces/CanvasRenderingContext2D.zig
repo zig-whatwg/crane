@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:11:20Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -668,7 +668,7 @@ pub const CanvasRenderingContext2D = struct {
 
     pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule: webidl.Opt(CanvasFillRule)) anyerror!bool {
         
-        return try CanvasRenderingContext2DImpl.call_isPointInPath(instance, x, y, fillRule);
+        return try CanvasRenderingContext2DImpl.call_isPointInPath(instance, x, y, fillRule.value);
     }
 
     pub fn call_getLineDash(instance: *runtime.Instance) anyerror!*const anyopaque {
@@ -677,7 +677,7 @@ pub const CanvasRenderingContext2D = struct {
 
     pub fn call_ellipse(instance: *runtime.Instance, x: f64, y: f64, radiusX: f64, radiusY: f64, rotation: f64, startAngle: f64, endAngle: f64, counterclockwise: webidl.Opt(bool)) anyerror!void {
         
-        return try CanvasRenderingContext2DImpl.call_ellipse(instance, x, y, radiusX, radiusY, rotation, startAngle, endAngle, counterclockwise);
+        return try CanvasRenderingContext2DImpl.call_ellipse(instance, x, y, radiusX, radiusY, rotation, startAngle, endAngle, counterclockwise.value);
     }
 
     pub fn call_clearRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
@@ -701,7 +701,7 @@ pub const CanvasRenderingContext2D = struct {
 
     pub fn call_clip(instance: *runtime.Instance, fillRule: webidl.Opt(CanvasFillRule)) anyerror!void {
         
-        return try CanvasRenderingContext2DImpl.call_clip(instance, fillRule);
+        return try CanvasRenderingContext2DImpl.call_clip(instance, fillRule.value);
     }
 
     pub fn call_reset(instance: *runtime.Instance) anyerror!void {
@@ -710,7 +710,7 @@ pub const CanvasRenderingContext2D = struct {
 
     pub fn call_strokeText(instance: *runtime.Instance, text: DOMString, x: f64, y: f64, maxWidth: webidl.Opt(f64)) anyerror!void {
         
-        return try CanvasRenderingContext2DImpl.call_strokeText(instance, text, x, y, maxWidth);
+        return try CanvasRenderingContext2DImpl.call_strokeText(instance, text, x, y, maxWidth.value);
     }
 
     pub fn call_stroke(instance: *runtime.Instance) anyerror!void {
@@ -732,12 +732,12 @@ pub const CanvasRenderingContext2D = struct {
         // [EnforceRange] on sh
         if (!runtime.isInRange(i32, sh)) return error.TypeError;
         
-        return try CanvasRenderingContext2DImpl.call_getImageData(instance, sx, sy, sw, sh, settings);
+        return try CanvasRenderingContext2DImpl.call_getImageData(instance, sx, sy, sw, sh, settings.value);
     }
 
     pub fn call_arc(instance: *runtime.Instance, x: f64, y: f64, radius: f64, startAngle: f64, endAngle: f64, counterclockwise: webidl.Opt(bool)) anyerror!void {
         
-        return try CanvasRenderingContext2DImpl.call_arc(instance, x, y, radius, startAngle, endAngle, counterclockwise);
+        return try CanvasRenderingContext2DImpl.call_arc(instance, x, y, radius, startAngle, endAngle, counterclockwise.value);
     }
 
     /// Extended attributes: [NewObject]
@@ -762,7 +762,7 @@ pub const CanvasRenderingContext2D = struct {
 
     pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64, radii: webidl.Opt(*const anyopaque)) anyerror!void {
         
-        return try CanvasRenderingContext2DImpl.call_roundRect(instance, x, y, w, h, radii);
+        return try CanvasRenderingContext2DImpl.call_roundRect(instance, x, y, w, h, radii.value);
     }
 
     pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: DOMString) anyerror!?*runtime.Instance {
@@ -832,7 +832,7 @@ pub const CanvasRenderingContext2D = struct {
         // [EnforceRange] on sh
         if (!runtime.isInRange(i32, sh)) return error.TypeError;
         
-        return try CanvasRenderingContext2DImpl.call_createImageData(instance, sw, sh, settings);
+        return try CanvasRenderingContext2DImpl.call_createImageData(instance, sw, sh, settings.value);
     }
 
     pub fn call_scale(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
@@ -871,7 +871,7 @@ pub const CanvasRenderingContext2D = struct {
 
     pub fn call_fillText(instance: *runtime.Instance, text: DOMString, x: f64, y: f64, maxWidth: webidl.Opt(f64)) anyerror!void {
         
-        return try CanvasRenderingContext2DImpl.call_fillText(instance, text, x, y, maxWidth);
+        return try CanvasRenderingContext2DImpl.call_fillText(instance, text, x, y, maxWidth.value);
     }
 
     pub fn call_measureText(instance: *runtime.Instance, text: DOMString) anyerror!*runtime.Instance {
@@ -881,7 +881,7 @@ pub const CanvasRenderingContext2D = struct {
 
     pub fn call_fill(instance: *runtime.Instance, fillRule: webidl.Opt(CanvasFillRule)) anyerror!void {
         
-        return try CanvasRenderingContext2DImpl.call_fill(instance, fillRule);
+        return try CanvasRenderingContext2DImpl.call_fill(instance, fillRule.value);
     }
 
     pub fn call_putImageData(instance: *runtime.Instance, imageData: *runtime.Instance, dx: i32, dy: i32) anyerror!void {

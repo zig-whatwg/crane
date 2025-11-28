@@ -1,5 +1,5 @@
 //! Generated from: CSP.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -141,7 +141,7 @@ pub const SecurityPolicyViolationEvent = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(SecurityPolicyViolationEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try SecurityPolicyViolationEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
+        return try SecurityPolicyViolationEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict.value);
     }
 
     pub fn get_documentURI(instance: *runtime.Instance) anyerror!runtime.USVString {

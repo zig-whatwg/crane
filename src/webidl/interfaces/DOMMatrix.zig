@@ -1,5 +1,5 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -243,7 +243,7 @@ pub const DOMMatrix = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: webidl.Opt(*const anyopaque)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try DOMMatrixImpl.call_constructor(allocator, ctx, init_data);
+        return try DOMMatrixImpl.call_constructor(allocator, ctx, init_data.value);
     }
 
     pub fn get_a(instance: *runtime.Instance) anyerror!f64 {
@@ -336,7 +336,7 @@ pub const DOMMatrix = struct {
 
     pub fn call_scaleSelf(instance: *runtime.Instance, scaleX: webidl.Opt(f64), scaleY: webidl.Opt(f64), scaleZ: webidl.Opt(f64), originX: webidl.Opt(f64), originY: webidl.Opt(f64), originZ: webidl.Opt(f64)) anyerror!*runtime.Instance {
         
-        return try DOMMatrixImpl.call_scaleSelf(instance, scaleX, scaleY, scaleZ, originX, originY, originZ);
+        return try DOMMatrixImpl.call_scaleSelf(instance, scaleX.value, scaleY.value, scaleZ.value, originX.value, originY.value, originZ.value);
     }
 
     /// Extended attributes: [NewObject]
@@ -348,7 +348,7 @@ pub const DOMMatrix = struct {
 
     pub fn call_rotateFromVectorSelf(instance: *runtime.Instance, x: webidl.Opt(f64), y: webidl.Opt(f64)) anyerror!*runtime.Instance {
         
-        return try DOMMatrixImpl.call_rotateFromVectorSelf(instance, x, y);
+        return try DOMMatrixImpl.call_rotateFromVectorSelf(instance, x.value, y.value);
     }
 
     /// Extended attributes: [NewObject]
@@ -362,7 +362,7 @@ pub const DOMMatrix = struct {
     pub fn call_fromMatrix(instance: *runtime.Instance, other: webidl.Opt(DOMMatrixInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try DOMMatrixImpl.call_fromMatrix(instance, other);
+        return try DOMMatrixImpl.call_fromMatrix(instance, other.value);
     }
 
     /// Extended attributes: [Exposed=Window]
@@ -373,37 +373,37 @@ pub const DOMMatrix = struct {
 
     pub fn call_rotateAxisAngleSelf(instance: *runtime.Instance, x: webidl.Opt(f64), y: webidl.Opt(f64), z: webidl.Opt(f64), angle: webidl.Opt(f64)) anyerror!*runtime.Instance {
         
-        return try DOMMatrixImpl.call_rotateAxisAngleSelf(instance, x, y, z, angle);
+        return try DOMMatrixImpl.call_rotateAxisAngleSelf(instance, x.value, y.value, z.value, angle.value);
     }
 
     pub fn call_scale3dSelf(instance: *runtime.Instance, scale: webidl.Opt(f64), originX: webidl.Opt(f64), originY: webidl.Opt(f64), originZ: webidl.Opt(f64)) anyerror!*runtime.Instance {
         
-        return try DOMMatrixImpl.call_scale3dSelf(instance, scale, originX, originY, originZ);
+        return try DOMMatrixImpl.call_scale3dSelf(instance, scale.value, originX.value, originY.value, originZ.value);
     }
 
     pub fn call_rotateSelf(instance: *runtime.Instance, rotX: webidl.Opt(f64), rotY: webidl.Opt(f64), rotZ: webidl.Opt(f64)) anyerror!*runtime.Instance {
         
-        return try DOMMatrixImpl.call_rotateSelf(instance, rotX, rotY, rotZ);
+        return try DOMMatrixImpl.call_rotateSelf(instance, rotX.value, rotY.value, rotZ.value);
     }
 
     pub fn call_translateSelf(instance: *runtime.Instance, tx: webidl.Opt(f64), ty: webidl.Opt(f64), tz: webidl.Opt(f64)) anyerror!*runtime.Instance {
         
-        return try DOMMatrixImpl.call_translateSelf(instance, tx, ty, tz);
+        return try DOMMatrixImpl.call_translateSelf(instance, tx.value, ty.value, tz.value);
     }
 
     pub fn call_multiplySelf(instance: *runtime.Instance, other: webidl.Opt(DOMMatrixInit)) anyerror!*runtime.Instance {
         
-        return try DOMMatrixImpl.call_multiplySelf(instance, other);
+        return try DOMMatrixImpl.call_multiplySelf(instance, other.value);
     }
 
     pub fn call_skewXSelf(instance: *runtime.Instance, sx: webidl.Opt(f64)) anyerror!*runtime.Instance {
         
-        return try DOMMatrixImpl.call_skewXSelf(instance, sx);
+        return try DOMMatrixImpl.call_skewXSelf(instance, sx.value);
     }
 
     pub fn call_skewYSelf(instance: *runtime.Instance, sy: webidl.Opt(f64)) anyerror!*runtime.Instance {
         
-        return try DOMMatrixImpl.call_skewYSelf(instance, sy);
+        return try DOMMatrixImpl.call_skewYSelf(instance, sy.value);
     }
 
     pub fn call_invertSelf(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -412,7 +412,7 @@ pub const DOMMatrix = struct {
 
     pub fn call_preMultiplySelf(instance: *runtime.Instance, other: webidl.Opt(DOMMatrixInit)) anyerror!*runtime.Instance {
         
-        return try DOMMatrixImpl.call_preMultiplySelf(instance, other);
+        return try DOMMatrixImpl.call_preMultiplySelf(instance, other.value);
     }
 
 };

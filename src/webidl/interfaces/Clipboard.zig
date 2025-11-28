@@ -1,5 +1,5 @@
 //! Generated from: clipboard-apis.idl
-//! Generated at: 2025-11-28T19:11:20Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -103,7 +103,7 @@ pub const Clipboard = struct {
 
     pub fn call_read(instance: *runtime.Instance, formats: webidl.Opt(ClipboardUnsanitizedFormats)) anyerror!*const anyopaque {
         
-        return try ClipboardImpl.call_read(instance, formats);
+        return try ClipboardImpl.call_read(instance, formats.value);
     }
 
     pub fn call_write(instance: *runtime.Instance, data: ClipboardItems) anyerror!*const anyopaque {

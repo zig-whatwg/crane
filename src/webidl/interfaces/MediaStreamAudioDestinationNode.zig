@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-28T19:11:16Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -109,7 +109,7 @@ pub const MediaStreamAudioDestinationNode = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: webidl.Opt(AudioNodeOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try MediaStreamAudioDestinationNodeImpl.call_constructor(allocator, ctx, context, options);
+        return try MediaStreamAudioDestinationNodeImpl.call_constructor(allocator, ctx, context, options.value);
     }
 
     pub fn get_stream(instance: *runtime.Instance) anyerror!*runtime.Instance {

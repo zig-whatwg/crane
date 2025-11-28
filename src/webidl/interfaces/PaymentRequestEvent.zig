@@ -1,5 +1,5 @@
 //! Generated from: payment-handler.idl
-//! Generated at: 2025-11-28T19:11:20Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -146,7 +146,7 @@ pub const PaymentRequestEvent = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(PaymentRequestEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try PaymentRequestEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
+        return try PaymentRequestEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict.value);
     }
 
     pub fn get_topOrigin(instance: *runtime.Instance) anyerror!runtime.USVString {
@@ -183,7 +183,7 @@ pub const PaymentRequestEvent = struct {
 
     pub fn call_changePaymentMethod(instance: *runtime.Instance, methodName: DOMString, methodDetails: webidl.Opt(?*const anyopaque)) anyerror!*const anyopaque {
         
-        return try PaymentRequestEventImpl.call_changePaymentMethod(instance, methodName, methodDetails);
+        return try PaymentRequestEventImpl.call_changePaymentMethod(instance, methodName, methodDetails.value);
     }
 
     pub fn call_respondWith(instance: *runtime.Instance, handlerResponsePromise: *const anyopaque) anyerror!void {
@@ -198,7 +198,7 @@ pub const PaymentRequestEvent = struct {
 
     pub fn call_changeShippingAddress(instance: *runtime.Instance, shippingAddress: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
         
-        return try PaymentRequestEventImpl.call_changeShippingAddress(instance, shippingAddress);
+        return try PaymentRequestEventImpl.call_changeShippingAddress(instance, shippingAddress.value);
     }
 
     pub fn call_changeShippingOption(instance: *runtime.Instance, shippingOption: DOMString) anyerror!*const anyopaque {

@@ -1,5 +1,5 @@
 //! Generated from: ambient-light.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -99,7 +99,7 @@ pub const AmbientLightSensor = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, sensorOptions: webidl.Opt(SensorOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try AmbientLightSensorImpl.call_constructor(allocator, ctx, sensorOptions);
+        return try AmbientLightSensorImpl.call_constructor(allocator, ctx, sensorOptions.value);
     }
 
     pub fn get_illuminance(instance: *runtime.Instance) anyerror!?f64 {

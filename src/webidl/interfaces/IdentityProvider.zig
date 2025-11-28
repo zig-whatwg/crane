@@ -1,5 +1,5 @@
 //! Generated from: fedcm.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -92,7 +92,7 @@ pub const IdentityProvider = struct {
 
     pub fn call_resolve(instance: *runtime.Instance, token: *const anyopaque, options: webidl.Opt(IdentityResolveOptions)) anyerror!*const anyopaque {
         
-        return try IdentityProviderImpl.call_resolve(instance, token, options);
+        return try IdentityProviderImpl.call_resolve(instance, token, options.value);
     }
 
     pub fn call_getUserInfo(instance: *runtime.Instance, config: IdentityProviderConfig) anyerror!*const anyopaque {

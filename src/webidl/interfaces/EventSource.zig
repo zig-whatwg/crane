@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -156,7 +156,7 @@ pub const EventSource = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url: runtime.USVString, eventSourceInitDict: webidl.Opt(EventSourceInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try EventSourceImpl.call_constructor(allocator, ctx, url, eventSourceInitDict);
+        return try EventSourceImpl.call_constructor(allocator, ctx, url, eventSourceInitDict.value);
     }
 
     pub fn get_url(instance: *runtime.Instance) anyerror!runtime.USVString {

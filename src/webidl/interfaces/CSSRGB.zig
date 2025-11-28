@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-28T19:11:17Z
+//! Generated at: 2025-11-28T19:51:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -112,7 +112,7 @@ pub const CSSRGB = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, r: CSSColorRGBComp, g: CSSColorRGBComp, b: CSSColorRGBComp, alpha: webidl.Opt(CSSColorPercent)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try CSSRGBImpl.call_constructor(allocator, ctx, r, g, b, alpha);
+        return try CSSRGBImpl.call_constructor(allocator, ctx, r, g, b, alpha.value);
     }
 
     pub fn get_r(instance: *runtime.Instance) anyerror!CSSColorRGBComp {

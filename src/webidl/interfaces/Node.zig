@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -467,12 +467,12 @@ pub const Node = struct {
         
         // [NewObject] - Caller owns the returned object
         
-        return try NodeImpl.call_cloneNode(instance, subtree);
+        return try NodeImpl.call_cloneNode(instance, subtree.value);
     }
 
     pub fn call_getRootNode(instance: *runtime.Instance, options: webidl.Opt(GetRootNodeOptions)) anyerror!*runtime.Instance {
         
-        return try NodeImpl.call_getRootNode(instance, options);
+        return try NodeImpl.call_getRootNode(instance, options.value);
     }
 
     /// Extended attributes: [CEReactions]

@@ -1,5 +1,5 @@
 //! Generated from: wasm-js-api.idl
-//! Generated at: 2025-11-28T19:11:19Z
+//! Generated at: 2025-11-28T19:51:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -94,7 +94,7 @@ pub const Table = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, descriptor: TableDescriptor, value: webidl.Opt(*const anyopaque)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try TableImpl.call_constructor(allocator, ctx, descriptor, value);
+        return try TableImpl.call_constructor(allocator, ctx, descriptor, value.value);
     }
 
     pub fn get_length(instance: *runtime.Instance) anyerror!AddressValue {
@@ -108,12 +108,12 @@ pub const Table = struct {
 
     pub fn call_grow(instance: *runtime.Instance, delta: AddressValue, value: webidl.Opt(*const anyopaque)) anyerror!AddressValue {
         
-        return try TableImpl.call_grow(instance, delta, value);
+        return try TableImpl.call_grow(instance, delta, value.value);
     }
 
     pub fn call_set(instance: *runtime.Instance, index: AddressValue, value: webidl.Opt(*const anyopaque)) anyerror!void {
         
-        return try TableImpl.call_set(instance, index, value);
+        return try TableImpl.call_set(instance, index, value.value);
     }
 
 };
