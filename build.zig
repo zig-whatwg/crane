@@ -1074,11 +1074,18 @@ pub fn build(b: *std.Build) void {
     // Per WHATWG File System spec, navigator.storage.getDirectory() returns FileSystemDirectoryHandle
     storage_mod.addImport("fs", fs_mod);
 
+    // Referrer Policy module (W3C Referrer Policy)
+    const referrer_policy_mod = b.addModule("referrer_policy", .{
+        .root_source_file = b.path("src/referrer_policy/root.zig"),
+        .target = target,
+    });
+
     // Fetch API module (WHATWG Fetch Standard)
     const fetch_mod = b.addModule("fetch", .{
         .root_source_file = b.path("src/fetch/root.zig"),
         .target = target,
     });
+    fetch_mod.addImport("referrer_policy", referrer_policy_mod);
     // fetch_mod dependencies will be added as implementation progresses:
     // fetch_mod.addImport("infra", infra_mod);
     // fetch_mod.addImport("url", url_mod);

@@ -34,7 +34,7 @@
 //! ```
 
 pub const internal = @import("internal/root.zig");
-pub const referrer_policy = @import("referrer_policy/root.zig");
+pub const referrer_policy = @import("referrer_policy");
 pub const cookies = @import("cookies/root.zig");
 pub const cors = @import("cors/root.zig");
 pub const network = @import("network/root.zig");
