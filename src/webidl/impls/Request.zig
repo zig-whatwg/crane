@@ -17,6 +17,13 @@ const callbacks = @import("callbacks");
 const fetch = @import("fetch");
 const InternalRequest = fetch.internal.InternalRequest;
 
+// Import File API for Blob support
+const file = @import("file");
+const BlobData = file.BlobData;
+
+// Import Blob WebIDL wrapper
+const BlobImpl = @import("Blob.zig");
+
 // WORKAROUND: RequestInit codegen is incomplete (only has privateToken field)
 // This temporary struct has all the fields from the Fetch spec
 // TODO: Remove this when codegen properly handles partial dictionaries
@@ -663,8 +670,6 @@ pub fn call_blob(instance: *runtime.Instance) ImplError!*runtime.Instance {
     };
 
     const AsyncPromise = @import("streams_async_promise").AsyncPromise;
-    const file_mod = @import("file");
-    const BlobData = file_mod.BlobData;
     var promise = try AsyncPromise(*runtime.Instance).init(
         internal.allocator,
         event_loop,
@@ -681,14 +686,24 @@ pub fn call_blob(instance: *runtime.Instance) ImplError!*runtime.Instance {
             .bytes => |bytes| {
                 // Create BlobData from bytes
                 const blob_data = try BlobData.init(internal.allocator, bytes, mime_type);
+                errdefer blob_data.deinit();
 
-                // TODO: Wrap BlobData in Blob WebIDL instance
-                // For now, reject with not fully implemented
-                blob_data.deinit();
-                const exception = @import("webidl").errors.Exception{
-                    .simple = .{ .type = .TypeError, .message = "Blob WebIDL wrapper not yet implemented" },
+                // Wrap in Blob WebIDL instance
+                const blob_instance = BlobImpl.createFromBlobData(
+                    internal.allocator,
+                    instance.ctx,
+                    blob_data,
+                ) catch {
+                    blob_data.deinit();
+                    const exception = @import("webidl").errors.Exception{
+                        .simple = .{ .type = .TypeError, .message = "Failed to create Blob wrapper" },
+                    };
+                    promise.reject(exception);
+                    return @ptrCast(promise);
                 };
-                promise.reject(exception);
+
+                // Fulfill promise with Blob instance
+                promise.fulfill(blob_instance);
             },
             .body => |body_obj| {
                 if (body_obj.isDisturbed()) {
@@ -706,24 +721,47 @@ pub fn call_blob(instance: *runtime.Instance) ImplError!*runtime.Instance {
                     };
 
                     const blob_data = try BlobData.init(internal.allocator, bytes, mime_type);
+                    errdefer blob_data.deinit();
 
-                    // TODO: Wrap BlobData in Blob WebIDL instance
-                    blob_data.deinit();
-                    const exception = @import("webidl").errors.Exception{
-                        .simple = .{ .type = .TypeError, .message = "Blob WebIDL wrapper not yet implemented" },
+                    // Wrap in Blob WebIDL instance
+                    const blob_instance = BlobImpl.createFromBlobData(
+                        internal.allocator,
+                        instance.ctx,
+                        blob_data,
+                    ) catch {
+                        blob_data.deinit();
+                        const exception = @import("webidl").errors.Exception{
+                            .simple = .{ .type = .TypeError, .message = "Failed to create Blob wrapper" },
+                        };
+                        promise.reject(exception);
+                        return @ptrCast(promise);
                     };
-                    promise.reject(exception);
+
+                    // Fulfill promise with Blob instance
+                    promise.fulfill(blob_instance);
                 }
             },
         }
     } else {
         // Null body - create empty Blob
         const blob_data = try BlobData.init(internal.allocator, &[_]u8{}, mime_type);
-        blob_data.deinit();
-        const exception = @import("webidl").errors.Exception{
-            .simple = .{ .type = .TypeError, .message = "Blob WebIDL wrapper not yet implemented" },
+        errdefer blob_data.deinit();
+
+        const blob_instance = BlobImpl.createFromBlobData(
+            internal.allocator,
+            instance.ctx,
+            blob_data,
+        ) catch {
+            blob_data.deinit();
+            const exception = @import("webidl").errors.Exception{
+                .simple = .{ .type = .TypeError, .message = "Failed to create Blob wrapper" },
+            };
+            promise.reject(exception);
+            return @ptrCast(promise);
         };
-        promise.reject(exception);
+
+        // Fulfill promise with Blob instance
+        promise.fulfill(blob_instance);
     }
 
     return @ptrCast(promise);
