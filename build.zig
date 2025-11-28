@@ -322,6 +322,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     callbacks_mod.addImport("runtime", runtime_mod);
+    callbacks_mod.addImport("webidl", webidl_mod); // For Opt wrapper in optional parameters
 
     // ========================================================================
     // WEBIDL DICTIONARIES MODULE
@@ -1680,6 +1681,14 @@ pub fn build(b: *std.Build) void {
         }
     }.check;
 
+    // Helper to check if a filename is an integration test (requires mock server)
+    const isIntegrationTest = struct {
+        fn check(filename: []const u8) bool {
+            // Integration tests end with _integration_test.js
+            return std.mem.endsWith(u8, filename, "_integration_test.js");
+        }
+    }.check;
+
     // Collect all .js test files
     var test_dir = std.fs.cwd().openDir(v8_test_dir, .{ .iterate = true }) catch {
         std.debug.print("Warning: Could not open {s} directory\n", .{v8_test_dir});
@@ -1687,9 +1696,11 @@ pub fn build(b: *std.Build) void {
     };
     defer test_dir.close();
 
-    // Use a fixed-size buffer for collecting test files
+    // Use fixed-size buffers for collecting test files
     var test_files_buffer: [100][]const u8 = undefined;
     var test_files_count: usize = 0;
+    var integration_test_files_buffer: [20][]const u8 = undefined;
+    var integration_test_files_count: usize = 0;
 
     var dir_iterator = test_dir.iterate();
     while (dir_iterator.next() catch null) |entry| {
@@ -1698,11 +1709,22 @@ pub fn build(b: *std.Build) void {
         if (shouldExcludeFile(entry.name)) continue;
 
         const test_file_path = b.fmt("{s}/{s}", .{ v8_test_dir, entry.name });
-        test_files_buffer[test_files_count] = test_file_path;
-        test_files_count += 1;
 
-        if (test_files_count >= test_files_buffer.len) {
-            std.debug.print("Warning: Too many test files (max 100)\n", .{});
+        // Separate integration tests from unit tests
+        if (isIntegrationTest(entry.name)) {
+            if (integration_test_files_count < integration_test_files_buffer.len) {
+                integration_test_files_buffer[integration_test_files_count] = test_file_path;
+                integration_test_files_count += 1;
+            }
+        } else {
+            if (test_files_count < test_files_buffer.len) {
+                test_files_buffer[test_files_count] = test_file_path;
+                test_files_count += 1;
+            }
+        }
+
+        if (test_files_count >= test_files_buffer.len and integration_test_files_count >= integration_test_files_buffer.len) {
+            std.debug.print("Warning: Too many test files\n", .{});
             break;
         }
     }
@@ -1715,7 +1737,15 @@ pub fn build(b: *std.Build) void {
         }
     }.lessThan);
 
-    // Create test steps - run all tests independently (don't stop on first failure)
+    const integration_test_files = integration_test_files_buffer[0..integration_test_files_count];
+    std.mem.sort([]const u8, integration_test_files, {}, struct {
+        fn lessThan(_: void, lhs: []const u8, rhs: []const u8) bool {
+            return std.mem.lessThan(u8, lhs, rhs);
+        }
+    }.lessThan);
+
+    // Create test steps for regular (non-integration) tests
+    // These run independently without needing the mock server
     for (test_files) |test_file| {
         const run_test = b.addRunArtifact(test_runner_exe);
         run_test.addArtifactArg(repl_exe);
@@ -1725,8 +1755,53 @@ pub fn build(b: *std.Build) void {
         test_v8_step.dependOn(&run_test.step);
     }
 
+    // Create integration test runner (orchestrates mock server + tests)
+    const integration_test_runner_exe = b.addExecutable(.{
+        .name = "integration-test-runner",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/v8/integration_test_runner.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "mock_server", .module = mock_server_mod },
+                .{ .name = "http_mock_server", .module = b.createModule(.{
+                    .root_source_file = b.path("tests/v8/http_mock_server.zig"),
+                    .target = target,
+                    .optimize = optimize,
+                    .imports = &.{
+                        .{ .name = "mock_server", .module = mock_server_mod },
+                        .{ .name = "fetch", .module = fetch_mod },
+                    },
+                }) },
+            },
+        }),
+    });
+    b.installArtifact(integration_test_runner_exe);
+
+    // Create integration test step (requires mock HTTP server)
+    const test_v8_integration_step = b.step("test-v8-integration", "Run V8 integration tests with mock HTTP server");
+
+    if (integration_test_files.len > 0) {
+        // Run integration test orchestrator
+        const run_integration_tests = b.addRunArtifact(integration_test_runner_exe);
+        run_integration_tests.step.dependOn(b.getInstallStep());
+
+        // Add REPL executable as first argument
+        run_integration_tests.addArtifactArg(repl_exe);
+
+        // Add all integration test files as arguments
+        for (integration_test_files) |test_file| {
+            run_integration_tests.addArg(test_file);
+        }
+
+        test_v8_integration_step.dependOn(&run_integration_tests.step);
+    }
+
     // Note: Excluded files can be run manually:
     //   cat tests/v8/[test-file].js | ./zig-out/bin/repl
+    // Integration tests require mock server:
+    //   zig build run-mock-server (in separate terminal)
+    //   zig build test-v8-integration
 
     // ========================================================================
     // COMPREHENSIVE BUILD TEST

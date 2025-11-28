@@ -1933,7 +1933,8 @@ pub fn generateCallback(
     try w.writeAll("\n");
 
     // Write imports
-    try w.writeAll("const runtime = @import(\"runtime\");\n\n");
+    try w.writeAll("const runtime = @import(\"runtime\");\n");
+    try w.writeAll("const webidl = @import(\"webidl\");\n\n");
 
     // Generate callback function type
     try w.print("pub const {s} = *const fn (", .{callback.name});
