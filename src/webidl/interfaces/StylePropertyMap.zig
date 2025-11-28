@@ -1,11 +1,13 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const StylePropertyMapImpl = @import("impls").StylePropertyMap;
+const mixins = @import("mixins");
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const CSSStyleValue = @import("interfaces").CSSStyleValue;
 const USVString = @import("interfaces").USVString;
@@ -95,7 +97,7 @@ pub const StylePropertyMap = struct {
         return try StylePropertyMapImpl.call_delete(instance, property);
     }
 
-    pub fn call_append(instance: *runtime.Instance, property: runtime.USVString, values: *const anyopaque) anyerror!void {
+    pub fn call_append(instance: *runtime.Instance, property: runtime.USVString, values: []const *const anyopaque) anyerror!void {
         
         return try StylePropertyMapImpl.call_append(instance, property, values);
     }
@@ -104,7 +106,7 @@ pub const StylePropertyMap = struct {
         return try StylePropertyMapImpl.call_clear(instance);
     }
 
-    pub fn call_set(instance: *runtime.Instance, property: runtime.USVString, values: *const anyopaque) anyerror!void {
+    pub fn call_set(instance: *runtime.Instance, property: runtime.USVString, values: []const *const anyopaque) anyerror!void {
         
         return try StylePropertyMapImpl.call_set(instance, property, values);
     }

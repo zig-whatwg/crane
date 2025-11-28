@@ -1,11 +1,13 @@
 //! Generated from: writing-assistance-apis.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const WriterImpl = @import("impls").Writer;
+const mixins = @import("mixins");
 const DestroyableModel = @import("interfaces").DestroyableModel;
 const DOMString = @import("typedefs").DOMString;
 const WriterCreateOptions = @import("dictionaries").WriterCreateOptions;
@@ -172,17 +174,17 @@ pub const Writer = struct {
         return try WriterImpl.get_inputQuota(instance);
     }
 
-    pub fn call_availability(instance: *runtime.Instance, options: WriterCreateCoreOptions) anyerror!*const anyopaque {
+    pub fn call_availability(instance: *runtime.Instance, options: webidl.Opt(WriterCreateCoreOptions)) anyerror!*const anyopaque {
         
         return try WriterImpl.call_availability(instance, options);
     }
 
-    pub fn call_measureInputUsage(instance: *runtime.Instance, input: DOMString, options: WriterWriteOptions) anyerror!*const anyopaque {
+    pub fn call_measureInputUsage(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(WriterWriteOptions)) anyerror!*const anyopaque {
         
         return try WriterImpl.call_measureInputUsage(instance, input, options);
     }
 
-    pub fn call_write(instance: *runtime.Instance, input: DOMString, options: WriterWriteOptions) anyerror!*const anyopaque {
+    pub fn call_write(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(WriterWriteOptions)) anyerror!*const anyopaque {
         
         return try WriterImpl.call_write(instance, input, options);
     }
@@ -191,12 +193,12 @@ pub const Writer = struct {
         return try WriterImpl.call_destroy(instance);
     }
 
-    pub fn call_writeStreaming(instance: *runtime.Instance, input: DOMString, options: WriterWriteOptions) anyerror!*runtime.Instance {
+    pub fn call_writeStreaming(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(WriterWriteOptions)) anyerror!*runtime.Instance {
         
         return try WriterImpl.call_writeStreaming(instance, input, options);
     }
 
-    pub fn call_create(instance: *runtime.Instance, options: WriterCreateOptions) anyerror!*const anyopaque {
+    pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(WriterCreateOptions)) anyerror!*const anyopaque {
         
         return try WriterImpl.call_create(instance, options);
     }

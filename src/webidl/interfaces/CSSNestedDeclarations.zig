@@ -1,11 +1,13 @@
 //! Generated from: css-nesting.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const CSSNestedDeclarationsImpl = @import("impls").CSSNestedDeclarations;
+const mixins = @import("mixins");
 const CSSRule = @import("interfaces").CSSRule;
 const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;

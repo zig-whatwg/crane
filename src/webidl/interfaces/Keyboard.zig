@@ -1,11 +1,13 @@
 //! Generated from: keyboard-lock.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const KeyboardImpl = @import("impls").Keyboard;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const KeyboardLayoutMap = @import("interfaces").KeyboardLayoutMap;
@@ -115,7 +117,7 @@ pub const Keyboard = struct {
         return try KeyboardImpl.call_unlock(instance);
     }
 
-    pub fn call_lock(instance: *runtime.Instance, keyCodes: *const anyopaque) anyerror!*const anyopaque {
+    pub fn call_lock(instance: *runtime.Instance, keyCodes: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
         
         return try KeyboardImpl.call_lock(instance, keyCodes);
     }

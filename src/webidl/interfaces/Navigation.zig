@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const NavigationImpl = @import("impls").Navigation;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -209,12 +211,12 @@ pub const Navigation = struct {
         try NavigationImpl.set_oncurrententrychange(instance, value);
     }
 
-    pub fn call_reload(instance: *runtime.Instance, options: NavigationReloadOptions) anyerror!NavigationResult {
+    pub fn call_reload(instance: *runtime.Instance, options: webidl.Opt(NavigationReloadOptions)) anyerror!NavigationResult {
         
         return try NavigationImpl.call_reload(instance, options);
     }
 
-    pub fn call_back(instance: *runtime.Instance, options: NavigationOptions) anyerror!NavigationResult {
+    pub fn call_back(instance: *runtime.Instance, options: webidl.Opt(NavigationOptions)) anyerror!NavigationResult {
         
         return try NavigationImpl.call_back(instance, options);
     }
@@ -223,17 +225,17 @@ pub const Navigation = struct {
         return try NavigationImpl.call_entries(instance);
     }
 
-    pub fn call_navigate(instance: *runtime.Instance, url: runtime.USVString, options: NavigationNavigateOptions) anyerror!NavigationResult {
+    pub fn call_navigate(instance: *runtime.Instance, url: runtime.USVString, options: webidl.Opt(NavigationNavigateOptions)) anyerror!NavigationResult {
         
         return try NavigationImpl.call_navigate(instance, url, options);
     }
 
-    pub fn call_traverseTo(instance: *runtime.Instance, key: DOMString, options: NavigationOptions) anyerror!NavigationResult {
+    pub fn call_traverseTo(instance: *runtime.Instance, key: DOMString, options: webidl.Opt(NavigationOptions)) anyerror!NavigationResult {
         
         return try NavigationImpl.call_traverseTo(instance, key, options);
     }
 
-    pub fn call_forward(instance: *runtime.Instance, options: NavigationOptions) anyerror!NavigationResult {
+    pub fn call_forward(instance: *runtime.Instance, options: webidl.Opt(NavigationOptions)) anyerror!NavigationResult {
         
         return try NavigationImpl.call_forward(instance, options);
     }

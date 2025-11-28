@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const HTMLSlotElementImpl = @import("impls").HTMLSlotElement;
+const mixins = @import("mixins");
 const HTMLElement = @import("interfaces").HTMLElement;
 const AssignedNodesOptions = @import("dictionaries").AssignedNodesOptions;
 const DOMStringMap = @import("interfaces").DOMStringMap;
@@ -265,17 +267,17 @@ pub const HTMLSlotElement = struct {
         try HTMLSlotElementImpl.set_name(instance, value);
     }
 
-    pub fn call_assignedElements(instance: *runtime.Instance, options: AssignedNodesOptions) anyerror!*const anyopaque {
+    pub fn call_assignedElements(instance: *runtime.Instance, options: webidl.Opt(AssignedNodesOptions)) anyerror!*const anyopaque {
         
         return try HTMLSlotElementImpl.call_assignedElements(instance, options);
     }
 
-    pub fn call_assignedNodes(instance: *runtime.Instance, options: AssignedNodesOptions) anyerror!*const anyopaque {
+    pub fn call_assignedNodes(instance: *runtime.Instance, options: webidl.Opt(AssignedNodesOptions)) anyerror!*const anyopaque {
         
         return try HTMLSlotElementImpl.call_assignedNodes(instance, options);
     }
 
-    pub fn call_assign(instance: *runtime.Instance, nodes: *const anyopaque) anyerror!void {
+    pub fn call_assign(instance: *runtime.Instance, nodes: []const *const anyopaque) anyerror!void {
         
         return try HTMLSlotElementImpl.call_assign(instance, nodes);
     }

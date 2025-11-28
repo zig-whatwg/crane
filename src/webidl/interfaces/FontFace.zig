@@ -1,11 +1,13 @@
 //! Generated from: css-font-loading.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const FontFaceImpl = @import("impls").FontFace;
+const mixins = @import("mixins");
 const FontFaceLoadStatus = @import("enums").FontFaceLoadStatus;
 const CSSOMString = @import("typedefs").CSSOMString;
 const BufferSource = @import("typedefs").BufferSource;
@@ -163,7 +165,7 @@ pub const FontFace = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, family: CSSOMString, source: *const anyopaque, descriptors: FontFaceDescriptors) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, family: CSSOMString, source: *const anyopaque, descriptors: webidl.Opt(FontFaceDescriptors)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try FontFaceImpl.call_constructor(allocator, ctx, family, source, descriptors);
     }

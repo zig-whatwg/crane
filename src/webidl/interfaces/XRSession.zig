@@ -1,11 +1,13 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const XRSessionImpl = @import("impls").XRSession;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const XRTransientInputHitTestSource = @import("interfaces").XRTransientInputHitTestSource;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -466,7 +468,7 @@ pub const XRSession = struct {
         return try XRSessionImpl.call_cancelAnimationFrame(instance, handle);
     }
 
-    pub fn call_requestLightProbe(instance: *runtime.Instance, options: XRLightProbeInit) anyerror!*const anyopaque {
+    pub fn call_requestLightProbe(instance: *runtime.Instance, options: webidl.Opt(XRLightProbeInit)) anyerror!*const anyopaque {
         
         return try XRSessionImpl.call_requestLightProbe(instance, options);
     }
@@ -494,7 +496,7 @@ pub const XRSession = struct {
         return try XRSessionImpl.call_requestHitTestSource(instance, options);
     }
 
-    pub fn call_updateRenderState(instance: *runtime.Instance, state: XRRenderStateInit) anyerror!void {
+    pub fn call_updateRenderState(instance: *runtime.Instance, state: webidl.Opt(XRRenderStateInit)) anyerror!void {
         
         return try XRSessionImpl.call_updateRenderState(instance, state);
     }

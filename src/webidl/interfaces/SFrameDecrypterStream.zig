@@ -1,11 +1,13 @@
 //! Generated from: webrtc-encoded-transform.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const SFrameDecrypterStreamImpl = @import("impls").SFrameDecrypterStream;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const GenericTransformStream = @import("interfaces").GenericTransformStream;
 const SFrameKeyManagement = @import("interfaces").SFrameKeyManagement;
@@ -117,7 +119,7 @@ pub const SFrameDecrypterStream = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: SFrameTransformOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(SFrameTransformOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try SFrameDecrypterStreamImpl.call_constructor(allocator, ctx, options);
     }
@@ -138,7 +140,7 @@ pub const SFrameDecrypterStream = struct {
         try SFrameDecrypterStreamImpl.set_onerror(instance, value);
     }
 
-    pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyID: CryptoKeyID) anyerror!*const anyopaque {
+    pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyID: webidl.Opt(CryptoKeyID)) anyerror!*const anyopaque {
         
         return try SFrameDecrypterStreamImpl.call_setEncryptionKey(instance, key, keyID);
     }

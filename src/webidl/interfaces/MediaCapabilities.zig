@@ -1,11 +1,13 @@
 //! Generated from: media-capabilities.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const MediaCapabilitiesImpl = @import("impls").MediaCapabilities;
+const mixins = @import("mixins");
 const MediaCapabilitiesEncodingInfo = @import("dictionaries").MediaCapabilitiesEncodingInfo;
 const MediaEncodingConfiguration = @import("dictionaries").MediaEncodingConfiguration;
 const MediaDecodingConfiguration = @import("dictionaries").MediaDecodingConfiguration;

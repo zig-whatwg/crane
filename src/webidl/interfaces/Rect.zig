@@ -1,11 +1,13 @@
 //! Generated from: DOM-Style.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const RectImpl = @import("impls").Rect;
+const mixins = @import("mixins");
 const CSSPrimitiveValue = @import("interfaces").CSSPrimitiveValue;
 
 pub const Rect = struct {

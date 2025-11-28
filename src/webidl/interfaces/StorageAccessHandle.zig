@@ -1,11 +1,13 @@
 //! Generated from: saa-non-cookie-storage.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const StorageAccessHandleImpl = @import("impls").StorageAccessHandle;
+const mixins = @import("mixins");
 const LockManager = @import("interfaces").LockManager;
 const FileSystemDirectoryHandle = @import("interfaces").FileSystemDirectoryHandle;
 const Blob = @import("interfaces").Blob;
@@ -162,7 +164,7 @@ pub const StorageAccessHandle = struct {
         return try StorageAccessHandleImpl.call_createObjectURL(instance, obj);
     }
 
-    pub fn call_SharedWorker(instance: *runtime.Instance, scriptURL: runtime.USVString, options: *const anyopaque) anyerror!*runtime.Instance {
+    pub fn call_SharedWorker(instance: *runtime.Instance, scriptURL: runtime.USVString, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
         
         return try StorageAccessHandleImpl.call_SharedWorker(instance, scriptURL, options);
     }

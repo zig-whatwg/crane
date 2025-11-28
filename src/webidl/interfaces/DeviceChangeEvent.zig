@@ -1,11 +1,13 @@
 //! Generated from: mediacapture-streams.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const DeviceChangeEventImpl = @import("impls").DeviceChangeEvent;
+const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
 const MediaDeviceInfo = @import("interfaces").MediaDeviceInfo;
 const EventTarget = @import("interfaces").EventTarget;
@@ -95,7 +97,7 @@ pub const DeviceChangeEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: DeviceChangeEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(DeviceChangeEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try DeviceChangeEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }

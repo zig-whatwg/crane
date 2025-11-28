@@ -1,11 +1,13 @@
 //! Generated from: performance-timeline.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const PerformanceObserverImpl = @import("impls").PerformanceObserver;
+const mixins = @import("mixins");
 const PerformanceEntryList = @import("typedefs").PerformanceEntryList;
 const PerformanceObserverInit = @import("dictionaries").PerformanceObserverInit;
 const DOMString = @import("typedefs").DOMString;
@@ -110,7 +112,7 @@ pub const PerformanceObserver = struct {
         return value;
     }
 
-    pub fn call_observe(instance: *runtime.Instance, options: PerformanceObserverInit) anyerror!void {
+    pub fn call_observe(instance: *runtime.Instance, options: webidl.Opt(PerformanceObserverInit)) anyerror!void {
         
         return try PerformanceObserverImpl.call_observe(instance, options);
     }

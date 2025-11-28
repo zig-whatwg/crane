@@ -1,11 +1,13 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const EventImpl = @import("impls").Event;
+const mixins = @import("mixins");
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
 const EventTarget = @import("interfaces").EventTarget;
@@ -184,7 +186,7 @@ pub const Event = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: EventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(EventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try EventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
@@ -254,7 +256,7 @@ pub const Event = struct {
         return try EventImpl.call_stopImmediatePropagation(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool)) anyerror!void {
         
         return try EventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }

@@ -1,11 +1,13 @@
 //! Generated from: edit-context.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const TextFormatUpdateEventImpl = @import("impls").TextFormatUpdateEvent;
+const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
 const TextFormat = @import("interfaces").TextFormat;
 const TextFormatUpdateEventInit = @import("dictionaries").TextFormatUpdateEventInit;
@@ -88,7 +90,7 @@ pub const TextFormatUpdateEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, options: TextFormatUpdateEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, options: webidl.Opt(TextFormatUpdateEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try TextFormatUpdateEventImpl.call_constructor(allocator, ctx, @"type", options);
     }

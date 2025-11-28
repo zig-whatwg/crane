@@ -1,11 +1,13 @@
 //! Generated from: shared-storage.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const SharedStorageDeleteMethodImpl = @import("impls").SharedStorageDeleteMethod;
+const mixins = @import("mixins");
 const SharedStorageModifierMethod = @import("interfaces").SharedStorageModifierMethod;
 const SharedStorageModifierMethodOptions = @import("dictionaries").SharedStorageModifierMethodOptions;
 const DOMString = @import("typedefs").DOMString;
@@ -78,7 +80,7 @@ pub const SharedStorageDeleteMethod = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, key: DOMString, options: SharedStorageModifierMethodOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, key: DOMString, options: webidl.Opt(SharedStorageModifierMethodOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try SharedStorageDeleteMethodImpl.call_constructor(allocator, ctx, key, options);
     }

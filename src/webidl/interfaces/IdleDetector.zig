@@ -1,11 +1,13 @@
 //! Generated from: idle-detection.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const IdleDetectorImpl = @import("impls").IdleDetector;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -140,7 +142,7 @@ pub const IdleDetector = struct {
         try IdleDetectorImpl.set_onchange(instance, value);
     }
 
-    pub fn call_start(instance: *runtime.Instance, options: IdleOptions) anyerror!*const anyopaque {
+    pub fn call_start(instance: *runtime.Instance, options: webidl.Opt(IdleOptions)) anyerror!*const anyopaque {
         
         return try IdleDetectorImpl.call_start(instance, options);
     }

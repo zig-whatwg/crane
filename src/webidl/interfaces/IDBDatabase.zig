@@ -1,11 +1,13 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const IDBDatabaseImpl = @import("impls").IDBDatabase;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -186,14 +188,14 @@ pub const IDBDatabase = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_transaction(instance: *runtime.Instance, storeNames: *const anyopaque, mode: IDBTransactionMode, options: IDBTransactionOptions) anyerror!*runtime.Instance {
+    pub fn call_transaction(instance: *runtime.Instance, storeNames: *const anyopaque, mode: webidl.Opt(IDBTransactionMode), options: webidl.Opt(IDBTransactionOptions)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBDatabaseImpl.call_transaction(instance, storeNames, mode, options);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createObjectStore(instance: *runtime.Instance, name: DOMString, options: IDBObjectStoreParameters) anyerror!*runtime.Instance {
+    pub fn call_createObjectStore(instance: *runtime.Instance, name: DOMString, options: webidl.Opt(IDBObjectStoreParameters)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBDatabaseImpl.call_createObjectStore(instance, name, options);

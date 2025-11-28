@@ -1,11 +1,13 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const GPUBufferImpl = @import("impls").GPUBuffer;
+const mixins = @import("mixins");
 const GPUObjectBase = @import("interfaces").GPUObjectBase;
 const GPUSize64Out = @import("typedefs").GPUSize64Out;
 const GPUBufferMapState = @import("enums").GPUBufferMapState;
@@ -140,12 +142,12 @@ pub const GPUBuffer = struct {
         return try GPUBufferImpl.call_unmap(instance);
     }
 
-    pub fn call_getMappedRange(instance: *runtime.Instance, offset: GPUSize64, size: GPUSize64) anyerror!*const anyopaque {
+    pub fn call_getMappedRange(instance: *runtime.Instance, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!*const anyopaque {
         
         return try GPUBufferImpl.call_getMappedRange(instance, offset, size);
     }
 
-    pub fn call_mapAsync(instance: *runtime.Instance, mode: GPUMapModeFlags, offset: GPUSize64, size: GPUSize64) anyerror!*const anyopaque {
+    pub fn call_mapAsync(instance: *runtime.Instance, mode: GPUMapModeFlags, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!*const anyopaque {
         
         return try GPUBufferImpl.call_mapAsync(instance, mode, offset, size);
     }

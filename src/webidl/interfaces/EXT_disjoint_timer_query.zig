@@ -1,11 +1,13 @@
 //! Generated from: EXT_disjoint_timer_query.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const EXT_disjoint_timer_queryImpl = @import("impls").EXT_disjoint_timer_query;
+const mixins = @import("mixins");
 const GLenum = @import("typedefs").GLenum;
 const WebGLTimerQueryEXT = @import("interfaces").WebGLTimerQueryEXT;
 
@@ -175,7 +177,7 @@ pub const EXT_disjoint_timer_query = struct {
     }
 
     /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_isQueryEXT(instance: *runtime.Instance, query: *runtime.Instance) anyerror!bool {
+    pub fn call_isQueryEXT(instance: *runtime.Instance, query: ?*runtime.Instance) anyerror!bool {
         
         return try EXT_disjoint_timer_queryImpl.call_isQueryEXT(instance, query);
     }
@@ -195,7 +197,7 @@ pub const EXT_disjoint_timer_query = struct {
         return try EXT_disjoint_timer_queryImpl.call_getQueryEXT(instance, target, pname);
     }
 
-    pub fn call_deleteQueryEXT(instance: *runtime.Instance, query: *runtime.Instance) anyerror!void {
+    pub fn call_deleteQueryEXT(instance: *runtime.Instance, query: ?*runtime.Instance) anyerror!void {
         
         return try EXT_disjoint_timer_queryImpl.call_deleteQueryEXT(instance, query);
     }

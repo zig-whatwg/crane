@@ -1,11 +1,13 @@
 //! Generated from: EXT_disjoint_timer_query_webgl2.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const EXT_disjoint_timer_query_webgl2Impl = @import("impls").EXT_disjoint_timer_query_webgl2;
+const mixins = @import("mixins");
 const GLenum = @import("typedefs").GLenum;
 const WebGLQuery = @import("interfaces").WebGLQuery;
 

@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const CanvasDrawPathImpl = @import("impls").CanvasDrawPath;
+const mixins = @import("mixins");
 const CanvasFillRule = @import("enums").CanvasFillRule;
 const Path2D = @import("interfaces").Path2D;
 
@@ -97,12 +99,12 @@ pub const CanvasDrawPath = struct {
         CanvasDrawPathImpl.deinit(instance);
     }
 
-    pub fn call_clip(instance: *runtime.Instance, fillRule: CanvasFillRule) anyerror!void {
+    pub fn call_clip(instance: *runtime.Instance, fillRule: webidl.Opt(CanvasFillRule)) anyerror!void {
         
         return try CanvasDrawPathImpl.call_clip(instance, fillRule);
     }
 
-    pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule: CanvasFillRule) anyerror!bool {
+    pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule: webidl.Opt(CanvasFillRule)) anyerror!bool {
         
         return try CanvasDrawPathImpl.call_isPointInPath(instance, x, y, fillRule);
     }
@@ -116,7 +118,7 @@ pub const CanvasDrawPath = struct {
         return try CanvasDrawPathImpl.call_beginPath(instance);
     }
 
-    pub fn call_fill(instance: *runtime.Instance, fillRule: CanvasFillRule) anyerror!void {
+    pub fn call_fill(instance: *runtime.Instance, fillRule: webidl.Opt(CanvasFillRule)) anyerror!void {
         
         return try CanvasDrawPathImpl.call_fill(instance, fillRule);
     }

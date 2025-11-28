@@ -1,11 +1,13 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const GPUPipelineErrorImpl = @import("impls").GPUPipelineError;
+const mixins = @import("mixins");
 const DOMException = @import("interfaces").DOMException;
 const GPUPipelineErrorReason = @import("enums").GPUPipelineErrorReason;
 const GPUPipelineErrorInit = @import("dictionaries").GPUPipelineErrorInit;
@@ -86,7 +88,7 @@ pub const GPUPipelineError = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, message: DOMString, options: GPUPipelineErrorInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, message: webidl.Opt(DOMString), options: GPUPipelineErrorInit) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try GPUPipelineErrorImpl.call_constructor(allocator, ctx, message, options);
     }

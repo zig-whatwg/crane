@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const NavigateEventImpl = @import("impls").NavigateEvent;
+const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
 const NavigationType = @import("enums").NavigationType;
 const NavigationDestination = @import("interfaces").NavigationDestination;
@@ -194,7 +196,7 @@ pub const NavigateEvent = struct {
         return try NavigateEventImpl.call_scroll(instance);
     }
 
-    pub fn call_intercept(instance: *runtime.Instance, options: NavigationInterceptOptions) anyerror!void {
+    pub fn call_intercept(instance: *runtime.Instance, options: webidl.Opt(NavigationInterceptOptions)) anyerror!void {
         
         return try NavigateEventImpl.call_intercept(instance, options);
     }

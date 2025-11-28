@@ -1,11 +1,13 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const ShadowRootImpl = @import("impls").ShadowRoot;
+const mixins = @import("mixins");
 const DocumentFragment = @import("interfaces").DocumentFragment;
 const DocumentOrShadowRoot = @import("interfaces").DocumentOrShadowRoot;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -290,7 +292,7 @@ pub const ShadowRoot = struct {
         return try ShadowRootImpl.get_activeElement(instance);
     }
 
-    pub fn call_getHTML(instance: *runtime.Instance, options: GetHTMLOptions) anyerror!DOMString {
+    pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(GetHTMLOptions)) anyerror!DOMString {
         
         return try ShadowRootImpl.call_getHTML(instance, options);
     }

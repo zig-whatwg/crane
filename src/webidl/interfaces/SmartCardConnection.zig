@@ -1,11 +1,13 @@
 //! Generated from: web-smart-card.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const SmartCardConnectionImpl = @import("impls").SmartCardConnection;
+const mixins = @import("mixins");
 const SmartCardTransactionOptions = @import("dictionaries").SmartCardTransactionOptions;
 const SmartCardTransactionCallback = @import("callbacks").SmartCardTransactionCallback;
 const SmartCardDisposition = @import("enums").SmartCardDisposition;
@@ -105,7 +107,7 @@ pub const SmartCardConnection = struct {
         SmartCardConnectionImpl.deinit(instance);
     }
 
-    pub fn call_startTransaction(instance: *runtime.Instance, transaction: SmartCardTransactionCallback, options: SmartCardTransactionOptions) anyerror!*const anyopaque {
+    pub fn call_startTransaction(instance: *runtime.Instance, transaction: SmartCardTransactionCallback, options: webidl.Opt(SmartCardTransactionOptions)) anyerror!*const anyopaque {
         
         return try SmartCardConnectionImpl.call_startTransaction(instance, transaction, options);
     }
@@ -117,7 +119,7 @@ pub const SmartCardConnection = struct {
         return try SmartCardConnectionImpl.call_getAttribute(instance, tag);
     }
 
-    pub fn call_transmit(instance: *runtime.Instance, sendBuffer: BufferSource, options: SmartCardTransmitOptions) anyerror!*const anyopaque {
+    pub fn call_transmit(instance: *runtime.Instance, sendBuffer: BufferSource, options: webidl.Opt(SmartCardTransmitOptions)) anyerror!*const anyopaque {
         
         return try SmartCardConnectionImpl.call_transmit(instance, sendBuffer, options);
     }
@@ -126,7 +128,7 @@ pub const SmartCardConnection = struct {
         return try SmartCardConnectionImpl.call_status(instance);
     }
 
-    pub fn call_disconnect(instance: *runtime.Instance, disposition: SmartCardDisposition) anyerror!*const anyopaque {
+    pub fn call_disconnect(instance: *runtime.Instance, disposition: webidl.Opt(SmartCardDisposition)) anyerror!*const anyopaque {
         
         return try SmartCardConnectionImpl.call_disconnect(instance, disposition);
     }

@@ -1,11 +1,13 @@
 //! Generated from: OES_standard_derivatives.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const OES_standard_derivativesImpl = @import("impls").OES_standard_derivatives;
+const mixins = @import("mixins");
 const GLenum = @import("typedefs").GLenum;
 
 pub const OES_standard_derivatives = struct {

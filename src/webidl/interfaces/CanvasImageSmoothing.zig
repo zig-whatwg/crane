@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const CanvasImageSmoothingImpl = @import("impls").CanvasImageSmoothing;
+const mixins = @import("mixins");
 const ImageSmoothingQuality = @import("enums").ImageSmoothingQuality;
 
 pub const CanvasImageSmoothing = struct {

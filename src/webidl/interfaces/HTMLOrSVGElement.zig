@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const HTMLOrSVGElementImpl = @import("impls").HTMLOrSVGElement;
+const mixins = @import("mixins");
 const DOMStringMap = @import("interfaces").DOMStringMap;
 const DOMString = @import("typedefs").DOMString;
 const FocusOptions = @import("dictionaries").FocusOptions;
@@ -150,7 +152,7 @@ pub const HTMLOrSVGElement = struct {
         return try HTMLOrSVGElementImpl.call_blur(instance);
     }
 
-    pub fn call_focus(instance: *runtime.Instance, options: FocusOptions) anyerror!void {
+    pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(FocusOptions)) anyerror!void {
         
         return try HTMLOrSVGElementImpl.call_focus(instance, options);
     }

@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const CanvasImageDataImpl = @import("impls").CanvasImageData;
+const mixins = @import("mixins");
 const ImageDataSettings = @import("dictionaries").ImageDataSettings;
 const ImageData = @import("interfaces").ImageData;
 
@@ -82,7 +84,7 @@ pub const CanvasImageData = struct {
         CanvasImageDataImpl.deinit(instance);
     }
 
-    pub fn call_getImageData(instance: *runtime.Instance, sx: i32, sy: i32, sw: i32, sh: i32, settings: ImageDataSettings) anyerror!*runtime.Instance {
+    pub fn call_getImageData(instance: *runtime.Instance, sx: i32, sy: i32, sw: i32, sh: i32, settings: webidl.Opt(ImageDataSettings)) anyerror!*runtime.Instance {
         // [EnforceRange] on sx
         if (!runtime.isInRange(i32, sx)) return error.TypeError;
         // [EnforceRange] on sy
@@ -95,7 +97,7 @@ pub const CanvasImageData = struct {
         return try CanvasImageDataImpl.call_getImageData(instance, sx, sy, sw, sh, settings);
     }
 
-    pub fn call_createImageData(instance: *runtime.Instance, sw: i32, sh: i32, settings: ImageDataSettings) anyerror!*runtime.Instance {
+    pub fn call_createImageData(instance: *runtime.Instance, sw: i32, sh: i32, settings: webidl.Opt(ImageDataSettings)) anyerror!*runtime.Instance {
         // [EnforceRange] on sw
         if (!runtime.isInRange(i32, sw)) return error.TypeError;
         // [EnforceRange] on sh

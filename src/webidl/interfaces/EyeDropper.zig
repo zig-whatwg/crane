@@ -1,11 +1,13 @@
 //! Generated from: eyedropper-api.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const EyeDropperImpl = @import("impls").EyeDropper;
+const mixins = @import("mixins");
 const ColorSelectionOptions = @import("dictionaries").ColorSelectionOptions;
 const ColorSelectionResult = @import("dictionaries").ColorSelectionResult;
 
@@ -84,7 +86,7 @@ pub const EyeDropper = struct {
         return try EyeDropperImpl.call_constructor(allocator, ctx);
     }
 
-    pub fn call_open(instance: *runtime.Instance, options: ColorSelectionOptions) anyerror!*const anyopaque {
+    pub fn call_open(instance: *runtime.Instance, options: webidl.Opt(ColorSelectionOptions)) anyerror!*const anyopaque {
         
         return try EyeDropperImpl.call_open(instance, options);
     }

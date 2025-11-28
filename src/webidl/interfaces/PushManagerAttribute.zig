@@ -1,11 +1,13 @@
 //! Generated from: push-api.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const PushManagerAttributeImpl = @import("impls").PushManagerAttribute;
+const mixins = @import("mixins");
 const PushManager = @import("interfaces").PushManager;
 
 pub const PushManagerAttribute = struct {

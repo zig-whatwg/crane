@@ -1,11 +1,13 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const ClientImpl = @import("impls").Client;
+const mixins = @import("mixins");
 const FrameType = @import("enums").FrameType;
 const StructuredSerializeOptions = @import("dictionaries").StructuredSerializeOptions;
 const ClientLifecycleState = @import("enums").ClientLifecycleState;

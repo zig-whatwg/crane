@@ -1,11 +1,13 @@
 //! Generated from: webgl2.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const WebGLSyncImpl = @import("impls").WebGLSync;
+const mixins = @import("mixins");
 const WebGLObject = @import("interfaces").WebGLObject;
 const USVString = @import("interfaces").USVString;
 

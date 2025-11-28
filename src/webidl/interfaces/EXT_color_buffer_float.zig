@@ -1,11 +1,13 @@
 //! Generated from: EXT_color_buffer_float.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const EXT_color_buffer_floatImpl = @import("impls").EXT_color_buffer_float;
+const mixins = @import("mixins");
 
 pub const EXT_color_buffer_float = struct {
     pub const Meta = struct {

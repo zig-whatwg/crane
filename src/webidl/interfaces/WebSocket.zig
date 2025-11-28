@@ -1,11 +1,13 @@
 //! Generated from: websockets.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const WebSocketImpl = @import("impls").WebSocket;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -183,7 +185,7 @@ pub const WebSocket = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url: runtime.USVString, protocols: *const anyopaque) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url: runtime.USVString, protocols: webidl.Opt(*const anyopaque)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try WebSocketImpl.call_constructor(allocator, ctx, url, protocols);
     }
@@ -248,7 +250,7 @@ pub const WebSocket = struct {
         try WebSocketImpl.set_binaryType(instance, value);
     }
 
-    pub fn call_close(instance: *runtime.Instance, code: u16, reason: runtime.USVString) anyerror!void {
+    pub fn call_close(instance: *runtime.Instance, code: webidl.Opt(u16), reason: webidl.Opt(runtime.USVString)) anyerror!void {
         // [Clamp] on code
         const clamped_code = runtime.clamp(u16, code);
         

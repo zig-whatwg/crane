@@ -1,11 +1,13 @@
 //! Generated from: svg-paths.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const SVGPathDataImpl = @import("impls").SVGPathData;
+const mixins = @import("mixins");
 const SVGPathDataSettings = @import("dictionaries").SVGPathDataSettings;
 const SVGPathSegment = @import("interfaces").SVGPathSegment;
 
@@ -80,7 +82,7 @@ pub const SVGPathData = struct {
         return try SVGPathDataImpl.call_setPathData(instance, pathData);
     }
 
-    pub fn call_getPathData(instance: *runtime.Instance, settings: SVGPathDataSettings) anyerror!*const anyopaque {
+    pub fn call_getPathData(instance: *runtime.Instance, settings: webidl.Opt(SVGPathDataSettings)) anyerror!*const anyopaque {
         
         return try SVGPathDataImpl.call_getPathData(instance, settings);
     }

@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const HTMLTableSectionElementImpl = @import("impls").HTMLTableSectionElement;
+const mixins = @import("mixins");
 const HTMLElement = @import("interfaces").HTMLElement;
 const DOMStringMap = @import("interfaces").DOMStringMap;
 const CSSOMString = @import("typedefs").CSSOMString;
@@ -346,7 +348,7 @@ pub const HTMLTableSectionElement = struct {
         return try HTMLTableSectionElementImpl.call_deleteRow(instance, index);
     }
 
-    pub fn call_insertRow(instance: *runtime.Instance, index: i32) anyerror!*runtime.Instance {
+    pub fn call_insertRow(instance: *runtime.Instance, index: webidl.Opt(i32)) anyerror!*runtime.Instance {
         
         return try HTMLTableSectionElementImpl.call_insertRow(instance, index);
     }

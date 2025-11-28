@@ -1,11 +1,13 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const GPUCanvasContextImpl = @import("impls").GPUCanvasContext;
+const mixins = @import("mixins");
 const HTMLCanvasElement = @import("interfaces").HTMLCanvasElement;
 const OffscreenCanvas = @import("interfaces").OffscreenCanvas;
 const GPUCanvasConfiguration = @import("dictionaries").GPUCanvasConfiguration;

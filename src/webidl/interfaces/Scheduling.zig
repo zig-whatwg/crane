@@ -1,11 +1,13 @@
 //! Generated from: is-input-pending.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const SchedulingImpl = @import("impls").Scheduling;
+const mixins = @import("mixins");
 const IsInputPendingOptions = @import("dictionaries").IsInputPendingOptions;
 
 pub const Scheduling = struct {
@@ -76,7 +78,7 @@ pub const Scheduling = struct {
         SchedulingImpl.deinit(instance);
     }
 
-    pub fn call_isInputPending(instance: *runtime.Instance, isInputPendingOptions: IsInputPendingOptions) anyerror!bool {
+    pub fn call_isInputPending(instance: *runtime.Instance, isInputPendingOptions: webidl.Opt(IsInputPendingOptions)) anyerror!bool {
         
         return try SchedulingImpl.call_isInputPending(instance, isInputPendingOptions);
     }

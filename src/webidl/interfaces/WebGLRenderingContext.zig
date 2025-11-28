@@ -1,11 +1,13 @@
 //! Generated from: webgl1.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const WebGLRenderingContextImpl = @import("impls").WebGLRenderingContext;
+const mixins = @import("mixins");
 const WebGLRenderingContextBase = @import("interfaces").WebGLRenderingContextBase;
 const WebGLRenderingContextOverloads = @import("interfaces").WebGLRenderingContextOverloads;
 const WebGLActiveInfo = @import("interfaces").WebGLActiveInfo;
@@ -2696,7 +2698,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_vertexAttrib4f(instance, index, x, y, z, w);
     }
 
-    pub fn call_uniformMatrix4fv(instance: *runtime.Instance, location: *runtime.Instance, transpose: GLboolean, value: Float32List) anyerror!void {
+    pub fn call_uniformMatrix4fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: GLboolean, value: Float32List) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_uniformMatrix4fv(instance, location, transpose, value);
     }
@@ -2706,12 +2708,12 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_vertexAttribPointer(instance, index, size, @"type", normalized, stride, offset);
     }
 
-    pub fn call_uniform4f(instance: *runtime.Instance, location: *runtime.Instance, x: GLfloat, y: GLfloat, z: GLfloat, w: GLfloat) anyerror!void {
+    pub fn call_uniform4f(instance: *runtime.Instance, location: ?*runtime.Instance, x: GLfloat, y: GLfloat, z: GLfloat, w: GLfloat) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_uniform4f(instance, location, x, y, z, w);
     }
 
-    pub fn call_readPixels(instance: *runtime.Instance, x: GLint, y: GLint, width: GLsizei, height: GLsizei, format: GLenum, @"type": GLenum, pixels: ArrayBufferView) anyerror!void {
+    pub fn call_readPixels(instance: *runtime.Instance, x: GLint, y: GLint, width: GLsizei, height: GLsizei, format: GLenum, @"type": GLenum, pixels: ?ArrayBufferView) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_readPixels(instance, x, y, width, height, format, @"type", pixels);
     }
@@ -2731,7 +2733,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_getActiveAttrib(instance, program, index);
     }
 
-    pub fn call_texImage2D(instance: *runtime.Instance, target: GLenum, level: GLint, internalformat: GLint, width: GLsizei, height: GLsizei, border: GLint, format: GLenum, @"type": GLenum, pixels: ArrayBufferView) anyerror!void {
+    pub fn call_texImage2D(instance: *runtime.Instance, target: GLenum, level: GLint, internalformat: GLint, width: GLsizei, height: GLsizei, border: GLint, format: GLenum, @"type": GLenum, pixels: ?ArrayBufferView) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_texImage2D(instance, target, level, internalformat, width, height, border, format, @"type", pixels);
     }
@@ -2757,7 +2759,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_copyTexSubImage2D(instance, target, level, xoffset, yoffset, x, y, width, height);
     }
 
-    pub fn call_uniform3fv(instance: *runtime.Instance, location: *runtime.Instance, v: Float32List) anyerror!void {
+    pub fn call_uniform3fv(instance: *runtime.Instance, location: ?*runtime.Instance, v: Float32List) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_uniform3fv(instance, location, v);
     }
@@ -2768,7 +2770,7 @@ pub const WebGLRenderingContext = struct {
     }
 
     /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_isRenderbuffer(instance: *runtime.Instance, renderbuffer: *runtime.Instance) anyerror!GLboolean {
+    pub fn call_isRenderbuffer(instance: *runtime.Instance, renderbuffer: ?*runtime.Instance) anyerror!GLboolean {
         
         return try WebGLRenderingContextImpl.call_isRenderbuffer(instance, renderbuffer);
     }
@@ -2783,17 +2785,17 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_clear(instance, mask);
     }
 
-    pub fn call_uniformMatrix2fv(instance: *runtime.Instance, location: *runtime.Instance, transpose: GLboolean, value: Float32List) anyerror!void {
+    pub fn call_uniformMatrix2fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: GLboolean, value: Float32List) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_uniformMatrix2fv(instance, location, transpose, value);
     }
 
-    pub fn call_uniform4fv(instance: *runtime.Instance, location: *runtime.Instance, v: Float32List) anyerror!void {
+    pub fn call_uniform4fv(instance: *runtime.Instance, location: ?*runtime.Instance, v: Float32List) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_uniform4fv(instance, location, v);
     }
 
-    pub fn call_deleteTexture(instance: *runtime.Instance, texture: *runtime.Instance) anyerror!void {
+    pub fn call_deleteTexture(instance: *runtime.Instance, texture: ?*runtime.Instance) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_deleteTexture(instance, texture);
     }
@@ -2803,7 +2805,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_getShaderSource(instance, shader);
     }
 
-    pub fn call_uniform2fv(instance: *runtime.Instance, location: *runtime.Instance, v: Float32List) anyerror!void {
+    pub fn call_uniform2fv(instance: *runtime.Instance, location: ?*runtime.Instance, v: Float32List) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_uniform2fv(instance, location, v);
     }
@@ -2843,13 +2845,13 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_drawElements(instance, mode, count, @"type", offset);
     }
 
-    pub fn call_bindBuffer(instance: *runtime.Instance, target: GLenum, buffer: *runtime.Instance) anyerror!void {
+    pub fn call_bindBuffer(instance: *runtime.Instance, target: GLenum, buffer: ?*runtime.Instance) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_bindBuffer(instance, target, buffer);
     }
 
     /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_isShader(instance: *runtime.Instance, shader: *runtime.Instance) anyerror!GLboolean {
+    pub fn call_isShader(instance: *runtime.Instance, shader: ?*runtime.Instance) anyerror!GLboolean {
         
         return try WebGLRenderingContextImpl.call_isShader(instance, shader);
     }
@@ -2914,12 +2916,12 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_blendFuncSeparate(instance, srcRGB, dstRGB, srcAlpha, dstAlpha);
     }
 
-    pub fn call_uniform3iv(instance: *runtime.Instance, location: *runtime.Instance, v: Int32List) anyerror!void {
+    pub fn call_uniform3iv(instance: *runtime.Instance, location: ?*runtime.Instance, v: Int32List) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_uniform3iv(instance, location, v);
     }
 
-    pub fn call_texSubImage2D(instance: *runtime.Instance, target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, width: GLsizei, height: GLsizei, format: GLenum, @"type": GLenum, pixels: ArrayBufferView) anyerror!void {
+    pub fn call_texSubImage2D(instance: *runtime.Instance, target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, width: GLsizei, height: GLsizei, format: GLenum, @"type": GLenum, pixels: ?ArrayBufferView) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_texSubImage2D(instance, target, level, xoffset, yoffset, width, height, format, @"type", pixels);
     }
@@ -2939,7 +2941,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_getError(instance);
     }
 
-    pub fn call_deleteRenderbuffer(instance: *runtime.Instance, renderbuffer: *runtime.Instance) anyerror!void {
+    pub fn call_deleteRenderbuffer(instance: *runtime.Instance, renderbuffer: ?*runtime.Instance) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_deleteRenderbuffer(instance, renderbuffer);
     }
@@ -2959,7 +2961,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_stencilFunc(instance, func, ref, mask);
     }
 
-    pub fn call_framebufferTexture2D(instance: *runtime.Instance, target: GLenum, attachment: GLenum, textarget: GLenum, texture: *runtime.Instance, level: GLint) anyerror!void {
+    pub fn call_framebufferTexture2D(instance: *runtime.Instance, target: GLenum, attachment: GLenum, textarget: GLenum, texture: ?*runtime.Instance, level: GLint) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_framebufferTexture2D(instance, target, attachment, textarget, texture, level);
     }
@@ -2968,7 +2970,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_createProgram(instance);
     }
 
-    pub fn call_uniform1fv(instance: *runtime.Instance, location: *runtime.Instance, v: Float32List) anyerror!void {
+    pub fn call_uniform1fv(instance: *runtime.Instance, location: ?*runtime.Instance, v: Float32List) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_uniform1fv(instance, location, v);
     }
@@ -2983,12 +2985,12 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_createShader(instance, @"type");
     }
 
-    pub fn call_deleteProgram(instance: *runtime.Instance, program: *runtime.Instance) anyerror!void {
+    pub fn call_deleteProgram(instance: *runtime.Instance, program: ?*runtime.Instance) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_deleteProgram(instance, program);
     }
 
-    pub fn call_useProgram(instance: *runtime.Instance, program: *runtime.Instance) anyerror!void {
+    pub fn call_useProgram(instance: *runtime.Instance, program: ?*runtime.Instance) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_useProgram(instance, program);
     }
@@ -3014,17 +3016,17 @@ pub const WebGLRenderingContext = struct {
     }
 
     /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_isBuffer(instance: *runtime.Instance, buffer: *runtime.Instance) anyerror!GLboolean {
+    pub fn call_isBuffer(instance: *runtime.Instance, buffer: ?*runtime.Instance) anyerror!GLboolean {
         
         return try WebGLRenderingContextImpl.call_isBuffer(instance, buffer);
     }
 
-    pub fn call_bindTexture(instance: *runtime.Instance, target: GLenum, texture: *runtime.Instance) anyerror!void {
+    pub fn call_bindTexture(instance: *runtime.Instance, target: GLenum, texture: ?*runtime.Instance) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_bindTexture(instance, target, texture);
     }
 
-    pub fn call_uniform3f(instance: *runtime.Instance, location: *runtime.Instance, x: GLfloat, y: GLfloat, z: GLfloat) anyerror!void {
+    pub fn call_uniform3f(instance: *runtime.Instance, location: ?*runtime.Instance, x: GLfloat, y: GLfloat, z: GLfloat) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_uniform3f(instance, location, x, y, z);
     }
@@ -3039,7 +3041,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_enableVertexAttribArray(instance, index);
     }
 
-    pub fn call_bindFramebuffer(instance: *runtime.Instance, target: GLenum, framebuffer: *runtime.Instance) anyerror!void {
+    pub fn call_bindFramebuffer(instance: *runtime.Instance, target: GLenum, framebuffer: ?*runtime.Instance) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_bindFramebuffer(instance, target, framebuffer);
     }
@@ -3050,7 +3052,7 @@ pub const WebGLRenderingContext = struct {
     }
 
     /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_isFramebuffer(instance: *runtime.Instance, framebuffer: *runtime.Instance) anyerror!GLboolean {
+    pub fn call_isFramebuffer(instance: *runtime.Instance, framebuffer: ?*runtime.Instance) anyerror!GLboolean {
         
         return try WebGLRenderingContextImpl.call_isFramebuffer(instance, framebuffer);
     }
@@ -3071,7 +3073,7 @@ pub const WebGLRenderingContext = struct {
     }
 
     /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_isTexture(instance: *runtime.Instance, texture: *runtime.Instance) anyerror!GLboolean {
+    pub fn call_isTexture(instance: *runtime.Instance, texture: ?*runtime.Instance) anyerror!GLboolean {
         
         return try WebGLRenderingContextImpl.call_isTexture(instance, texture);
     }
@@ -3086,7 +3088,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_pixelStorei(instance, pname, param);
     }
 
-    pub fn call_framebufferRenderbuffer(instance: *runtime.Instance, target: GLenum, attachment: GLenum, renderbuffertarget: GLenum, renderbuffer: *runtime.Instance) anyerror!void {
+    pub fn call_framebufferRenderbuffer(instance: *runtime.Instance, target: GLenum, attachment: GLenum, renderbuffertarget: GLenum, renderbuffer: ?*runtime.Instance) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_framebufferRenderbuffer(instance, target, attachment, renderbuffertarget, renderbuffer);
     }
@@ -3121,7 +3123,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_isContextLost(instance);
     }
 
-    pub fn call_deleteFramebuffer(instance: *runtime.Instance, framebuffer: *runtime.Instance) anyerror!void {
+    pub fn call_deleteFramebuffer(instance: *runtime.Instance, framebuffer: ?*runtime.Instance) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_deleteFramebuffer(instance, framebuffer);
     }
@@ -3141,7 +3143,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_compressedTexSubImage2D(instance, target, level, xoffset, yoffset, width, height, format, data);
     }
 
-    pub fn call_bindRenderbuffer(instance: *runtime.Instance, target: GLenum, renderbuffer: *runtime.Instance) anyerror!void {
+    pub fn call_bindRenderbuffer(instance: *runtime.Instance, target: GLenum, renderbuffer: ?*runtime.Instance) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_bindRenderbuffer(instance, target, renderbuffer);
     }
@@ -3166,17 +3168,17 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_getUniformLocation(instance, program, name);
     }
 
-    pub fn call_uniform4iv(instance: *runtime.Instance, location: *runtime.Instance, v: Int32List) anyerror!void {
+    pub fn call_uniform4iv(instance: *runtime.Instance, location: ?*runtime.Instance, v: Int32List) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_uniform4iv(instance, location, v);
     }
 
-    pub fn call_uniform1f(instance: *runtime.Instance, location: *runtime.Instance, x: GLfloat) anyerror!void {
+    pub fn call_uniform1f(instance: *runtime.Instance, location: ?*runtime.Instance, x: GLfloat) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_uniform1f(instance, location, x);
     }
 
-    pub fn call_uniformMatrix3fv(instance: *runtime.Instance, location: *runtime.Instance, transpose: GLboolean, value: Float32List) anyerror!void {
+    pub fn call_uniformMatrix3fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: GLboolean, value: Float32List) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_uniformMatrix3fv(instance, location, transpose, value);
     }
@@ -3196,7 +3198,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_cullFace(instance, mode);
     }
 
-    pub fn call_deleteShader(instance: *runtime.Instance, shader: *runtime.Instance) anyerror!void {
+    pub fn call_deleteShader(instance: *runtime.Instance, shader: ?*runtime.Instance) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_deleteShader(instance, shader);
     }
@@ -3231,12 +3233,12 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_vertexAttrib2fv(instance, index, values);
     }
 
-    pub fn call_uniform3i(instance: *runtime.Instance, location: *runtime.Instance, x: GLint, y: GLint, z: GLint) anyerror!void {
+    pub fn call_uniform3i(instance: *runtime.Instance, location: ?*runtime.Instance, x: GLint, y: GLint, z: GLint) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_uniform3i(instance, location, x, y, z);
     }
 
-    pub fn call_uniform2f(instance: *runtime.Instance, location: *runtime.Instance, x: GLfloat, y: GLfloat) anyerror!void {
+    pub fn call_uniform2f(instance: *runtime.Instance, location: ?*runtime.Instance, x: GLfloat, y: GLfloat) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_uniform2f(instance, location, x, y);
     }
@@ -3251,7 +3253,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_validateProgram(instance, program);
     }
 
-    pub fn call_uniform2i(instance: *runtime.Instance, location: *runtime.Instance, x: GLint, y: GLint) anyerror!void {
+    pub fn call_uniform2i(instance: *runtime.Instance, location: ?*runtime.Instance, x: GLint, y: GLint) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_uniform2i(instance, location, x, y);
     }
@@ -3286,18 +3288,18 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_getShaderParameter(instance, shader, pname);
     }
 
-    pub fn call_uniform4i(instance: *runtime.Instance, location: *runtime.Instance, x: GLint, y: GLint, z: GLint, w: GLint) anyerror!void {
+    pub fn call_uniform4i(instance: *runtime.Instance, location: ?*runtime.Instance, x: GLint, y: GLint, z: GLint, w: GLint) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_uniform4i(instance, location, x, y, z, w);
     }
 
     /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_isProgram(instance: *runtime.Instance, program: *runtime.Instance) anyerror!GLboolean {
+    pub fn call_isProgram(instance: *runtime.Instance, program: ?*runtime.Instance) anyerror!GLboolean {
         
         return try WebGLRenderingContextImpl.call_isProgram(instance, program);
     }
 
-    pub fn call_deleteBuffer(instance: *runtime.Instance, buffer: *runtime.Instance) anyerror!void {
+    pub fn call_deleteBuffer(instance: *runtime.Instance, buffer: ?*runtime.Instance) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_deleteBuffer(instance, buffer);
     }
@@ -3312,7 +3314,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_stencilMask(instance, mask);
     }
 
-    pub fn call_uniform1i(instance: *runtime.Instance, location: *runtime.Instance, x: GLint) anyerror!void {
+    pub fn call_uniform1i(instance: *runtime.Instance, location: ?*runtime.Instance, x: GLint) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_uniform1i(instance, location, x);
     }
@@ -3352,12 +3354,12 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_attachShader(instance, program, shader);
     }
 
-    pub fn call_uniform1iv(instance: *runtime.Instance, location: *runtime.Instance, v: Int32List) anyerror!void {
+    pub fn call_uniform1iv(instance: *runtime.Instance, location: ?*runtime.Instance, v: Int32List) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_uniform1iv(instance, location, v);
     }
 
-    pub fn call_uniform2iv(instance: *runtime.Instance, location: *runtime.Instance, v: Int32List) anyerror!void {
+    pub fn call_uniform2iv(instance: *runtime.Instance, location: ?*runtime.Instance, v: Int32List) anyerror!void {
         
         return try WebGLRenderingContextImpl.call_uniform2iv(instance, location, v);
     }

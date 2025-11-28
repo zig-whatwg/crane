@@ -1,11 +1,13 @@
 //! Generated from: background-fetch.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const BackgroundFetchRegistrationImpl = @import("impls").BackgroundFetchRegistration;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -181,7 +183,7 @@ pub const BackgroundFetchRegistration = struct {
         try BackgroundFetchRegistrationImpl.set_onprogress(instance, value);
     }
 
-    pub fn call_matchAll(instance: *runtime.Instance, request: RequestInfo, options: CacheQueryOptions) anyerror!*const anyopaque {
+    pub fn call_matchAll(instance: *runtime.Instance, request: webidl.Opt(RequestInfo), options: webidl.Opt(CacheQueryOptions)) anyerror!*const anyopaque {
         
         return try BackgroundFetchRegistrationImpl.call_matchAll(instance, request, options);
     }
@@ -190,7 +192,7 @@ pub const BackgroundFetchRegistration = struct {
         return try BackgroundFetchRegistrationImpl.call_abort(instance);
     }
 
-    pub fn call_match(instance: *runtime.Instance, request: RequestInfo, options: CacheQueryOptions) anyerror!*const anyopaque {
+    pub fn call_match(instance: *runtime.Instance, request: RequestInfo, options: webidl.Opt(CacheQueryOptions)) anyerror!*const anyopaque {
         
         return try BackgroundFetchRegistrationImpl.call_match(instance, request, options);
     }

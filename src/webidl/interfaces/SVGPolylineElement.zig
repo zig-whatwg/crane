@@ -1,11 +1,13 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const SVGPolylineElementImpl = @import("impls").SVGPolylineElement;
+const mixins = @import("mixins");
 const SVGGeometryElement = @import("interfaces").SVGGeometryElement;
 const SVGAnimatedPoints = @import("interfaces").SVGAnimatedPoints;
 const DOMStringMap = @import("interfaces").DOMStringMap;

@@ -1,11 +1,13 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const ImageDecoderImpl = @import("impls").ImageDecoder;
+const mixins = @import("mixins");
 const ImageDecodeOptions = @import("dictionaries").ImageDecodeOptions;
 const ImageDecoderInit = @import("dictionaries").ImageDecoderInit;
 const ImageTrackList = @import("interfaces").ImageTrackList;
@@ -136,7 +138,7 @@ pub const ImageDecoder = struct {
         return try ImageDecoderImpl.get_tracks(instance);
     }
 
-    pub fn call_decode(instance: *runtime.Instance, options: ImageDecodeOptions) anyerror!*const anyopaque {
+    pub fn call_decode(instance: *runtime.Instance, options: webidl.Opt(ImageDecodeOptions)) anyerror!*const anyopaque {
         
         return try ImageDecoderImpl.call_decode(instance, options);
     }

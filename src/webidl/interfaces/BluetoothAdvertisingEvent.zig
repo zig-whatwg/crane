@@ -1,11 +1,13 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const BluetoothAdvertisingEventImpl = @import("impls").BluetoothAdvertisingEvent;
+const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
 const BluetoothDevice = @import("interfaces").BluetoothDevice;
 const BluetoothManufacturerDataMap = @import("interfaces").BluetoothManufacturerDataMap;

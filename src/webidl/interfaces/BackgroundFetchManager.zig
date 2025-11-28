@@ -1,11 +1,13 @@
 //! Generated from: background-fetch.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const BackgroundFetchManagerImpl = @import("impls").BackgroundFetchManager;
+const mixins = @import("mixins");
 const BackgroundFetchRegistration = @import("interfaces").BackgroundFetchRegistration;
 const RequestInfo = @import("typedefs").RequestInfo;
 const sequence = @import("interfaces").sequence;
@@ -94,7 +96,7 @@ pub const BackgroundFetchManager = struct {
         return try BackgroundFetchManagerImpl.call_get(instance, id);
     }
 
-    pub fn call_fetch(instance: *runtime.Instance, id: DOMString, requests: *const anyopaque, options: BackgroundFetchOptions) anyerror!*const anyopaque {
+    pub fn call_fetch(instance: *runtime.Instance, id: DOMString, requests: *const anyopaque, options: webidl.Opt(BackgroundFetchOptions)) anyerror!*const anyopaque {
         
         return try BackgroundFetchManagerImpl.call_fetch(instance, id, requests, options);
     }

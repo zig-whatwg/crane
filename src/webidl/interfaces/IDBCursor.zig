@@ -1,11 +1,13 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const IDBCursorImpl = @import("impls").IDBCursor;
+const mixins = @import("mixins");
 const IDBRequest = @import("interfaces").IDBRequest;
 const IDBIndex = @import("interfaces").IDBIndex;
 const IDBCursorDirection = @import("enums").IDBCursorDirection;
@@ -153,7 +155,7 @@ pub const IDBCursor = struct {
         return try IDBCursorImpl.call_delete(instance);
     }
 
-    pub fn call_continue(instance: *runtime.Instance, key: *const anyopaque) anyerror!void {
+    pub fn call_continue(instance: *runtime.Instance, key: webidl.Opt(*const anyopaque)) anyerror!void {
         
         return try IDBCursorImpl.call_continue(instance, key);
     }

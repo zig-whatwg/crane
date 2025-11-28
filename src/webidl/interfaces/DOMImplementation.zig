@@ -1,11 +1,13 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const DOMImplementationImpl = @import("impls").DOMImplementation;
+const mixins = @import("mixins");
 const Document = @import("interfaces").Document;
 const DocumentType = @import("interfaces").DocumentType;
 const XMLDocument = @import("interfaces").XMLDocument;
@@ -89,7 +91,7 @@ pub const DOMImplementation = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createDocument(instance: *runtime.Instance, namespace: DOMString, qualifiedName: DOMString, doctype: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_createDocument(instance: *runtime.Instance, namespace: ?DOMString, qualifiedName: DOMString, doctype: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMImplementationImpl.call_createDocument(instance, namespace, qualifiedName, doctype);
@@ -103,7 +105,7 @@ pub const DOMImplementation = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createHTMLDocument(instance: *runtime.Instance, title: DOMString) anyerror!*runtime.Instance {
+    pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(DOMString)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMImplementationImpl.call_createHTMLDocument(instance, title);

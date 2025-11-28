@@ -1,11 +1,13 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const CSSColorImpl = @import("impls").CSSColor;
+const mixins = @import("mixins");
 const CSSColorValue = @import("interfaces").CSSColorValue;
 const CSSKeywordish = @import("typedefs").CSSKeywordish;
 const CSSColorPercent = @import("typedefs").CSSColorPercent;
@@ -104,7 +106,7 @@ pub const CSSColor = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, colorSpace: CSSKeywordish, channels: *const anyopaque, alpha: CSSNumberish) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, colorSpace: CSSKeywordish, channels: *const anyopaque, alpha: webidl.Opt(CSSNumberish)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try CSSColorImpl.call_constructor(allocator, ctx, colorSpace, channels, alpha);
     }

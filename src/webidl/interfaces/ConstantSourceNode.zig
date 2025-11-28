@@ -1,11 +1,13 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const ConstantSourceNodeImpl = @import("impls").ConstantSourceNode;
+const mixins = @import("mixins");
 const AudioScheduledSourceNode = @import("interfaces").AudioScheduledSourceNode;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const BaseAudioContext = @import("interfaces").BaseAudioContext;
@@ -107,7 +109,7 @@ pub const ConstantSourceNode = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: ConstantSourceOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: webidl.Opt(ConstantSourceOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try ConstantSourceNodeImpl.call_constructor(allocator, ctx, context, options);
     }

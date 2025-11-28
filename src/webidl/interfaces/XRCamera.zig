@@ -1,11 +1,13 @@
 //! Generated from: raw-camera-access.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const XRCameraImpl = @import("impls").XRCamera;
+const mixins = @import("mixins");
 
 pub const XRCamera = struct {
     pub const Meta = struct {

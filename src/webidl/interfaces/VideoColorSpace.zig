@@ -1,11 +1,13 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const VideoColorSpaceImpl = @import("impls").VideoColorSpace;
+const mixins = @import("mixins");
 const VideoTransferCharacteristics = @import("enums").VideoTransferCharacteristics;
 const VideoColorSpaceInit = @import("dictionaries").VideoColorSpaceInit;
 const VideoMatrixCoefficients = @import("enums").VideoMatrixCoefficients;
@@ -100,7 +102,7 @@ pub const VideoColorSpace = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: VideoColorSpaceInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: webidl.Opt(VideoColorSpaceInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try VideoColorSpaceImpl.call_constructor(allocator, ctx, init_data);
     }

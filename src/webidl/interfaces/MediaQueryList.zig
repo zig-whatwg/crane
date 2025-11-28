@@ -1,11 +1,13 @@
 //! Generated from: cssom-view.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const MediaQueryListImpl = @import("impls").MediaQueryList;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -123,12 +125,12 @@ pub const MediaQueryList = struct {
         try MediaQueryListImpl.set_onchange(instance, value);
     }
 
-    pub fn call_removeListener(instance: *runtime.Instance, callback: ?*runtime.CallbackWrapper) anyerror!void {
+    pub fn call_removeListener(instance: *runtime.Instance, callback: ??*runtime.CallbackWrapper) anyerror!void {
         
         return try MediaQueryListImpl.call_removeListener(instance, callback);
     }
 
-    pub fn call_addListener(instance: *runtime.Instance, callback: ?*runtime.CallbackWrapper) anyerror!void {
+    pub fn call_addListener(instance: *runtime.Instance, callback: ??*runtime.CallbackWrapper) anyerror!void {
         
         return try MediaQueryListImpl.call_addListener(instance, callback);
     }

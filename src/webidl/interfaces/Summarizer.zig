@@ -1,11 +1,13 @@
 //! Generated from: writing-assistance-apis.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const SummarizerImpl = @import("impls").Summarizer;
+const mixins = @import("mixins");
 const DestroyableModel = @import("interfaces").DestroyableModel;
 const Availability = @import("enums").Availability;
 const ReadableStream = @import("interfaces").ReadableStream;
@@ -172,22 +174,22 @@ pub const Summarizer = struct {
         return try SummarizerImpl.get_inputQuota(instance);
     }
 
-    pub fn call_availability(instance: *runtime.Instance, options: SummarizerCreateCoreOptions) anyerror!*const anyopaque {
+    pub fn call_availability(instance: *runtime.Instance, options: webidl.Opt(SummarizerCreateCoreOptions)) anyerror!*const anyopaque {
         
         return try SummarizerImpl.call_availability(instance, options);
     }
 
-    pub fn call_summarizeStreaming(instance: *runtime.Instance, input: DOMString, options: SummarizerSummarizeOptions) anyerror!*runtime.Instance {
+    pub fn call_summarizeStreaming(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(SummarizerSummarizeOptions)) anyerror!*runtime.Instance {
         
         return try SummarizerImpl.call_summarizeStreaming(instance, input, options);
     }
 
-    pub fn call_measureInputUsage(instance: *runtime.Instance, input: DOMString, options: SummarizerSummarizeOptions) anyerror!*const anyopaque {
+    pub fn call_measureInputUsage(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(SummarizerSummarizeOptions)) anyerror!*const anyopaque {
         
         return try SummarizerImpl.call_measureInputUsage(instance, input, options);
     }
 
-    pub fn call_summarize(instance: *runtime.Instance, input: DOMString, options: SummarizerSummarizeOptions) anyerror!*const anyopaque {
+    pub fn call_summarize(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(SummarizerSummarizeOptions)) anyerror!*const anyopaque {
         
         return try SummarizerImpl.call_summarize(instance, input, options);
     }
@@ -196,7 +198,7 @@ pub const Summarizer = struct {
         return try SummarizerImpl.call_destroy(instance);
     }
 
-    pub fn call_create(instance: *runtime.Instance, options: SummarizerCreateOptions) anyerror!*const anyopaque {
+    pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(SummarizerCreateOptions)) anyerror!*const anyopaque {
         
         return try SummarizerImpl.call_create(instance, options);
     }

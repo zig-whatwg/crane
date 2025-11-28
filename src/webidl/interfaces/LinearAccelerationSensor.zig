@@ -1,11 +1,13 @@
 //! Generated from: accelerometer.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const LinearAccelerationSensorImpl = @import("impls").LinearAccelerationSensor;
+const mixins = @import("mixins");
 const Accelerometer = @import("interfaces").Accelerometer;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -90,7 +92,7 @@ pub const LinearAccelerationSensor = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: AccelerometerSensorOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(AccelerometerSensorOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try LinearAccelerationSensorImpl.call_constructor(allocator, ctx, options);
     }

@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const HTMLFormElementImpl = @import("impls").HTMLFormElement;
+const mixins = @import("mixins");
 const HTMLElement = @import("interfaces").HTMLElement;
 const DOMStringMap = @import("interfaces").DOMStringMap;
 const CSSOMString = @import("typedefs").CSSOMString;
@@ -487,7 +489,7 @@ pub const HTMLFormElement = struct {
         return try HTMLFormElementImpl.get_length(instance);
     }
 
-    pub fn call_requestSubmit(instance: *runtime.Instance, submitter: *runtime.Instance) anyerror!void {
+    pub fn call_requestSubmit(instance: *runtime.Instance, submitter: webidl.Opt(?*runtime.Instance)) anyerror!void {
         
         return try HTMLFormElementImpl.call_requestSubmit(instance, submitter);
     }

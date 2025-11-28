@@ -1,11 +1,13 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const ReadableStreamBYOBRequestImpl = @import("impls").ReadableStreamBYOBRequest;
+const mixins = @import("mixins");
 const ArrayBufferView = @import("typedefs").ArrayBufferView;
 
 pub const ReadableStreamBYOBRequest = struct {

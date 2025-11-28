@@ -1,11 +1,13 @@
 //! Generated from: push-api.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const PushEventImpl = @import("impls").PushEvent;
+const mixins = @import("mixins");
 const ExtendableEvent = @import("interfaces").ExtendableEvent;
 const PushMessageData = @import("interfaces").PushMessageData;
 const PushEventInit = @import("dictionaries").PushEventInit;
@@ -97,7 +99,7 @@ pub const PushEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: PushEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(PushEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try PushEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }

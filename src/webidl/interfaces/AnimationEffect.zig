@@ -1,11 +1,13 @@
 //! Generated from: web-animations.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const AnimationEffectImpl = @import("impls").AnimationEffect;
+const mixins = @import("mixins");
 const GroupEffect = @import("interfaces").GroupEffect;
 const ComputedEffectTiming = @import("dictionaries").ComputedEffectTiming;
 const EffectTiming = @import("dictionaries").EffectTiming;
@@ -122,22 +124,22 @@ pub const AnimationEffect = struct {
         return try AnimationEffectImpl.get_nextSibling(instance);
     }
 
-    pub fn call_updateTiming(instance: *runtime.Instance, timing: OptionalEffectTiming) anyerror!void {
+    pub fn call_updateTiming(instance: *runtime.Instance, timing: webidl.Opt(OptionalEffectTiming)) anyerror!void {
         
         return try AnimationEffectImpl.call_updateTiming(instance, timing);
     }
 
-    pub fn call_replace(instance: *runtime.Instance, effects: *runtime.Instance) anyerror!void {
+    pub fn call_replace(instance: *runtime.Instance, effects: []const *runtime.Instance) anyerror!void {
         
         return try AnimationEffectImpl.call_replace(instance, effects);
     }
 
-    pub fn call_before(instance: *runtime.Instance, effects: *runtime.Instance) anyerror!void {
+    pub fn call_before(instance: *runtime.Instance, effects: []const *runtime.Instance) anyerror!void {
         
         return try AnimationEffectImpl.call_before(instance, effects);
     }
 
-    pub fn call_after(instance: *runtime.Instance, effects: *runtime.Instance) anyerror!void {
+    pub fn call_after(instance: *runtime.Instance, effects: []const *runtime.Instance) anyerror!void {
         
         return try AnimationEffectImpl.call_after(instance, effects);
     }

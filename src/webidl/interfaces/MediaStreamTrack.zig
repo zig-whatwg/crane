@@ -1,11 +1,13 @@
 //! Generated from: mediacapture-streams.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const MediaStreamTrackImpl = @import("impls").MediaStreamTrack;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -292,7 +294,7 @@ pub const MediaStreamTrack = struct {
         return try MediaStreamTrackImpl.call_sendCaptureAction(instance, action);
     }
 
-    pub fn call_applyConstraints(instance: *runtime.Instance, constraints: MediaTrackConstraints) anyerror!*const anyopaque {
+    pub fn call_applyConstraints(instance: *runtime.Instance, constraints: webidl.Opt(MediaTrackConstraints)) anyerror!*const anyopaque {
         
         return try MediaStreamTrackImpl.call_applyConstraints(instance, constraints);
     }

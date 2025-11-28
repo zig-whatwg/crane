@@ -1,11 +1,13 @@
 //! Generated from: webxrlayers.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const XRMediaBindingImpl = @import("impls").XRMediaBinding;
+const mixins = @import("mixins");
 const HTMLVideoElement = @import("interfaces").HTMLVideoElement;
 const XRMediaCylinderLayerInit = @import("dictionaries").XRMediaCylinderLayerInit;
 const XREquirectLayer = @import("interfaces").XREquirectLayer;
@@ -95,17 +97,17 @@ pub const XRMediaBinding = struct {
         return try XRMediaBindingImpl.call_constructor(allocator, ctx, session);
     }
 
-    pub fn call_createCylinderLayer(instance: *runtime.Instance, video: *runtime.Instance, init_data: XRMediaCylinderLayerInit) anyerror!*runtime.Instance {
+    pub fn call_createCylinderLayer(instance: *runtime.Instance, video: *runtime.Instance, init_data: webidl.Opt(XRMediaCylinderLayerInit)) anyerror!*runtime.Instance {
         
         return try XRMediaBindingImpl.call_createCylinderLayer(instance, video, init_data);
     }
 
-    pub fn call_createQuadLayer(instance: *runtime.Instance, video: *runtime.Instance, init_data: XRMediaQuadLayerInit) anyerror!*runtime.Instance {
+    pub fn call_createQuadLayer(instance: *runtime.Instance, video: *runtime.Instance, init_data: webidl.Opt(XRMediaQuadLayerInit)) anyerror!*runtime.Instance {
         
         return try XRMediaBindingImpl.call_createQuadLayer(instance, video, init_data);
     }
 
-    pub fn call_createEquirectLayer(instance: *runtime.Instance, video: *runtime.Instance, init_data: XRMediaEquirectLayerInit) anyerror!*runtime.Instance {
+    pub fn call_createEquirectLayer(instance: *runtime.Instance, video: *runtime.Instance, init_data: webidl.Opt(XRMediaEquirectLayerInit)) anyerror!*runtime.Instance {
         
         return try XRMediaBindingImpl.call_createEquirectLayer(instance, video, init_data);
     }

@@ -1,11 +1,13 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const GPURenderBundleEncoderImpl = @import("impls").GPURenderBundleEncoder;
+const mixins = @import("mixins");
 const GPUObjectBase = @import("interfaces").GPUObjectBase;
 const GPUCommandsMixin = @import("interfaces").GPUCommandsMixin;
 const GPUDebugCommandsMixin = @import("interfaces").GPUDebugCommandsMixin;
@@ -157,7 +159,7 @@ pub const GPURenderBundleEncoder = struct {
         return try GPURenderBundleEncoderImpl.call_drawIndexedIndirect(instance, indirectBuffer, indirectOffset);
     }
 
-    pub fn call_draw(instance: *runtime.Instance, vertexCount: GPUSize32, instanceCount: GPUSize32, firstVertex: GPUSize32, firstInstance: GPUSize32) anyerror!void {
+    pub fn call_draw(instance: *runtime.Instance, vertexCount: GPUSize32, instanceCount: webidl.Opt(GPUSize32), firstVertex: webidl.Opt(GPUSize32), firstInstance: webidl.Opt(GPUSize32)) anyerror!void {
         
         return try GPURenderBundleEncoderImpl.call_draw(instance, vertexCount, instanceCount, firstVertex, firstInstance);
     }
@@ -166,12 +168,12 @@ pub const GPURenderBundleEncoder = struct {
         return try GPURenderBundleEncoderImpl.call_popDebugGroup(instance);
     }
 
-    pub fn call_setBindGroup(instance: *runtime.Instance, index: GPUIndex32, bindGroup: *runtime.Instance, dynamicOffsets: *const anyopaque) anyerror!void {
+    pub fn call_setBindGroup(instance: *runtime.Instance, index: GPUIndex32, bindGroup: ?*runtime.Instance, dynamicOffsets: webidl.Opt(*const anyopaque)) anyerror!void {
         
         return try GPURenderBundleEncoderImpl.call_setBindGroup(instance, index, bindGroup, dynamicOffsets);
     }
 
-    pub fn call_setVertexBuffer(instance: *runtime.Instance, slot: GPUIndex32, buffer: *runtime.Instance, offset: GPUSize64, size: GPUSize64) anyerror!void {
+    pub fn call_setVertexBuffer(instance: *runtime.Instance, slot: GPUIndex32, buffer: ?*runtime.Instance, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!void {
         
         return try GPURenderBundleEncoderImpl.call_setVertexBuffer(instance, slot, buffer, offset, size);
     }
@@ -181,7 +183,7 @@ pub const GPURenderBundleEncoder = struct {
         return try GPURenderBundleEncoderImpl.call_insertDebugMarker(instance, markerLabel);
     }
 
-    pub fn call_setIndexBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, indexFormat: GPUIndexFormat, offset: GPUSize64, size: GPUSize64) anyerror!void {
+    pub fn call_setIndexBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, indexFormat: GPUIndexFormat, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!void {
         
         return try GPURenderBundleEncoderImpl.call_setIndexBuffer(instance, buffer, indexFormat, offset, size);
     }
@@ -191,7 +193,7 @@ pub const GPURenderBundleEncoder = struct {
         return try GPURenderBundleEncoderImpl.call_pushDebugGroup(instance, groupLabel);
     }
 
-    pub fn call_finish(instance: *runtime.Instance, descriptor: GPURenderBundleDescriptor) anyerror!*runtime.Instance {
+    pub fn call_finish(instance: *runtime.Instance, descriptor: webidl.Opt(GPURenderBundleDescriptor)) anyerror!*runtime.Instance {
         
         return try GPURenderBundleEncoderImpl.call_finish(instance, descriptor);
     }
@@ -201,7 +203,7 @@ pub const GPURenderBundleEncoder = struct {
         return try GPURenderBundleEncoderImpl.call_drawIndirect(instance, indirectBuffer, indirectOffset);
     }
 
-    pub fn call_drawIndexed(instance: *runtime.Instance, indexCount: GPUSize32, instanceCount: GPUSize32, firstIndex: GPUSize32, baseVertex: GPUSignedOffset32, firstInstance: GPUSize32) anyerror!void {
+    pub fn call_drawIndexed(instance: *runtime.Instance, indexCount: GPUSize32, instanceCount: webidl.Opt(GPUSize32), firstIndex: webidl.Opt(GPUSize32), baseVertex: webidl.Opt(GPUSignedOffset32), firstInstance: webidl.Opt(GPUSize32)) anyerror!void {
         
         return try GPURenderBundleEncoderImpl.call_drawIndexed(instance, indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
     }

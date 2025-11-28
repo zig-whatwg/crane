@@ -1,11 +1,13 @@
 //! Generated from: fs.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const FileSystemFileHandleImpl = @import("impls").FileSystemFileHandle;
+const mixins = @import("mixins");
 const FileSystemHandle = @import("interfaces").FileSystemHandle;
 const PermissionState = @import("enums").PermissionState;
 const FileSystemCreateWritableOptions = @import("dictionaries").FileSystemCreateWritableOptions;
@@ -102,7 +104,7 @@ pub const FileSystemFileHandle = struct {
         return try FileSystemFileHandleImpl.call_getFile(instance);
     }
 
-    pub fn call_createWritable(instance: *runtime.Instance, options: FileSystemCreateWritableOptions) anyerror!*const anyopaque {
+    pub fn call_createWritable(instance: *runtime.Instance, options: webidl.Opt(FileSystemCreateWritableOptions)) anyerror!*const anyopaque {
         
         return try FileSystemFileHandleImpl.call_createWritable(instance, options);
     }

@@ -1,11 +1,13 @@
 //! Generated from: translation-api.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const TranslatorImpl = @import("impls").Translator;
+const mixins = @import("mixins");
 const DestroyableModel = @import("interfaces").DestroyableModel;
 const TranslatorCreateOptions = @import("dictionaries").TranslatorCreateOptions;
 const Availability = @import("enums").Availability;
@@ -134,12 +136,12 @@ pub const Translator = struct {
         return try TranslatorImpl.call_availability(instance, options);
     }
 
-    pub fn call_translate(instance: *runtime.Instance, input: DOMString, options: TranslatorTranslateOptions) anyerror!*const anyopaque {
+    pub fn call_translate(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(TranslatorTranslateOptions)) anyerror!*const anyopaque {
         
         return try TranslatorImpl.call_translate(instance, input, options);
     }
 
-    pub fn call_measureInputUsage(instance: *runtime.Instance, input: DOMString, options: TranslatorTranslateOptions) anyerror!*const anyopaque {
+    pub fn call_measureInputUsage(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(TranslatorTranslateOptions)) anyerror!*const anyopaque {
         
         return try TranslatorImpl.call_measureInputUsage(instance, input, options);
     }
@@ -148,7 +150,7 @@ pub const Translator = struct {
         return try TranslatorImpl.call_destroy(instance);
     }
 
-    pub fn call_translateStreaming(instance: *runtime.Instance, input: DOMString, options: TranslatorTranslateOptions) anyerror!*runtime.Instance {
+    pub fn call_translateStreaming(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(TranslatorTranslateOptions)) anyerror!*runtime.Instance {
         
         return try TranslatorImpl.call_translateStreaming(instance, input, options);
     }

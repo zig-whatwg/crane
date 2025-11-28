@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const HTMLInputElementImpl = @import("impls").HTMLInputElement;
+const mixins = @import("mixins");
 const HTMLElement = @import("interfaces").HTMLElement;
 const PopoverTargetAttributes = @import("interfaces").PopoverTargetAttributes;
 const DOMStringMap = @import("interfaces").DOMStringMap;
@@ -1149,7 +1151,7 @@ pub const HTMLInputElement = struct {
         return try HTMLInputElementImpl.call_select(instance);
     }
 
-    pub fn call_stepUp(instance: *runtime.Instance, n: i32) anyerror!void {
+    pub fn call_stepUp(instance: *runtime.Instance, n: webidl.Opt(i32)) anyerror!void {
         
         return try HTMLInputElementImpl.call_stepUp(instance, n);
     }
@@ -1158,7 +1160,7 @@ pub const HTMLInputElement = struct {
         return try HTMLInputElementImpl.call_checkValidity(instance);
     }
 
-    pub fn call_setSelectionRange(instance: *runtime.Instance, start: u32, end: u32, direction: DOMString) anyerror!void {
+    pub fn call_setSelectionRange(instance: *runtime.Instance, start: u32, end: u32, direction: webidl.Opt(DOMString)) anyerror!void {
         
         return try HTMLInputElementImpl.call_setSelectionRange(instance, start, end, direction);
     }
@@ -1167,7 +1169,7 @@ pub const HTMLInputElement = struct {
         return try HTMLInputElementImpl.call_reportValidity(instance);
     }
 
-    pub fn call_stepDown(instance: *runtime.Instance, n: i32) anyerror!void {
+    pub fn call_stepDown(instance: *runtime.Instance, n: webidl.Opt(i32)) anyerror!void {
         
         return try HTMLInputElementImpl.call_stepDown(instance, n);
     }

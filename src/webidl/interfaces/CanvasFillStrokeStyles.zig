@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const CanvasFillStrokeStylesImpl = @import("impls").CanvasFillStrokeStyles;
+const mixins = @import("mixins");
 const CanvasGradient = @import("interfaces").CanvasGradient;
 const CanvasImageSource = @import("typedefs").CanvasImageSource;
 const CanvasPattern = @import("interfaces").CanvasPattern;

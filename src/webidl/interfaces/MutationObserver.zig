@@ -1,11 +1,13 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const MutationObserverImpl = @import("impls").MutationObserver;
+const mixins = @import("mixins");
 const MutationCallback = @import("callbacks").MutationCallback;
 const Node = @import("interfaces").Node;
 const MutationRecord = @import("interfaces").MutationRecord;
@@ -91,7 +93,7 @@ pub const MutationObserver = struct {
         return try MutationObserverImpl.call_constructor(allocator, ctx, callback);
     }
 
-    pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, options: MutationObserverInit) anyerror!void {
+    pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, options: webidl.Opt(MutationObserverInit)) anyerror!void {
         
         return try MutationObserverImpl.call_observe(instance, target, options);
     }

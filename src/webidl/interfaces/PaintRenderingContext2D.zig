@@ -1,11 +1,13 @@
 //! Generated from: css-paint-api.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const PaintRenderingContext2DImpl = @import("impls").PaintRenderingContext2D;
+const mixins = @import("mixins");
 const CanvasState = @import("interfaces").CanvasState;
 const CanvasTransform = @import("interfaces").CanvasTransform;
 const CanvasCompositing = @import("interfaces").CanvasCompositing;
@@ -440,7 +442,7 @@ pub const PaintRenderingContext2D = struct {
         try PaintRenderingContext2DImpl.set_lineDashOffset(instance, value);
     }
 
-    pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule: CanvasFillRule) anyerror!bool {
+    pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule: webidl.Opt(CanvasFillRule)) anyerror!bool {
         
         return try PaintRenderingContext2DImpl.call_isPointInPath(instance, x, y, fillRule);
     }
@@ -449,7 +451,7 @@ pub const PaintRenderingContext2D = struct {
         return try PaintRenderingContext2DImpl.call_getLineDash(instance);
     }
 
-    pub fn call_ellipse(instance: *runtime.Instance, x: f64, y: f64, radiusX: f64, radiusY: f64, rotation: f64, startAngle: f64, endAngle: f64, counterclockwise: bool) anyerror!void {
+    pub fn call_ellipse(instance: *runtime.Instance, x: f64, y: f64, radiusX: f64, radiusY: f64, rotation: f64, startAngle: f64, endAngle: f64, counterclockwise: webidl.Opt(bool)) anyerror!void {
         
         return try PaintRenderingContext2DImpl.call_ellipse(instance, x, y, radiusX, radiusY, rotation, startAngle, endAngle, counterclockwise);
     }
@@ -473,7 +475,7 @@ pub const PaintRenderingContext2D = struct {
         return try PaintRenderingContext2DImpl.call_restore(instance);
     }
 
-    pub fn call_clip(instance: *runtime.Instance, fillRule: CanvasFillRule) anyerror!void {
+    pub fn call_clip(instance: *runtime.Instance, fillRule: webidl.Opt(CanvasFillRule)) anyerror!void {
         
         return try PaintRenderingContext2DImpl.call_clip(instance, fillRule);
     }
@@ -491,7 +493,7 @@ pub const PaintRenderingContext2D = struct {
         return try PaintRenderingContext2DImpl.call_drawImage(instance, image, dx, dy);
     }
 
-    pub fn call_arc(instance: *runtime.Instance, x: f64, y: f64, radius: f64, startAngle: f64, endAngle: f64, counterclockwise: bool) anyerror!void {
+    pub fn call_arc(instance: *runtime.Instance, x: f64, y: f64, radius: f64, startAngle: f64, endAngle: f64, counterclockwise: webidl.Opt(bool)) anyerror!void {
         
         return try PaintRenderingContext2DImpl.call_arc(instance, x, y, radius, startAngle, endAngle, counterclockwise);
     }
@@ -511,7 +513,7 @@ pub const PaintRenderingContext2D = struct {
         return try PaintRenderingContext2DImpl.call_closePath(instance);
     }
 
-    pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64, radii: *const anyopaque) anyerror!void {
+    pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64, radii: webidl.Opt(*const anyopaque)) anyerror!void {
         
         return try PaintRenderingContext2DImpl.call_roundRect(instance, x, y, w, h, radii);
     }
@@ -612,7 +614,7 @@ pub const PaintRenderingContext2D = struct {
         return try PaintRenderingContext2DImpl.call_rect(instance, x, y, w, h);
     }
 
-    pub fn call_fill(instance: *runtime.Instance, fillRule: CanvasFillRule) anyerror!void {
+    pub fn call_fill(instance: *runtime.Instance, fillRule: webidl.Opt(CanvasFillRule)) anyerror!void {
         
         return try PaintRenderingContext2DImpl.call_fill(instance, fillRule);
     }

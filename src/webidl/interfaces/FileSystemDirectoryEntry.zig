@@ -1,11 +1,13 @@
 //! Generated from: entries-api.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const FileSystemDirectoryEntryImpl = @import("impls").FileSystemDirectoryEntry;
+const mixins = @import("mixins");
 const FileSystemEntry = @import("interfaces").FileSystemEntry;
 const ErrorCallback = @import("callbacks").ErrorCallback;
 const FileSystem = @import("interfaces").FileSystem;
@@ -89,12 +91,12 @@ pub const FileSystemDirectoryEntry = struct {
         FileSystemDirectoryEntryImpl.deinit(instance);
     }
 
-    pub fn call_getDirectory(instance: *runtime.Instance, path: runtime.USVString, options: FileSystemFlags, successCallback: FileSystemEntryCallback, errorCallback: ErrorCallback) anyerror!void {
+    pub fn call_getDirectory(instance: *runtime.Instance, path: webidl.Opt(?runtime.USVString), options: webidl.Opt(FileSystemFlags), successCallback: webidl.Opt(FileSystemEntryCallback), errorCallback: webidl.Opt(ErrorCallback)) anyerror!void {
         
         return try FileSystemDirectoryEntryImpl.call_getDirectory(instance, path, options, successCallback, errorCallback);
     }
 
-    pub fn call_getFile(instance: *runtime.Instance, path: runtime.USVString, options: FileSystemFlags, successCallback: FileSystemEntryCallback, errorCallback: ErrorCallback) anyerror!void {
+    pub fn call_getFile(instance: *runtime.Instance, path: webidl.Opt(?runtime.USVString), options: webidl.Opt(FileSystemFlags), successCallback: webidl.Opt(FileSystemEntryCallback), errorCallback: webidl.Opt(ErrorCallback)) anyerror!void {
         
         return try FileSystemDirectoryEntryImpl.call_getFile(instance, path, options, successCallback, errorCallback);
     }

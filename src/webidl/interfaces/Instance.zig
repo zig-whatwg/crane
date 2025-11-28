@@ -1,11 +1,13 @@
 //! Generated from: wasm-js-api.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const InstanceImpl = @import("impls").Instance;
+const mixins = @import("mixins");
 const Module = @import("interfaces").Module;
 
 pub const Instance = struct {
@@ -79,7 +81,7 @@ pub const Instance = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, module: *runtime.Instance, importObject: *const anyopaque) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, module: *runtime.Instance, importObject: webidl.Opt(*const anyopaque)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try InstanceImpl.call_constructor(allocator, ctx, module, importObject);
     }

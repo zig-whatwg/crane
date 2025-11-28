@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const CanvasRectImpl = @import("impls").CanvasRect;
+const mixins = @import("mixins");
 
 pub const CanvasRect = struct {
     pub const Meta = struct {

@@ -1,11 +1,13 @@
 //! Generated from: paint-timing.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const PerformancePaintTimingImpl = @import("impls").PerformancePaintTiming;
+const mixins = @import("mixins");
 const PerformanceEntry = @import("interfaces").PerformanceEntry;
 const PaintTimingMixin = @import("interfaces").PaintTimingMixin;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;

@@ -1,11 +1,13 @@
 //! Generated from: fs.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const FileSystemHandleImpl = @import("impls").FileSystemHandle;
+const mixins = @import("mixins");
 const PermissionState = @import("enums").PermissionState;
 const FileSystemHandleKind = @import("enums").FileSystemHandleKind;
 const USVString = @import("interfaces").USVString;
@@ -112,12 +114,12 @@ pub const FileSystemHandle = struct {
         return try FileSystemHandleImpl.call_isSameEntry(instance, other);
     }
 
-    pub fn call_queryPermission(instance: *runtime.Instance, descriptor: FileSystemHandlePermissionDescriptor) anyerror!*const anyopaque {
+    pub fn call_queryPermission(instance: *runtime.Instance, descriptor: webidl.Opt(FileSystemHandlePermissionDescriptor)) anyerror!*const anyopaque {
         
         return try FileSystemHandleImpl.call_queryPermission(instance, descriptor);
     }
 
-    pub fn call_requestPermission(instance: *runtime.Instance, descriptor: FileSystemHandlePermissionDescriptor) anyerror!*const anyopaque {
+    pub fn call_requestPermission(instance: *runtime.Instance, descriptor: webidl.Opt(FileSystemHandlePermissionDescriptor)) anyerror!*const anyopaque {
         
         return try FileSystemHandleImpl.call_requestPermission(instance, descriptor);
     }

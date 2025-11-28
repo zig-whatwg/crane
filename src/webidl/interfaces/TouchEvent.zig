@@ -1,11 +1,13 @@
 //! Generated from: touch-events.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const TouchEventImpl = @import("impls").TouchEvent;
+const mixins = @import("mixins");
 const UIEvent = @import("interfaces").UIEvent;
 const UIEventInit = @import("dictionaries").UIEventInit;
 const Window = @import("interfaces").Window;
@@ -121,7 +123,7 @@ pub const TouchEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: TouchEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(TouchEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try TouchEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }

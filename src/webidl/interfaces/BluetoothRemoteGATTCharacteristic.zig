@@ -1,11 +1,13 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const BluetoothRemoteGATTCharacteristicImpl = @import("impls").BluetoothRemoteGATTCharacteristic;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const CharacteristicEventHandlers = @import("interfaces").CharacteristicEventHandlers;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
@@ -189,7 +191,7 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
         return try BluetoothRemoteGATTCharacteristicImpl.call_writeValue(instance, value);
     }
 
-    pub fn call_getDescriptors(instance: *runtime.Instance, descriptor: BluetoothDescriptorUUID) anyerror!*const anyopaque {
+    pub fn call_getDescriptors(instance: *runtime.Instance, descriptor: webidl.Opt(BluetoothDescriptorUUID)) anyerror!*const anyopaque {
         
         return try BluetoothRemoteGATTCharacteristicImpl.call_getDescriptors(instance, descriptor);
     }

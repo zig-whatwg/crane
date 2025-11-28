@@ -1,11 +1,13 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const XPathExpressionImpl = @import("impls").XPathExpression;
+const mixins = @import("mixins");
 const Node = @import("interfaces").Node;
 const XPathResult = @import("interfaces").XPathResult;
 
@@ -77,7 +79,7 @@ pub const XPathExpression = struct {
         XPathExpressionImpl.deinit(instance);
     }
 
-    pub fn call_evaluate(instance: *runtime.Instance, contextNode: *runtime.Instance, @"type": u16, result: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_evaluate(instance: *runtime.Instance, contextNode: *runtime.Instance, @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
         
         return try XPathExpressionImpl.call_evaluate(instance, contextNode, @"type", result);
     }

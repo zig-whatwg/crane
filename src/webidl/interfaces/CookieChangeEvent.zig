@@ -1,11 +1,13 @@
 //! Generated from: cookiestore.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const CookieChangeEventImpl = @import("impls").CookieChangeEvent;
+const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
 const DOMString = @import("typedefs").DOMString;
 const EventTarget = @import("interfaces").EventTarget;
@@ -96,7 +98,7 @@ pub const CookieChangeEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: CookieChangeEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(CookieChangeEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try CookieChangeEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }

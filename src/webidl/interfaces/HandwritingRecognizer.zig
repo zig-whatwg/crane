@@ -1,11 +1,13 @@
 //! Generated from: handwriting-recognition.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const HandwritingRecognizerImpl = @import("impls").HandwritingRecognizer;
+const mixins = @import("mixins");
 const HandwritingDrawing = @import("interfaces").HandwritingDrawing;
 const HandwritingHints = @import("dictionaries").HandwritingHints;
 
@@ -85,7 +87,7 @@ pub const HandwritingRecognizer = struct {
         return try HandwritingRecognizerImpl.call_finish(instance);
     }
 
-    pub fn call_startDrawing(instance: *runtime.Instance, hints: HandwritingHints) anyerror!*runtime.Instance {
+    pub fn call_startDrawing(instance: *runtime.Instance, hints: webidl.Opt(HandwritingHints)) anyerror!*runtime.Instance {
         
         return try HandwritingRecognizerImpl.call_startDrawing(instance, hints);
     }

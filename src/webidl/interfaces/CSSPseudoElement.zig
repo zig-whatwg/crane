@@ -1,11 +1,13 @@
 //! Generated from: css-pseudo.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const CSSPseudoElementImpl = @import("impls").CSSPseudoElement;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const GeometryUtils = @import("interfaces").GeometryUtils;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
@@ -140,12 +142,12 @@ pub const CSSPseudoElement = struct {
         return try CSSPseudoElementImpl.get_parent(instance);
     }
 
-    pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!*runtime.Instance {
+    pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
         
         return try CSSPseudoElementImpl.call_convertQuadFromNode(instance, quad, from, options);
     }
 
-    pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!*runtime.Instance {
+    pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
         
         return try CSSPseudoElementImpl.call_convertPointFromNode(instance, point, from, options);
     }
@@ -155,12 +157,12 @@ pub const CSSPseudoElement = struct {
         return try CSSPseudoElementImpl.call_pseudo(instance, @"type");
     }
 
-    pub fn call_getBoxQuads(instance: *runtime.Instance, options: BoxQuadOptions) anyerror!*const anyopaque {
+    pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!*const anyopaque {
         
         return try CSSPseudoElementImpl.call_getBoxQuads(instance, options);
     }
 
-    pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!*runtime.Instance {
+    pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
         
         return try CSSPseudoElementImpl.call_convertRectFromNode(instance, rect, from, options);
     }

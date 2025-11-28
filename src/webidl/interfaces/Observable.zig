@@ -1,11 +1,13 @@
 //! Generated from: observable.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const ObservableImpl = @import("impls").Observable;
+const mixins = @import("mixins");
 const Mapper = @import("callbacks").Mapper;
 const Predicate = @import("callbacks").Predicate;
 const VoidFunction = @import("callbacks").VoidFunction;
@@ -157,27 +159,27 @@ pub const Observable = struct {
         return try ObservableImpl.call_map(instance, mapper);
     }
 
-    pub fn call_inspect(instance: *runtime.Instance, inspectorUnion: ObservableInspectorUnion) anyerror!*runtime.Instance {
+    pub fn call_inspect(instance: *runtime.Instance, inspectorUnion: webidl.Opt(ObservableInspectorUnion)) anyerror!*runtime.Instance {
         
         return try ObservableImpl.call_inspect(instance, inspectorUnion);
     }
 
-    pub fn call_forEach(instance: *runtime.Instance, callback: Visitor, options: SubscribeOptions) anyerror!*const anyopaque {
+    pub fn call_forEach(instance: *runtime.Instance, callback: Visitor, options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
         
         return try ObservableImpl.call_forEach(instance, callback, options);
     }
 
-    pub fn call_every(instance: *runtime.Instance, predicate: Predicate, options: SubscribeOptions) anyerror!*const anyopaque {
+    pub fn call_every(instance: *runtime.Instance, predicate: Predicate, options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
         
         return try ObservableImpl.call_every(instance, predicate, options);
     }
 
-    pub fn call_some(instance: *runtime.Instance, predicate: Predicate, options: SubscribeOptions) anyerror!*const anyopaque {
+    pub fn call_some(instance: *runtime.Instance, predicate: Predicate, options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
         
         return try ObservableImpl.call_some(instance, predicate, options);
     }
 
-    pub fn call_first(instance: *runtime.Instance, options: SubscribeOptions) anyerror!*const anyopaque {
+    pub fn call_first(instance: *runtime.Instance, options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
         
         return try ObservableImpl.call_first(instance, options);
     }
@@ -187,12 +189,12 @@ pub const Observable = struct {
         return try ObservableImpl.call_takeUntil(instance, value);
     }
 
-    pub fn call_find(instance: *runtime.Instance, predicate: Predicate, options: SubscribeOptions) anyerror!*const anyopaque {
+    pub fn call_find(instance: *runtime.Instance, predicate: Predicate, options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
         
         return try ObservableImpl.call_find(instance, predicate, options);
     }
 
-    pub fn call_last(instance: *runtime.Instance, options: SubscribeOptions) anyerror!*const anyopaque {
+    pub fn call_last(instance: *runtime.Instance, options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
         
         return try ObservableImpl.call_last(instance, options);
     }
@@ -217,12 +219,12 @@ pub const Observable = struct {
         return try ObservableImpl.call_take(instance, amount);
     }
 
-    pub fn call_toArray(instance: *runtime.Instance, options: SubscribeOptions) anyerror!*const anyopaque {
+    pub fn call_toArray(instance: *runtime.Instance, options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
         
         return try ObservableImpl.call_toArray(instance, options);
     }
 
-    pub fn call_reduce(instance: *runtime.Instance, reducer: Reducer, initialValue: *const anyopaque, options: SubscribeOptions) anyerror!*const anyopaque {
+    pub fn call_reduce(instance: *runtime.Instance, reducer: Reducer, initialValue: webidl.Opt(*const anyopaque), options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
         
         return try ObservableImpl.call_reduce(instance, reducer, initialValue, options);
     }
@@ -247,7 +249,7 @@ pub const Observable = struct {
         return try ObservableImpl.call_catch(instance, callback);
     }
 
-    pub fn call_subscribe(instance: *runtime.Instance, observer: ObserverUnion, options: SubscribeOptions) anyerror!void {
+    pub fn call_subscribe(instance: *runtime.Instance, observer: webidl.Opt(ObserverUnion), options: webidl.Opt(SubscribeOptions)) anyerror!void {
         
         return try ObservableImpl.call_subscribe(instance, observer, options);
     }

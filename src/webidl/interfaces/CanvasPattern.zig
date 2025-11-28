@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const CanvasPatternImpl = @import("impls").CanvasPattern;
+const mixins = @import("mixins");
 const DOMMatrix2DInit = @import("dictionaries").DOMMatrix2DInit;
 
 pub const CanvasPattern = struct {
@@ -79,7 +81,7 @@ pub const CanvasPattern = struct {
         CanvasPatternImpl.deinit(instance);
     }
 
-    pub fn call_setTransform(instance: *runtime.Instance, transform: DOMMatrix2DInit) anyerror!void {
+    pub fn call_setTransform(instance: *runtime.Instance, transform: webidl.Opt(DOMMatrix2DInit)) anyerror!void {
         
         return try CanvasPatternImpl.call_setTransform(instance, transform);
     }

@@ -1,11 +1,13 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const AudioScheduledSourceNodeImpl = @import("impls").AudioScheduledSourceNode;
+const mixins = @import("mixins");
 const AudioNode = @import("interfaces").AudioNode;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -119,12 +121,12 @@ pub const AudioScheduledSourceNode = struct {
         try AudioScheduledSourceNodeImpl.set_onended(instance, value);
     }
 
-    pub fn call_stop(instance: *runtime.Instance, when: f64) anyerror!void {
+    pub fn call_stop(instance: *runtime.Instance, when: webidl.Opt(f64)) anyerror!void {
         
         return try AudioScheduledSourceNodeImpl.call_stop(instance, when);
     }
 
-    pub fn call_start(instance: *runtime.Instance, when: f64) anyerror!void {
+    pub fn call_start(instance: *runtime.Instance, when: webidl.Opt(f64)) anyerror!void {
         
         return try AudioScheduledSourceNodeImpl.call_start(instance, when);
     }

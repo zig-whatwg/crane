@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const ImageDataImpl = @import("impls").ImageData;
+const mixins = @import("mixins");
 const PredefinedColorSpace = @import("enums").PredefinedColorSpace;
 const ImageDataArray = @import("typedefs").ImageDataArray;
 const ImageDataSettings = @import("dictionaries").ImageDataSettings;
@@ -106,14 +108,14 @@ pub const ImageData = struct {
         unsigned_long_unsigned_long_ImageDataSettings: struct {
             sw: u32,
             sh: u32,
-            settings: ImageDataSettings,
+            settings: webidl.Opt(ImageDataSettings),
         },
         /// constructor(data, sw, sh, settings)
         ImageDataArray_unsigned_long_unsigned_long_ImageDataSettings: struct {
             data: ImageDataArray,
             sw: u32,
-            sh: u32,
-            settings: ImageDataSettings,
+            sh: webidl.Opt(u32),
+            settings: webidl.Opt(ImageDataSettings),
         },
     };
 

@@ -1,11 +1,13 @@
 //! Generated from: background-fetch.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const BackgroundFetchUpdateUIEventImpl = @import("impls").BackgroundFetchUpdateUIEvent;
+const mixins = @import("mixins");
 const BackgroundFetchEvent = @import("interfaces").BackgroundFetchEvent;
 const BackgroundFetchRegistration = @import("interfaces").BackgroundFetchRegistration;
 const BackgroundFetchEventInit = @import("dictionaries").BackgroundFetchEventInit;
@@ -96,7 +98,7 @@ pub const BackgroundFetchUpdateUIEvent = struct {
         return try BackgroundFetchUpdateUIEventImpl.call_constructor(allocator, ctx, @"type", init_data);
     }
 
-    pub fn call_updateUI(instance: *runtime.Instance, options: BackgroundFetchUIOptions) anyerror!*const anyopaque {
+    pub fn call_updateUI(instance: *runtime.Instance, options: webidl.Opt(BackgroundFetchUIOptions)) anyerror!*const anyopaque {
         
         return try BackgroundFetchUpdateUIEventImpl.call_updateUI(instance, options);
     }

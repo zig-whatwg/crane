@@ -1,11 +1,13 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const CSSStyleDeclarationImpl = @import("impls").CSSStyleDeclaration;
+const mixins = @import("mixins");
 const CSSOMString = @import("typedefs").CSSOMString;
 const CSSRule = @import("interfaces").CSSRule;
 const DOMString = @import("typedefs").DOMString;
@@ -173,7 +175,7 @@ pub const CSSStyleDeclaration = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_setProperty(instance: *runtime.Instance, property: CSSOMString, value: CSSOMString, priority: CSSOMString) anyerror!void {
+    pub fn call_setProperty(instance: *runtime.Instance, property: CSSOMString, value: CSSOMString, priority: webidl.Opt(CSSOMString)) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

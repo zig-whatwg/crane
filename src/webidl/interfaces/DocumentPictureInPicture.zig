@@ -1,11 +1,13 @@
 //! Generated from: document-picture-in-picture.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const DocumentPictureInPictureImpl = @import("impls").DocumentPictureInPicture;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const Window = @import("interfaces").Window;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
@@ -115,7 +117,7 @@ pub const DocumentPictureInPicture = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_requestWindow(instance: *runtime.Instance, options: DocumentPictureInPictureOptions) anyerror!*const anyopaque {
+    pub fn call_requestWindow(instance: *runtime.Instance, options: webidl.Opt(DocumentPictureInPictureOptions)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
         return try DocumentPictureInPictureImpl.call_requestWindow(instance, options);

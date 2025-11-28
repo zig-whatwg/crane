@@ -1,11 +1,13 @@
 //! Generated from: pointer-animations.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const PointerTimelineImpl = @import("impls").PointerTimeline;
+const mixins = @import("mixins");
 const AnimationTimeline = @import("interfaces").AnimationTimeline;
 const Element = @import("interfaces").Element;
 const AnimationEffect = @import("interfaces").AnimationEffect;
@@ -89,7 +91,7 @@ pub const PointerTimeline = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: PointerTimelineOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(PointerTimelineOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try PointerTimelineImpl.call_constructor(allocator, ctx, options);
     }

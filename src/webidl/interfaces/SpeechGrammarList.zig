@@ -1,11 +1,13 @@
 //! Generated from: speech-api.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const SpeechGrammarListImpl = @import("impls").SpeechGrammarList;
+const mixins = @import("mixins");
 const SpeechGrammar = @import("interfaces").SpeechGrammar;
 const DOMString = @import("typedefs").DOMString;
 
@@ -103,12 +105,12 @@ pub const SpeechGrammarList = struct {
         return try SpeechGrammarListImpl.call_item(instance, index);
     }
 
-    pub fn call_addFromURI(instance: *runtime.Instance, src: DOMString, weight: f32) anyerror!void {
+    pub fn call_addFromURI(instance: *runtime.Instance, src: DOMString, weight: webidl.Opt(f32)) anyerror!void {
         
         return try SpeechGrammarListImpl.call_addFromURI(instance, src, weight);
     }
 
-    pub fn call_addFromString(instance: *runtime.Instance, string: DOMString, weight: f32) anyerror!void {
+    pub fn call_addFromString(instance: *runtime.Instance, string: DOMString, weight: webidl.Opt(f32)) anyerror!void {
         
         return try SpeechGrammarListImpl.call_addFromString(instance, string, weight);
     }

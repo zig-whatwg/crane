@@ -1,11 +1,13 @@
 //! Generated from: scroll-animations.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const ScrollTimelineImpl = @import("impls").ScrollTimeline;
+const mixins = @import("mixins");
 const AnimationTimeline = @import("interfaces").AnimationTimeline;
 const Element = @import("interfaces").Element;
 const AnimationEffect = @import("interfaces").AnimationEffect;
@@ -89,7 +91,7 @@ pub const ScrollTimeline = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: ScrollTimelineOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(ScrollTimelineOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try ScrollTimelineImpl.call_constructor(allocator, ctx, options);
     }

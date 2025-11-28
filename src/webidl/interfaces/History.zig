@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const HistoryImpl = @import("impls").History;
+const mixins = @import("mixins");
 const ScrollRestoration = @import("enums").ScrollRestoration;
 const DOMString = @import("typedefs").DOMString;
 const USVString = @import("interfaces").USVString;
@@ -125,12 +127,12 @@ pub const History = struct {
         return try HistoryImpl.call_forward(instance);
     }
 
-    pub fn call_pushState(instance: *runtime.Instance, data: *const anyopaque, unused: DOMString, url: runtime.USVString) anyerror!void {
+    pub fn call_pushState(instance: *runtime.Instance, data: *const anyopaque, unused: DOMString, url: webidl.Opt(?runtime.USVString)) anyerror!void {
         
         return try HistoryImpl.call_pushState(instance, data, unused, url);
     }
 
-    pub fn call_go(instance: *runtime.Instance, delta: i32) anyerror!void {
+    pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) anyerror!void {
         
         return try HistoryImpl.call_go(instance, delta);
     }
@@ -139,7 +141,7 @@ pub const History = struct {
         return try HistoryImpl.call_back(instance);
     }
 
-    pub fn call_replaceState(instance: *runtime.Instance, data: *const anyopaque, unused: DOMString, url: runtime.USVString) anyerror!void {
+    pub fn call_replaceState(instance: *runtime.Instance, data: *const anyopaque, unused: DOMString, url: webidl.Opt(?runtime.USVString)) anyerror!void {
         
         return try HistoryImpl.call_replaceState(instance, data, unused, url);
     }

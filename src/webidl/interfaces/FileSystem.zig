@@ -1,11 +1,13 @@
 //! Generated from: entries-api.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const FileSystemImpl = @import("impls").FileSystem;
+const mixins = @import("mixins");
 const FileSystemDirectoryEntry = @import("interfaces").FileSystemDirectoryEntry;
 const USVString = @import("interfaces").USVString;
 

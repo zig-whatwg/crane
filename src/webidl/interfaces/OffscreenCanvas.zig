@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const OffscreenCanvasImpl = @import("impls").OffscreenCanvas;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -167,12 +169,12 @@ pub const OffscreenCanvas = struct {
         try OffscreenCanvasImpl.set_oncontextrestored(instance, value);
     }
 
-    pub fn call_getContext(instance: *runtime.Instance, contextId: OffscreenRenderingContextId, options: *const anyopaque) anyerror!?OffscreenRenderingContext {
+    pub fn call_getContext(instance: *runtime.Instance, contextId: OffscreenRenderingContextId, options: webidl.Opt(*const anyopaque)) anyerror!?OffscreenRenderingContext {
         
         return try OffscreenCanvasImpl.call_getContext(instance, contextId, options);
     }
 
-    pub fn call_convertToBlob(instance: *runtime.Instance, options: ImageEncodeOptions) anyerror!*const anyopaque {
+    pub fn call_convertToBlob(instance: *runtime.Instance, options: webidl.Opt(ImageEncodeOptions)) anyerror!*const anyopaque {
         
         return try OffscreenCanvasImpl.call_convertToBlob(instance, options);
     }

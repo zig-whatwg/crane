@@ -1,11 +1,13 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const DocumentFragmentImpl = @import("impls").DocumentFragment;
+const mixins = @import("mixins");
 const Node = @import("interfaces").Node;
 const NonElementParentNode = @import("interfaces").NonElementParentNode;
 const ParentNode = @import("interfaces").ParentNode;
@@ -180,7 +182,7 @@ pub const DocumentFragment = struct {
     }
 
     /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_append(instance: *runtime.Instance, nodes: *const anyopaque) anyerror!void {
+    pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -190,7 +192,7 @@ pub const DocumentFragment = struct {
     }
 
     /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_replaceChildren(instance: *runtime.Instance, nodes: *const anyopaque) anyerror!void {
+    pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -200,7 +202,7 @@ pub const DocumentFragment = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) anyerror!void {
+    pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -210,7 +212,7 @@ pub const DocumentFragment = struct {
     }
 
     /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_prepend(instance: *runtime.Instance, nodes: *const anyopaque) anyerror!void {
+    pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

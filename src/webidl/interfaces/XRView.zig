@@ -1,11 +1,13 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const XRViewImpl = @import("impls").XRView;
+const mixins = @import("mixins");
 const XRViewGeometry = @import("interfaces").XRViewGeometry;
 const XRRigidTransform = @import("interfaces").XRRigidTransform;
 const XREye = @import("enums").XREye;
@@ -157,7 +159,7 @@ pub const XRView = struct {
         return value;
     }
 
-    pub fn call_requestViewportScale(instance: *runtime.Instance, scale: f64) anyerror!void {
+    pub fn call_requestViewportScale(instance: *runtime.Instance, scale: ?f64) anyerror!void {
         
         return try XRViewImpl.call_requestViewportScale(instance, scale);
     }

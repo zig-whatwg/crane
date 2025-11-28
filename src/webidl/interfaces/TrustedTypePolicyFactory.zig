@@ -1,11 +1,13 @@
 //! Generated from: trusted-types.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const TrustedTypePolicyFactoryImpl = @import("impls").TrustedTypePolicyFactory;
+const mixins = @import("mixins");
 const TrustedTypePolicyOptions = @import("dictionaries").TrustedTypePolicyOptions;
 const TrustedHTML = @import("interfaces").TrustedHTML;
 const TrustedScript = @import("interfaces").TrustedScript;
@@ -123,7 +125,7 @@ pub const TrustedTypePolicyFactory = struct {
         return try TrustedTypePolicyFactoryImpl.get_defaultPolicy(instance);
     }
 
-    pub fn call_createPolicy(instance: *runtime.Instance, policyName: DOMString, policyOptions: TrustedTypePolicyOptions) anyerror!*runtime.Instance {
+    pub fn call_createPolicy(instance: *runtime.Instance, policyName: DOMString, policyOptions: webidl.Opt(TrustedTypePolicyOptions)) anyerror!*runtime.Instance {
         
         return try TrustedTypePolicyFactoryImpl.call_createPolicy(instance, policyName, policyOptions);
     }
@@ -138,7 +140,7 @@ pub const TrustedTypePolicyFactory = struct {
         return try TrustedTypePolicyFactoryImpl.call_isScriptURL(instance, value);
     }
 
-    pub fn call_getPropertyType(instance: *runtime.Instance, tagName: DOMString, property: DOMString, elementNs: DOMString) anyerror!?DOMString {
+    pub fn call_getPropertyType(instance: *runtime.Instance, tagName: DOMString, property: DOMString, elementNs: webidl.Opt(?DOMString)) anyerror!?DOMString {
         
         return try TrustedTypePolicyFactoryImpl.call_getPropertyType(instance, tagName, property, elementNs);
     }
@@ -148,7 +150,7 @@ pub const TrustedTypePolicyFactory = struct {
         return try TrustedTypePolicyFactoryImpl.call_isHTML(instance, value);
     }
 
-    pub fn call_getAttributeType(instance: *runtime.Instance, tagName: DOMString, attribute: DOMString, elementNs: DOMString, attrNs: DOMString) anyerror!?DOMString {
+    pub fn call_getAttributeType(instance: *runtime.Instance, tagName: DOMString, attribute: DOMString, elementNs: webidl.Opt(?DOMString), attrNs: webidl.Opt(?DOMString)) anyerror!?DOMString {
         
         return try TrustedTypePolicyFactoryImpl.call_getAttributeType(instance, tagName, attribute, elementNs, attrNs);
     }

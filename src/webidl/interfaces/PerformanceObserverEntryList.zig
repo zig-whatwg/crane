@@ -1,11 +1,13 @@
 //! Generated from: performance-timeline.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const PerformanceObserverEntryListImpl = @import("impls").PerformanceObserverEntryList;
+const mixins = @import("mixins");
 const PerformanceEntryList = @import("typedefs").PerformanceEntryList;
 const DOMString = @import("typedefs").DOMString;
 
@@ -95,7 +97,7 @@ pub const PerformanceObserverEntryList = struct {
         return try PerformanceObserverEntryListImpl.call_getEntriesByType(instance, @"type");
     }
 
-    pub fn call_getEntriesByName(instance: *runtime.Instance, name: DOMString, @"type": DOMString) anyerror!PerformanceEntryList {
+    pub fn call_getEntriesByName(instance: *runtime.Instance, name: DOMString, @"type": webidl.Opt(DOMString)) anyerror!PerformanceEntryList {
         
         return try PerformanceObserverEntryListImpl.call_getEntriesByName(instance, name, @"type");
     }

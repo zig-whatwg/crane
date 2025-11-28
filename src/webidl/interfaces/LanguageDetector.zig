@@ -1,11 +1,13 @@
 //! Generated from: translation-api.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const LanguageDetectorImpl = @import("impls").LanguageDetector;
+const mixins = @import("mixins");
 const DestroyableModel = @import("interfaces").DestroyableModel;
 const LanguageDetectorDetectOptions = @import("dictionaries").LanguageDetectorDetectOptions;
 const Availability = @import("enums").Availability;
@@ -117,12 +119,12 @@ pub const LanguageDetector = struct {
         return try LanguageDetectorImpl.get_inputQuota(instance);
     }
 
-    pub fn call_availability(instance: *runtime.Instance, options: LanguageDetectorCreateCoreOptions) anyerror!*const anyopaque {
+    pub fn call_availability(instance: *runtime.Instance, options: webidl.Opt(LanguageDetectorCreateCoreOptions)) anyerror!*const anyopaque {
         
         return try LanguageDetectorImpl.call_availability(instance, options);
     }
 
-    pub fn call_measureInputUsage(instance: *runtime.Instance, input: DOMString, options: LanguageDetectorDetectOptions) anyerror!*const anyopaque {
+    pub fn call_measureInputUsage(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(LanguageDetectorDetectOptions)) anyerror!*const anyopaque {
         
         return try LanguageDetectorImpl.call_measureInputUsage(instance, input, options);
     }
@@ -131,12 +133,12 @@ pub const LanguageDetector = struct {
         return try LanguageDetectorImpl.call_destroy(instance);
     }
 
-    pub fn call_detect(instance: *runtime.Instance, input: DOMString, options: LanguageDetectorDetectOptions) anyerror!*const anyopaque {
+    pub fn call_detect(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(LanguageDetectorDetectOptions)) anyerror!*const anyopaque {
         
         return try LanguageDetectorImpl.call_detect(instance, input, options);
     }
 
-    pub fn call_create(instance: *runtime.Instance, options: LanguageDetectorCreateOptions) anyerror!*const anyopaque {
+    pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(LanguageDetectorCreateOptions)) anyerror!*const anyopaque {
         
         return try LanguageDetectorImpl.call_create(instance, options);
     }

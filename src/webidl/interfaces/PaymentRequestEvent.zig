@@ -1,11 +1,13 @@
 //! Generated from: payment-handler.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const PaymentRequestEventImpl = @import("impls").PaymentRequestEvent;
+const mixins = @import("mixins");
 const ExtendableEvent = @import("interfaces").ExtendableEvent;
 const PaymentMethodData = @import("dictionaries").PaymentMethodData;
 const WindowClient = @import("interfaces").WindowClient;
@@ -142,7 +144,7 @@ pub const PaymentRequestEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: PaymentRequestEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(PaymentRequestEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try PaymentRequestEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
@@ -179,7 +181,7 @@ pub const PaymentRequestEvent = struct {
         return try PaymentRequestEventImpl.get_shippingOptions(instance);
     }
 
-    pub fn call_changePaymentMethod(instance: *runtime.Instance, methodName: DOMString, methodDetails: *const anyopaque) anyerror!*const anyopaque {
+    pub fn call_changePaymentMethod(instance: *runtime.Instance, methodName: DOMString, methodDetails: webidl.Opt(?*const anyopaque)) anyerror!*const anyopaque {
         
         return try PaymentRequestEventImpl.call_changePaymentMethod(instance, methodName, methodDetails);
     }
@@ -194,7 +196,7 @@ pub const PaymentRequestEvent = struct {
         return try PaymentRequestEventImpl.call_openWindow(instance, url);
     }
 
-    pub fn call_changeShippingAddress(instance: *runtime.Instance, shippingAddress: *const anyopaque) anyerror!*const anyopaque {
+    pub fn call_changeShippingAddress(instance: *runtime.Instance, shippingAddress: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
         
         return try PaymentRequestEventImpl.call_changeShippingAddress(instance, shippingAddress);
     }

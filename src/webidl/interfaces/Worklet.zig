@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const WorkletImpl = @import("impls").Worklet;
+const mixins = @import("mixins");
 const USVString = @import("interfaces").USVString;
 const WorkletOptions = @import("dictionaries").WorkletOptions;
 
@@ -79,7 +81,7 @@ pub const Worklet = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_addModule(instance: *runtime.Instance, moduleURL: runtime.USVString, options: WorkletOptions) anyerror!*const anyopaque {
+    pub fn call_addModule(instance: *runtime.Instance, moduleURL: runtime.USVString, options: webidl.Opt(WorkletOptions)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
         return try WorkletImpl.call_addModule(instance, moduleURL, options);

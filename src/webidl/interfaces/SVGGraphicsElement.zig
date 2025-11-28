@@ -1,11 +1,13 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const SVGGraphicsElementImpl = @import("impls").SVGGraphicsElement;
+const mixins = @import("mixins");
 const SVGElement = @import("interfaces").SVGElement;
 const SVGTests = @import("interfaces").SVGTests;
 const DOMStringMap = @import("interfaces").DOMStringMap;
@@ -298,7 +300,7 @@ pub const SVGGraphicsElement = struct {
         return try SVGGraphicsElementImpl.call_getCTM(instance);
     }
 
-    pub fn call_getBBox(instance: *runtime.Instance, options: SVGBoundingBoxOptions) anyerror!*runtime.Instance {
+    pub fn call_getBBox(instance: *runtime.Instance, options: webidl.Opt(SVGBoundingBoxOptions)) anyerror!*runtime.Instance {
         
         return try SVGGraphicsElementImpl.call_getBBox(instance, options);
     }

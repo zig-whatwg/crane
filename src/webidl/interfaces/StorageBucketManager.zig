@@ -1,11 +1,13 @@
 //! Generated from: storage-buckets.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const StorageBucketManagerImpl = @import("impls").StorageBucketManager;
+const mixins = @import("mixins");
 const StorageBucketOptions = @import("dictionaries").StorageBucketOptions;
 const StorageBucket = @import("interfaces").StorageBucket;
 const DOMString = @import("typedefs").DOMString;
@@ -97,7 +99,7 @@ pub const StorageBucketManager = struct {
         return try StorageBucketManagerImpl.call_keys(instance);
     }
 
-    pub fn call_open(instance: *runtime.Instance, name: DOMString, options: StorageBucketOptions) anyerror!*const anyopaque {
+    pub fn call_open(instance: *runtime.Instance, name: DOMString, options: webidl.Opt(StorageBucketOptions)) anyerror!*const anyopaque {
         
         return try StorageBucketManagerImpl.call_open(instance, name, options);
     }

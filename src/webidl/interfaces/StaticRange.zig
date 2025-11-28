@@ -1,11 +1,13 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const StaticRangeImpl = @import("impls").StaticRange;
+const mixins = @import("mixins");
 const AbstractRange = @import("interfaces").AbstractRange;
 const Node = @import("interfaces").Node;
 const StaticRangeInit = @import("dictionaries").StaticRangeInit;

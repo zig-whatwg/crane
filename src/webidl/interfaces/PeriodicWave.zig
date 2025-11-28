@@ -1,11 +1,13 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const PeriodicWaveImpl = @import("impls").PeriodicWave;
+const mixins = @import("mixins");
 const BaseAudioContext = @import("interfaces").BaseAudioContext;
 const PeriodicWaveOptions = @import("dictionaries").PeriodicWaveOptions;
 
@@ -74,7 +76,7 @@ pub const PeriodicWave = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: PeriodicWaveOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: webidl.Opt(PeriodicWaveOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try PeriodicWaveImpl.call_constructor(allocator, ctx, context, options);
     }

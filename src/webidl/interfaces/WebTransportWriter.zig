@@ -1,11 +1,13 @@
 //! Generated from: webtransport.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const WebTransportWriterImpl = @import("impls").WebTransportWriter;
+const mixins = @import("mixins");
 const WritableStreamDefaultWriter = @import("interfaces").WritableStreamDefaultWriter;
 const WritableStream = @import("interfaces").WritableStream;
 
@@ -89,7 +91,7 @@ pub const WebTransportWriter = struct {
         return try WebTransportWriterImpl.call_commit(instance);
     }
 
-    pub fn call_atomicWrite(instance: *runtime.Instance, chunk: *const anyopaque) anyerror!*const anyopaque {
+    pub fn call_atomicWrite(instance: *runtime.Instance, chunk: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
         
         return try WebTransportWriterImpl.call_atomicWrite(instance, chunk);
     }

@@ -1,11 +1,13 @@
 //! Generated from: geolocation-sensor.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const GeolocationSensorImpl = @import("impls").GeolocationSensor;
+const mixins = @import("mixins");
 const Sensor = @import("interfaces").Sensor;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -132,7 +134,7 @@ pub const GeolocationSensor = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: GeolocationSensorOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(GeolocationSensorOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try GeolocationSensorImpl.call_constructor(allocator, ctx, options);
     }
@@ -165,7 +167,7 @@ pub const GeolocationSensor = struct {
         return try GeolocationSensorImpl.get_speed(instance);
     }
 
-    pub fn call_read(instance: *runtime.Instance, readOptions: ReadOptions) anyerror!*const anyopaque {
+    pub fn call_read(instance: *runtime.Instance, readOptions: webidl.Opt(ReadOptions)) anyerror!*const anyopaque {
         
         return try GeolocationSensorImpl.call_read(instance, readOptions);
     }

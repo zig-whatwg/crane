@@ -1,11 +1,13 @@
 //! Generated from: hr-time.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const PerformanceImpl = @import("impls").Performance;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -216,7 +218,7 @@ pub const Performance = struct {
         try PerformanceImpl.set_onresourcetimingbufferfull(instance, value);
     }
 
-    pub fn call_measure(instance: *runtime.Instance, measureName: DOMString, startOrMeasureOptions: *const anyopaque, endMark: DOMString) anyerror!*runtime.Instance {
+    pub fn call_measure(instance: *runtime.Instance, measureName: DOMString, startOrMeasureOptions: webidl.Opt(*const anyopaque), endMark: webidl.Opt(DOMString)) anyerror!*runtime.Instance {
         
         return try PerformanceImpl.call_measure(instance, measureName, startOrMeasureOptions, endMark);
     }
@@ -230,12 +232,12 @@ pub const Performance = struct {
         return try PerformanceImpl.call_getEntriesByType(instance, @"type");
     }
 
-    pub fn call_clearMeasures(instance: *runtime.Instance, measureName: DOMString) anyerror!void {
+    pub fn call_clearMeasures(instance: *runtime.Instance, measureName: webidl.Opt(DOMString)) anyerror!void {
         
         return try PerformanceImpl.call_clearMeasures(instance, measureName);
     }
 
-    pub fn call_mark(instance: *runtime.Instance, markName: DOMString, markOptions: PerformanceMarkOptions) anyerror!*runtime.Instance {
+    pub fn call_mark(instance: *runtime.Instance, markName: DOMString, markOptions: webidl.Opt(PerformanceMarkOptions)) anyerror!*runtime.Instance {
         
         return try PerformanceImpl.call_mark(instance, markName, markOptions);
     }
@@ -263,12 +265,12 @@ pub const Performance = struct {
         return try PerformanceImpl.call_measureUserAgentSpecificMemory(instance);
     }
 
-    pub fn call_clearMarks(instance: *runtime.Instance, markName: DOMString) anyerror!void {
+    pub fn call_clearMarks(instance: *runtime.Instance, markName: webidl.Opt(DOMString)) anyerror!void {
         
         return try PerformanceImpl.call_clearMarks(instance, markName);
     }
 
-    pub fn call_getEntriesByName(instance: *runtime.Instance, name: DOMString, @"type": DOMString) anyerror!PerformanceEntryList {
+    pub fn call_getEntriesByName(instance: *runtime.Instance, name: DOMString, @"type": webidl.Opt(DOMString)) anyerror!PerformanceEntryList {
         
         return try PerformanceImpl.call_getEntriesByName(instance, name, @"type");
     }

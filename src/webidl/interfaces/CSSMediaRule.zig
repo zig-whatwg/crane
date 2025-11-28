@@ -1,11 +1,13 @@
 //! Generated from: css-conditional.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const CSSMediaRuleImpl = @import("impls").CSSMediaRule;
+const mixins = @import("mixins");
 const CSSConditionRule = @import("interfaces").CSSConditionRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;

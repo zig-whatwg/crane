@@ -1,11 +1,13 @@
 //! Generated from: OES_vertex_array_object.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const WebGLVertexArrayObjectOESImpl = @import("impls").WebGLVertexArrayObjectOES;
+const mixins = @import("mixins");
 const WebGLObject = @import("interfaces").WebGLObject;
 const USVString = @import("interfaces").USVString;
 

@@ -1,11 +1,13 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const XRRigidTransformImpl = @import("impls").XRRigidTransform;
+const mixins = @import("mixins");
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const DOMPointReadOnly = @import("interfaces").DOMPointReadOnly;
 
@@ -95,7 +97,7 @@ pub const XRRigidTransform = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, position: DOMPointInit, orientation: DOMPointInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, position: webidl.Opt(DOMPointInit), orientation: webidl.Opt(DOMPointInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try XRRigidTransformImpl.call_constructor(allocator, ctx, position, orientation);
     }

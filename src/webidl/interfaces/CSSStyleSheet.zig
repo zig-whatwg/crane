@@ -1,11 +1,13 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const CSSStyleSheetImpl = @import("impls").CSSStyleSheet;
+const mixins = @import("mixins");
 const StyleSheet = @import("interfaces").StyleSheet;
 const CSSStyleSheetInit = @import("dictionaries").CSSStyleSheetInit;
 const CSSRule = @import("interfaces").CSSRule;
@@ -125,7 +127,7 @@ pub const CSSStyleSheet = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: CSSStyleSheetInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(CSSStyleSheetInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try CSSStyleSheetImpl.call_constructor(allocator, ctx, options);
     }
@@ -173,17 +175,17 @@ pub const CSSStyleSheet = struct {
         return try CSSStyleSheetImpl.call_replace(instance, text);
     }
 
-    pub fn call_insertRule(instance: *runtime.Instance, rule: CSSOMString, index: u32) anyerror!u32 {
+    pub fn call_insertRule(instance: *runtime.Instance, rule: CSSOMString, index: webidl.Opt(u32)) anyerror!u32 {
         
         return try CSSStyleSheetImpl.call_insertRule(instance, rule, index);
     }
 
-    pub fn call_addRule(instance: *runtime.Instance, selector: DOMString, style: DOMString, index: u32) anyerror!i32 {
+    pub fn call_addRule(instance: *runtime.Instance, selector: webidl.Opt(DOMString), style: webidl.Opt(DOMString), index: webidl.Opt(u32)) anyerror!i32 {
         
         return try CSSStyleSheetImpl.call_addRule(instance, selector, style, index);
     }
 
-    pub fn call_removeRule(instance: *runtime.Instance, index: u32) anyerror!void {
+    pub fn call_removeRule(instance: *runtime.Instance, index: webidl.Opt(u32)) anyerror!void {
         
         return try CSSStyleSheetImpl.call_removeRule(instance, index);
     }

@@ -1,11 +1,13 @@
 //! Generated from: direct-sockets.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const TCPServerSocketImpl = @import("impls").TCPServerSocket;
+const mixins = @import("mixins");
 const TCPServerSocketOptions = @import("dictionaries").TCPServerSocketOptions;
 const DOMString = @import("typedefs").DOMString;
 const TCPServerSocketOpenInfo = @import("dictionaries").TCPServerSocketOpenInfo;
@@ -93,7 +95,7 @@ pub const TCPServerSocket = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, localAddress: DOMString, options: TCPServerSocketOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, localAddress: DOMString, options: webidl.Opt(TCPServerSocketOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try TCPServerSocketImpl.call_constructor(allocator, ctx, localAddress, options);
     }

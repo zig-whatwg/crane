@@ -1,11 +1,13 @@
 //! Generated from: private-aggregation-api.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const PrivateAggregationImpl = @import("impls").PrivateAggregation;
+const mixins = @import("mixins");
 const PAHistogramContribution = @import("dictionaries").PAHistogramContribution;
 const PADebugModeOptions = @import("dictionaries").PADebugModeOptions;
 const DOMString = @import("typedefs").DOMString;
@@ -98,7 +100,7 @@ pub const PrivateAggregation = struct {
         return try PrivateAggregationImpl.call_contributeToHistogramOnEvent(instance, event, contribution);
     }
 
-    pub fn call_enableDebugMode(instance: *runtime.Instance, options: PADebugModeOptions) anyerror!void {
+    pub fn call_enableDebugMode(instance: *runtime.Instance, options: webidl.Opt(PADebugModeOptions)) anyerror!void {
         
         return try PrivateAggregationImpl.call_enableDebugMode(instance, options);
     }

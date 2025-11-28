@@ -1,11 +1,13 @@
 //! Generated from: urlpattern.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const URLPatternImpl = @import("impls").URLPattern;
+const mixins = @import("mixins");
 const URLPatternOptions = @import("dictionaries").URLPatternOptions;
 const USVString = @import("interfaces").USVString;
 const URLPatternResult = @import("dictionaries").URLPatternResult;
@@ -128,12 +130,12 @@ pub const URLPattern = struct {
         URLPatternInput_USVString_URLPatternOptions: struct {
             input: URLPatternInput,
             baseURL: runtime.USVString,
-            options: URLPatternOptions,
+            options: webidl.Opt(URLPatternOptions),
         },
         /// constructor(input, options)
         URLPatternInput_URLPatternOptions: struct {
-            input: URLPatternInput,
-            options: URLPatternOptions,
+            input: webidl.Opt(URLPatternInput),
+            options: webidl.Opt(URLPatternOptions),
         },
     };
 
@@ -179,12 +181,12 @@ pub const URLPattern = struct {
         return try URLPatternImpl.get_hasRegExpGroups(instance);
     }
 
-    pub fn call_test(instance: *runtime.Instance, input: URLPatternInput, baseURL: runtime.USVString) anyerror!bool {
+    pub fn call_test(instance: *runtime.Instance, input: webidl.Opt(URLPatternInput), baseURL: webidl.Opt(runtime.USVString)) anyerror!bool {
         
         return try URLPatternImpl.call_test(instance, input, baseURL);
     }
 
-    pub fn call_exec(instance: *runtime.Instance, input: URLPatternInput, baseURL: runtime.USVString) anyerror!?URLPatternResult {
+    pub fn call_exec(instance: *runtime.Instance, input: webidl.Opt(URLPatternInput), baseURL: webidl.Opt(runtime.USVString)) anyerror!?URLPatternResult {
         
         return try URLPatternImpl.call_exec(instance, input, baseURL);
     }

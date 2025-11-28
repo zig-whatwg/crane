@@ -1,11 +1,13 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const AudioBufferImpl = @import("impls").AudioBuffer;
+const mixins = @import("mixins");
 const AudioBufferOptions = @import("dictionaries").AudioBufferOptions;
 
 pub const AudioBuffer = struct {
@@ -126,12 +128,12 @@ pub const AudioBuffer = struct {
         return try AudioBufferImpl.call_getChannelData(instance, channel);
     }
 
-    pub fn call_copyFromChannel(instance: *runtime.Instance, destination: *const anyopaque, channelNumber: u32, bufferOffset: u32) anyerror!void {
+    pub fn call_copyFromChannel(instance: *runtime.Instance, destination: *const anyopaque, channelNumber: u32, bufferOffset: webidl.Opt(u32)) anyerror!void {
         
         return try AudioBufferImpl.call_copyFromChannel(instance, destination, channelNumber, bufferOffset);
     }
 
-    pub fn call_copyToChannel(instance: *runtime.Instance, source: *const anyopaque, channelNumber: u32, bufferOffset: u32) anyerror!void {
+    pub fn call_copyToChannel(instance: *runtime.Instance, source: *const anyopaque, channelNumber: u32, bufferOffset: webidl.Opt(u32)) anyerror!void {
         
         return try AudioBufferImpl.call_copyToChannel(instance, source, channelNumber, bufferOffset);
     }

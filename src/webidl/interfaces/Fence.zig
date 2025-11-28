@@ -1,11 +1,13 @@
 //! Generated from: fenced-frame.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const FenceImpl = @import("impls").Fence;
+const mixins = @import("mixins");
 const FenceEvent = @import("dictionaries").FenceEvent;
 const FencedFrameConfig = @import("interfaces").FencedFrameConfig;
 const ReportEventType = @import("typedefs").ReportEventType;
@@ -91,7 +93,7 @@ pub const Fence = struct {
         FenceImpl.deinit(instance);
     }
 
-    pub fn call_reportEvent(instance: *runtime.Instance, event: ReportEventType) anyerror!void {
+    pub fn call_reportEvent(instance: *runtime.Instance, event: webidl.Opt(ReportEventType)) anyerror!void {
         
         return try FenceImpl.call_reportEvent(instance, event);
     }
@@ -100,7 +102,7 @@ pub const Fence = struct {
         return try FenceImpl.call_getNestedConfigs(instance);
     }
 
-    pub fn call_setReportEventDataForAutomaticBeacons(instance: *runtime.Instance, event: FenceEvent) anyerror!void {
+    pub fn call_setReportEventDataForAutomaticBeacons(instance: *runtime.Instance, event: webidl.Opt(FenceEvent)) anyerror!void {
         
         return try FenceImpl.call_setReportEventDataForAutomaticBeacons(instance, event);
     }

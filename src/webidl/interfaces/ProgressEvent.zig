@@ -1,11 +1,13 @@
 //! Generated from: xhr.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const ProgressEventImpl = @import("impls").ProgressEvent;
+const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
 const EventTarget = @import("interfaces").EventTarget;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
@@ -99,7 +101,7 @@ pub const ProgressEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: ProgressEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(ProgressEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try ProgressEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }

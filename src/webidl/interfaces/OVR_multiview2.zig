@@ -1,11 +1,13 @@
 //! Generated from: OVR_multiview2.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const OVR_multiview2Impl = @import("impls").OVR_multiview2;
+const mixins = @import("mixins");
 const GLenum = @import("typedefs").GLenum;
 const GLint = @import("typedefs").GLint;
 const GLsizei = @import("typedefs").GLsizei;
@@ -120,7 +122,7 @@ pub const OVR_multiview2 = struct {
         OVR_multiview2Impl.deinit(instance);
     }
 
-    pub fn call_framebufferTextureMultiviewOVR(instance: *runtime.Instance, target: GLenum, attachment: GLenum, texture: *runtime.Instance, level: GLint, baseViewIndex: GLint, numViews: GLsizei) anyerror!void {
+    pub fn call_framebufferTextureMultiviewOVR(instance: *runtime.Instance, target: GLenum, attachment: GLenum, texture: ?*runtime.Instance, level: GLint, baseViewIndex: GLint, numViews: GLsizei) anyerror!void {
         
         return try OVR_multiview2Impl.call_framebufferTextureMultiviewOVR(instance, target, attachment, texture, level, baseViewIndex, numViews);
     }

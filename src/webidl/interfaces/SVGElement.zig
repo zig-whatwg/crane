@@ -1,11 +1,13 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const SVGElementImpl = @import("impls").SVGElement;
+const mixins = @import("mixins");
 const Element = @import("interfaces").Element;
 const ElementCSSInlineStyle = @import("interfaces").ElementCSSInlineStyle;
 const GlobalEventHandlers = @import("interfaces").GlobalEventHandlers;
@@ -1782,7 +1784,7 @@ pub const SVGElement = struct {
         return try SVGElementImpl.call_blur(instance);
     }
 
-    pub fn call_focus(instance: *runtime.Instance, options: FocusOptions) anyerror!void {
+    pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(FocusOptions)) anyerror!void {
         
         return try SVGElementImpl.call_focus(instance, options);
     }

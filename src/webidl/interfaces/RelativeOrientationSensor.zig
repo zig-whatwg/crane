@@ -1,11 +1,13 @@
 //! Generated from: orientation-sensor.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const RelativeOrientationSensorImpl = @import("impls").RelativeOrientationSensor;
+const mixins = @import("mixins");
 const OrientationSensor = @import("interfaces").OrientationSensor;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -92,7 +94,7 @@ pub const RelativeOrientationSensor = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, sensorOptions: OrientationSensorOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, sensorOptions: webidl.Opt(OrientationSensorOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try RelativeOrientationSensorImpl.call_constructor(allocator, ctx, sensorOptions);
     }

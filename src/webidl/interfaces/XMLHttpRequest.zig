@@ -1,11 +1,13 @@
 //! Generated from: xhr.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const XMLHttpRequestImpl = @import("impls").XMLHttpRequest;
+const mixins = @import("mixins");
 const XMLHttpRequestEventTarget = @import("interfaces").XMLHttpRequestEventTarget;
 const Document = @import("interfaces").Document;
 const XMLHttpRequestResponseType = @import("enums").XMLHttpRequestResponseType;
@@ -323,7 +325,7 @@ pub const XMLHttpRequest = struct {
         return try XMLHttpRequestImpl.call_abort(instance);
     }
 
-    pub fn call_send(instance: *runtime.Instance, body: *const anyopaque) anyerror!void {
+    pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?*const anyopaque)) anyerror!void {
         
         return try XMLHttpRequestImpl.call_send(instance, body);
     }

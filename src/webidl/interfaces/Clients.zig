@@ -1,11 +1,13 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const ClientsImpl = @import("impls").Clients;
+const mixins = @import("mixins");
 const WindowClient = @import("interfaces").WindowClient;
 const ClientQueryOptions = @import("dictionaries").ClientQueryOptions;
 const USVString = @import("interfaces").USVString;
@@ -96,7 +98,7 @@ pub const Clients = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_matchAll(instance: *runtime.Instance, options: ClientQueryOptions) anyerror!*const anyopaque {
+    pub fn call_matchAll(instance: *runtime.Instance, options: webidl.Opt(ClientQueryOptions)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
         return try ClientsImpl.call_matchAll(instance, options);

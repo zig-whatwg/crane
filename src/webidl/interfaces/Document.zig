@@ -1,11 +1,13 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const DocumentImpl = @import("impls").Document;
+const mixins = @import("mixins");
 const Node = @import("interfaces").Node;
 const FontFaceSource = @import("interfaces").FontFaceSource;
 const NonElementParentNode = @import("interfaces").NonElementParentNode;
@@ -2650,7 +2652,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createExpression(instance: *runtime.Instance, expression: DOMString, resolver: ?*runtime.CallbackWrapper) anyerror!*runtime.Instance {
+    pub fn call_createExpression(instance: *runtime.Instance, expression: DOMString, resolver: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DocumentImpl.call_createExpression(instance, expression, resolver);
@@ -2662,7 +2664,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
-    pub fn call_createElement(instance: *runtime.Instance, localName: DOMString, options: *const anyopaque) anyerror!*runtime.Instance {
+    pub fn call_createElement(instance: *runtime.Instance, localName: DOMString, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -2677,7 +2679,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_prepend(instance: *runtime.Instance, nodes: *const anyopaque) anyerror!void {
+    pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -2686,7 +2688,7 @@ pub const Document = struct {
         return try DocumentImpl.call_prepend(instance, nodes);
     }
 
-    pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!*runtime.Instance {
+    pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
         
         return try DocumentImpl.call_convertQuadFromNode(instance, quad, from, options);
     }
@@ -2707,7 +2709,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_open(instance: *runtime.Instance, unused1: DOMString, unused2: DOMString) anyerror!*runtime.Instance {
+    pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(DOMString), unused2: webidl.Opt(DOMString)) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -2726,7 +2728,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_execCommand(instance: *runtime.Instance, commandId: DOMString, showUI: bool, value: DOMString) anyerror!bool {
+    pub fn call_execCommand(instance: *runtime.Instance, commandId: DOMString, showUI: webidl.Opt(bool), value: webidl.Opt(DOMString)) anyerror!bool {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -2741,7 +2743,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_write(instance: *runtime.Instance, text: DOMString) anyerror!void {
+    pub fn call_write(instance: *runtime.Instance, text: []const DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -2766,7 +2768,7 @@ pub const Document = struct {
         return try DocumentImpl.call_queryCommandIndeterm(instance, commandId);
     }
 
-    pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: DOMString, localName: DOMString) anyerror!*runtime.Instance {
+    pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!*runtime.Instance {
         
         return try DocumentImpl.call_getElementsByTagNameNS(instance, namespace, localName);
     }
@@ -2791,7 +2793,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_replaceChildren(instance: *runtime.Instance, nodes: *const anyopaque) anyerror!void {
+    pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -2800,12 +2802,12 @@ pub const Document = struct {
         return try DocumentImpl.call_replaceChildren(instance, nodes);
     }
 
-    pub fn call_getBoxQuads(instance: *runtime.Instance, options: BoxQuadOptions) anyerror!*const anyopaque {
+    pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!*const anyopaque {
         
         return try DocumentImpl.call_getBoxQuads(instance, options);
     }
 
-    pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!*runtime.Instance {
+    pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
         
         return try DocumentImpl.call_convertPointFromNode(instance, point, from, options);
     }
@@ -2824,7 +2826,7 @@ pub const Document = struct {
         return try DocumentImpl.call_getElementsByTagName(instance, qualifiedName);
     }
 
-    pub fn call_evaluate(instance: *runtime.Instance, expression: DOMString, contextNode: *runtime.Instance, resolver: ?*runtime.CallbackWrapper, @"type": u16, result: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_evaluate(instance: *runtime.Instance, expression: DOMString, contextNode: *runtime.Instance, resolver: webidl.Opt(??*runtime.CallbackWrapper), @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
         
         return try DocumentImpl.call_evaluate(instance, expression, contextNode, resolver, @"type", result);
     }
@@ -2839,7 +2841,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
-    pub fn call_importNode(instance: *runtime.Instance, node: *runtime.Instance, options: *const anyopaque) anyerror!*runtime.Instance {
+    pub fn call_importNode(instance: *runtime.Instance, node: *runtime.Instance, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -2873,7 +2875,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createAttributeNS(instance: *runtime.Instance, namespace: DOMString, qualifiedName: DOMString) anyerror!*runtime.Instance {
+    pub fn call_createAttributeNS(instance: *runtime.Instance, namespace: ?DOMString, qualifiedName: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DocumentImpl.call_createAttributeNS(instance, namespace, qualifiedName);
@@ -2905,7 +2907,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: u32, filter: ?*runtime.CallbackWrapper) anyerror!*runtime.Instance {
+    pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DocumentImpl.call_createTreeWalker(instance, root, whatToShow, filter);
@@ -2917,7 +2919,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_writeln(instance: *runtime.Instance, text: DOMString) anyerror!void {
+    pub fn call_writeln(instance: *runtime.Instance, text: []const DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -2927,7 +2929,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_append(instance: *runtime.Instance, nodes: *const anyopaque) anyerror!void {
+    pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -2937,7 +2939,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) anyerror!void {
+    pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -2946,7 +2948,7 @@ pub const Document = struct {
         return try DocumentImpl.call_moveBefore(instance, node, child);
     }
 
-    pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!*runtime.Instance {
+    pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
         
         return try DocumentImpl.call_convertRectFromNode(instance, rect, from, options);
     }
@@ -2956,12 +2958,12 @@ pub const Document = struct {
         return try DocumentImpl.call_queryCommandValue(instance, commandId);
     }
 
-    pub fn call_caretPositionFromPoint(instance: *runtime.Instance, x: f64, y: f64, options: CaretPositionFromPointOptions) anyerror!?*runtime.Instance {
+    pub fn call_caretPositionFromPoint(instance: *runtime.Instance, x: f64, y: f64, options: webidl.Opt(CaretPositionFromPointOptions)) anyerror!?*runtime.Instance {
         
         return try DocumentImpl.call_caretPositionFromPoint(instance, x, y, options);
     }
 
-    pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: *const anyopaque) anyerror!*runtime.Instance {
+    pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
         
         return try DocumentImpl.call_startViewTransition(instance, callbackOptions);
     }
@@ -2997,7 +2999,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
-    pub fn call_createElementNS(instance: *runtime.Instance, namespace: DOMString, qualifiedName: DOMString, options: *const anyopaque) anyerror!*runtime.Instance {
+    pub fn call_createElementNS(instance: *runtime.Instance, namespace: ?DOMString, qualifiedName: DOMString, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -3019,7 +3021,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn call_browsingTopics(instance: *runtime.Instance, options: BrowsingTopicsOptions) anyerror!*const anyopaque {
+    pub fn call_browsingTopics(instance: *runtime.Instance, options: webidl.Opt(BrowsingTopicsOptions)) anyerror!*const anyopaque {
         
         return try DocumentImpl.call_browsingTopics(instance, options);
     }
@@ -3030,7 +3032,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: u32, filter: ?*runtime.CallbackWrapper) anyerror!*runtime.Instance {
+    pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DocumentImpl.call_createNodeIterator(instance, root, whatToShow, filter);

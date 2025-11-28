@@ -1,11 +1,13 @@
 //! Generated from: webtransport.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const WebTransportErrorImpl = @import("impls").WebTransportError;
+const mixins = @import("mixins");
 const DOMException = @import("interfaces").DOMException;
 const WebTransportErrorOptions = @import("dictionaries").WebTransportErrorOptions;
 const DOMString = @import("typedefs").DOMString;
@@ -90,7 +92,7 @@ pub const WebTransportError = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, message: DOMString, options: WebTransportErrorOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, message: webidl.Opt(DOMString), options: webidl.Opt(WebTransportErrorOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try WebTransportErrorImpl.call_constructor(allocator, ctx, message, options);
     }

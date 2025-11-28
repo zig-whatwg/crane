@@ -1,11 +1,13 @@
 //! Generated from: reporting.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const ReportingObserverImpl = @import("impls").ReportingObserver;
+const mixins = @import("mixins");
 const ReportList = @import("typedefs").ReportList;
 const ReportingObserverOptions = @import("dictionaries").ReportingObserverOptions;
 const ReportingObserverCallback = @import("callbacks").ReportingObserverCallback;
@@ -88,7 +90,7 @@ pub const ReportingObserver = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, callback: ReportingObserverCallback, options: ReportingObserverOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, callback: ReportingObserverCallback, options: webidl.Opt(ReportingObserverOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try ReportingObserverImpl.call_constructor(allocator, ctx, callback, options);
     }

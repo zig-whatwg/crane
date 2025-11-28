@@ -1,11 +1,13 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const AudioNodeImpl = @import("impls").AudioNode;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const BaseAudioContext = @import("interfaces").BaseAudioContext;
@@ -177,7 +179,7 @@ pub const AudioNode = struct {
         return try AudioNodeImpl.call_disconnect(instance);
     }
 
-    pub fn call_connect(instance: *runtime.Instance, destinationNode: *runtime.Instance, output: u32, input: u32) anyerror!*runtime.Instance {
+    pub fn call_connect(instance: *runtime.Instance, destinationNode: *runtime.Instance, output: webidl.Opt(u32), input: webidl.Opt(u32)) anyerror!*runtime.Instance {
         
         return try AudioNodeImpl.call_connect(instance, destinationNode, output, input);
     }

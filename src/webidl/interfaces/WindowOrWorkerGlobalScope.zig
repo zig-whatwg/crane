@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const WindowOrWorkerGlobalScopeImpl = @import("impls").WindowOrWorkerGlobalScope;
+const mixins = @import("mixins");
 const ByteString = @import("interfaces").ByteString;
 const Performance = @import("interfaces").Performance;
 const CacheStorage = @import("interfaces").CacheStorage;
@@ -228,7 +230,7 @@ pub const WindowOrWorkerGlobalScope = struct {
         return try WindowOrWorkerGlobalScopeImpl.call_reportError(instance, e);
     }
 
-    pub fn call_setInterval(instance: *runtime.Instance, handler: TimerHandler, timeout: i32, arguments: *const anyopaque) anyerror!i32 {
+    pub fn call_setInterval(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const *const anyopaque) anyerror!i32 {
         
         return try WindowOrWorkerGlobalScopeImpl.call_setInterval(instance, handler, timeout, arguments);
     }
@@ -243,12 +245,12 @@ pub const WindowOrWorkerGlobalScope = struct {
         return try WindowOrWorkerGlobalScopeImpl.call_btoa(instance, data);
     }
 
-    pub fn call_createImageBitmap(instance: *runtime.Instance, image: ImageBitmapSource, options: ImageBitmapOptions) anyerror!*const anyopaque {
+    pub fn call_createImageBitmap(instance: *runtime.Instance, image: ImageBitmapSource, options: webidl.Opt(ImageBitmapOptions)) anyerror!*const anyopaque {
         
         return try WindowOrWorkerGlobalScopeImpl.call_createImageBitmap(instance, image, options);
     }
 
-    pub fn call_clearInterval(instance: *runtime.Instance, id: i32) anyerror!void {
+    pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
         
         return try WindowOrWorkerGlobalScopeImpl.call_clearInterval(instance, id);
     }
@@ -258,23 +260,23 @@ pub const WindowOrWorkerGlobalScope = struct {
         return try WindowOrWorkerGlobalScopeImpl.call_queueMicrotask(instance, callback);
     }
 
-    pub fn call_structuredClone(instance: *runtime.Instance, value: *const anyopaque, options: StructuredSerializeOptions) anyerror!*const anyopaque {
+    pub fn call_structuredClone(instance: *runtime.Instance, value: *const anyopaque, options: webidl.Opt(StructuredSerializeOptions)) anyerror!*const anyopaque {
         
         return try WindowOrWorkerGlobalScopeImpl.call_structuredClone(instance, value, options);
     }
 
-    pub fn call_setTimeout(instance: *runtime.Instance, handler: TimerHandler, timeout: i32, arguments: *const anyopaque) anyerror!i32 {
+    pub fn call_setTimeout(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const *const anyopaque) anyerror!i32 {
         
         return try WindowOrWorkerGlobalScopeImpl.call_setTimeout(instance, handler, timeout, arguments);
     }
 
-    pub fn call_clearTimeout(instance: *runtime.Instance, id: i32) anyerror!void {
+    pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
         
         return try WindowOrWorkerGlobalScopeImpl.call_clearTimeout(instance, id);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_fetch(instance: *runtime.Instance, input: RequestInfo, init_data: RequestInit) anyerror!*const anyopaque {
+    pub fn call_fetch(instance: *runtime.Instance, input: RequestInfo, init_data: webidl.Opt(RequestInit)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
         return try WindowOrWorkerGlobalScopeImpl.call_fetch(instance, input, init_data);

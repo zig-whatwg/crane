@@ -1,11 +1,13 @@
 //! Generated from: webusb.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const USBDeviceImpl = @import("impls").USBDevice;
+const mixins = @import("mixins");
 const USBDirection = @import("enums").USBDirection;
 const USBOutTransferResult = @import("interfaces").USBOutTransferResult;
 const BufferSource = @import("typedefs").BufferSource;
@@ -281,7 +283,7 @@ pub const USBDevice = struct {
         return try USBDeviceImpl.call_selectConfiguration(instance, configurationValue);
     }
 
-    pub fn call_controlTransferOut(instance: *runtime.Instance, setup: USBControlTransferParameters, data: BufferSource) anyerror!*const anyopaque {
+    pub fn call_controlTransferOut(instance: *runtime.Instance, setup: USBControlTransferParameters, data: webidl.Opt(BufferSource)) anyerror!*const anyopaque {
         
         return try USBDeviceImpl.call_controlTransferOut(instance, setup, data);
     }

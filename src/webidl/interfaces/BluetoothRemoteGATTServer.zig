@@ -1,11 +1,13 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const BluetoothRemoteGATTServerImpl = @import("impls").BluetoothRemoteGATTServer;
+const mixins = @import("mixins");
 const BluetoothDevice = @import("interfaces").BluetoothDevice;
 const BluetoothRemoteGATTService = @import("interfaces").BluetoothRemoteGATTService;
 const BluetoothServiceUUID = @import("typedefs").BluetoothServiceUUID;
@@ -118,7 +120,7 @@ pub const BluetoothRemoteGATTServer = struct {
         return try BluetoothRemoteGATTServerImpl.call_disconnect(instance);
     }
 
-    pub fn call_getPrimaryServices(instance: *runtime.Instance, service: BluetoothServiceUUID) anyerror!*const anyopaque {
+    pub fn call_getPrimaryServices(instance: *runtime.Instance, service: webidl.Opt(BluetoothServiceUUID)) anyerror!*const anyopaque {
         
         return try BluetoothRemoteGATTServerImpl.call_getPrimaryServices(instance, service);
     }

@@ -1,11 +1,13 @@
 //! Generated from: OES_texture_float.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const OES_texture_floatImpl = @import("impls").OES_texture_float;
+const mixins = @import("mixins");
 
 pub const OES_texture_float = struct {
     pub const Meta = struct {

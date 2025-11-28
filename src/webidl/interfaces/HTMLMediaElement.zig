@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const HTMLMediaElementImpl = @import("impls").HTMLMediaElement;
+const mixins = @import("mixins");
 const HTMLElement = @import("interfaces").HTMLElement;
 const DOMStringMap = @import("interfaces").DOMStringMap;
 const TextTrackKind = @import("enums").TextTrackKind;
@@ -797,7 +799,7 @@ pub const HTMLMediaElement = struct {
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn call_setMediaKeys(instance: *runtime.Instance, mediaKeys: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_setMediaKeys(instance: *runtime.Instance, mediaKeys: ?*runtime.Instance) anyerror!*const anyopaque {
         
         return try HTMLMediaElementImpl.call_setMediaKeys(instance, mediaKeys);
     }
@@ -828,7 +830,7 @@ pub const HTMLMediaElement = struct {
         return try HTMLMediaElementImpl.call_getStartDate(instance);
     }
 
-    pub fn call_addTextTrack(instance: *runtime.Instance, kind: TextTrackKind, label: DOMString, language: DOMString) anyerror!*runtime.Instance {
+    pub fn call_addTextTrack(instance: *runtime.Instance, kind: TextTrackKind, label: webidl.Opt(DOMString), language: webidl.Opt(DOMString)) anyerror!*runtime.Instance {
         
         return try HTMLMediaElementImpl.call_addTextTrack(instance, kind, label, language);
     }

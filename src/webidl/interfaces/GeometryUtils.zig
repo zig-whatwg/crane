@@ -1,11 +1,13 @@
 //! Generated from: cssom-view.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const GeometryUtilsImpl = @import("impls").GeometryUtils;
+const mixins = @import("mixins");
 const DOMPoint = @import("interfaces").DOMPoint;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
@@ -87,22 +89,22 @@ pub const GeometryUtils = struct {
         GeometryUtilsImpl.deinit(instance);
     }
 
-    pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!*runtime.Instance {
+    pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
         
         return try GeometryUtilsImpl.call_convertQuadFromNode(instance, quad, from, options);
     }
 
-    pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!*runtime.Instance {
+    pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
         
         return try GeometryUtilsImpl.call_convertPointFromNode(instance, point, from, options);
     }
 
-    pub fn call_getBoxQuads(instance: *runtime.Instance, options: BoxQuadOptions) anyerror!*const anyopaque {
+    pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!*const anyopaque {
         
         return try GeometryUtilsImpl.call_getBoxQuads(instance, options);
     }
 
-    pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: ConvertCoordinateOptions) anyerror!*runtime.Instance {
+    pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
         
         return try GeometryUtilsImpl.call_convertRectFromNode(instance, rect, from, options);
     }

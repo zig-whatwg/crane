@@ -1,11 +1,13 @@
 //! Generated from: navigation-timing.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const PerformanceTimingImpl = @import("impls").PerformanceTiming;
+const mixins = @import("mixins");
 
 pub const PerformanceTiming = struct {
     pub const Meta = struct {

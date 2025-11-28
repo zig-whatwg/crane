@@ -1,11 +1,13 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const CSSGroupingRuleImpl = @import("impls").CSSGroupingRule;
+const mixins = @import("mixins");
 const CSSRule = @import("interfaces").CSSRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
@@ -106,7 +108,7 @@ pub const CSSGroupingRule = struct {
         return try CSSGroupingRuleImpl.call_deleteRule(instance, index);
     }
 
-    pub fn call_insertRule(instance: *runtime.Instance, rule: CSSOMString, index: u32) anyerror!u32 {
+    pub fn call_insertRule(instance: *runtime.Instance, rule: CSSOMString, index: webidl.Opt(u32)) anyerror!u32 {
         
         return try CSSGroupingRuleImpl.call_insertRule(instance, rule, index);
     }

@@ -1,11 +1,13 @@
 //! Generated from: turtledove.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const InterestGroupBiddingScriptRunnerGlobalScopeImpl = @import("impls").InterestGroupBiddingScriptRunnerGlobalScope;
+const mixins = @import("mixins");
 const InterestGroupBiddingAndScoringScriptRunnerGlobalScope = @import("interfaces").InterestGroupBiddingAndScoringScriptRunnerGlobalScope;
 const ProtectedAudienceUtilities = @import("interfaces").ProtectedAudienceUtilities;
 const sequence = @import("interfaces").sequence;
@@ -90,7 +92,7 @@ pub const InterestGroupBiddingScriptRunnerGlobalScope = struct {
         InterestGroupBiddingScriptRunnerGlobalScopeImpl.deinit(instance);
     }
 
-    pub fn call_setBid(instance: *runtime.Instance, oneOrManyBids: *const anyopaque) anyerror!bool {
+    pub fn call_setBid(instance: *runtime.Instance, oneOrManyBids: webidl.Opt(*const anyopaque)) anyerror!bool {
         
         return try InterestGroupBiddingScriptRunnerGlobalScopeImpl.call_setBid(instance, oneOrManyBids);
     }
@@ -100,7 +102,7 @@ pub const InterestGroupBiddingScriptRunnerGlobalScope = struct {
         return try InterestGroupBiddingScriptRunnerGlobalScopeImpl.call_setPriority(instance, priority);
     }
 
-    pub fn call_setPrioritySignalsOverride(instance: *runtime.Instance, key: DOMString, priority: f64) anyerror!void {
+    pub fn call_setPrioritySignalsOverride(instance: *runtime.Instance, key: DOMString, priority: webidl.Opt(?f64)) anyerror!void {
         
         return try InterestGroupBiddingScriptRunnerGlobalScopeImpl.call_setPrioritySignalsOverride(instance, key, priority);
     }

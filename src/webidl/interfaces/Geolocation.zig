@@ -1,11 +1,13 @@
 //! Generated from: geolocation.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const GeolocationImpl = @import("impls").Geolocation;
+const mixins = @import("mixins");
 const PositionCallback = @import("callbacks").PositionCallback;
 const PositionErrorCallback = @import("callbacks").PositionErrorCallback;
 const PositionOptions = @import("dictionaries").PositionOptions;
@@ -84,7 +86,7 @@ pub const Geolocation = struct {
         GeolocationImpl.deinit(instance);
     }
 
-    pub fn call_getCurrentPosition(instance: *runtime.Instance, successCallback: PositionCallback, errorCallback: PositionErrorCallback, options: PositionOptions) anyerror!void {
+    pub fn call_getCurrentPosition(instance: *runtime.Instance, successCallback: PositionCallback, errorCallback: webidl.Opt(?PositionErrorCallback), options: webidl.Opt(PositionOptions)) anyerror!void {
         
         return try GeolocationImpl.call_getCurrentPosition(instance, successCallback, errorCallback, options);
     }
@@ -94,7 +96,7 @@ pub const Geolocation = struct {
         return try GeolocationImpl.call_clearWatch(instance, watchId);
     }
 
-    pub fn call_watchPosition(instance: *runtime.Instance, successCallback: PositionCallback, errorCallback: PositionErrorCallback, options: PositionOptions) anyerror!i32 {
+    pub fn call_watchPosition(instance: *runtime.Instance, successCallback: PositionCallback, errorCallback: webidl.Opt(?PositionErrorCallback), options: webidl.Opt(PositionOptions)) anyerror!i32 {
         
         return try GeolocationImpl.call_watchPosition(instance, successCallback, errorCallback, options);
     }

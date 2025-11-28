@@ -1,11 +1,13 @@
 //! Generated from: background-sync.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const SyncEventImpl = @import("impls").SyncEvent;
+const mixins = @import("mixins");
 const ExtendableEvent = @import("interfaces").ExtendableEvent;
 const SyncEventInit = @import("dictionaries").SyncEventInit;
 const ExtendableEventInit = @import("dictionaries").ExtendableEventInit;

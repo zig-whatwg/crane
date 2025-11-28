@@ -57,7 +57,7 @@ pub const console = struct {
         return try console_impl.call_groupEnd(ctx);
     }
 
-    pub fn call_timeLog(ctx: runtime.Context, label: runtime.DOMString, data: []const *const anyopaque) anyerror!void {
+    pub fn call_timeLog(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString), data: []const *const anyopaque) anyerror!void {
         return try console_impl.call_timeLog(ctx, label, data);
     }
 
@@ -65,15 +65,15 @@ pub const console = struct {
         return try console_impl.call_trace(ctx, data);
     }
 
-    pub fn call_timeEnd(ctx: runtime.Context, label: runtime.DOMString) anyerror!void {
+    pub fn call_timeEnd(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString)) anyerror!void {
         return try console_impl.call_timeEnd(ctx, label);
     }
 
-    pub fn call_count(ctx: runtime.Context, label: runtime.DOMString) anyerror!void {
+    pub fn call_count(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString)) anyerror!void {
         return try console_impl.call_count(ctx, label);
     }
 
-    pub fn call_time(ctx: runtime.Context, label: runtime.DOMString) anyerror!void {
+    pub fn call_time(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString)) anyerror!void {
         return try console_impl.call_time(ctx, label);
     }
 
@@ -93,11 +93,11 @@ pub const console = struct {
         return try console_impl.call_error(ctx, data);
     }
 
-    pub fn call_assert(ctx: runtime.Context, condition: bool, data: []const *const anyopaque) anyerror!void {
+    pub fn call_assert(ctx: runtime.Context, condition: webidl.Opt(bool), data: []const *const anyopaque) anyerror!void {
         return try console_impl.call_assert(ctx, condition, data);
     }
 
-    pub fn call_table(ctx: runtime.Context, tabularData: *const anyopaque, properties: *const anyopaque) anyerror!void {
+    pub fn call_table(ctx: runtime.Context, tabularData: webidl.Opt(*const anyopaque), properties: webidl.Opt(*const anyopaque)) anyerror!void {
         return try console_impl.call_table(ctx, tabularData, properties);
     }
 
@@ -105,7 +105,7 @@ pub const console = struct {
         return try console_impl.call_debug(ctx, data);
     }
 
-    pub fn call_dir(ctx: runtime.Context, item: *const anyopaque, options: ?*const anyopaque) anyerror!void {
+    pub fn call_dir(ctx: runtime.Context, item: webidl.Opt(*const anyopaque), options: webidl.Opt(?*const anyopaque)) anyerror!void {
         return try console_impl.call_dir(ctx, item, options);
     }
 
@@ -113,7 +113,7 @@ pub const console = struct {
         return try console_impl.call_dirxml(ctx, data);
     }
 
-    pub fn call_countReset(ctx: runtime.Context, label: runtime.DOMString) anyerror!void {
+    pub fn call_countReset(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString)) anyerror!void {
         return try console_impl.call_countReset(ctx, label);
     }
 

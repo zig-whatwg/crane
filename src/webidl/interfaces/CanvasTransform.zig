@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const CanvasTransformImpl = @import("impls").CanvasTransform;
+const mixins = @import("mixins");
 const DOMMatrix2DInit = @import("dictionaries").DOMMatrix2DInit;
 const DOMMatrix = @import("interfaces").DOMMatrix;
 

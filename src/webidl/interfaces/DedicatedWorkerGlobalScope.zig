@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const DedicatedWorkerGlobalScopeImpl = @import("impls").DedicatedWorkerGlobalScope;
+const mixins = @import("mixins");
 const WorkerGlobalScope = @import("interfaces").WorkerGlobalScope;
 const AnimationFrameProvider = @import("interfaces").AnimationFrameProvider;
 const MessageEventTarget = @import("interfaces").MessageEventTarget;

@@ -1,11 +1,13 @@
 //! Generated from: media-source.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const BufferedChangeEventImpl = @import("impls").BufferedChangeEvent;
+const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
 const TimeRanges = @import("interfaces").TimeRanges;
 const EventTarget = @import("interfaces").EventTarget;
@@ -98,7 +100,7 @@ pub const BufferedChangeEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: BufferedChangeEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(BufferedChangeEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try BufferedChangeEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }

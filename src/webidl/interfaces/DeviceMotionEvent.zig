@@ -1,11 +1,13 @@
 //! Generated from: orientation-event.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const DeviceMotionEventImpl = @import("impls").DeviceMotionEvent;
+const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
 const PermissionState = @import("enums").PermissionState;
 const DeviceMotionEventRotationRate = @import("interfaces").DeviceMotionEventRotationRate;
@@ -112,7 +114,7 @@ pub const DeviceMotionEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: DeviceMotionEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(DeviceMotionEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try DeviceMotionEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }

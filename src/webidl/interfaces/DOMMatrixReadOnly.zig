@@ -1,11 +1,13 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const DOMMatrixReadOnlyImpl = @import("impls").DOMMatrixReadOnly;
+const mixins = @import("mixins");
 const DOMPoint = @import("interfaces").DOMPoint;
 const DOMMatrixInit = @import("dictionaries").DOMMatrixInit;
 const DOMMatrix = @import("interfaces").DOMMatrix;
@@ -244,7 +246,7 @@ pub const DOMMatrixReadOnly = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: *const anyopaque) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: webidl.Opt(*const anyopaque)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try DOMMatrixReadOnlyImpl.call_constructor(allocator, ctx, init_data);
     }
@@ -359,7 +361,7 @@ pub const DOMMatrixReadOnly = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_scale3d(instance: *runtime.Instance, scale: f64, originX: f64, originY: f64, originZ: f64) anyerror!*runtime.Instance {
+    pub fn call_scale3d(instance: *runtime.Instance, scale: webidl.Opt(f64), originX: webidl.Opt(f64), originY: webidl.Opt(f64), originZ: webidl.Opt(f64)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMMatrixReadOnlyImpl.call_scale3d(instance, scale, originX, originY, originZ);
@@ -373,28 +375,28 @@ pub const DOMMatrixReadOnly = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_fromMatrix(instance: *runtime.Instance, other: DOMMatrixInit) anyerror!*runtime.Instance {
+    pub fn call_fromMatrix(instance: *runtime.Instance, other: webidl.Opt(DOMMatrixInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMMatrixReadOnlyImpl.call_fromMatrix(instance, other);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_rotateAxisAngle(instance: *runtime.Instance, x: f64, y: f64, z: f64, angle: f64) anyerror!*runtime.Instance {
+    pub fn call_rotateAxisAngle(instance: *runtime.Instance, x: webidl.Opt(f64), y: webidl.Opt(f64), z: webidl.Opt(f64), angle: webidl.Opt(f64)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMMatrixReadOnlyImpl.call_rotateAxisAngle(instance, x, y, z, angle);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_skewY(instance: *runtime.Instance, sy: f64) anyerror!*runtime.Instance {
+    pub fn call_skewY(instance: *runtime.Instance, sy: webidl.Opt(f64)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMMatrixReadOnlyImpl.call_skewY(instance, sy);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_rotate(instance: *runtime.Instance, rotX: f64, rotY: f64, rotZ: f64) anyerror!*runtime.Instance {
+    pub fn call_rotate(instance: *runtime.Instance, rotX: webidl.Opt(f64), rotY: webidl.Opt(f64), rotZ: webidl.Opt(f64)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMMatrixReadOnlyImpl.call_rotate(instance, rotX, rotY, rotZ);
@@ -413,35 +415,35 @@ pub const DOMMatrixReadOnly = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_scale(instance: *runtime.Instance, scaleX: f64, scaleY: f64, scaleZ: f64, originX: f64, originY: f64, originZ: f64) anyerror!*runtime.Instance {
+    pub fn call_scale(instance: *runtime.Instance, scaleX: webidl.Opt(f64), scaleY: webidl.Opt(f64), scaleZ: webidl.Opt(f64), originX: webidl.Opt(f64), originY: webidl.Opt(f64), originZ: webidl.Opt(f64)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMMatrixReadOnlyImpl.call_scale(instance, scaleX, scaleY, scaleZ, originX, originY, originZ);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_translate(instance: *runtime.Instance, tx: f64, ty: f64, tz: f64) anyerror!*runtime.Instance {
+    pub fn call_translate(instance: *runtime.Instance, tx: webidl.Opt(f64), ty: webidl.Opt(f64), tz: webidl.Opt(f64)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMMatrixReadOnlyImpl.call_translate(instance, tx, ty, tz);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_multiply(instance: *runtime.Instance, other: DOMMatrixInit) anyerror!*runtime.Instance {
+    pub fn call_multiply(instance: *runtime.Instance, other: webidl.Opt(DOMMatrixInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMMatrixReadOnlyImpl.call_multiply(instance, other);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_transformPoint(instance: *runtime.Instance, point: DOMPointInit) anyerror!*runtime.Instance {
+    pub fn call_transformPoint(instance: *runtime.Instance, point: webidl.Opt(DOMPointInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMMatrixReadOnlyImpl.call_transformPoint(instance, point);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_skewX(instance: *runtime.Instance, sx: f64) anyerror!*runtime.Instance {
+    pub fn call_skewX(instance: *runtime.Instance, sx: webidl.Opt(f64)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMMatrixReadOnlyImpl.call_skewX(instance, sx);
@@ -453,7 +455,7 @@ pub const DOMMatrixReadOnly = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_scaleNonUniform(instance: *runtime.Instance, scaleX: f64, scaleY: f64) anyerror!*runtime.Instance {
+    pub fn call_scaleNonUniform(instance: *runtime.Instance, scaleX: webidl.Opt(f64), scaleY: webidl.Opt(f64)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMMatrixReadOnlyImpl.call_scaleNonUniform(instance, scaleX, scaleY);
@@ -472,7 +474,7 @@ pub const DOMMatrixReadOnly = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_rotateFromVector(instance: *runtime.Instance, x: f64, y: f64) anyerror!*runtime.Instance {
+    pub fn call_rotateFromVector(instance: *runtime.Instance, x: webidl.Opt(f64), y: webidl.Opt(f64)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMMatrixReadOnlyImpl.call_rotateFromVector(instance, x, y);

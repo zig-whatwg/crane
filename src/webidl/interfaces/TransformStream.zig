@@ -1,11 +1,13 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const TransformStreamImpl = @import("impls").TransformStream;
+const mixins = @import("mixins");
 const ReadableStream = @import("interfaces").ReadableStream;
 const WritableStream = @import("interfaces").WritableStream;
 const QueuingStrategy = @import("dictionaries").QueuingStrategy;
@@ -85,7 +87,7 @@ pub const TransformStream = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, transformer: *const anyopaque, writableStrategy: QueuingStrategy, readableStrategy: QueuingStrategy) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, transformer: webidl.Opt(*const anyopaque), writableStrategy: webidl.Opt(QueuingStrategy), readableStrategy: webidl.Opt(QueuingStrategy)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try TransformStreamImpl.call_constructor(allocator, ctx, transformer, writableStrategy, readableStrategy);
     }

@@ -1,11 +1,13 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const ReadableStreamBYOBReaderImpl = @import("impls").ReadableStreamBYOBReader;
+const mixins = @import("mixins");
 const ReadableStreamGenericReader = @import("interfaces").ReadableStreamGenericReader;
 const ArrayBufferView = @import("typedefs").ArrayBufferView;
 const ReadableStream = @import("interfaces").ReadableStream;
@@ -103,7 +105,7 @@ pub const ReadableStreamBYOBReader = struct {
         return try ReadableStreamBYOBReaderImpl.get_closed(instance);
     }
 
-    pub fn call_read(instance: *runtime.Instance, view: ArrayBufferView, options: ReadableStreamBYOBReaderReadOptions) anyerror!*const anyopaque {
+    pub fn call_read(instance: *runtime.Instance, view: ArrayBufferView, options: webidl.Opt(ReadableStreamBYOBReaderReadOptions)) anyerror!*const anyopaque {
         
         return try ReadableStreamBYOBReaderImpl.call_read(instance, view, options);
     }
@@ -112,7 +114,7 @@ pub const ReadableStreamBYOBReader = struct {
         return try ReadableStreamBYOBReaderImpl.call_releaseLock(instance);
     }
 
-    pub fn call_cancel(instance: *runtime.Instance, reason: *const anyopaque) anyerror!*const anyopaque {
+    pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
         
         return try ReadableStreamBYOBReaderImpl.call_cancel(instance, reason);
     }

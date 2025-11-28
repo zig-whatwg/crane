@@ -1,11 +1,13 @@
 //! Generated from: entries-api.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const FileSystemFileEntryImpl = @import("impls").FileSystemFileEntry;
+const mixins = @import("mixins");
 const FileSystemEntry = @import("interfaces").FileSystemEntry;
 const FileSystem = @import("interfaces").FileSystem;
 const ErrorCallback = @import("callbacks").ErrorCallback;
@@ -82,7 +84,7 @@ pub const FileSystemFileEntry = struct {
         FileSystemFileEntryImpl.deinit(instance);
     }
 
-    pub fn call_file(instance: *runtime.Instance, successCallback: FileCallback, errorCallback: ErrorCallback) anyerror!void {
+    pub fn call_file(instance: *runtime.Instance, successCallback: FileCallback, errorCallback: webidl.Opt(ErrorCallback)) anyerror!void {
         
         return try FileSystemFileEntryImpl.call_file(instance, successCallback, errorCallback);
     }

@@ -1,11 +1,13 @@
 //! Generated from: webxr-depth-sensing.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const XRDepthInformationImpl = @import("impls").XRDepthInformation;
+const mixins = @import("mixins");
 const XRViewGeometry = @import("interfaces").XRViewGeometry;
 const XRRigidTransform = @import("interfaces").XRRigidTransform;
 

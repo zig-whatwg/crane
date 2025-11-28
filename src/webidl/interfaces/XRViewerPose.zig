@@ -1,11 +1,13 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const XRViewerPoseImpl = @import("impls").XRViewerPose;
+const mixins = @import("mixins");
 const XRPose = @import("interfaces").XRPose;
 const XRRigidTransform = @import("interfaces").XRRigidTransform;
 const XRView = @import("interfaces").XRView;

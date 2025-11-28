@@ -1,11 +1,13 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const DOMRectReadOnlyImpl = @import("impls").DOMRectReadOnly;
+const mixins = @import("mixins");
 const DOMRectInit = @import("dictionaries").DOMRectInit;
 
 pub const DOMRectReadOnly = struct {
@@ -121,7 +123,7 @@ pub const DOMRectReadOnly = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: f64, y: f64, width: f64, height: f64) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: webidl.Opt(f64), y: webidl.Opt(f64), width: webidl.Opt(f64), height: webidl.Opt(f64)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try DOMRectReadOnlyImpl.call_constructor(allocator, ctx, x, y, width, height);
     }
@@ -159,7 +161,7 @@ pub const DOMRectReadOnly = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_fromRect(instance: *runtime.Instance, other: DOMRectInit) anyerror!*runtime.Instance {
+    pub fn call_fromRect(instance: *runtime.Instance, other: webidl.Opt(DOMRectInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMRectReadOnlyImpl.call_fromRect(instance, other);

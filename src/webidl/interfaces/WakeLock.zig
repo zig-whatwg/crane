@@ -1,11 +1,13 @@
 //! Generated from: screen-wake-lock.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const WakeLockImpl = @import("impls").WakeLock;
+const mixins = @import("mixins");
 const WakeLockSentinel = @import("interfaces").WakeLockSentinel;
 const WakeLockType = @import("enums").WakeLockType;
 
@@ -80,7 +82,7 @@ pub const WakeLock = struct {
         WakeLockImpl.deinit(instance);
     }
 
-    pub fn call_request(instance: *runtime.Instance, @"type": WakeLockType) anyerror!*const anyopaque {
+    pub fn call_request(instance: *runtime.Instance, @"type": webidl.Opt(WakeLockType)) anyerror!*const anyopaque {
         
         return try WakeLockImpl.call_request(instance, @"type");
     }

@@ -1,11 +1,13 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const SVGTransformImpl = @import("impls").SVGTransform;
+const mixins = @import("mixins");
 const DOMMatrix2DInit = @import("dictionaries").DOMMatrix2DInit;
 const DOMMatrix = @import("interfaces").DOMMatrix;
 
@@ -188,7 +190,7 @@ pub const SVGTransform = struct {
         return try SVGTransformImpl.call_setSkewX(instance, angle);
     }
 
-    pub fn call_setMatrix(instance: *runtime.Instance, matrix: DOMMatrix2DInit) anyerror!void {
+    pub fn call_setMatrix(instance: *runtime.Instance, matrix: webidl.Opt(DOMMatrix2DInit)) anyerror!void {
         
         return try SVGTransformImpl.call_setMatrix(instance, matrix);
     }

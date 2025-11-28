@@ -1,11 +1,13 @@
 //! Generated from: webtransport.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const WebTransportImpl = @import("impls").WebTransport;
+const mixins = @import("mixins");
 const DOMString = @import("typedefs").DOMString;
 const WebTransportConnectionStats = @import("dictionaries").WebTransportConnectionStats;
 const WebTransportSendStream = @import("interfaces").WebTransportSendStream;
@@ -160,7 +162,7 @@ pub const WebTransport = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url: runtime.USVString, options: WebTransportOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url: runtime.USVString, options: webidl.Opt(WebTransportOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try WebTransportImpl.call_constructor(allocator, ctx, url, options);
     }
@@ -234,23 +236,23 @@ pub const WebTransport = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_exportKeyingMaterial(instance: *runtime.Instance, label: BufferSource, context: BufferSource) anyerror!*const anyopaque {
+    pub fn call_exportKeyingMaterial(instance: *runtime.Instance, label: BufferSource, context: webidl.Opt(BufferSource)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
         return try WebTransportImpl.call_exportKeyingMaterial(instance, label, context);
     }
 
-    pub fn call_close(instance: *runtime.Instance, closeInfo: WebTransportCloseInfo) anyerror!void {
+    pub fn call_close(instance: *runtime.Instance, closeInfo: webidl.Opt(WebTransportCloseInfo)) anyerror!void {
         
         return try WebTransportImpl.call_close(instance, closeInfo);
     }
 
-    pub fn call_createBidirectionalStream(instance: *runtime.Instance, options: WebTransportSendStreamOptions) anyerror!*const anyopaque {
+    pub fn call_createBidirectionalStream(instance: *runtime.Instance, options: webidl.Opt(WebTransportSendStreamOptions)) anyerror!*const anyopaque {
         
         return try WebTransportImpl.call_createBidirectionalStream(instance, options);
     }
 
-    pub fn call_createUnidirectionalStream(instance: *runtime.Instance, options: WebTransportSendStreamOptions) anyerror!*const anyopaque {
+    pub fn call_createUnidirectionalStream(instance: *runtime.Instance, options: webidl.Opt(WebTransportSendStreamOptions)) anyerror!*const anyopaque {
         
         return try WebTransportImpl.call_createUnidirectionalStream(instance, options);
     }

@@ -1,11 +1,13 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const GPUShaderModuleImpl = @import("impls").GPUShaderModule;
+const mixins = @import("mixins");
 const GPUObjectBase = @import("interfaces").GPUObjectBase;
 const GPUCompilationInfo = @import("interfaces").GPUCompilationInfo;
 const USVString = @import("interfaces").USVString;

@@ -1,11 +1,13 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const RTCSessionDescriptionImpl = @import("impls").RTCSessionDescription;
+const mixins = @import("mixins");
 const RTCSessionDescriptionInit = @import("dictionaries").RTCSessionDescriptionInit;
 const DOMString = @import("typedefs").DOMString;
 const RTCSdpType = @import("enums").RTCSdpType;

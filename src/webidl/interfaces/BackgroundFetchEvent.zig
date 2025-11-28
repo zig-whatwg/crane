@@ -1,11 +1,13 @@
 //! Generated from: background-fetch.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const BackgroundFetchEventImpl = @import("impls").BackgroundFetchEvent;
+const mixins = @import("mixins");
 const ExtendableEvent = @import("interfaces").ExtendableEvent;
 const BackgroundFetchRegistration = @import("interfaces").BackgroundFetchRegistration;
 const BackgroundFetchEventInit = @import("dictionaries").BackgroundFetchEventInit;

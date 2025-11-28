@@ -1,11 +1,13 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const ServiceWorkerContainerImpl = @import("impls").ServiceWorkerContainer;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const ServiceWorker = @import("interfaces").ServiceWorker;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
@@ -174,14 +176,14 @@ pub const ServiceWorkerContainer = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getRegistration(instance: *runtime.Instance, clientURL: runtime.USVString) anyerror!*const anyopaque {
+    pub fn call_getRegistration(instance: *runtime.Instance, clientURL: webidl.Opt(runtime.USVString)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
         return try ServiceWorkerContainerImpl.call_getRegistration(instance, clientURL);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_register(instance: *runtime.Instance, scriptURL: DOMString, options: RegistrationOptions) anyerror!*const anyopaque {
+    pub fn call_register(instance: *runtime.Instance, scriptURL: DOMString, options: webidl.Opt(RegistrationOptions)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
         return try ServiceWorkerContainerImpl.call_register(instance, scriptURL, options);

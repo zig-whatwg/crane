@@ -1,11 +1,13 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const ServiceWorkerRegistrationImpl = @import("impls").ServiceWorkerRegistration;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const PushManagerAttribute = @import("interfaces").PushManagerAttribute;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -284,12 +286,12 @@ pub const ServiceWorkerRegistration = struct {
         return try ServiceWorkerRegistrationImpl.call_update(instance);
     }
 
-    pub fn call_showNotification(instance: *runtime.Instance, title: DOMString, options: NotificationOptions) anyerror!*const anyopaque {
+    pub fn call_showNotification(instance: *runtime.Instance, title: DOMString, options: webidl.Opt(NotificationOptions)) anyerror!*const anyopaque {
         
         return try ServiceWorkerRegistrationImpl.call_showNotification(instance, title, options);
     }
 
-    pub fn call_getNotifications(instance: *runtime.Instance, filter: GetNotificationOptions) anyerror!*const anyopaque {
+    pub fn call_getNotifications(instance: *runtime.Instance, filter: webidl.Opt(GetNotificationOptions)) anyerror!*const anyopaque {
         
         return try ServiceWorkerRegistrationImpl.call_getNotifications(instance, filter);
     }

@@ -1,11 +1,13 @@
 //! Generated from: scheduling-apis.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const TaskControllerImpl = @import("impls").TaskController;
+const mixins = @import("mixins");
 const AbortController = @import("interfaces").AbortController;
 const TaskControllerInit = @import("dictionaries").TaskControllerInit;
 const TaskPriority = @import("enums").TaskPriority;
@@ -84,7 +86,7 @@ pub const TaskController = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: TaskControllerInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: webidl.Opt(TaskControllerInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try TaskControllerImpl.call_constructor(allocator, ctx, init_data);
     }

@@ -1,11 +1,13 @@
 //! Generated from: orientation-event.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const DeviceOrientationEventImpl = @import("impls").DeviceOrientationEvent;
+const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
 const PermissionState = @import("enums").PermissionState;
 const DeviceOrientationEventInit = @import("dictionaries").DeviceOrientationEventInit;
@@ -110,7 +112,7 @@ pub const DeviceOrientationEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: DeviceOrientationEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(DeviceOrientationEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try DeviceOrientationEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
@@ -131,7 +133,7 @@ pub const DeviceOrientationEvent = struct {
         return try DeviceOrientationEventImpl.get_absolute(instance);
     }
 
-    pub fn call_requestPermission(instance: *runtime.Instance, absolute: bool) anyerror!*const anyopaque {
+    pub fn call_requestPermission(instance: *runtime.Instance, absolute: webidl.Opt(bool)) anyerror!*const anyopaque {
         
         return try DeviceOrientationEventImpl.call_requestPermission(instance, absolute);
     }

@@ -1,11 +1,13 @@
 //! Generated from: payment-request.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const PaymentRequestUpdateEventImpl = @import("impls").PaymentRequestUpdateEvent;
+const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
 const PaymentDetailsUpdate = @import("dictionaries").PaymentDetailsUpdate;
 const PaymentRequestUpdateEventInit = @import("dictionaries").PaymentRequestUpdateEventInit;
@@ -89,7 +91,7 @@ pub const PaymentRequestUpdateEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: PaymentRequestUpdateEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(PaymentRequestUpdateEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try PaymentRequestUpdateEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }

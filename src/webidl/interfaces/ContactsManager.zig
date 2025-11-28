@@ -1,11 +1,13 @@
 //! Generated from: contact-picker.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const ContactsManagerImpl = @import("impls").ContactsManager;
+const mixins = @import("mixins");
 const ContactProperty = @import("enums").ContactProperty;
 const ContactsSelectOptions = @import("dictionaries").ContactsSelectOptions;
 
@@ -81,7 +83,7 @@ pub const ContactsManager = struct {
         ContactsManagerImpl.deinit(instance);
     }
 
-    pub fn call_select(instance: *runtime.Instance, properties: *const anyopaque, options: ContactsSelectOptions) anyerror!*const anyopaque {
+    pub fn call_select(instance: *runtime.Instance, properties: *const anyopaque, options: webidl.Opt(ContactsSelectOptions)) anyerror!*const anyopaque {
         
         return try ContactsManagerImpl.call_select(instance, properties, options);
     }

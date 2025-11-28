@@ -1,11 +1,13 @@
 //! Generated from: magnetometer.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const MagnetometerImpl = @import("impls").Magnetometer;
+const mixins = @import("mixins");
 const Sensor = @import("interfaces").Sensor;
 const MagnetometerSensorOptions = @import("dictionaries").MagnetometerSensorOptions;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
@@ -103,7 +105,7 @@ pub const Magnetometer = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, sensorOptions: MagnetometerSensorOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, sensorOptions: webidl.Opt(MagnetometerSensorOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try MagnetometerImpl.call_constructor(allocator, ctx, sensorOptions);
     }

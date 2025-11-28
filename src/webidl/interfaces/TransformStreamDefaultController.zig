@@ -1,11 +1,13 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const TransformStreamDefaultControllerImpl = @import("impls").TransformStreamDefaultController;
+const mixins = @import("mixins");
 
 pub const TransformStreamDefaultController = struct {
     pub const Meta = struct {
@@ -90,7 +92,7 @@ pub const TransformStreamDefaultController = struct {
         return try TransformStreamDefaultControllerImpl.get_desiredSize(instance);
     }
 
-    pub fn call_error(instance: *runtime.Instance, reason: *const anyopaque) anyerror!void {
+    pub fn call_error(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) anyerror!void {
         
         return try TransformStreamDefaultControllerImpl.call_error(instance, reason);
     }
@@ -99,7 +101,7 @@ pub const TransformStreamDefaultController = struct {
         return try TransformStreamDefaultControllerImpl.call_terminate(instance);
     }
 
-    pub fn call_enqueue(instance: *runtime.Instance, chunk: *const anyopaque) anyerror!void {
+    pub fn call_enqueue(instance: *runtime.Instance, chunk: webidl.Opt(*const anyopaque)) anyerror!void {
         
         return try TransformStreamDefaultControllerImpl.call_enqueue(instance, chunk);
     }

@@ -1,11 +1,13 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const WritableStreamImpl = @import("impls").WritableStream;
+const mixins = @import("mixins");
 const WritableStreamDefaultWriter = @import("interfaces").WritableStreamDefaultWriter;
 const QueuingStrategy = @import("dictionaries").QueuingStrategy;
 
@@ -90,7 +92,7 @@ pub const WritableStream = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, underlyingSink: *const anyopaque, strategy: QueuingStrategy) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, underlyingSink: webidl.Opt(*const anyopaque), strategy: webidl.Opt(QueuingStrategy)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try WritableStreamImpl.call_constructor(allocator, ctx, underlyingSink, strategy);
     }
@@ -103,7 +105,7 @@ pub const WritableStream = struct {
         return try WritableStreamImpl.call_getWriter(instance);
     }
 
-    pub fn call_abort(instance: *runtime.Instance, reason: *const anyopaque) anyerror!*const anyopaque {
+    pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
         
         return try WritableStreamImpl.call_abort(instance, reason);
     }

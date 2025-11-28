@@ -1,11 +1,13 @@
 //! Generated from: mediacapture-region.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const BrowserCaptureMediaStreamTrackImpl = @import("impls").BrowserCaptureMediaStreamTrack;
+const mixins = @import("mixins");
 const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -114,12 +116,12 @@ pub const BrowserCaptureMediaStreamTrack = struct {
         return try BrowserCaptureMediaStreamTrackImpl.call_clone(instance);
     }
 
-    pub fn call_cropTo(instance: *runtime.Instance, cropTarget: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_cropTo(instance: *runtime.Instance, cropTarget: ?*runtime.Instance) anyerror!*const anyopaque {
         
         return try BrowserCaptureMediaStreamTrackImpl.call_cropTo(instance, cropTarget);
     }
 
-    pub fn call_restrictTo(instance: *runtime.Instance, restrictiontarget_param: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_restrictTo(instance: *runtime.Instance, restrictiontarget_param: ?*runtime.Instance) anyerror!*const anyopaque {
         
         return try BrowserCaptureMediaStreamTrackImpl.call_restrictTo(instance, restrictiontarget_param);
     }

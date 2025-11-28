@@ -1,11 +1,13 @@
 //! Generated from: webgl1.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const WebGLActiveInfoImpl = @import("impls").WebGLActiveInfo;
+const mixins = @import("mixins");
 const GLint = @import("typedefs").GLint;
 const GLenum = @import("typedefs").GLenum;
 const DOMString = @import("typedefs").DOMString;

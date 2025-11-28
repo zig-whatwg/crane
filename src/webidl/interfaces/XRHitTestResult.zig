@@ -1,11 +1,13 @@
 //! Generated from: webxr-hit-test.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const XRHitTestResultImpl = @import("impls").XRHitTestResult;
+const mixins = @import("mixins");
 const XRPose = @import("interfaces").XRPose;
 const XRAnchor = @import("interfaces").XRAnchor;
 const XRSpace = @import("interfaces").XRSpace;

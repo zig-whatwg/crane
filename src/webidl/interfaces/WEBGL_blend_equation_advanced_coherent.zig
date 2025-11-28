@@ -1,11 +1,13 @@
 //! Generated from: WEBGL_blend_equation_advanced_coherent.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const WEBGL_blend_equation_advanced_coherentImpl = @import("impls").WEBGL_blend_equation_advanced_coherent;
+const mixins = @import("mixins");
 const GLenum = @import("typedefs").GLenum;
 
 pub const WEBGL_blend_equation_advanced_coherent = struct {

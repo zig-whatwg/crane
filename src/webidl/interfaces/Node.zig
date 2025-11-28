@@ -1,11 +1,13 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const NodeImpl = @import("impls").Node;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const Document = @import("interfaces").Document;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
@@ -413,7 +415,7 @@ pub const Node = struct {
         try NodeImpl.set_textContent(instance, value);
     }
 
-    pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: DOMString) anyerror!bool {
+    pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: ?DOMString) anyerror!bool {
         
         return try NodeImpl.call_isDefaultNamespace(instance, namespace);
     }
@@ -423,13 +425,13 @@ pub const Node = struct {
         return try NodeImpl.call_compareDocumentPosition(instance, other);
     }
 
-    pub fn call_contains(instance: *runtime.Instance, other: *runtime.Instance) anyerror!bool {
+    pub fn call_contains(instance: *runtime.Instance, other: ?*runtime.Instance) anyerror!bool {
         
         return try NodeImpl.call_contains(instance, other);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_insertBefore(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_insertBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -438,7 +440,7 @@ pub const Node = struct {
         return try NodeImpl.call_insertBefore(instance, node, child);
     }
 
-    pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: DOMString) anyerror!?DOMString {
+    pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: ?DOMString) anyerror!?DOMString {
         
         return try NodeImpl.call_lookupNamespaceURI(instance, prefix);
     }
@@ -458,7 +460,7 @@ pub const Node = struct {
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
-    pub fn call_cloneNode(instance: *runtime.Instance, subtree: bool) anyerror!*runtime.Instance {
+    pub fn call_cloneNode(instance: *runtime.Instance, subtree: webidl.Opt(bool)) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -468,7 +470,7 @@ pub const Node = struct {
         return try NodeImpl.call_cloneNode(instance, subtree);
     }
 
-    pub fn call_getRootNode(instance: *runtime.Instance, options: GetRootNodeOptions) anyerror!*runtime.Instance {
+    pub fn call_getRootNode(instance: *runtime.Instance, options: webidl.Opt(GetRootNodeOptions)) anyerror!*runtime.Instance {
         
         return try NodeImpl.call_getRootNode(instance, options);
     }
@@ -483,7 +485,7 @@ pub const Node = struct {
         return try NodeImpl.call_removeChild(instance, child);
     }
 
-    pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: *runtime.Instance) anyerror!bool {
+    pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: ?*runtime.Instance) anyerror!bool {
         
         return try NodeImpl.call_isEqualNode(instance, otherNode);
     }
@@ -507,12 +509,12 @@ pub const Node = struct {
         return try NodeImpl.call_replaceChild(instance, node, child);
     }
 
-    pub fn call_isSameNode(instance: *runtime.Instance, otherNode: *runtime.Instance) anyerror!bool {
+    pub fn call_isSameNode(instance: *runtime.Instance, otherNode: ?*runtime.Instance) anyerror!bool {
         
         return try NodeImpl.call_isSameNode(instance, otherNode);
     }
 
-    pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: DOMString) anyerror!?DOMString {
+    pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: ?DOMString) anyerror!?DOMString {
         
         return try NodeImpl.call_lookupPrefix(instance, namespace);
     }

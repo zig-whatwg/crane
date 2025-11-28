@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const NavigationPrecommitControllerImpl = @import("impls").NavigationPrecommitController;
+const mixins = @import("mixins");
 const USVString = @import("interfaces").USVString;
 const NavigationNavigateOptions = @import("dictionaries").NavigationNavigateOptions;
 
@@ -77,7 +79,7 @@ pub const NavigationPrecommitController = struct {
         NavigationPrecommitControllerImpl.deinit(instance);
     }
 
-    pub fn call_redirect(instance: *runtime.Instance, url: runtime.USVString, options: NavigationNavigateOptions) anyerror!void {
+    pub fn call_redirect(instance: *runtime.Instance, url: runtime.USVString, options: webidl.Opt(NavigationNavigateOptions)) anyerror!void {
         
         return try NavigationPrecommitControllerImpl.call_redirect(instance, url, options);
     }

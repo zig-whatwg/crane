@@ -4,4 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const UnderlyingSinkAbortCallback = *const fn (reason: *const anyopaque) *const anyopaque;
+pub const UnderlyingSinkAbortCallback = *const fn (reason: webidl.Opt(*const anyopaque)) *const anyopaque;

@@ -1,11 +1,13 @@
 //! Generated from: web-nfc.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const NDEFReaderImpl = @import("impls").NDEFReader;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const NDEFMessageSource = @import("typedefs").NDEFMessageSource;
@@ -133,17 +135,17 @@ pub const NDEFReader = struct {
         try NDEFReaderImpl.set_onreadingerror(instance, value);
     }
 
-    pub fn call_scan(instance: *runtime.Instance, options: NDEFScanOptions) anyerror!*const anyopaque {
+    pub fn call_scan(instance: *runtime.Instance, options: webidl.Opt(NDEFScanOptions)) anyerror!*const anyopaque {
         
         return try NDEFReaderImpl.call_scan(instance, options);
     }
 
-    pub fn call_write(instance: *runtime.Instance, message: NDEFMessageSource, options: NDEFWriteOptions) anyerror!*const anyopaque {
+    pub fn call_write(instance: *runtime.Instance, message: NDEFMessageSource, options: webidl.Opt(NDEFWriteOptions)) anyerror!*const anyopaque {
         
         return try NDEFReaderImpl.call_write(instance, message, options);
     }
 
-    pub fn call_makeReadOnly(instance: *runtime.Instance, options: NDEFMakeReadOnlyOptions) anyerror!*const anyopaque {
+    pub fn call_makeReadOnly(instance: *runtime.Instance, options: webidl.Opt(NDEFMakeReadOnlyOptions)) anyerror!*const anyopaque {
         
         return try NDEFReaderImpl.call_makeReadOnly(instance, options);
     }

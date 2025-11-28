@@ -1,11 +1,13 @@
 //! Generated from: webnn.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const MLTensorImpl = @import("impls").MLTensor;
+const mixins = @import("mixins");
 const unsignedlong = @import("interfaces").unsignedlong;
 const MLOperandDataType = @import("enums").MLOperandDataType;
 

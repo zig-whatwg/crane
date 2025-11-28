@@ -1,11 +1,13 @@
 //! Generated from: mediacapture-streams.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const MediaDeviceInfoImpl = @import("impls").MediaDeviceInfo;
+const mixins = @import("mixins");
 const MediaDeviceKind = @import("enums").MediaDeviceKind;
 const DOMString = @import("typedefs").DOMString;
 

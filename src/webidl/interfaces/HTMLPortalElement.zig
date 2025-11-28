@@ -1,11 +1,13 @@
 //! Generated from: portals.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const HTMLPortalElementImpl = @import("impls").HTMLPortalElement;
+const mixins = @import("mixins");
 const HTMLElement = @import("interfaces").HTMLElement;
 const DOMStringMap = @import("interfaces").DOMStringMap;
 const CSSOMString = @import("typedefs").CSSOMString;
@@ -309,13 +311,13 @@ pub const HTMLPortalElement = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_activate(instance: *runtime.Instance, options: PortalActivateOptions) anyerror!*const anyopaque {
+    pub fn call_activate(instance: *runtime.Instance, options: webidl.Opt(PortalActivateOptions)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
         return try HTMLPortalElementImpl.call_activate(instance, options);
     }
 
-    pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, options: PostMessageOptions) anyerror!void {
+    pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, options: webidl.Opt(PostMessageOptions)) anyerror!void {
         
         return try HTMLPortalElementImpl.call_postMessage(instance, message, options);
     }

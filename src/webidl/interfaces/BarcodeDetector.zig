@@ -1,11 +1,13 @@
 //! Generated from: shape-detection-api.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const BarcodeDetectorImpl = @import("impls").BarcodeDetector;
+const mixins = @import("mixins");
 const BarcodeDetectorOptions = @import("dictionaries").BarcodeDetectorOptions;
 const ImageBitmapSource = @import("typedefs").ImageBitmapSource;
 
@@ -89,7 +91,7 @@ pub const BarcodeDetector = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, barcodeDetectorOptions: BarcodeDetectorOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, barcodeDetectorOptions: webidl.Opt(BarcodeDetectorOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try BarcodeDetectorImpl.call_constructor(allocator, ctx, barcodeDetectorOptions);
     }

@@ -1,11 +1,13 @@
 //! Generated from: image-capture.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const ImageCaptureImpl = @import("impls").ImageCapture;
+const mixins = @import("mixins");
 const PhotoSettings = @import("dictionaries").PhotoSettings;
 const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
 const PhotoCapabilities = @import("dictionaries").PhotoCapabilities;
@@ -117,7 +119,7 @@ pub const ImageCapture = struct {
         return try ImageCaptureImpl.call_getPhotoSettings(instance);
     }
 
-    pub fn call_takePhoto(instance: *runtime.Instance, photoSettings: PhotoSettings) anyerror!*const anyopaque {
+    pub fn call_takePhoto(instance: *runtime.Instance, photoSettings: webidl.Opt(PhotoSettings)) anyerror!*const anyopaque {
         
         return try ImageCaptureImpl.call_takePhoto(instance, photoSettings);
     }

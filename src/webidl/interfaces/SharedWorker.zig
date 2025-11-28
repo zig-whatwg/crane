@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const SharedWorkerImpl = @import("impls").SharedWorker;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const AbstractWorker = @import("interfaces").AbstractWorker;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
@@ -103,7 +105,7 @@ pub const SharedWorker = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, scriptURL: DOMString, options: *const anyopaque) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, scriptURL: DOMString, options: webidl.Opt(*const anyopaque)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try SharedWorkerImpl.call_constructor(allocator, ctx, scriptURL, options);
     }

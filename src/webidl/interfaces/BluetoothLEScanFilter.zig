@@ -1,11 +1,13 @@
 //! Generated from: web-bluetooth-scanning.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const BluetoothLEScanFilterImpl = @import("impls").BluetoothLEScanFilter;
+const mixins = @import("mixins");
 const BluetoothManufacturerDataFilter = @import("interfaces").BluetoothManufacturerDataFilter;
 const BluetoothLEScanFilterInit = @import("dictionaries").BluetoothLEScanFilterInit;
 const UUID = @import("typedefs").UUID;
@@ -99,7 +101,7 @@ pub const BluetoothLEScanFilter = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: BluetoothLEScanFilterInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: webidl.Opt(BluetoothLEScanFilterInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try BluetoothLEScanFilterImpl.call_constructor(allocator, ctx, init_data);
     }

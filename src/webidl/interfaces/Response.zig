@@ -1,11 +1,13 @@
 //! Generated from: fetch.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const ResponseImpl = @import("impls").Response;
+const mixins = @import("mixins");
 const Body = @import("interfaces").Body;
 const ByteString = @import("interfaces").ByteString;
 const Blob = @import("interfaces").Blob;
@@ -159,7 +161,7 @@ pub const Response = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, body: BodyInit, init_data: ResponseInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, body: webidl.Opt(?BodyInit), init_data: webidl.Opt(ResponseInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try ResponseImpl.call_constructor(allocator, ctx, body, init_data);
     }
@@ -245,14 +247,14 @@ pub const Response = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_redirect(instance: *runtime.Instance, url: runtime.USVString, status: u16) anyerror!*runtime.Instance {
+    pub fn call_redirect(instance: *runtime.Instance, url: runtime.USVString, status: webidl.Opt(u16)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try ResponseImpl.call_redirect(instance, url, status);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_json(instance: *runtime.Instance, data: *const anyopaque, init_data: ResponseInit) anyerror!*runtime.Instance {
+    pub fn call_json(instance: *runtime.Instance, data: *const anyopaque, init_data: webidl.Opt(ResponseInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try ResponseImpl.call_json(instance, data, init_data);

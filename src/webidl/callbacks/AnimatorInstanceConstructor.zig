@@ -4,4 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const AnimatorInstanceConstructor = *const fn (options: *const anyopaque, state: *const anyopaque) *const anyopaque;
+pub const AnimatorInstanceConstructor = *const fn (options: *const anyopaque, state: webidl.Opt(*const anyopaque)) *const anyopaque;

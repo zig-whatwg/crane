@@ -1,11 +1,13 @@
 //! Generated from: css-font-loading.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const FontFaceSetImpl = @import("impls").FontFaceSet;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -181,12 +183,12 @@ pub const FontFaceSet = struct {
         return try FontFaceSetImpl.call_clear(instance);
     }
 
-    pub fn call_load(instance: *runtime.Instance, font: CSSOMString, text: CSSOMString) anyerror!*const anyopaque {
+    pub fn call_load(instance: *runtime.Instance, font: CSSOMString, text: webidl.Opt(CSSOMString)) anyerror!*const anyopaque {
         
         return try FontFaceSetImpl.call_load(instance, font, text);
     }
 
-    pub fn call_check(instance: *runtime.Instance, font: CSSOMString, text: CSSOMString) anyerror!bool {
+    pub fn call_check(instance: *runtime.Instance, font: CSSOMString, text: webidl.Opt(CSSOMString)) anyerror!bool {
         
         return try FontFaceSetImpl.call_check(instance, font, text);
     }

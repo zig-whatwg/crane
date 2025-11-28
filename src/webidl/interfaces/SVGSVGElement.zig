@@ -1,11 +1,13 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const SVGSVGElementImpl = @import("impls").SVGSVGElement;
+const mixins = @import("mixins");
 const SVGGraphicsElement = @import("interfaces").SVGGraphicsElement;
 const SVGFitToViewBox = @import("interfaces").SVGFitToViewBox;
 const WindowEventHandlers = @import("interfaces").WindowEventHandlers;
@@ -746,7 +748,7 @@ pub const SVGSVGElement = struct {
         return try SVGSVGElementImpl.call_animationsPaused(instance);
     }
 
-    pub fn call_getIntersectionList(instance: *runtime.Instance, rect: *runtime.Instance, referenceElement: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_getIntersectionList(instance: *runtime.Instance, rect: *runtime.Instance, referenceElement: ?*runtime.Instance) anyerror!*runtime.Instance {
         
         return try SVGSVGElementImpl.call_getIntersectionList(instance, rect, referenceElement);
     }
@@ -761,7 +763,7 @@ pub const SVGSVGElement = struct {
         return try SVGSVGElementImpl.call_unsuspendRedraw(instance, suspendHandleID);
     }
 
-    pub fn call_getEnclosureList(instance: *runtime.Instance, rect: *runtime.Instance, referenceElement: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_getEnclosureList(instance: *runtime.Instance, rect: *runtime.Instance, referenceElement: ?*runtime.Instance) anyerror!*runtime.Instance {
         
         return try SVGSVGElementImpl.call_getEnclosureList(instance, rect, referenceElement);
     }
@@ -777,7 +779,7 @@ pub const SVGSVGElement = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createSVGTransformFromMatrix(instance: *runtime.Instance, matrix: DOMMatrix2DInit) anyerror!*runtime.Instance {
+    pub fn call_createSVGTransformFromMatrix(instance: *runtime.Instance, matrix: webidl.Opt(DOMMatrix2DInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try SVGSVGElementImpl.call_createSVGTransformFromMatrix(instance, matrix);

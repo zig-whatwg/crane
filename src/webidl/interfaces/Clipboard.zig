@@ -1,11 +1,13 @@
 //! Generated from: clipboard-apis.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const ClipboardImpl = @import("impls").Clipboard;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -99,7 +101,7 @@ pub const Clipboard = struct {
         ClipboardImpl.deinit(instance);
     }
 
-    pub fn call_read(instance: *runtime.Instance, formats: ClipboardUnsanitizedFormats) anyerror!*const anyopaque {
+    pub fn call_read(instance: *runtime.Instance, formats: webidl.Opt(ClipboardUnsanitizedFormats)) anyerror!*const anyopaque {
         
         return try ClipboardImpl.call_read(instance, formats);
     }

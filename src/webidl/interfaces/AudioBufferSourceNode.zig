@@ -1,11 +1,13 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const AudioBufferSourceNodeImpl = @import("impls").AudioBufferSourceNode;
+const mixins = @import("mixins");
 const AudioScheduledSourceNode = @import("interfaces").AudioScheduledSourceNode;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const BaseAudioContext = @import("interfaces").BaseAudioContext;
@@ -136,7 +138,7 @@ pub const AudioBufferSourceNode = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: AudioBufferSourceOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: webidl.Opt(AudioBufferSourceOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try AudioBufferSourceNodeImpl.call_constructor(allocator, ctx, context, options);
     }
@@ -181,7 +183,7 @@ pub const AudioBufferSourceNode = struct {
         try AudioBufferSourceNodeImpl.set_loopEnd(instance, value);
     }
 
-    pub fn call_start(instance: *runtime.Instance, when: f64, offset: f64, duration: f64) anyerror!void {
+    pub fn call_start(instance: *runtime.Instance, when: webidl.Opt(f64), offset: webidl.Opt(f64), duration: webidl.Opt(f64)) anyerror!void {
         
         return try AudioBufferSourceNodeImpl.call_start(instance, when, offset, duration);
     }

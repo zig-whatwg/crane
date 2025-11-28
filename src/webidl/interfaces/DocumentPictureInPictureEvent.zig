@@ -1,11 +1,13 @@
 //! Generated from: document-picture-in-picture.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const DocumentPictureInPictureEventImpl = @import("impls").DocumentPictureInPictureEvent;
+const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
 const Window = @import("interfaces").Window;
 const DocumentPictureInPictureEventInit = @import("dictionaries").DocumentPictureInPictureEventInit;

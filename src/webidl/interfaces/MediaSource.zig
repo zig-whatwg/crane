@@ -1,11 +1,13 @@
 //! Generated from: media-source.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const MediaSourceImpl = @import("impls").MediaSource;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const EndOfStreamError = @import("enums").EndOfStreamError;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
@@ -223,7 +225,7 @@ pub const MediaSource = struct {
         return try MediaSourceImpl.get_canConstructInDedicatedWorker(instance);
     }
 
-    pub fn call_endOfStream(instance: *runtime.Instance, @"error": EndOfStreamError) anyerror!void {
+    pub fn call_endOfStream(instance: *runtime.Instance, @"error": webidl.Opt(EndOfStreamError)) anyerror!void {
         
         return try MediaSourceImpl.call_endOfStream(instance, @"error");
     }

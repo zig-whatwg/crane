@@ -1,11 +1,13 @@
 //! Generated from: scheduling-apis.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const SchedulerImpl = @import("impls").Scheduler;
+const mixins = @import("mixins");
 const SchedulerPostTaskCallback = @import("callbacks").SchedulerPostTaskCallback;
 const SchedulerPostTaskOptions = @import("dictionaries").SchedulerPostTaskOptions;
 
@@ -83,7 +85,7 @@ pub const Scheduler = struct {
         SchedulerImpl.deinit(instance);
     }
 
-    pub fn call_postTask(instance: *runtime.Instance, callback: SchedulerPostTaskCallback, options: SchedulerPostTaskOptions) anyerror!*const anyopaque {
+    pub fn call_postTask(instance: *runtime.Instance, callback: SchedulerPostTaskCallback, options: webidl.Opt(SchedulerPostTaskOptions)) anyerror!*const anyopaque {
         
         return try SchedulerImpl.call_postTask(instance, callback, options);
     }

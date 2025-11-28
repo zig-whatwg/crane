@@ -1,11 +1,13 @@
 //! Generated from: payment-request.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const PaymentRequestImpl = @import("impls").PaymentRequest;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const EventHandler = @import("typedefs").EventHandler;
@@ -144,7 +146,7 @@ pub const PaymentRequest = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, methodData: *const anyopaque, details: PaymentDetailsInit, options: PaymentOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, methodData: *const anyopaque, details: PaymentDetailsInit, options: webidl.Opt(PaymentOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try PaymentRequestImpl.call_constructor(allocator, ctx, methodData, details, options);
     }
@@ -196,7 +198,7 @@ pub const PaymentRequest = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_show(instance: *runtime.Instance, detailsPromise: *const anyopaque) anyerror!*const anyopaque {
+    pub fn call_show(instance: *runtime.Instance, detailsPromise: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
         return try PaymentRequestImpl.call_show(instance, detailsPromise);

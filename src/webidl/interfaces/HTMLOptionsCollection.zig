@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const HTMLOptionsCollectionImpl = @import("impls").HTMLOptionsCollection;
+const mixins = @import("mixins");
 const HTMLCollection = @import("interfaces").HTMLCollection;
 const Element = @import("interfaces").Element;
 const HTMLElement = @import("interfaces").HTMLElement;
@@ -121,7 +123,7 @@ pub const HTMLOptionsCollection = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_add(instance: *runtime.Instance, element: *const anyopaque, before: *const anyopaque) anyerror!void {
+    pub fn call_add(instance: *runtime.Instance, element: *const anyopaque, before: webidl.Opt(?*const anyopaque)) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

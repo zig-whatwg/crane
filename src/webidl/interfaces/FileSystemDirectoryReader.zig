@@ -1,11 +1,13 @@
 //! Generated from: entries-api.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const FileSystemDirectoryReaderImpl = @import("impls").FileSystemDirectoryReader;
+const mixins = @import("mixins");
 const FileSystemEntriesCallback = @import("callbacks").FileSystemEntriesCallback;
 const ErrorCallback = @import("callbacks").ErrorCallback;
 
@@ -77,7 +79,7 @@ pub const FileSystemDirectoryReader = struct {
         FileSystemDirectoryReaderImpl.deinit(instance);
     }
 
-    pub fn call_readEntries(instance: *runtime.Instance, successCallback: FileSystemEntriesCallback, errorCallback: ErrorCallback) anyerror!void {
+    pub fn call_readEntries(instance: *runtime.Instance, successCallback: FileSystemEntriesCallback, errorCallback: webidl.Opt(ErrorCallback)) anyerror!void {
         
         return try FileSystemDirectoryReaderImpl.call_readEntries(instance, successCallback, errorCallback);
     }

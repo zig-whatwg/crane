@@ -1,11 +1,13 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const GPUAdapterImpl = @import("impls").GPUAdapter;
+const mixins = @import("mixins");
 const GPUDeviceDescriptor = @import("dictionaries").GPUDeviceDescriptor;
 const GPUSupportedLimits = @import("interfaces").GPUSupportedLimits;
 const GPUSupportedFeatures = @import("interfaces").GPUSupportedFeatures;
@@ -136,7 +138,7 @@ pub const GPUAdapter = struct {
         return value;
     }
 
-    pub fn call_requestDevice(instance: *runtime.Instance, descriptor: GPUDeviceDescriptor) anyerror!*const anyopaque {
+    pub fn call_requestDevice(instance: *runtime.Instance, descriptor: webidl.Opt(GPUDeviceDescriptor)) anyerror!*const anyopaque {
         
         return try GPUAdapterImpl.call_requestDevice(instance, descriptor);
     }

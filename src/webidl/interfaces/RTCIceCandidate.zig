@@ -1,11 +1,13 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const RTCIceCandidateImpl = @import("impls").RTCIceCandidate;
+const mixins = @import("mixins");
 const RTCLocalIceCandidateInit = @import("dictionaries").RTCLocalIceCandidateInit;
 const RTCIceComponent = @import("enums").RTCIceComponent;
 const RTCIceProtocol = @import("enums").RTCIceProtocol;
@@ -150,7 +152,7 @@ pub const RTCIceCandidate = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, candidateInitDict: RTCLocalIceCandidateInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, candidateInitDict: webidl.Opt(RTCLocalIceCandidateInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try RTCIceCandidateImpl.call_constructor(allocator, ctx, candidateInitDict);
     }

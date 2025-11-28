@@ -1,11 +1,13 @@
 //! Generated from: encrypted-media.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const MediaKeysImpl = @import("impls").MediaKeys;
+const mixins = @import("mixins");
 const MediaKeySession = @import("interfaces").MediaKeySession;
 const MediaKeySessionType = @import("enums").MediaKeySessionType;
 const MediaKeyStatus = @import("enums").MediaKeyStatus;
@@ -92,12 +94,12 @@ pub const MediaKeys = struct {
         return try MediaKeysImpl.call_setServerCertificate(instance, serverCertificate);
     }
 
-    pub fn call_createSession(instance: *runtime.Instance, sessionType: MediaKeySessionType) anyerror!*runtime.Instance {
+    pub fn call_createSession(instance: *runtime.Instance, sessionType: webidl.Opt(MediaKeySessionType)) anyerror!*runtime.Instance {
         
         return try MediaKeysImpl.call_createSession(instance, sessionType);
     }
 
-    pub fn call_getStatusForPolicy(instance: *runtime.Instance, policy: MediaKeysPolicy) anyerror!*const anyopaque {
+    pub fn call_getStatusForPolicy(instance: *runtime.Instance, policy: webidl.Opt(MediaKeysPolicy)) anyerror!*const anyopaque {
         
         return try MediaKeysImpl.call_getStatusForPolicy(instance, policy);
     }

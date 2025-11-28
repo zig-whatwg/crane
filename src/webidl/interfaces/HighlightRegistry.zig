@@ -1,11 +1,13 @@
 //! Generated from: css-highlight-api.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const HighlightRegistryImpl = @import("impls").HighlightRegistry;
+const mixins = @import("mixins");
 const HighlightsFromPointOptions = @import("dictionaries").HighlightsFromPointOptions;
 const HighlightHitResult = @import("dictionaries").HighlightHitResult;
 
@@ -81,7 +83,7 @@ pub const HighlightRegistry = struct {
         HighlightRegistryImpl.deinit(instance);
     }
 
-    pub fn call_highlightsFromPoint(instance: *runtime.Instance, x: f32, y: f32, options: HighlightsFromPointOptions) anyerror!*const anyopaque {
+    pub fn call_highlightsFromPoint(instance: *runtime.Instance, x: f32, y: f32, options: webidl.Opt(HighlightsFromPointOptions)) anyerror!*const anyopaque {
         
         return try HighlightRegistryImpl.call_highlightsFromPoint(instance, x, y, options);
     }

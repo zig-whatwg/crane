@@ -1,11 +1,13 @@
 //! Generated from: resize-observer.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const ResizeObserverEntryImpl = @import("impls").ResizeObserverEntry;
+const mixins = @import("mixins");
 const Element = @import("interfaces").Element;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const ResizeObserverSize = @import("interfaces").ResizeObserverSize;

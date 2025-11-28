@@ -1,11 +1,13 @@
 //! Generated from: badging.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const NavigatorBadgeImpl = @import("impls").NavigatorBadge;
+const mixins = @import("mixins");
 
 pub const NavigatorBadge = struct {
     pub const Meta = struct {
@@ -75,7 +77,7 @@ pub const NavigatorBadge = struct {
         NavigatorBadgeImpl.deinit(instance);
     }
 
-    pub fn call_setAppBadge(instance: *runtime.Instance, contents: u64) anyerror!*const anyopaque {
+    pub fn call_setAppBadge(instance: *runtime.Instance, contents: webidl.Opt(u64)) anyerror!*const anyopaque {
         // [EnforceRange] on contents
         if (!runtime.isInRange(u64, contents)) return error.TypeError;
         

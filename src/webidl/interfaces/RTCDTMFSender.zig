@@ -1,11 +1,13 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const RTCDTMFSenderImpl = @import("impls").RTCDTMFSender;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -119,7 +121,7 @@ pub const RTCDTMFSender = struct {
         return try RTCDTMFSenderImpl.get_toneBuffer(instance);
     }
 
-    pub fn call_insertDTMF(instance: *runtime.Instance, tones: DOMString, duration: u32, interToneGap: u32) anyerror!void {
+    pub fn call_insertDTMF(instance: *runtime.Instance, tones: DOMString, duration: webidl.Opt(u32), interToneGap: webidl.Opt(u32)) anyerror!void {
         
         return try RTCDTMFSenderImpl.call_insertDTMF(instance, tones, duration, interToneGap);
     }

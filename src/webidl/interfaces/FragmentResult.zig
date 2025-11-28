@@ -1,11 +1,13 @@
 //! Generated from: css-layout-api.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const FragmentResultImpl = @import("impls").FragmentResult;
+const mixins = @import("mixins");
 const FragmentResultOptions = @import("dictionaries").FragmentResultOptions;
 
 pub const FragmentResult = struct {
@@ -82,7 +84,7 @@ pub const FragmentResult = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: FragmentResultOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(FragmentResultOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try FragmentResultImpl.call_constructor(allocator, ctx, options);
     }

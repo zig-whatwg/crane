@@ -1,11 +1,13 @@
 //! Generated from: webrtc-encoded-transform.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const SFrameKeyManagementImpl = @import("impls").SFrameKeyManagement;
+const mixins = @import("mixins");
 const CryptoKeyID = @import("typedefs").CryptoKeyID;
 const EventHandler = @import("typedefs").EventHandler;
 const CryptoKey = @import("interfaces").CryptoKey;
@@ -88,7 +90,7 @@ pub const SFrameKeyManagement = struct {
         try SFrameKeyManagementImpl.set_onerror(instance, value);
     }
 
-    pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyID: CryptoKeyID) anyerror!*const anyopaque {
+    pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyID: webidl.Opt(CryptoKeyID)) anyerror!*const anyopaque {
         
         return try SFrameKeyManagementImpl.call_setEncryptionKey(instance, key, keyID);
     }

@@ -1,11 +1,13 @@
 //! Generated from: FileAPI.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const BlobImpl = @import("impls").Blob;
+const mixins = @import("mixins");
 const ReadableStream = @import("interfaces").ReadableStream;
 const BlobPart = @import("typedefs").BlobPart;
 const USVString = @import("interfaces").USVString;
@@ -106,7 +108,7 @@ pub const Blob = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, blobParts: *const anyopaque, options: BlobPropertyBag) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, blobParts: webidl.Opt(*const anyopaque), options: webidl.Opt(BlobPropertyBag)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try BlobImpl.call_constructor(allocator, ctx, blobParts, options);
     }
@@ -125,7 +127,7 @@ pub const Blob = struct {
         return try BlobImpl.call_text(instance);
     }
 
-    pub fn call_slice(instance: *runtime.Instance, start: i64, end: i64, contentType: DOMString) anyerror!*runtime.Instance {
+    pub fn call_slice(instance: *runtime.Instance, start: webidl.Opt(i64), end: webidl.Opt(i64), contentType: webidl.Opt(DOMString)) anyerror!*runtime.Instance {
         // [Clamp] on start
         const clamped_start = runtime.clamp(i64, start);
         // [Clamp] on end

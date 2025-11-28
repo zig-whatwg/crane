@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const HTMLTextAreaElementImpl = @import("impls").HTMLTextAreaElement;
+const mixins = @import("mixins");
 const HTMLElement = @import("interfaces").HTMLElement;
 const DOMStringMap = @import("interfaces").DOMStringMap;
 const CSSOMString = @import("typedefs").CSSOMString;
@@ -629,7 +631,7 @@ pub const HTMLTextAreaElement = struct {
         return try HTMLTextAreaElementImpl.call_checkValidity(instance);
     }
 
-    pub fn call_setSelectionRange(instance: *runtime.Instance, start: u32, end: u32, direction: DOMString) anyerror!void {
+    pub fn call_setSelectionRange(instance: *runtime.Instance, start: u32, end: u32, direction: webidl.Opt(DOMString)) anyerror!void {
         
         return try HTMLTextAreaElementImpl.call_setSelectionRange(instance, start, end, direction);
     }

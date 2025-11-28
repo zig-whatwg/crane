@@ -1,11 +1,13 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const SVGGeometryElementImpl = @import("impls").SVGGeometryElement;
+const mixins = @import("mixins");
 const SVGGraphicsElement = @import("interfaces").SVGGraphicsElement;
 const DOMStringMap = @import("interfaces").DOMStringMap;
 const CSSOMString = @import("typedefs").CSSOMString;
@@ -261,7 +263,7 @@ pub const SVGGeometryElement = struct {
         return value;
     }
 
-    pub fn call_isPointInStroke(instance: *runtime.Instance, point: DOMPointInit) anyerror!bool {
+    pub fn call_isPointInStroke(instance: *runtime.Instance, point: webidl.Opt(DOMPointInit)) anyerror!bool {
         
         return try SVGGeometryElementImpl.call_isPointInStroke(instance, point);
     }
@@ -275,7 +277,7 @@ pub const SVGGeometryElement = struct {
         return try SVGGeometryElementImpl.call_getPointAtLength(instance, distance);
     }
 
-    pub fn call_isPointInFill(instance: *runtime.Instance, point: DOMPointInit) anyerror!bool {
+    pub fn call_isPointInFill(instance: *runtime.Instance, point: webidl.Opt(DOMPointInit)) anyerror!bool {
         
         return try SVGGeometryElementImpl.call_isPointInFill(instance, point);
     }

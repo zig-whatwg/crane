@@ -1,11 +1,13 @@
 //! Generated from: css-parser-api.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const CSSParserAtRuleImpl = @import("impls").CSSParserAtRule;
+const mixins = @import("mixins");
 const CSSParserRule = @import("interfaces").CSSParserRule;
 const CSSToken = @import("typedefs").CSSToken;
 const CSSParserValue = @import("interfaces").CSSParserValue;
@@ -89,7 +91,7 @@ pub const CSSParserAtRule = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, name: DOMString, prelude: *const anyopaque, body: *const anyopaque) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, name: DOMString, prelude: *const anyopaque, body: webidl.Opt(?*const anyopaque)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try CSSParserAtRuleImpl.call_constructor(allocator, ctx, name, prelude, body);
     }

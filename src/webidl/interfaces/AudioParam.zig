@@ -1,11 +1,13 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const AudioParamImpl = @import("impls").AudioParam;
+const mixins = @import("mixins");
 const AutomationRate = @import("enums").AutomationRate;
 
 pub const AudioParam = struct {

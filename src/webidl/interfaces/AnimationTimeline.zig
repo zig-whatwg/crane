@@ -1,11 +1,13 @@
 //! Generated from: web-animations.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const AnimationTimelineImpl = @import("impls").AnimationTimeline;
+const mixins = @import("mixins");
 const AnimationEffect = @import("interfaces").AnimationEffect;
 const CSSNumberish = @import("typedefs").CSSNumberish;
 const Animation = @import("interfaces").Animation;
@@ -97,7 +99,7 @@ pub const AnimationTimeline = struct {
         return try AnimationTimelineImpl.get_duration(instance);
     }
 
-    pub fn call_play(instance: *runtime.Instance, effect: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_play(instance: *runtime.Instance, effect: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
         
         return try AnimationTimelineImpl.call_play(instance, effect);
     }

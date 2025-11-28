@@ -1,11 +1,13 @@
 //! Generated from: css-nav.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const NavigationEventImpl = @import("impls").NavigationEvent;
+const mixins = @import("mixins");
 const UIEvent = @import("interfaces").UIEvent;
 const UIEventInit = @import("dictionaries").UIEventInit;
 const NavigationEventInit = @import("dictionaries").NavigationEventInit;
@@ -97,7 +99,7 @@ pub const NavigationEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: NavigationEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(NavigationEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try NavigationEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }

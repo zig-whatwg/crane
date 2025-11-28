@@ -1,11 +1,13 @@
 //! Generated from: EXT_frag_depth.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const EXT_frag_depthImpl = @import("impls").EXT_frag_depth;
+const mixins = @import("mixins");
 
 pub const EXT_frag_depth = struct {
     pub const Meta = struct {

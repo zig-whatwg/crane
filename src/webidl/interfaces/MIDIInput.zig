@@ -1,11 +1,13 @@
 //! Generated from: webmidi.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const MIDIInputImpl = @import("impls").MIDIInput;
+const mixins = @import("mixins");
 const MIDIPort = @import("interfaces").MIDIPort;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;

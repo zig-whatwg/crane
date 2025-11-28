@@ -1,11 +1,13 @@
 //! Generated from: observable.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const SubscriberImpl = @import("impls").Subscriber;
+const mixins = @import("mixins");
 const AbortSignal = @import("interfaces").AbortSignal;
 const VoidFunction = @import("callbacks").VoidFunction;
 

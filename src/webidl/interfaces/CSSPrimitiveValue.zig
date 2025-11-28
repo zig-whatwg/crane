@@ -1,11 +1,13 @@
 //! Generated from: DOM-Style.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const CSSPrimitiveValueImpl = @import("impls").CSSPrimitiveValue;
+const mixins = @import("mixins");
 const CSSValue = @import("interfaces").CSSValue;
 const Counter = @import("interfaces").Counter;
 const Rect = @import("interfaces").Rect;

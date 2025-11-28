@@ -1,11 +1,13 @@
 //! Generated from: notifications.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const NotificationImpl = @import("impls").Notification;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -202,7 +204,7 @@ pub const Notification = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, title: DOMString, options: NotificationOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, title: DOMString, options: webidl.Opt(NotificationOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try NotificationImpl.call_constructor(allocator, ctx, title, options);
     }
@@ -340,7 +342,7 @@ pub const Notification = struct {
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn call_requestPermission(instance: *runtime.Instance, deprecatedCallback: NotificationPermissionCallback) anyerror!*const anyopaque {
+    pub fn call_requestPermission(instance: *runtime.Instance, deprecatedCallback: webidl.Opt(NotificationPermissionCallback)) anyerror!*const anyopaque {
         
         return try NotificationImpl.call_requestPermission(instance, deprecatedCallback);
     }

@@ -1,11 +1,13 @@
 //! Generated from: uievents.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const TextEventImpl = @import("impls").TextEvent;
+const mixins = @import("mixins");
 const UIEvent = @import("interfaces").UIEvent;
 const Window = @import("interfaces").Window;
 const UIEventInit = @import("dictionaries").UIEventInit;
@@ -98,7 +100,7 @@ pub const TextEvent = struct {
         return try TextEventImpl.get_data(instance);
     }
 
-    pub fn call_initTextEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: bool, cancelable: bool, view: *runtime.Instance, data: DOMString) anyerror!void {
+    pub fn call_initTextEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), view: webidl.Opt(?*runtime.Instance), data: webidl.Opt(DOMString)) anyerror!void {
         
         return try TextEventImpl.call_initTextEvent(instance, @"type", bubbles, cancelable, view, data);
     }

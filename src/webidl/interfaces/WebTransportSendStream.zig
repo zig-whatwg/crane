@@ -1,11 +1,13 @@
 //! Generated from: webtransport.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const WebTransportSendStreamImpl = @import("impls").WebTransportSendStream;
+const mixins = @import("mixins");
 const WritableStream = @import("interfaces").WritableStream;
 const WebTransportSendStreamStats = @import("dictionaries").WebTransportSendStreamStats;
 const QueuingStrategy = @import("dictionaries").QueuingStrategy;

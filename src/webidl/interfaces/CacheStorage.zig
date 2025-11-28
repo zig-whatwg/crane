@@ -1,11 +1,13 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const CacheStorageImpl = @import("impls").CacheStorage;
+const mixins = @import("mixins");
 const Cache = @import("interfaces").Cache;
 const MultiCacheQueryOptions = @import("dictionaries").MultiCacheQueryOptions;
 const RequestInfo = @import("typedefs").RequestInfo;
@@ -123,7 +125,7 @@ pub const CacheStorage = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_match(instance: *runtime.Instance, request: RequestInfo, options: MultiCacheQueryOptions) anyerror!*const anyopaque {
+    pub fn call_match(instance: *runtime.Instance, request: RequestInfo, options: webidl.Opt(MultiCacheQueryOptions)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
         return try CacheStorageImpl.call_match(instance, request, options);

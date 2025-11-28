@@ -1,11 +1,13 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const XPathNSResolverImpl = @import("impls").XPathNSResolver;
+const mixins = @import("mixins");
 const DOMString = @import("typedefs").DOMString;
 
 pub const XPathNSResolver = struct {
@@ -71,7 +73,7 @@ pub const XPathNSResolver = struct {
         XPathNSResolverImpl.deinit(instance);
     }
 
-    pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: DOMString) anyerror!?DOMString {
+    pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: ?DOMString) anyerror!?DOMString {
         
         return try XPathNSResolverImpl.call_lookupNamespaceURI(instance, prefix);
     }

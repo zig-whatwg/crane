@@ -1,11 +1,13 @@
 //! Generated from: web-animations.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const DocumentTimelineImpl = @import("impls").DocumentTimeline;
+const mixins = @import("mixins");
 const AnimationTimeline = @import("interfaces").AnimationTimeline;
 const DocumentTimelineOptions = @import("dictionaries").DocumentTimelineOptions;
 const AnimationEffect = @import("interfaces").AnimationEffect;
@@ -78,7 +80,7 @@ pub const DocumentTimeline = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: DocumentTimelineOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(DocumentTimelineOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try DocumentTimelineImpl.call_constructor(allocator, ctx, options);
     }

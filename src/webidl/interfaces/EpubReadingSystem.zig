@@ -1,11 +1,13 @@
 //! Generated from: epub-rs.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const EpubReadingSystemImpl = @import("impls").EpubReadingSystem;
+const mixins = @import("mixins");
 const DOMString = @import("typedefs").DOMString;
 
 pub const EpubReadingSystem = struct {
@@ -78,7 +80,7 @@ pub const EpubReadingSystem = struct {
         EpubReadingSystemImpl.deinit(instance);
     }
 
-    pub fn call_hasFeature(instance: *runtime.Instance, feature: DOMString, version: DOMString) anyerror!bool {
+    pub fn call_hasFeature(instance: *runtime.Instance, feature: DOMString, version: webidl.Opt(DOMString)) anyerror!bool {
         
         return try EpubReadingSystemImpl.call_hasFeature(instance, feature, version);
     }

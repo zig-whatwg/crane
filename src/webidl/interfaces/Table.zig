@@ -1,11 +1,13 @@
 //! Generated from: wasm-js-api.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const TableImpl = @import("impls").Table;
+const mixins = @import("mixins");
 const AddressValue = @import("typedefs").AddressValue;
 const TableDescriptor = @import("dictionaries").TableDescriptor;
 
@@ -90,7 +92,7 @@ pub const Table = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, descriptor: TableDescriptor, value: *const anyopaque) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, descriptor: TableDescriptor, value: webidl.Opt(*const anyopaque)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try TableImpl.call_constructor(allocator, ctx, descriptor, value);
     }
@@ -104,12 +106,12 @@ pub const Table = struct {
         return try TableImpl.call_get(instance, index);
     }
 
-    pub fn call_grow(instance: *runtime.Instance, delta: AddressValue, value: *const anyopaque) anyerror!AddressValue {
+    pub fn call_grow(instance: *runtime.Instance, delta: AddressValue, value: webidl.Opt(*const anyopaque)) anyerror!AddressValue {
         
         return try TableImpl.call_grow(instance, delta, value);
     }
 
-    pub fn call_set(instance: *runtime.Instance, index: AddressValue, value: *const anyopaque) anyerror!void {
+    pub fn call_set(instance: *runtime.Instance, index: AddressValue, value: webidl.Opt(*const anyopaque)) anyerror!void {
         
         return try TableImpl.call_set(instance, index, value);
     }

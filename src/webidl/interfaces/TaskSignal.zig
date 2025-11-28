@@ -1,11 +1,13 @@
 //! Generated from: scheduling-apis.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const TaskSignalImpl = @import("impls").TaskSignal;
+const mixins = @import("mixins");
 const AbortSignal = @import("interfaces").AbortSignal;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -124,7 +126,7 @@ pub const TaskSignal = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call__any(instance: *runtime.Instance, signals: *const anyopaque, init_data: TaskSignalAnyInit) anyerror!*runtime.Instance {
+    pub fn call__any(instance: *runtime.Instance, signals: *const anyopaque, init_data: webidl.Opt(TaskSignalAnyInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try TaskSignalImpl.call__any(instance, signals, init_data);

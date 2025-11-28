@@ -1,11 +1,13 @@
 //! Generated from: webcrypto.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const SubtleCryptoImpl = @import("impls").SubtleCrypto;
+const mixins = @import("mixins");
 const EncapsulatedBits = @import("dictionaries").EncapsulatedBits;
 const AlgorithmIdentifier = @import("typedefs").AlgorithmIdentifier;
 const KeyUsage = @import("enums").KeyUsage;
@@ -170,7 +172,7 @@ pub const SubtleCrypto = struct {
         return try SubtleCryptoImpl.call_decapsulateKey(instance, decapsulationAlgorithm, decapsulationKey, ciphertext, sharedKeyAlgorithm, extractable, keyUsages);
     }
 
-    pub fn call_deriveBits(instance: *runtime.Instance, algorithm: AlgorithmIdentifier, baseKey: *runtime.Instance, length: u32) anyerror!*const anyopaque {
+    pub fn call_deriveBits(instance: *runtime.Instance, algorithm: AlgorithmIdentifier, baseKey: *runtime.Instance, length: webidl.Opt(?u32)) anyerror!*const anyopaque {
         
         return try SubtleCryptoImpl.call_deriveBits(instance, algorithm, baseKey, length);
     }
@@ -190,7 +192,7 @@ pub const SubtleCrypto = struct {
         return try SubtleCryptoImpl.call_verify(instance, algorithm, key, signature, data);
     }
 
-    pub fn call_supports(instance: *runtime.Instance, operation: DOMString, algorithm: AlgorithmIdentifier, length: u32) anyerror!bool {
+    pub fn call_supports(instance: *runtime.Instance, operation: DOMString, algorithm: AlgorithmIdentifier, length: webidl.Opt(?u32)) anyerror!bool {
         
         return try SubtleCryptoImpl.call_supports(instance, operation, algorithm, length);
     }

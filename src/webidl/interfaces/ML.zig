@@ -1,11 +1,13 @@
 //! Generated from: webnn.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const MLImpl = @import("impls").ML;
+const mixins = @import("mixins");
 const MLContextOptions = @import("dictionaries").MLContextOptions;
 const MLContext = @import("interfaces").MLContext;
 const GPUDevice = @import("interfaces").GPUDevice;
@@ -84,7 +86,7 @@ pub const ML = struct {
         MLImpl.deinit(instance);
     }
 
-    pub fn call_createContext(instance: *runtime.Instance, options: MLContextOptions) anyerror!*const anyopaque {
+    pub fn call_createContext(instance: *runtime.Instance, options: webidl.Opt(MLContextOptions)) anyerror!*const anyopaque {
         
         return try MLImpl.call_createContext(instance, options);
     }

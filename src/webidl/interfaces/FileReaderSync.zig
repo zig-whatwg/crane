@@ -1,11 +1,13 @@
 //! Generated from: FileAPI.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const FileReaderSyncImpl = @import("impls").FileReaderSync;
+const mixins = @import("mixins");
 const Blob = @import("interfaces").Blob;
 const DOMString = @import("typedefs").DOMString;
 
@@ -110,7 +112,7 @@ pub const FileReaderSync = struct {
         return try FileReaderSyncImpl.call_readAsDataURL(instance, blob);
     }
 
-    pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: DOMString) anyerror!DOMString {
+    pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: webidl.Opt(DOMString)) anyerror!DOMString {
         
         return try FileReaderSyncImpl.call_readAsText(instance, blob, encoding);
     }

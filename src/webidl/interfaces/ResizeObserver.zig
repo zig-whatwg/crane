@@ -1,11 +1,13 @@
 //! Generated from: resize-observer.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const ResizeObserverImpl = @import("impls").ResizeObserver;
+const mixins = @import("mixins");
 const ResizeObserverCallback = @import("callbacks").ResizeObserverCallback;
 const Element = @import("interfaces").Element;
 const ResizeObserverOptions = @import("dictionaries").ResizeObserverOptions;
@@ -92,7 +94,7 @@ pub const ResizeObserver = struct {
         return try ResizeObserverImpl.call_constructor(allocator, ctx, callback);
     }
 
-    pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, options: ResizeObserverOptions) anyerror!void {
+    pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, options: webidl.Opt(ResizeObserverOptions)) anyerror!void {
         
         return try ResizeObserverImpl.call_observe(instance, target, options);
     }

@@ -1,11 +1,13 @@
 //! Generated from: DOM-Style.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const ViewCSSImpl = @import("impls").ViewCSS;
+const mixins = @import("mixins");
 const AbstractView = @import("interfaces").AbstractView;
 const Element = @import("interfaces").Element;
 const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;

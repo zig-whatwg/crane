@@ -1,11 +1,13 @@
 //! Generated from: shared-storage.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const SharedStorageWorkletImpl = @import("impls").SharedStorageWorklet;
+const mixins = @import("mixins");
 const Worklet = @import("interfaces").Worklet;
 const SharedStorageResponse = @import("typedefs").SharedStorageResponse;
 const WorkletOptions = @import("dictionaries").WorkletOptions;
@@ -88,12 +90,12 @@ pub const SharedStorageWorklet = struct {
         SharedStorageWorkletImpl.deinit(instance);
     }
 
-    pub fn call_run(instance: *runtime.Instance, name: DOMString, options: SharedStorageRunOperationMethodOptions) anyerror!*const anyopaque {
+    pub fn call_run(instance: *runtime.Instance, name: DOMString, options: webidl.Opt(SharedStorageRunOperationMethodOptions)) anyerror!*const anyopaque {
         
         return try SharedStorageWorkletImpl.call_run(instance, name, options);
     }
 
-    pub fn call_selectURL(instance: *runtime.Instance, name: DOMString, urls: *const anyopaque, options: SharedStorageRunOperationMethodOptions) anyerror!*const anyopaque {
+    pub fn call_selectURL(instance: *runtime.Instance, name: DOMString, urls: *const anyopaque, options: webidl.Opt(SharedStorageRunOperationMethodOptions)) anyerror!*const anyopaque {
         
         return try SharedStorageWorkletImpl.call_selectURL(instance, name, urls, options);
     }

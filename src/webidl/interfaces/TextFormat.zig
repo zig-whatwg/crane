@@ -1,11 +1,13 @@
 //! Generated from: edit-context.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const TextFormatImpl = @import("impls").TextFormat;
+const mixins = @import("mixins");
 const TextFormatInit = @import("dictionaries").TextFormatInit;
 const UnderlineThickness = @import("enums").UnderlineThickness;
 const UnderlineStyle = @import("enums").UnderlineStyle;
@@ -92,7 +94,7 @@ pub const TextFormat = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: TextFormatInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(TextFormatInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try TextFormatImpl.call_constructor(allocator, ctx, options);
     }

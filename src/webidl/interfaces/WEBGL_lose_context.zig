@@ -1,11 +1,13 @@
 //! Generated from: WEBGL_lose_context.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const WEBGL_lose_contextImpl = @import("impls").WEBGL_lose_context;
+const mixins = @import("mixins");
 
 pub const WEBGL_lose_context = struct {
     pub const Meta = struct {

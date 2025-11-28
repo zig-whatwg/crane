@@ -1,11 +1,13 @@
 //! Generated from: fedcm.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const IdentityProviderImpl = @import("impls").IdentityProvider;
+const mixins = @import("mixins");
 const IdentityResolveOptions = @import("dictionaries").IdentityResolveOptions;
 const IdentityProviderConfig = @import("dictionaries").IdentityProviderConfig;
 
@@ -88,7 +90,7 @@ pub const IdentityProvider = struct {
         IdentityProviderImpl.deinit(instance);
     }
 
-    pub fn call_resolve(instance: *runtime.Instance, token: *const anyopaque, options: IdentityResolveOptions) anyerror!*const anyopaque {
+    pub fn call_resolve(instance: *runtime.Instance, token: *const anyopaque, options: webidl.Opt(IdentityResolveOptions)) anyerror!*const anyopaque {
         
         return try IdentityProviderImpl.call_resolve(instance, token, options);
     }

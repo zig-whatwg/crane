@@ -1,11 +1,13 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const BluetoothRemoteGATTServiceImpl = @import("impls").BluetoothRemoteGATTService;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const CharacteristicEventHandlers = @import("interfaces").CharacteristicEventHandlers;
 const ServiceEventHandlers = @import("interfaces").ServiceEventHandlers;
@@ -200,12 +202,12 @@ pub const BluetoothRemoteGATTService = struct {
         return try BluetoothRemoteGATTServiceImpl.call_getCharacteristic(instance, characteristic);
     }
 
-    pub fn call_getIncludedServices(instance: *runtime.Instance, service: BluetoothServiceUUID) anyerror!*const anyopaque {
+    pub fn call_getIncludedServices(instance: *runtime.Instance, service: webidl.Opt(BluetoothServiceUUID)) anyerror!*const anyopaque {
         
         return try BluetoothRemoteGATTServiceImpl.call_getIncludedServices(instance, service);
     }
 
-    pub fn call_getCharacteristics(instance: *runtime.Instance, characteristic: BluetoothCharacteristicUUID) anyerror!*const anyopaque {
+    pub fn call_getCharacteristics(instance: *runtime.Instance, characteristic: webidl.Opt(BluetoothCharacteristicUUID)) anyerror!*const anyopaque {
         
         return try BluetoothRemoteGATTServiceImpl.call_getCharacteristics(instance, characteristic);
     }

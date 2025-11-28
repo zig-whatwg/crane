@@ -1,11 +1,13 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const ChildNodeImpl = @import("impls").ChildNode;
+const mixins = @import("mixins");
 const Node = @import("interfaces").Node;
 const DOMString = @import("typedefs").DOMString;
 
@@ -82,7 +84,7 @@ pub const ChildNode = struct {
     }
 
     /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_replaceWith(instance: *runtime.Instance, nodes: *const anyopaque) anyerror!void {
+    pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -92,7 +94,7 @@ pub const ChildNode = struct {
     }
 
     /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_before(instance: *runtime.Instance, nodes: *const anyopaque) anyerror!void {
+    pub fn call_before(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -102,7 +104,7 @@ pub const ChildNode = struct {
     }
 
     /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_after(instance: *runtime.Instance, nodes: *const anyopaque) anyerror!void {
+    pub fn call_after(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

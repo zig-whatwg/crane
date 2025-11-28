@@ -1,11 +1,13 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const XRSystemImpl = @import("impls").XRSystem;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -111,7 +113,7 @@ pub const XRSystem = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_requestSession(instance: *runtime.Instance, mode: XRSessionMode, options: XRSessionInit) anyerror!*const anyopaque {
+    pub fn call_requestSession(instance: *runtime.Instance, mode: XRSessionMode, options: webidl.Opt(XRSessionInit)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
         return try XRSystemImpl.call_requestSession(instance, mode, options);

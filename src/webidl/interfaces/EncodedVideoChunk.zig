@@ -1,11 +1,13 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const EncodedVideoChunkImpl = @import("impls").EncodedVideoChunk;
+const mixins = @import("mixins");
 const EncodedVideoChunkType = @import("enums").EncodedVideoChunkType;
 const AllowSharedBufferSource = @import("typedefs").AllowSharedBufferSource;
 const EncodedVideoChunkInit = @import("dictionaries").EncodedVideoChunkInit;

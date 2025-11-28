@@ -1,11 +1,13 @@
 //! Generated from: payment-request.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const PaymentResponseImpl = @import("impls").PaymentResponse;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -179,7 +181,7 @@ pub const PaymentResponse = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_complete(instance: *runtime.Instance, result: PaymentComplete, details: PaymentCompleteDetails) anyerror!*const anyopaque {
+    pub fn call_complete(instance: *runtime.Instance, result: webidl.Opt(PaymentComplete), details: webidl.Opt(PaymentCompleteDetails)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
         return try PaymentResponseImpl.call_complete(instance, result, details);
@@ -191,7 +193,7 @@ pub const PaymentResponse = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_retry(instance: *runtime.Instance, errorFields: PaymentValidationErrors) anyerror!*const anyopaque {
+    pub fn call_retry(instance: *runtime.Instance, errorFields: webidl.Opt(PaymentValidationErrors)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
         return try PaymentResponseImpl.call_retry(instance, errorFields);

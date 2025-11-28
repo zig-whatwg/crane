@@ -1,11 +1,13 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const GPUQueueImpl = @import("impls").GPUQueue;
+const mixins = @import("mixins");
 const GPUObjectBase = @import("interfaces").GPUObjectBase;
 const AllowSharedBufferSource = @import("typedefs").AllowSharedBufferSource;
 const GPUTexelCopyBufferLayout = @import("dictionaries").GPUTexelCopyBufferLayout;
@@ -123,7 +125,7 @@ pub const GPUQueue = struct {
         return try GPUQueueImpl.call_onSubmittedWorkDone(instance);
     }
 
-    pub fn call_writeBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, bufferOffset: GPUSize64, data: AllowSharedBufferSource, dataOffset: GPUSize64, size: GPUSize64) anyerror!void {
+    pub fn call_writeBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, bufferOffset: GPUSize64, data: AllowSharedBufferSource, dataOffset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!void {
         
         return try GPUQueueImpl.call_writeBuffer(instance, buffer, bufferOffset, data, dataOffset, size);
     }

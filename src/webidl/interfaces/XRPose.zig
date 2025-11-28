@@ -1,11 +1,13 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const XRPoseImpl = @import("impls").XRPose;
+const mixins = @import("mixins");
 const XRRigidTransform = @import("interfaces").XRRigidTransform;
 const DOMPointReadOnly = @import("interfaces").DOMPointReadOnly;
 

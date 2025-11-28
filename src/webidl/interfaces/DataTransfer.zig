@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const DataTransferImpl = @import("impls").DataTransfer;
+const mixins = @import("mixins");
 const Element = @import("interfaces").Element;
 const DataTransferItemList = @import("interfaces").DataTransferItemList;
 const DOMString = @import("typedefs").DOMString;
@@ -169,7 +171,7 @@ pub const DataTransfer = struct {
         return try DataTransferImpl.call_getData(instance, format);
     }
 
-    pub fn call_clearData(instance: *runtime.Instance, format: DOMString) anyerror!void {
+    pub fn call_clearData(instance: *runtime.Instance, format: webidl.Opt(DOMString)) anyerror!void {
         
         return try DataTransferImpl.call_clearData(instance, format);
     }

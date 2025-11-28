@@ -1,11 +1,13 @@
 //! Generated from: WEBGL_debug_renderer_info.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const WEBGL_debug_renderer_infoImpl = @import("impls").WEBGL_debug_renderer_info;
+const mixins = @import("mixins");
 const GLenum = @import("typedefs").GLenum;
 
 pub const WEBGL_debug_renderer_info = struct {

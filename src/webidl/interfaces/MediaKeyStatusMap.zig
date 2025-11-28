@@ -1,11 +1,13 @@
 //! Generated from: encrypted-media.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const MediaKeyStatusMapImpl = @import("impls").MediaKeyStatusMap;
+const mixins = @import("mixins");
 const MediaKeyStatus = @import("enums").MediaKeyStatus;
 const BufferSource = @import("typedefs").BufferSource;
 

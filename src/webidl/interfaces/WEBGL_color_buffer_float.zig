@@ -1,11 +1,13 @@
 //! Generated from: WEBGL_color_buffer_float.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const WEBGL_color_buffer_floatImpl = @import("impls").WEBGL_color_buffer_float;
+const mixins = @import("mixins");
 const GLenum = @import("typedefs").GLenum;
 
 pub const WEBGL_color_buffer_float = struct {

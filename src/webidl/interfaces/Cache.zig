@@ -1,11 +1,13 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const CacheImpl = @import("impls").Cache;
+const mixins = @import("mixins");
 const CacheQueryOptions = @import("dictionaries").CacheQueryOptions;
 const RequestInfo = @import("typedefs").RequestInfo;
 const Response = @import("interfaces").Response;
@@ -101,28 +103,28 @@ pub const Cache = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_delete(instance: *runtime.Instance, request: RequestInfo, options: CacheQueryOptions) anyerror!*const anyopaque {
+    pub fn call_delete(instance: *runtime.Instance, request: RequestInfo, options: webidl.Opt(CacheQueryOptions)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
         return try CacheImpl.call_delete(instance, request, options);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_match(instance: *runtime.Instance, request: RequestInfo, options: CacheQueryOptions) anyerror!*const anyopaque {
+    pub fn call_match(instance: *runtime.Instance, request: RequestInfo, options: webidl.Opt(CacheQueryOptions)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
         return try CacheImpl.call_match(instance, request, options);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_keys(instance: *runtime.Instance, request: RequestInfo, options: CacheQueryOptions) anyerror!*const anyopaque {
+    pub fn call_keys(instance: *runtime.Instance, request: webidl.Opt(RequestInfo), options: webidl.Opt(CacheQueryOptions)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
         return try CacheImpl.call_keys(instance, request, options);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_matchAll(instance: *runtime.Instance, request: RequestInfo, options: CacheQueryOptions) anyerror!*const anyopaque {
+    pub fn call_matchAll(instance: *runtime.Instance, request: webidl.Opt(RequestInfo), options: webidl.Opt(CacheQueryOptions)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
         return try CacheImpl.call_matchAll(instance, request, options);

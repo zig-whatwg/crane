@@ -1,11 +1,13 @@
 //! Generated from: webusb.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const USBOutTransferResultImpl = @import("impls").USBOutTransferResult;
+const mixins = @import("mixins");
 const USBTransferStatus = @import("enums").USBTransferStatus;
 
 pub const USBOutTransferResult = struct {
@@ -86,7 +88,7 @@ pub const USBOutTransferResult = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, status: USBTransferStatus, bytesWritten: u32) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, status: USBTransferStatus, bytesWritten: webidl.Opt(u32)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try USBOutTransferResultImpl.call_constructor(allocator, ctx, status, bytesWritten);
     }

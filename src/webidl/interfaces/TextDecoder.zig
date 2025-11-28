@@ -1,11 +1,13 @@
 //! Generated from: encoding.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const TextDecoderImpl = @import("impls").TextDecoder;
+const mixins = @import("mixins");
 const TextDecoderCommon = @import("interfaces").TextDecoderCommon;
 const AllowSharedBufferSource = @import("typedefs").AllowSharedBufferSource;
 const TextDecoderOptions = @import("dictionaries").TextDecoderOptions;
@@ -97,7 +99,7 @@ pub const TextDecoder = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, label: DOMString, options: TextDecoderOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, label: webidl.Opt(DOMString), options: webidl.Opt(TextDecoderOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try TextDecoderImpl.call_constructor(allocator, ctx, label, options);
     }
@@ -114,7 +116,7 @@ pub const TextDecoder = struct {
         return try TextDecoderImpl.get_ignoreBOM(instance);
     }
 
-    pub fn call_decode(instance: *runtime.Instance, input: AllowSharedBufferSource, options: TextDecodeOptions) anyerror!runtime.USVString {
+    pub fn call_decode(instance: *runtime.Instance, input: webidl.Opt(AllowSharedBufferSource), options: webidl.Opt(TextDecodeOptions)) anyerror!runtime.USVString {
         
         return try TextDecoderImpl.call_decode(instance, input, options);
     }

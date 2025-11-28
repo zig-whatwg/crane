@@ -1,11 +1,13 @@
 //! Generated from: encoding.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const TextEncoderImpl = @import("impls").TextEncoder;
+const mixins = @import("mixins");
 const TextEncoderCommon = @import("interfaces").TextEncoderCommon;
 const TextEncoderEncodeIntoResult = @import("dictionaries").TextEncoderEncodeIntoResult;
 const USVString = @import("interfaces").USVString;
@@ -100,7 +102,7 @@ pub const TextEncoder = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_encode(instance: *runtime.Instance, input: runtime.USVString) anyerror!*const anyopaque {
+    pub fn call_encode(instance: *runtime.Instance, input: webidl.Opt(runtime.USVString)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
         return try TextEncoderImpl.call_encode(instance, input);

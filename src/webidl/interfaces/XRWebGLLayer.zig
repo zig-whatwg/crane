@@ -1,11 +1,13 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const XRWebGLLayerImpl = @import("impls").XRWebGLLayer;
+const mixins = @import("mixins");
 const XRLayer = @import("interfaces").XRLayer;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -130,7 +132,7 @@ pub const XRWebGLLayer = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, session: *runtime.Instance, context: XRWebGLRenderingContext, layerInit: XRWebGLLayerInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, session: *runtime.Instance, context: XRWebGLRenderingContext, layerInit: webidl.Opt(XRWebGLLayerInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try XRWebGLLayerImpl.call_constructor(allocator, ctx, session, context, layerInit);
     }

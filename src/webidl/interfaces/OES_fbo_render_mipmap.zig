@@ -1,11 +1,13 @@
 //! Generated from: OES_fbo_render_mipmap.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const OES_fbo_render_mipmapImpl = @import("impls").OES_fbo_render_mipmap;
+const mixins = @import("mixins");
 
 pub const OES_fbo_render_mipmap = struct {
     pub const Meta = struct {

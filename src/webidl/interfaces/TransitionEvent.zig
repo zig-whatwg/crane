@@ -1,11 +1,13 @@
 //! Generated from: css-transitions.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const TransitionEventImpl = @import("impls").TransitionEvent;
+const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
 const TransitionEventInit = @import("dictionaries").TransitionEventInit;
 const CSSOMString = @import("typedefs").CSSOMString;
@@ -97,7 +99,7 @@ pub const TransitionEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": CSSOMString, transitionEventInitDict: TransitionEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": CSSOMString, transitionEventInitDict: webidl.Opt(TransitionEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try TransitionEventImpl.call_constructor(allocator, ctx, @"type", transitionEventInitDict);
     }

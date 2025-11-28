@@ -1,11 +1,13 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const BaseAudioContextImpl = @import("impls").BaseAudioContext;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const OscillatorNode = @import("interfaces").OscillatorNode;
@@ -251,7 +253,7 @@ pub const BaseAudioContext = struct {
         return try BaseAudioContextImpl.call_createPanner(instance);
     }
 
-    pub fn call_createChannelMerger(instance: *runtime.Instance, numberOfInputs: u32) anyerror!*runtime.Instance {
+    pub fn call_createChannelMerger(instance: *runtime.Instance, numberOfInputs: webidl.Opt(u32)) anyerror!*runtime.Instance {
         
         return try BaseAudioContextImpl.call_createChannelMerger(instance, numberOfInputs);
     }
@@ -260,7 +262,7 @@ pub const BaseAudioContext = struct {
         return try BaseAudioContextImpl.call_createDynamicsCompressor(instance);
     }
 
-    pub fn call_createPeriodicWave(instance: *runtime.Instance, real: *const anyopaque, imag: *const anyopaque, constraints: PeriodicWaveConstraints) anyerror!*runtime.Instance {
+    pub fn call_createPeriodicWave(instance: *runtime.Instance, real: *const anyopaque, imag: *const anyopaque, constraints: webidl.Opt(PeriodicWaveConstraints)) anyerror!*runtime.Instance {
         
         return try BaseAudioContextImpl.call_createPeriodicWave(instance, real, imag, constraints);
     }
@@ -311,22 +313,22 @@ pub const BaseAudioContext = struct {
         return try BaseAudioContextImpl.call_createBuffer(instance, numberOfChannels, length, sampleRate);
     }
 
-    pub fn call_createScriptProcessor(instance: *runtime.Instance, bufferSize: u32, numberOfInputChannels: u32, numberOfOutputChannels: u32) anyerror!*runtime.Instance {
+    pub fn call_createScriptProcessor(instance: *runtime.Instance, bufferSize: webidl.Opt(u32), numberOfInputChannels: webidl.Opt(u32), numberOfOutputChannels: webidl.Opt(u32)) anyerror!*runtime.Instance {
         
         return try BaseAudioContextImpl.call_createScriptProcessor(instance, bufferSize, numberOfInputChannels, numberOfOutputChannels);
     }
 
-    pub fn call_createDelay(instance: *runtime.Instance, maxDelayTime: f64) anyerror!*runtime.Instance {
+    pub fn call_createDelay(instance: *runtime.Instance, maxDelayTime: webidl.Opt(f64)) anyerror!*runtime.Instance {
         
         return try BaseAudioContextImpl.call_createDelay(instance, maxDelayTime);
     }
 
-    pub fn call_createChannelSplitter(instance: *runtime.Instance, numberOfOutputs: u32) anyerror!*runtime.Instance {
+    pub fn call_createChannelSplitter(instance: *runtime.Instance, numberOfOutputs: webidl.Opt(u32)) anyerror!*runtime.Instance {
         
         return try BaseAudioContextImpl.call_createChannelSplitter(instance, numberOfOutputs);
     }
 
-    pub fn call_decodeAudioData(instance: *runtime.Instance, audioData: *const anyopaque, successCallback: DecodeSuccessCallback, errorCallback: DecodeErrorCallback) anyerror!*const anyopaque {
+    pub fn call_decodeAudioData(instance: *runtime.Instance, audioData: *const anyopaque, successCallback: webidl.Opt(?DecodeSuccessCallback), errorCallback: webidl.Opt(?DecodeErrorCallback)) anyerror!*const anyopaque {
         
         return try BaseAudioContextImpl.call_decodeAudioData(instance, audioData, successCallback, errorCallback);
     }

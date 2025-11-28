@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const NavigatorImpl = @import("impls").Navigator;
+const mixins = @import("mixins");
 const NavigatorLocks = @import("interfaces").NavigatorLocks;
 const NavigatorGPU = @import("interfaces").NavigatorGPU;
 const GlobalPrivacyControl = @import("interfaces").GlobalPrivacyControl;
@@ -1076,7 +1078,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn call_requestMIDIAccess(instance: *runtime.Instance, options: MIDIOptions) anyerror!*const anyopaque {
+    pub fn call_requestMIDIAccess(instance: *runtime.Instance, options: webidl.Opt(MIDIOptions)) anyerror!*const anyopaque {
         
         return try NavigatorImpl.call_requestMIDIAccess(instance, options);
     }
@@ -1101,7 +1103,7 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_createHandwritingRecognizer(instance, constraint);
     }
 
-    pub fn call_leaveAdInterestGroup(instance: *runtime.Instance, group: AuctionAdInterestGroupKey) anyerror!*const anyopaque {
+    pub fn call_leaveAdInterestGroup(instance: *runtime.Instance, group: webidl.Opt(AuctionAdInterestGroupKey)) anyerror!*const anyopaque {
         
         return try NavigatorImpl.call_leaveAdInterestGroup(instance, group);
     }
@@ -1123,7 +1125,7 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_taintEnabled(instance);
     }
 
-    pub fn call_setAppBadge(instance: *runtime.Instance, contents: u64) anyerror!*const anyopaque {
+    pub fn call_setAppBadge(instance: *runtime.Instance, contents: webidl.Opt(u64)) anyerror!*const anyopaque {
         // [EnforceRange] on contents
         if (!runtime.isInRange(u64, contents)) return error.TypeError;
         
@@ -1138,7 +1140,7 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_createAuctionNonce(instance);
     }
 
-    pub fn call_sendBeacon(instance: *runtime.Instance, url: runtime.USVString, data: BodyInit) anyerror!bool {
+    pub fn call_sendBeacon(instance: *runtime.Instance, url: runtime.USVString, data: webidl.Opt(?BodyInit)) anyerror!bool {
         
         return try NavigatorImpl.call_sendBeacon(instance, url, data);
     }
@@ -1159,7 +1161,7 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn call_share(instance: *runtime.Instance, data: ShareData) anyerror!*const anyopaque {
+    pub fn call_share(instance: *runtime.Instance, data: webidl.Opt(ShareData)) anyerror!*const anyopaque {
         
         return try NavigatorImpl.call_share(instance, data);
     }
@@ -1189,17 +1191,17 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn call_canShare(instance: *runtime.Instance, data: ShareData) anyerror!bool {
+    pub fn call_canShare(instance: *runtime.Instance, data: webidl.Opt(ShareData)) anyerror!bool {
         
         return try NavigatorImpl.call_canShare(instance, data);
     }
 
-    pub fn call_clearOriginJoinedAdInterestGroups(instance: *runtime.Instance, owner: runtime.USVString, interestGroupsToKeep: *const anyopaque) anyerror!*const anyopaque {
+    pub fn call_clearOriginJoinedAdInterestGroups(instance: *runtime.Instance, owner: runtime.USVString, interestGroupsToKeep: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
         
         return try NavigatorImpl.call_clearOriginJoinedAdInterestGroups(instance, owner, interestGroupsToKeep);
     }
 
-    pub fn call_getInterestGroupAdAuctionData(instance: *runtime.Instance, config: AdAuctionDataConfig) anyerror!*const anyopaque {
+    pub fn call_getInterestGroupAdAuctionData(instance: *runtime.Instance, config: webidl.Opt(AdAuctionDataConfig)) anyerror!*const anyopaque {
         
         return try NavigatorImpl.call_getInterestGroupAdAuctionData(instance, config);
     }
@@ -1210,7 +1212,7 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_requestMediaKeySystemAccess(instance, keySystem, supportedConfigurations);
     }
 
-    pub fn call_deprecatedURNtoURL(instance: *runtime.Instance, urnOrConfig: UrnOrConfig, send_reports: bool) anyerror!*const anyopaque {
+    pub fn call_deprecatedURNtoURL(instance: *runtime.Instance, urnOrConfig: UrnOrConfig, send_reports: webidl.Opt(bool)) anyerror!*const anyopaque {
         
         return try NavigatorImpl.call_deprecatedURNtoURL(instance, urnOrConfig, send_reports);
     }

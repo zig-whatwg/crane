@@ -1,11 +1,13 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const AbortSignalImpl = @import("impls").AbortSignal;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -140,7 +142,7 @@ pub const AbortSignal = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_abort(instance: *runtime.Instance, reason: *const anyopaque) anyerror!*runtime.Instance {
+    pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try AbortSignalImpl.call_abort(instance, reason);

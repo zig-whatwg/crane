@@ -1,11 +1,13 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const IDBObjectStoreImpl = @import("impls").IDBObjectStore;
+const mixins = @import("mixins");
 const IDBRequest = @import("interfaces").IDBRequest;
 const IDBGetAllOptions = @import("dictionaries").IDBGetAllOptions;
 const DOMStringList = @import("interfaces").DOMStringList;
@@ -198,7 +200,7 @@ pub const IDBObjectStore = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: *const anyopaque, count: u32) anyerror!*runtime.Instance {
+    pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: webidl.Opt(*const anyopaque), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         // [EnforceRange] on count
         if (!runtime.isInRange(u32, count)) return error.TypeError;
@@ -207,7 +209,7 @@ pub const IDBObjectStore = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_openKeyCursor(instance: *runtime.Instance, query: *const anyopaque, direction: IDBCursorDirection) anyerror!*runtime.Instance {
+    pub fn call_openKeyCursor(instance: *runtime.Instance, query: webidl.Opt(*const anyopaque), direction: webidl.Opt(IDBCursorDirection)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBObjectStoreImpl.call_openKeyCursor(instance, query, direction);
@@ -219,14 +221,14 @@ pub const IDBObjectStore = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_count(instance: *runtime.Instance, query: *const anyopaque) anyerror!*runtime.Instance {
+    pub fn call_count(instance: *runtime.Instance, query: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBObjectStoreImpl.call_count(instance, query);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_add(instance: *runtime.Instance, value: *const anyopaque, key: *const anyopaque) anyerror!*runtime.Instance {
+    pub fn call_add(instance: *runtime.Instance, value: *const anyopaque, key: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBObjectStoreImpl.call_add(instance, value, key);
@@ -239,14 +241,14 @@ pub const IDBObjectStore = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_openCursor(instance: *runtime.Instance, query: *const anyopaque, direction: IDBCursorDirection) anyerror!*runtime.Instance {
+    pub fn call_openCursor(instance: *runtime.Instance, query: webidl.Opt(*const anyopaque), direction: webidl.Opt(IDBCursorDirection)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBObjectStoreImpl.call_openCursor(instance, query, direction);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: *const anyopaque, count: u32) anyerror!*runtime.Instance {
+    pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: webidl.Opt(*const anyopaque), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         // [EnforceRange] on count
         if (!runtime.isInRange(u32, count)) return error.TypeError;
@@ -255,14 +257,14 @@ pub const IDBObjectStore = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_put(instance: *runtime.Instance, value: *const anyopaque, key: *const anyopaque) anyerror!*runtime.Instance {
+    pub fn call_put(instance: *runtime.Instance, value: *const anyopaque, key: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBObjectStoreImpl.call_put(instance, value, key);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getAllRecords(instance: *runtime.Instance, options: IDBGetAllOptions) anyerror!*runtime.Instance {
+    pub fn call_getAllRecords(instance: *runtime.Instance, options: webidl.Opt(IDBGetAllOptions)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBObjectStoreImpl.call_getAllRecords(instance, options);
@@ -283,7 +285,7 @@ pub const IDBObjectStore = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createIndex(instance: *runtime.Instance, name: DOMString, keyPath: *const anyopaque, options: IDBIndexParameters) anyerror!*runtime.Instance {
+    pub fn call_createIndex(instance: *runtime.Instance, name: DOMString, keyPath: *const anyopaque, options: webidl.Opt(IDBIndexParameters)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBObjectStoreImpl.call_createIndex(instance, name, keyPath, options);

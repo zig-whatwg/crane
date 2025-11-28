@@ -1,11 +1,13 @@
 //! Generated from: mediacapture-streams.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const MediaDevicesImpl = @import("impls").MediaDevices;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const MediaDeviceInfo = @import("interfaces").MediaDeviceInfo;
@@ -145,17 +147,17 @@ pub const MediaDevices = struct {
         try MediaDevicesImpl.set_oncaptureaction(instance, value);
     }
 
-    pub fn call_selectAudioOutput(instance: *runtime.Instance, options: AudioOutputOptions) anyerror!*const anyopaque {
+    pub fn call_selectAudioOutput(instance: *runtime.Instance, options: webidl.Opt(AudioOutputOptions)) anyerror!*const anyopaque {
         
         return try MediaDevicesImpl.call_selectAudioOutput(instance, options);
     }
 
-    pub fn call_getDisplayMedia(instance: *runtime.Instance, options: DisplayMediaStreamOptions) anyerror!*const anyopaque {
+    pub fn call_getDisplayMedia(instance: *runtime.Instance, options: webidl.Opt(DisplayMediaStreamOptions)) anyerror!*const anyopaque {
         
         return try MediaDevicesImpl.call_getDisplayMedia(instance, options);
     }
 
-    pub fn call_getUserMedia(instance: *runtime.Instance, constraints: MediaStreamConstraints) anyerror!*const anyopaque {
+    pub fn call_getUserMedia(instance: *runtime.Instance, constraints: webidl.Opt(MediaStreamConstraints)) anyerror!*const anyopaque {
         
         return try MediaDevicesImpl.call_getUserMedia(instance, constraints);
     }
@@ -168,7 +170,7 @@ pub const MediaDevices = struct {
         return try MediaDevicesImpl.call_getSupportedConstraints(instance);
     }
 
-    pub fn call_getViewportMedia(instance: *runtime.Instance, options: DisplayMediaStreamOptions) anyerror!*const anyopaque {
+    pub fn call_getViewportMedia(instance: *runtime.Instance, options: webidl.Opt(DisplayMediaStreamOptions)) anyerror!*const anyopaque {
         
         return try MediaDevicesImpl.call_getViewportMedia(instance, options);
     }
@@ -178,7 +180,7 @@ pub const MediaDevices = struct {
         return try MediaDevicesImpl.call_setSupportedCaptureActions(instance, actions);
     }
 
-    pub fn call_setCaptureHandleConfig(instance: *runtime.Instance, config: CaptureHandleConfig) anyerror!void {
+    pub fn call_setCaptureHandleConfig(instance: *runtime.Instance, config: webidl.Opt(CaptureHandleConfig)) anyerror!void {
         
         return try MediaDevicesImpl.call_setCaptureHandleConfig(instance, config);
     }

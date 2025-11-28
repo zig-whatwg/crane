@@ -1,11 +1,13 @@
 //! Generated from: webxr-plane-detection.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const XRPlaneImpl = @import("impls").XRPlane;
+const mixins = @import("mixins");
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const XRPlaneOrientation = @import("enums").XRPlaneOrientation;
 const DOMPointReadOnly = @import("interfaces").DOMPointReadOnly;

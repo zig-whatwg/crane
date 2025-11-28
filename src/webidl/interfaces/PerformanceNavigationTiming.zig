@@ -1,11 +1,13 @@
 //! Generated from: navigation-timing.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const PerformanceNavigationTimingImpl = @import("impls").PerformanceNavigationTiming;
+const mixins = @import("mixins");
 const PerformanceResourceTiming = @import("interfaces").PerformanceResourceTiming;
 const ByteString = @import("interfaces").ByteString;
 const NotRestoredReasons = @import("interfaces").NotRestoredReasons;

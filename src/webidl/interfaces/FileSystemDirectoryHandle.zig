@@ -1,11 +1,13 @@
 //! Generated from: fs.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const FileSystemDirectoryHandleImpl = @import("impls").FileSystemDirectoryHandle;
+const mixins = @import("mixins");
 const FileSystemHandle = @import("interfaces").FileSystemHandle;
 const FileSystemRemoveOptions = @import("dictionaries").FileSystemRemoveOptions;
 const PermissionState = @import("enums").PermissionState;
@@ -114,7 +116,7 @@ pub const FileSystemDirectoryHandle = struct {
         FileSystemDirectoryHandleImpl.deinit(instance);
     }
 
-    pub fn call_getFileHandle(instance: *runtime.Instance, name: runtime.USVString, options: FileSystemGetFileOptions) anyerror!*const anyopaque {
+    pub fn call_getFileHandle(instance: *runtime.Instance, name: runtime.USVString, options: webidl.Opt(FileSystemGetFileOptions)) anyerror!*const anyopaque {
         
         return try FileSystemDirectoryHandleImpl.call_getFileHandle(instance, name, options);
     }
@@ -128,7 +130,7 @@ pub const FileSystemDirectoryHandle = struct {
         return try FileSystemDirectoryHandleImpl.call_values(instance);
     }
 
-    pub fn call_getDirectoryHandle(instance: *runtime.Instance, name: runtime.USVString, options: FileSystemGetDirectoryOptions) anyerror!*const anyopaque {
+    pub fn call_getDirectoryHandle(instance: *runtime.Instance, name: runtime.USVString, options: webidl.Opt(FileSystemGetDirectoryOptions)) anyerror!*const anyopaque {
         
         return try FileSystemDirectoryHandleImpl.call_getDirectoryHandle(instance, name, options);
     }
@@ -137,7 +139,7 @@ pub const FileSystemDirectoryHandle = struct {
         return try FileSystemDirectoryHandleImpl.call_getAsyncIterator(instance);
     }
 
-    pub fn call_removeEntry(instance: *runtime.Instance, name: runtime.USVString, options: FileSystemRemoveOptions) anyerror!*const anyopaque {
+    pub fn call_removeEntry(instance: *runtime.Instance, name: runtime.USVString, options: webidl.Opt(FileSystemRemoveOptions)) anyerror!*const anyopaque {
         
         return try FileSystemDirectoryHandleImpl.call_removeEntry(instance, name, options);
     }

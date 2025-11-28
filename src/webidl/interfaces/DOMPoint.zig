@@ -1,11 +1,13 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const DOMPointImpl = @import("impls").DOMPoint;
+const mixins = @import("mixins");
 const DOMPointReadOnly = @import("interfaces").DOMPointReadOnly;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const DOMMatrixInit = @import("dictionaries").DOMMatrixInit;
@@ -107,7 +109,7 @@ pub const DOMPoint = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: f64, y: f64, z: f64, w: f64) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: webidl.Opt(f64), y: webidl.Opt(f64), z: webidl.Opt(f64), w: webidl.Opt(f64)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try DOMPointImpl.call_constructor(allocator, ctx, x, y, z, w);
     }
@@ -129,7 +131,7 @@ pub const DOMPoint = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_fromPoint(instance: *runtime.Instance, other: DOMPointInit) anyerror!*runtime.Instance {
+    pub fn call_fromPoint(instance: *runtime.Instance, other: webidl.Opt(DOMPointInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMPointImpl.call_fromPoint(instance, other);

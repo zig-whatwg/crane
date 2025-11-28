@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const DataTransferItemImpl = @import("impls").DataTransferItem;
+const mixins = @import("mixins");
 const FileSystemHandle = @import("interfaces").FileSystemHandle;
 const FunctionStringCallback = @import("callbacks").FunctionStringCallback;
 const FileSystemEntry = @import("interfaces").FileSystemEntry;
@@ -106,7 +108,7 @@ pub const DataTransferItem = struct {
         return try DataTransferItemImpl.get_type(instance);
     }
 
-    pub fn call_getAsString(instance: *runtime.Instance, _callback: FunctionStringCallback) anyerror!void {
+    pub fn call_getAsString(instance: *runtime.Instance, _callback: ?FunctionStringCallback) anyerror!void {
         
         return try DataTransferItemImpl.call_getAsString(instance, _callback);
     }

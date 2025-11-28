@@ -1,11 +1,13 @@
 //! Generated from: svg-animations.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const SVGMPathElementImpl = @import("impls").SVGMPathElement;
+const mixins = @import("mixins");
 const SVGElement = @import("interfaces").SVGElement;
 const SVGURIReference = @import("interfaces").SVGURIReference;
 const DOMStringMap = @import("interfaces").DOMStringMap;

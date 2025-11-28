@@ -1,11 +1,13 @@
 //! Generated from: speech-api.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const SpeechRecognitionResultListImpl = @import("impls").SpeechRecognitionResultList;
+const mixins = @import("mixins");
 const SpeechRecognitionResult = @import("interfaces").SpeechRecognitionResult;
 
 pub const SpeechRecognitionResultList = struct {

@@ -1,11 +1,13 @@
 //! Generated from: uievents.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const UIEventImpl = @import("impls").UIEvent;
+const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
 const UIEventInit = @import("dictionaries").UIEventInit;
 const Window = @import("interfaces").Window;
@@ -106,7 +108,7 @@ pub const UIEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: UIEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(UIEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try UIEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
@@ -127,7 +129,7 @@ pub const UIEvent = struct {
         return try UIEventImpl.get_sourceCapabilities(instance);
     }
 
-    pub fn call_initUIEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: *runtime.Instance, detailArg: i32) anyerror!void {
+    pub fn call_initUIEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: webidl.Opt(bool), cancelableArg: webidl.Opt(bool), viewArg: webidl.Opt(?*runtime.Instance), detailArg: webidl.Opt(i32)) anyerror!void {
         
         return try UIEventImpl.call_initUIEvent(instance, typeArg, bubblesArg, cancelableArg, viewArg, detailArg);
     }

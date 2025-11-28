@@ -1,11 +1,13 @@
 //! Generated from: EXT_texture_filter_anisotropic.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const EXT_texture_filter_anisotropicImpl = @import("impls").EXT_texture_filter_anisotropic;
+const mixins = @import("mixins");
 const GLenum = @import("typedefs").GLenum;
 
 pub const EXT_texture_filter_anisotropic = struct {

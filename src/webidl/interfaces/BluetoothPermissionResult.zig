@@ -1,11 +1,13 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const BluetoothPermissionResultImpl = @import("impls").BluetoothPermissionResult;
+const mixins = @import("mixins");
 const PermissionStatus = @import("interfaces").PermissionStatus;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;

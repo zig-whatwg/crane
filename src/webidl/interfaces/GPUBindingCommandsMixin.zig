@@ -1,11 +1,13 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const GPUBindingCommandsMixinImpl = @import("impls").GPUBindingCommandsMixin;
+const mixins = @import("mixins");
 const GPUIndex32 = @import("typedefs").GPUIndex32;
 const GPUSize64 = @import("typedefs").GPUSize64;
 const GPUBindGroup = @import("interfaces").GPUBindGroup;
@@ -77,7 +79,7 @@ pub const GPUBindingCommandsMixin = struct {
         GPUBindingCommandsMixinImpl.deinit(instance);
     }
 
-    pub fn call_setBindGroup(instance: *runtime.Instance, index: GPUIndex32, bindGroup: *runtime.Instance, dynamicOffsets: *const anyopaque) anyerror!void {
+    pub fn call_setBindGroup(instance: *runtime.Instance, index: GPUIndex32, bindGroup: ?*runtime.Instance, dynamicOffsets: webidl.Opt(*const anyopaque)) anyerror!void {
         
         return try GPUBindingCommandsMixinImpl.call_setBindGroup(instance, index, bindGroup, dynamicOffsets);
     }

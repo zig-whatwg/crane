@@ -1,11 +1,13 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const GPUCommandEncoderImpl = @import("impls").GPUCommandEncoder;
+const mixins = @import("mixins");
 const GPUObjectBase = @import("interfaces").GPUObjectBase;
 const GPUCommandsMixin = @import("interfaces").GPUCommandsMixin;
 const GPUDebugCommandsMixin = @import("interfaces").GPUDebugCommandsMixin;
@@ -150,7 +152,7 @@ pub const GPUCommandEncoder = struct {
         try GPUCommandEncoderImpl.set_label(instance, value);
     }
 
-    pub fn call_copyBufferToBuffer(instance: *runtime.Instance, source: *runtime.Instance, destination: *runtime.Instance, size: GPUSize64) anyerror!void {
+    pub fn call_copyBufferToBuffer(instance: *runtime.Instance, source: *runtime.Instance, destination: *runtime.Instance, size: webidl.Opt(GPUSize64)) anyerror!void {
         
         return try GPUCommandEncoderImpl.call_copyBufferToBuffer(instance, source, destination, size);
     }
@@ -189,12 +191,12 @@ pub const GPUCommandEncoder = struct {
         return try GPUCommandEncoderImpl.call_pushDebugGroup(instance, groupLabel);
     }
 
-    pub fn call_finish(instance: *runtime.Instance, descriptor: GPUCommandBufferDescriptor) anyerror!*runtime.Instance {
+    pub fn call_finish(instance: *runtime.Instance, descriptor: webidl.Opt(GPUCommandBufferDescriptor)) anyerror!*runtime.Instance {
         
         return try GPUCommandEncoderImpl.call_finish(instance, descriptor);
     }
 
-    pub fn call_beginComputePass(instance: *runtime.Instance, descriptor: GPUComputePassDescriptor) anyerror!*runtime.Instance {
+    pub fn call_beginComputePass(instance: *runtime.Instance, descriptor: webidl.Opt(GPUComputePassDescriptor)) anyerror!*runtime.Instance {
         
         return try GPUCommandEncoderImpl.call_beginComputePass(instance, descriptor);
     }
@@ -204,7 +206,7 @@ pub const GPUCommandEncoder = struct {
         return try GPUCommandEncoderImpl.call_beginRenderPass(instance, descriptor);
     }
 
-    pub fn call_clearBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, offset: GPUSize64, size: GPUSize64) anyerror!void {
+    pub fn call_clearBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!void {
         
         return try GPUCommandEncoderImpl.call_clearBuffer(instance, buffer, offset, size);
     }

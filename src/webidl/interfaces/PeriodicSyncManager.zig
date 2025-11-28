@@ -1,11 +1,13 @@
 //! Generated from: periodic-background-sync.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const PeriodicSyncManagerImpl = @import("impls").PeriodicSyncManager;
+const mixins = @import("mixins");
 const BackgroundSyncOptions = @import("dictionaries").BackgroundSyncOptions;
 const DOMString = @import("typedefs").DOMString;
 
@@ -95,7 +97,7 @@ pub const PeriodicSyncManager = struct {
         return try PeriodicSyncManagerImpl.call_unregister(instance, tag);
     }
 
-    pub fn call_register(instance: *runtime.Instance, tag: DOMString, options: BackgroundSyncOptions) anyerror!*const anyopaque {
+    pub fn call_register(instance: *runtime.Instance, tag: DOMString, options: webidl.Opt(BackgroundSyncOptions)) anyerror!*const anyopaque {
         
         return try PeriodicSyncManagerImpl.call_register(instance, tag, options);
     }

@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const WorkerNavigatorImpl = @import("impls").WorkerNavigator;
+const mixins = @import("mixins");
 const NavigatorLocks = @import("interfaces").NavigatorLocks;
 const NavigatorGPU = @import("interfaces").NavigatorGPU;
 const GlobalPrivacyControl = @import("interfaces").GlobalPrivacyControl;
@@ -486,7 +488,7 @@ pub const WorkerNavigator = struct {
         return try WorkerNavigatorImpl.call_taintEnabled(instance);
     }
 
-    pub fn call_setAppBadge(instance: *runtime.Instance, contents: u64) anyerror!*const anyopaque {
+    pub fn call_setAppBadge(instance: *runtime.Instance, contents: webidl.Opt(u64)) anyerror!*const anyopaque {
         // [EnforceRange] on contents
         if (!runtime.isInRange(u64, contents)) return error.TypeError;
         

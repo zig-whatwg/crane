@@ -1,11 +1,13 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const CSSRGBImpl = @import("impls").CSSRGB;
+const mixins = @import("mixins");
 const CSSColorValue = @import("interfaces").CSSColorValue;
 const CSSStyleValue = @import("interfaces").CSSStyleValue;
 const CSSColorRGBComp = @import("typedefs").CSSColorRGBComp;
@@ -108,7 +110,7 @@ pub const CSSRGB = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, r: CSSColorRGBComp, g: CSSColorRGBComp, b: CSSColorRGBComp, alpha: CSSColorPercent) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, r: CSSColorRGBComp, g: CSSColorRGBComp, b: CSSColorRGBComp, alpha: webidl.Opt(CSSColorPercent)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try CSSRGBImpl.call_constructor(allocator, ctx, r, g, b, alpha);
     }

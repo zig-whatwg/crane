@@ -1,11 +1,13 @@
 //! Generated from: uievents.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const InputEventImpl = @import("impls").InputEvent;
+const mixins = @import("mixins");
 const UIEvent = @import("interfaces").UIEvent;
 const Window = @import("interfaces").Window;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
@@ -111,7 +113,7 @@ pub const InputEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: InputEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(InputEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try InputEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }

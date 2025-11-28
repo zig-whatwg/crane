@@ -1,11 +1,13 @@
 //! Generated from: css-highlight-api.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const HighlightImpl = @import("impls").Highlight;
+const mixins = @import("mixins");
 const HighlightType = @import("enums").HighlightType;
 const AbstractRange = @import("interfaces").AbstractRange;
 
@@ -90,7 +92,7 @@ pub const Highlight = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, initialRanges: *runtime.Instance) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, initialRanges: []const *runtime.Instance) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try HighlightImpl.call_constructor(allocator, ctx, initialRanges);
     }

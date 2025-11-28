@@ -1,11 +1,13 @@
 //! Generated from: web-smart-card.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const SmartCardContextImpl = @import("impls").SmartCardContext;
+const mixins = @import("mixins");
 const SmartCardReaderStateIn = @import("dictionaries").SmartCardReaderStateIn;
 const SmartCardGetStatusChangeOptions = @import("dictionaries").SmartCardGetStatusChangeOptions;
 const SmartCardAccessMode = @import("enums").SmartCardAccessMode;
@@ -97,12 +99,12 @@ pub const SmartCardContext = struct {
         return try SmartCardContextImpl.call_listReaders(instance);
     }
 
-    pub fn call_getStatusChange(instance: *runtime.Instance, readerStates: *const anyopaque, options: SmartCardGetStatusChangeOptions) anyerror!*const anyopaque {
+    pub fn call_getStatusChange(instance: *runtime.Instance, readerStates: *const anyopaque, options: webidl.Opt(SmartCardGetStatusChangeOptions)) anyerror!*const anyopaque {
         
         return try SmartCardContextImpl.call_getStatusChange(instance, readerStates, options);
     }
 
-    pub fn call_connect(instance: *runtime.Instance, readerName: DOMString, accessMode: SmartCardAccessMode, options: SmartCardConnectOptions) anyerror!*const anyopaque {
+    pub fn call_connect(instance: *runtime.Instance, readerName: DOMString, accessMode: SmartCardAccessMode, options: webidl.Opt(SmartCardConnectOptions)) anyerror!*const anyopaque {
         
         return try SmartCardContextImpl.call_connect(instance, readerName, accessMode, options);
     }

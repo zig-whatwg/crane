@@ -1,11 +1,13 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const IDBKeyRangeImpl = @import("impls").IDBKeyRange;
+const mixins = @import("mixins");
 
 pub const IDBKeyRange = struct {
     pub const Meta = struct {
@@ -140,21 +142,21 @@ pub const IDBKeyRange = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_bound(instance: *runtime.Instance, lower: *const anyopaque, upper: *const anyopaque, lowerOpen: bool, upperOpen: bool) anyerror!*runtime.Instance {
+    pub fn call_bound(instance: *runtime.Instance, lower: *const anyopaque, upper: *const anyopaque, lowerOpen: webidl.Opt(bool), upperOpen: webidl.Opt(bool)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBKeyRangeImpl.call_bound(instance, lower, upper, lowerOpen, upperOpen);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_upperBound(instance: *runtime.Instance, upper: *const anyopaque, open: bool) anyerror!*runtime.Instance {
+    pub fn call_upperBound(instance: *runtime.Instance, upper: *const anyopaque, open: webidl.Opt(bool)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBKeyRangeImpl.call_upperBound(instance, upper, open);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_lowerBound(instance: *runtime.Instance, lower: *const anyopaque, open: bool) anyerror!*runtime.Instance {
+    pub fn call_lowerBound(instance: *runtime.Instance, lower: *const anyopaque, open: webidl.Opt(bool)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBKeyRangeImpl.call_lowerBound(instance, lower, open);

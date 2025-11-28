@@ -1,11 +1,13 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const SVGTextContentElementImpl = @import("impls").SVGTextContentElement;
+const mixins = @import("mixins");
 const SVGGraphicsElement = @import("interfaces").SVGGraphicsElement;
 const DOMStringMap = @import("interfaces").DOMStringMap;
 const CSSOMString = @import("typedefs").CSSOMString;
@@ -356,7 +358,7 @@ pub const SVGTextContentElement = struct {
         return try SVGTextContentElementImpl.call_getComputedTextLength(instance);
     }
 
-    pub fn call_getCharNumAtPosition(instance: *runtime.Instance, point: DOMPointInit) anyerror!i32 {
+    pub fn call_getCharNumAtPosition(instance: *runtime.Instance, point: webidl.Opt(DOMPointInit)) anyerror!i32 {
         
         return try SVGTextContentElementImpl.call_getCharNumAtPosition(instance, point);
     }

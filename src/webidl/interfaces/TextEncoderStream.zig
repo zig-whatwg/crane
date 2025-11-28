@@ -1,11 +1,13 @@
 //! Generated from: encoding.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const TextEncoderStreamImpl = @import("impls").TextEncoderStream;
+const mixins = @import("mixins");
 const TextEncoderCommon = @import("interfaces").TextEncoderCommon;
 const GenericTransformStream = @import("interfaces").GenericTransformStream;
 const ReadableStream = @import("interfaces").ReadableStream;

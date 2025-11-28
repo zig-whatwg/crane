@@ -1,11 +1,13 @@
 //! Generated from: trusted-types.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const TrustedTypePolicyImpl = @import("impls").TrustedTypePolicy;
+const mixins = @import("mixins");
 const TrustedHTML = @import("interfaces").TrustedHTML;
 const TrustedScript = @import("interfaces").TrustedScript;
 const TrustedScriptURL = @import("interfaces").TrustedScriptURL;
@@ -97,17 +99,17 @@ pub const TrustedTypePolicy = struct {
         return try TrustedTypePolicyImpl.get_name(instance);
     }
 
-    pub fn call_createScriptURL(instance: *runtime.Instance, input: DOMString, arguments: *const anyopaque) anyerror!*runtime.Instance {
+    pub fn call_createScriptURL(instance: *runtime.Instance, input: DOMString, arguments: []const *const anyopaque) anyerror!*runtime.Instance {
         
         return try TrustedTypePolicyImpl.call_createScriptURL(instance, input, arguments);
     }
 
-    pub fn call_createHTML(instance: *runtime.Instance, input: DOMString, arguments: *const anyopaque) anyerror!*runtime.Instance {
+    pub fn call_createHTML(instance: *runtime.Instance, input: DOMString, arguments: []const *const anyopaque) anyerror!*runtime.Instance {
         
         return try TrustedTypePolicyImpl.call_createHTML(instance, input, arguments);
     }
 
-    pub fn call_createScript(instance: *runtime.Instance, input: DOMString, arguments: *const anyopaque) anyerror!*runtime.Instance {
+    pub fn call_createScript(instance: *runtime.Instance, input: DOMString, arguments: []const *const anyopaque) anyerror!*runtime.Instance {
         
         return try TrustedTypePolicyImpl.call_createScript(instance, input, arguments);
     }

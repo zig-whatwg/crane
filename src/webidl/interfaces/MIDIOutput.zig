@@ -1,11 +1,13 @@
 //! Generated from: webmidi.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const MIDIOutputImpl = @import("impls").MIDIOutput;
+const mixins = @import("mixins");
 const MIDIPort = @import("interfaces").MIDIPort;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -105,7 +107,7 @@ pub const MIDIOutput = struct {
         return try MIDIOutputImpl.call_clear(instance);
     }
 
-    pub fn call_send(instance: *runtime.Instance, data: *const anyopaque, timestamp: DOMHighResTimeStamp) anyerror!void {
+    pub fn call_send(instance: *runtime.Instance, data: *const anyopaque, timestamp: webidl.Opt(DOMHighResTimeStamp)) anyerror!void {
         
         return try MIDIOutputImpl.call_send(instance, data, timestamp);
     }

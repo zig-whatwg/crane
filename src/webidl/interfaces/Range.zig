@@ -1,11 +1,13 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const RangeImpl = @import("impls").Range;
+const mixins = @import("mixins");
 const AbstractRange = @import("interfaces").AbstractRange;
 const DocumentFragment = @import("interfaces").DocumentFragment;
 const DOMRect = @import("interfaces").DOMRect;
@@ -284,7 +286,7 @@ pub const Range = struct {
         return try RangeImpl.call_createContextualFragment(instance, string);
     }
 
-    pub fn call_collapse(instance: *runtime.Instance, toStart: bool) anyerror!void {
+    pub fn call_collapse(instance: *runtime.Instance, toStart: webidl.Opt(bool)) anyerror!void {
         
         return try RangeImpl.call_collapse(instance, toStart);
     }

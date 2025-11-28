@@ -4,4 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const GenerateAssertionCallback = *const fn (contents: runtime.DOMString, origin: runtime.DOMString, options: *const anyopaque) *const anyopaque;
+pub const GenerateAssertionCallback = *const fn (contents: runtime.DOMString, origin: runtime.DOMString, options: webidl.Opt(*const anyopaque)) *const anyopaque;

@@ -1,11 +1,13 @@
 //! Generated from: uievents.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const KeyboardEventImpl = @import("impls").KeyboardEvent;
+const mixins = @import("mixins");
 const UIEvent = @import("interfaces").UIEvent;
 const Window = @import("interfaces").Window;
 const UIEventInit = @import("dictionaries").UIEventInit;
@@ -175,7 +177,7 @@ pub const KeyboardEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: KeyboardEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(KeyboardEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try KeyboardEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
@@ -229,7 +231,7 @@ pub const KeyboardEvent = struct {
         return try KeyboardEventImpl.call_getModifierState(instance, keyArg);
     }
 
-    pub fn call_initKeyboardEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: *runtime.Instance, keyArg: DOMString, locationArg: u32, ctrlKey: bool, altKey: bool, shiftKey: bool, metaKey: bool) anyerror!void {
+    pub fn call_initKeyboardEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: webidl.Opt(bool), cancelableArg: webidl.Opt(bool), viewArg: webidl.Opt(?*runtime.Instance), keyArg: webidl.Opt(DOMString), locationArg: webidl.Opt(u32), ctrlKey: webidl.Opt(bool), altKey: webidl.Opt(bool), shiftKey: webidl.Opt(bool), metaKey: webidl.Opt(bool)) anyerror!void {
         
         return try KeyboardEventImpl.call_initKeyboardEvent(instance, typeArg, bubblesArg, cancelableArg, viewArg, keyArg, locationArg, ctrlKey, altKey, shiftKey, metaKey);
     }

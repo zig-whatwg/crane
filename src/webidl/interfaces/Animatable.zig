@@ -1,11 +1,13 @@
 //! Generated from: web-animations.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const AnimatableImpl = @import("impls").Animatable;
+const mixins = @import("mixins");
 const Animation = @import("interfaces").Animation;
 const GetAnimationsOptions = @import("dictionaries").GetAnimationsOptions;
 const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
@@ -76,12 +78,12 @@ pub const Animatable = struct {
         AnimatableImpl.deinit(instance);
     }
 
-    pub fn call_animate(instance: *runtime.Instance, keyframes: *const anyopaque, options: *const anyopaque) anyerror!*runtime.Instance {
+    pub fn call_animate(instance: *runtime.Instance, keyframes: ?*const anyopaque, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
         
         return try AnimatableImpl.call_animate(instance, keyframes, options);
     }
 
-    pub fn call_getAnimations(instance: *runtime.Instance, options: GetAnimationsOptions) anyerror!*const anyopaque {
+    pub fn call_getAnimations(instance: *runtime.Instance, options: webidl.Opt(GetAnimationsOptions)) anyerror!*const anyopaque {
         
         return try AnimatableImpl.call_getAnimations(instance, options);
     }

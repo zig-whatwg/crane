@@ -1,11 +1,13 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const BluetoothImpl = @import("impls").Bluetooth;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const BluetoothDeviceEventHandlers = @import("interfaces").BluetoothDeviceEventHandlers;
 const CharacteristicEventHandlers = @import("interfaces").CharacteristicEventHandlers;
@@ -223,13 +225,13 @@ pub const Bluetooth = struct {
         return try BluetoothImpl.call_getDevices(instance);
     }
 
-    pub fn call_requestDevice(instance: *runtime.Instance, options: RequestDeviceOptions) anyerror!*const anyopaque {
+    pub fn call_requestDevice(instance: *runtime.Instance, options: webidl.Opt(RequestDeviceOptions)) anyerror!*const anyopaque {
         
         return try BluetoothImpl.call_requestDevice(instance, options);
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn call_requestLEScan(instance: *runtime.Instance, options: BluetoothLEScanOptions) anyerror!*const anyopaque {
+    pub fn call_requestLEScan(instance: *runtime.Instance, options: webidl.Opt(BluetoothLEScanOptions)) anyerror!*const anyopaque {
         
         return try BluetoothImpl.call_requestLEScan(instance, options);
     }

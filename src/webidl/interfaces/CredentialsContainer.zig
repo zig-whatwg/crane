@@ -1,11 +1,13 @@
 //! Generated from: credential-management.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const CredentialsContainerImpl = @import("impls").CredentialsContainer;
+const mixins = @import("mixins");
 const CredentialCreationOptions = @import("dictionaries").CredentialCreationOptions;
 const Credential = @import("interfaces").Credential;
 const CredentialRequestOptions = @import("dictionaries").CredentialRequestOptions;
@@ -93,7 +95,7 @@ pub const CredentialsContainer = struct {
         return try CredentialsContainerImpl.call_store(instance, credential);
     }
 
-    pub fn call_get(instance: *runtime.Instance, options: CredentialRequestOptions) anyerror!*const anyopaque {
+    pub fn call_get(instance: *runtime.Instance, options: webidl.Opt(CredentialRequestOptions)) anyerror!*const anyopaque {
         
         return try CredentialsContainerImpl.call_get(instance, options);
     }
@@ -102,7 +104,7 @@ pub const CredentialsContainer = struct {
         return try CredentialsContainerImpl.call_preventSilentAccess(instance);
     }
 
-    pub fn call_create(instance: *runtime.Instance, options: CredentialCreationOptions) anyerror!*const anyopaque {
+    pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(CredentialCreationOptions)) anyerror!*const anyopaque {
         
         return try CredentialsContainerImpl.call_create(instance, options);
     }

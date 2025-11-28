@@ -1,11 +1,13 @@
 //! Generated from: compute-pressure.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const PressureObserverImpl = @import("impls").PressureObserver;
+const mixins = @import("mixins");
 const PressureSource = @import("enums").PressureSource;
 const PressureRecord = @import("interfaces").PressureRecord;
 const PressureObserverOptions = @import("dictionaries").PressureObserverOptions;
@@ -115,7 +117,7 @@ pub const PressureObserver = struct {
         return value;
     }
 
-    pub fn call_observe(instance: *runtime.Instance, source: PressureSource, options: PressureObserverOptions) anyerror!*const anyopaque {
+    pub fn call_observe(instance: *runtime.Instance, source: PressureSource, options: webidl.Opt(PressureObserverOptions)) anyerror!*const anyopaque {
         
         return try PressureObserverImpl.call_observe(instance, source, options);
     }

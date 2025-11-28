@@ -1,11 +1,13 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const GPUImpl = @import("impls").GPU;
+const mixins = @import("mixins");
 const GPUAdapter = @import("interfaces").GPUAdapter;
 const WGSLLanguageFeatures = @import("interfaces").WGSLLanguageFeatures;
 const GPURequestAdapterOptions = @import("dictionaries").GPURequestAdapterOptions;
@@ -104,7 +106,7 @@ pub const GPU = struct {
         return value;
     }
 
-    pub fn call_requestAdapter(instance: *runtime.Instance, options: GPURequestAdapterOptions) anyerror!*const anyopaque {
+    pub fn call_requestAdapter(instance: *runtime.Instance, options: webidl.Opt(GPURequestAdapterOptions)) anyerror!*const anyopaque {
         
         return try GPUImpl.call_requestAdapter(instance, options);
     }

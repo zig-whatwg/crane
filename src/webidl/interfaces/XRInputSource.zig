@@ -1,11 +1,13 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const XRInputSourceImpl = @import("impls").XRInputSource;
+const mixins = @import("mixins");
 const XRHandedness = @import("enums").XRHandedness;
 const Gamepad = @import("interfaces").Gamepad;
 const XRSpace = @import("interfaces").XRSpace;

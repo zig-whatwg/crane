@@ -1,11 +1,13 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const GPUDeviceImpl = @import("impls").GPUDevice;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const GPUObjectBase = @import("interfaces").GPUObjectBase;
 const GPURenderBundleEncoder = @import("interfaces").GPURenderBundleEncoder;
@@ -314,7 +316,7 @@ pub const GPUDevice = struct {
         return try GPUDeviceImpl.call_createShaderModule(instance, descriptor);
     }
 
-    pub fn call_createCommandEncoder(instance: *runtime.Instance, descriptor: GPUCommandEncoderDescriptor) anyerror!*runtime.Instance {
+    pub fn call_createCommandEncoder(instance: *runtime.Instance, descriptor: webidl.Opt(GPUCommandEncoderDescriptor)) anyerror!*runtime.Instance {
         
         return try GPUDeviceImpl.call_createCommandEncoder(instance, descriptor);
     }
@@ -329,7 +331,7 @@ pub const GPUDevice = struct {
         return try GPUDeviceImpl.call_createBindGroupLayout(instance, descriptor);
     }
 
-    pub fn call_createSampler(instance: *runtime.Instance, descriptor: GPUSamplerDescriptor) anyerror!*runtime.Instance {
+    pub fn call_createSampler(instance: *runtime.Instance, descriptor: webidl.Opt(GPUSamplerDescriptor)) anyerror!*runtime.Instance {
         
         return try GPUDeviceImpl.call_createSampler(instance, descriptor);
     }

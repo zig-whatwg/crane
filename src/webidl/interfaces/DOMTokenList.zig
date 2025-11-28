@@ -1,11 +1,13 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const DOMTokenListImpl = @import("impls").DOMTokenList;
+const mixins = @import("mixins");
 const DOMString = @import("typedefs").DOMString;
 
 pub const DOMTokenList = struct {
@@ -154,7 +156,7 @@ pub const DOMTokenList = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_toggle(instance: *runtime.Instance, token: DOMString, force: bool) anyerror!bool {
+    pub fn call_toggle(instance: *runtime.Instance, token: DOMString, force: webidl.Opt(bool)) anyerror!bool {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -169,7 +171,7 @@ pub const DOMTokenList = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_add(instance: *runtime.Instance, tokens: DOMString) anyerror!void {
+    pub fn call_add(instance: *runtime.Instance, tokens: []const DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -179,7 +181,7 @@ pub const DOMTokenList = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_remove(instance: *runtime.Instance, tokens: DOMString) anyerror!void {
+    pub fn call_remove(instance: *runtime.Instance, tokens: []const DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const PageTransitionEventImpl = @import("impls").PageTransitionEvent;
+const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
 const EventTarget = @import("interfaces").EventTarget;
 const PageTransitionEventInit = @import("dictionaries").PageTransitionEventInit;
@@ -88,7 +90,7 @@ pub const PageTransitionEvent = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: PageTransitionEventInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(PageTransitionEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try PageTransitionEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }

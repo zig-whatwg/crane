@@ -1,11 +1,13 @@
 //! Generated from: wasm-js-api.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const ExceptionImpl = @import("impls").Exception;
+const mixins = @import("mixins");
 const ExceptionOptions = @import("dictionaries").ExceptionOptions;
 const Tag = @import("interfaces").Tag;
 const DOMString = @import("typedefs").DOMString;
@@ -95,7 +97,7 @@ pub const Exception = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, exceptionTag: *runtime.Instance, payload: *const anyopaque, options: ExceptionOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, exceptionTag: *runtime.Instance, payload: *const anyopaque, options: webidl.Opt(ExceptionOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try ExceptionImpl.call_constructor(allocator, ctx, exceptionTag, payload, options);
     }

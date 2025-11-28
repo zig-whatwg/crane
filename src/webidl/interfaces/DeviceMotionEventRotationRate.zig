@@ -1,11 +1,13 @@
 //! Generated from: orientation-event.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const DeviceMotionEventRotationRateImpl = @import("impls").DeviceMotionEventRotationRate;
+const mixins = @import("mixins");
 
 pub const DeviceMotionEventRotationRate = struct {
     pub const Meta = struct {

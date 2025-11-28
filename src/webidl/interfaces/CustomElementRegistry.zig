@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const CustomElementRegistryImpl = @import("impls").CustomElementRegistry;
+const mixins = @import("mixins");
 const ElementDefinitionOptions = @import("dictionaries").ElementDefinitionOptions;
 const Node = @import("interfaces").Node;
 const DOMString = @import("typedefs").DOMString;
@@ -101,7 +103,7 @@ pub const CustomElementRegistry = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_define(instance: *runtime.Instance, name: DOMString, constructor: CustomElementConstructor, options: ElementDefinitionOptions) anyerror!void {
+    pub fn call_define(instance: *runtime.Instance, name: DOMString, constructor: CustomElementConstructor, options: webidl.Opt(ElementDefinitionOptions)) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

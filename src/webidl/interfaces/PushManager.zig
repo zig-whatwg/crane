@@ -1,11 +1,13 @@
 //! Generated from: push-api.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const PushManagerImpl = @import("impls").PushManager;
+const mixins = @import("mixins");
 const PermissionState = @import("enums").PermissionState;
 const PushSubscription = @import("interfaces").PushSubscription;
 const PushSubscriptionOptionsInit = @import("dictionaries").PushSubscriptionOptionsInit;
@@ -105,12 +107,12 @@ pub const PushManager = struct {
         return value;
     }
 
-    pub fn call_permissionState(instance: *runtime.Instance, options: PushSubscriptionOptionsInit) anyerror!*const anyopaque {
+    pub fn call_permissionState(instance: *runtime.Instance, options: webidl.Opt(PushSubscriptionOptionsInit)) anyerror!*const anyopaque {
         
         return try PushManagerImpl.call_permissionState(instance, options);
     }
 
-    pub fn call_subscribe(instance: *runtime.Instance, options: PushSubscriptionOptionsInit) anyerror!*const anyopaque {
+    pub fn call_subscribe(instance: *runtime.Instance, options: webidl.Opt(PushSubscriptionOptionsInit)) anyerror!*const anyopaque {
         
         return try PushManagerImpl.call_subscribe(instance, options);
     }

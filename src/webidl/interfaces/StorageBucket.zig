@@ -1,11 +1,13 @@
 //! Generated from: storage-buckets.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const StorageBucketImpl = @import("impls").StorageBucket;
+const mixins = @import("mixins");
 const FileSystemDirectoryHandle = @import("interfaces").FileSystemDirectoryHandle;
 const CacheStorage = @import("interfaces").CacheStorage;
 const IDBFactory = @import("interfaces").IDBFactory;

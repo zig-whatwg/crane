@@ -1,11 +1,13 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const CSSMathClampImpl = @import("impls").CSSMathClamp;
+const mixins = @import("mixins");
 const CSSMathValue = @import("interfaces").CSSMathValue;
 const CSSNumericValue = @import("interfaces").CSSNumericValue;
 const CSSUnitValue = @import("interfaces").CSSUnitValue;

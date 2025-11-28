@@ -1,11 +1,13 @@
 //! Generated from: screen-capture.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const CaptureControllerImpl = @import("impls").CaptureController;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -152,7 +154,7 @@ pub const CaptureController = struct {
         return try CaptureControllerImpl.call_increaseZoomLevel(instance);
     }
 
-    pub fn call_forwardWheel(instance: *runtime.Instance, element: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_forwardWheel(instance: *runtime.Instance, element: ?*runtime.Instance) anyerror!*const anyopaque {
         
         return try CaptureControllerImpl.call_forwardWheel(instance, element);
     }

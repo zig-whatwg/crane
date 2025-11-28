@@ -1,11 +1,13 @@
 //! Generated from: KHR_parallel_shader_compile.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const KHR_parallel_shader_compileImpl = @import("impls").KHR_parallel_shader_compile;
+const mixins = @import("mixins");
 const GLenum = @import("typedefs").GLenum;
 
 pub const KHR_parallel_shader_compile = struct {

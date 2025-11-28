@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const HTMLElementImpl = @import("impls").HTMLElement;
+const mixins = @import("mixins");
 const Element = @import("interfaces").Element;
 const ElementCSSInlineStyle = @import("interfaces").ElementCSSInlineStyle;
 const GlobalEventHandlers = @import("interfaces").GlobalEventHandlers;
@@ -2213,7 +2215,7 @@ pub const HTMLElement = struct {
         try HTMLElementImpl.set_tabIndex(instance, value);
     }
 
-    pub fn call_togglePopover(instance: *runtime.Instance, options: *const anyopaque) anyerror!bool {
+    pub fn call_togglePopover(instance: *runtime.Instance, options: webidl.Opt(*const anyopaque)) anyerror!bool {
         
         return try HTMLElementImpl.call_togglePopover(instance, options);
     }
@@ -2226,7 +2228,7 @@ pub const HTMLElement = struct {
         return try HTMLElementImpl.call_click(instance);
     }
 
-    pub fn call_showPopover(instance: *runtime.Instance, options: ShowPopoverOptions) anyerror!void {
+    pub fn call_showPopover(instance: *runtime.Instance, options: webidl.Opt(ShowPopoverOptions)) anyerror!void {
         
         return try HTMLElementImpl.call_showPopover(instance, options);
     }
@@ -2235,7 +2237,7 @@ pub const HTMLElement = struct {
         return try HTMLElementImpl.call_hidePopover(instance);
     }
 
-    pub fn call_focus(instance: *runtime.Instance, options: FocusOptions) anyerror!void {
+    pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(FocusOptions)) anyerror!void {
         
         return try HTMLElementImpl.call_focus(instance, options);
     }

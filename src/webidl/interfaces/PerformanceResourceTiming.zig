@@ -1,11 +1,13 @@
 //! Generated from: resource-timing.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const PerformanceResourceTimingImpl = @import("impls").PerformanceResourceTiming;
+const mixins = @import("mixins");
 const PerformanceEntry = @import("interfaces").PerformanceEntry;
 const ByteString = @import("interfaces").ByteString;
 const RenderBlockingStatusType = @import("enums").RenderBlockingStatusType;

@@ -1,11 +1,13 @@
 //! Generated from: webxr-hit-test.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const XRRayImpl = @import("impls").XRRay;
+const mixins = @import("mixins");
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const XRRigidTransform = @import("interfaces").XRRigidTransform;
 const XRRayDirectionInit = @import("dictionaries").XRRayDirectionInit;
@@ -96,8 +98,8 @@ pub const XRRay = struct {
     pub const ConstructorArgs = union(enum) {
         /// constructor(origin, direction)
         DOMPointInit_XRRayDirectionInit: struct {
-            origin: DOMPointInit,
-            direction: XRRayDirectionInit,
+            origin: webidl.Opt(DOMPointInit),
+            direction: webidl.Opt(XRRayDirectionInit),
         },
         /// constructor(transform)
         XRRigidTransform: XRRigidTransform,

@@ -1,11 +1,13 @@
 //! Generated from: permissions-policy.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const PermissionsPolicyImpl = @import("impls").PermissionsPolicy;
+const mixins = @import("mixins");
 const DOMString = @import("typedefs").DOMString;
 
 pub const PermissionsPolicy = struct {
@@ -85,7 +87,7 @@ pub const PermissionsPolicy = struct {
         PermissionsPolicyImpl.deinit(instance);
     }
 
-    pub fn call_allowsFeature(instance: *runtime.Instance, feature: DOMString, origin: DOMString) anyerror!bool {
+    pub fn call_allowsFeature(instance: *runtime.Instance, feature: DOMString, origin: webidl.Opt(DOMString)) anyerror!bool {
         
         return try PermissionsPolicyImpl.call_allowsFeature(instance, feature, origin);
     }

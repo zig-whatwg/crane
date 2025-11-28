@@ -1,11 +1,13 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const RTCTrackEventImpl = @import("impls").RTCTrackEvent;
+const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
 const RTCRtpReceiver = @import("interfaces").RTCRtpReceiver;
 const MediaStream = @import("interfaces").MediaStream;

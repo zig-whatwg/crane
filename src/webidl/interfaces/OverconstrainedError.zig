@@ -1,11 +1,13 @@
 //! Generated from: mediacapture-streams.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const OverconstrainedErrorImpl = @import("impls").OverconstrainedError;
+const mixins = @import("mixins");
 const DOMException = @import("interfaces").DOMException;
 const DOMString = @import("typedefs").DOMString;
 
@@ -79,7 +81,7 @@ pub const OverconstrainedError = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, constraint: DOMString, message: DOMString) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, constraint: DOMString, message: webidl.Opt(DOMString)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try OverconstrainedErrorImpl.call_constructor(allocator, ctx, constraint, message);
     }

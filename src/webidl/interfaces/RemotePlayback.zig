@@ -1,11 +1,13 @@
 //! Generated from: remote-playback.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const RemotePlaybackImpl = @import("impls").RemotePlayback;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -150,7 +152,7 @@ pub const RemotePlayback = struct {
         return try RemotePlaybackImpl.call_watchAvailability(instance, callback);
     }
 
-    pub fn call_cancelWatchAvailability(instance: *runtime.Instance, id: i32) anyerror!*const anyopaque {
+    pub fn call_cancelWatchAvailability(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!*const anyopaque {
         
         return try RemotePlaybackImpl.call_cancelWatchAvailability(instance, id);
     }

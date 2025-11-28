@@ -1,11 +1,13 @@
 //! Generated from: OES_draw_buffers_indexed.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const OES_draw_buffers_indexedImpl = @import("impls").OES_draw_buffers_indexed;
+const mixins = @import("mixins");
 const GLenum = @import("typedefs").GLenum;
 const GLboolean = @import("typedefs").GLboolean;
 const GLuint = @import("typedefs").GLuint;

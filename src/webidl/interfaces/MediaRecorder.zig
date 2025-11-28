@@ -1,11 +1,13 @@
 //! Generated from: mediastream-recording.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const MediaRecorderImpl = @import("impls").MediaRecorder;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -168,7 +170,7 @@ pub const MediaRecorder = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, stream: *runtime.Instance, options: MediaRecorderOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, stream: *runtime.Instance, options: webidl.Opt(MediaRecorderOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try MediaRecorderImpl.call_constructor(allocator, ctx, stream, options);
     }
@@ -253,7 +255,7 @@ pub const MediaRecorder = struct {
         return try MediaRecorderImpl.call_requestData(instance);
     }
 
-    pub fn call_start(instance: *runtime.Instance, timeslice: u32) anyerror!void {
+    pub fn call_start(instance: *runtime.Instance, timeslice: webidl.Opt(u32)) anyerror!void {
         
         return try MediaRecorderImpl.call_start(instance, timeslice);
     }

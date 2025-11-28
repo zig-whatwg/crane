@@ -1,11 +1,13 @@
 //! Generated from: web-animations-2.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const AnimationTriggerImpl = @import("impls").AnimationTrigger;
+const mixins = @import("mixins");
 const AnimationTriggerBehavior = @import("enums").AnimationTriggerBehavior;
 const AnimationTriggerOptions = @import("dictionaries").AnimationTriggerOptions;
 const AnimationTimeline = @import("interfaces").AnimationTimeline;
@@ -107,7 +109,7 @@ pub const AnimationTrigger = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: AnimationTriggerOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(AnimationTriggerOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try AnimationTriggerImpl.call_constructor(allocator, ctx, options);
     }

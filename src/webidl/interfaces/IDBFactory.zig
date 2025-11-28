@@ -1,11 +1,13 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const IDBFactoryImpl = @import("impls").IDBFactory;
+const mixins = @import("mixins");
 const IDBOpenDBRequest = @import("interfaces").IDBOpenDBRequest;
 const DOMString = @import("typedefs").DOMString;
 
@@ -90,7 +92,7 @@ pub const IDBFactory = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_open(instance: *runtime.Instance, name: DOMString, version: u64) anyerror!*runtime.Instance {
+    pub fn call_open(instance: *runtime.Instance, name: DOMString, version: webidl.Opt(u64)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         // [EnforceRange] on version
         if (!runtime.isInRange(u64, version)) return error.TypeError;

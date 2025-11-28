@@ -1,11 +1,13 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const RTCRtpSenderImpl = @import("impls").RTCRtpSender;
+const mixins = @import("mixins");
 const RTCRtpCapabilities = @import("dictionaries").RTCRtpCapabilities;
 const RTCSetParameterOptions = @import("dictionaries").RTCSetParameterOptions;
 const MediaStream = @import("interfaces").MediaStream;
@@ -143,7 +145,7 @@ pub const RTCRtpSender = struct {
         try RTCRtpSenderImpl.set_transform(instance, value);
     }
 
-    pub fn call_replaceTrack(instance: *runtime.Instance, withTrack: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_replaceTrack(instance: *runtime.Instance, withTrack: ?*runtime.Instance) anyerror!*const anyopaque {
         
         return try RTCRtpSenderImpl.call_replaceTrack(instance, withTrack);
     }
@@ -161,12 +163,12 @@ pub const RTCRtpSender = struct {
         return try RTCRtpSenderImpl.call_getParameters(instance);
     }
 
-    pub fn call_setStreams(instance: *runtime.Instance, streams: *runtime.Instance) anyerror!void {
+    pub fn call_setStreams(instance: *runtime.Instance, streams: []const *runtime.Instance) anyerror!void {
         
         return try RTCRtpSenderImpl.call_setStreams(instance, streams);
     }
 
-    pub fn call_setParameters(instance: *runtime.Instance, parameters: RTCRtpSendParameters, setParameterOptions: RTCSetParameterOptions) anyerror!*const anyopaque {
+    pub fn call_setParameters(instance: *runtime.Instance, parameters: RTCRtpSendParameters, setParameterOptions: webidl.Opt(RTCSetParameterOptions)) anyerror!*const anyopaque {
         
         return try RTCRtpSenderImpl.call_setParameters(instance, parameters, setParameterOptions);
     }

@@ -1,11 +1,13 @@
 //! Generated from: fetch.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const HeadersImpl = @import("impls").Headers;
+const mixins = @import("mixins");
 const ByteString = @import("interfaces").ByteString;
 const HeadersInit = @import("typedefs").HeadersInit;
 
@@ -106,7 +108,7 @@ pub const Headers = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: HeadersInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: webidl.Opt(HeadersInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try HeadersImpl.call_constructor(allocator, ctx, init_data);
     }

@@ -1,11 +1,13 @@
 //! Generated from: EXT_texture_compression_bptc.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const EXT_texture_compression_bptcImpl = @import("impls").EXT_texture_compression_bptc;
+const mixins = @import("mixins");
 const GLenum = @import("typedefs").GLenum;
 
 pub const EXT_texture_compression_bptc = struct {

@@ -1,11 +1,13 @@
 //! Generated from: WEBGL_multi_draw.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const WEBGL_multi_drawImpl = @import("impls").WEBGL_multi_draw;
+const mixins = @import("mixins");
 const GLenum = @import("typedefs").GLenum;
 const sequence = @import("interfaces").sequence;
 const GLint = @import("typedefs").GLint;

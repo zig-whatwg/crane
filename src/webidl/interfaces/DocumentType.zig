@@ -1,11 +1,13 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const DocumentTypeImpl = @import("impls").DocumentType;
+const mixins = @import("mixins");
 const Node = @import("interfaces").Node;
 const ChildNode = @import("interfaces").ChildNode;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
@@ -145,7 +147,7 @@ pub const DocumentType = struct {
     }
 
     /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_replaceWith(instance: *runtime.Instance, nodes: *const anyopaque) anyerror!void {
+    pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -155,7 +157,7 @@ pub const DocumentType = struct {
     }
 
     /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_before(instance: *runtime.Instance, nodes: *const anyopaque) anyerror!void {
+    pub fn call_before(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -165,7 +167,7 @@ pub const DocumentType = struct {
     }
 
     /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_after(instance: *runtime.Instance, nodes: *const anyopaque) anyerror!void {
+    pub fn call_after(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

@@ -1,11 +1,13 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const RTCErrorImpl = @import("impls").RTCError;
+const mixins = @import("mixins");
 const DOMException = @import("interfaces").DOMException;
 const RTCErrorInit = @import("dictionaries").RTCErrorInit;
 const DOMString = @import("typedefs").DOMString;
@@ -101,7 +103,7 @@ pub const RTCError = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: RTCErrorInit, message: DOMString) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: RTCErrorInit, message: webidl.Opt(DOMString)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try RTCErrorImpl.call_constructor(allocator, ctx, init_data, message);
     }

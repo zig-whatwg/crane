@@ -1,11 +1,13 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const WritableStreamDefaultWriterImpl = @import("impls").WritableStreamDefaultWriter;
+const mixins = @import("mixins");
 const WritableStream = @import("interfaces").WritableStream;
 
 pub const WritableStreamDefaultWriter = struct {
@@ -120,12 +122,12 @@ pub const WritableStreamDefaultWriter = struct {
         return try WritableStreamDefaultWriterImpl.call_releaseLock(instance);
     }
 
-    pub fn call_abort(instance: *runtime.Instance, reason: *const anyopaque) anyerror!*const anyopaque {
+    pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
         
         return try WritableStreamDefaultWriterImpl.call_abort(instance, reason);
     }
 
-    pub fn call_write(instance: *runtime.Instance, chunk: *const anyopaque) anyerror!*const anyopaque {
+    pub fn call_write(instance: *runtime.Instance, chunk: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
         
         return try WritableStreamDefaultWriterImpl.call_write(instance, chunk);
     }

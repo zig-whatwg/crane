@@ -1,11 +1,13 @@
 //! Generated from: fs.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const FileSystemSyncAccessHandleImpl = @import("impls").FileSystemSyncAccessHandle;
+const mixins = @import("mixins");
 const AllowSharedBufferSource = @import("typedefs").AllowSharedBufferSource;
 const FileSystemReadWriteOptions = @import("dictionaries").FileSystemReadWriteOptions;
 
@@ -93,7 +95,7 @@ pub const FileSystemSyncAccessHandle = struct {
         FileSystemSyncAccessHandleImpl.deinit(instance);
     }
 
-    pub fn call_read(instance: *runtime.Instance, buffer: AllowSharedBufferSource, options: FileSystemReadWriteOptions) anyerror!u64 {
+    pub fn call_read(instance: *runtime.Instance, buffer: AllowSharedBufferSource, options: webidl.Opt(FileSystemReadWriteOptions)) anyerror!u64 {
         
         return try FileSystemSyncAccessHandleImpl.call_read(instance, buffer, options);
     }
@@ -105,7 +107,7 @@ pub const FileSystemSyncAccessHandle = struct {
         return try FileSystemSyncAccessHandleImpl.call_truncate(instance, newSize);
     }
 
-    pub fn call_write(instance: *runtime.Instance, buffer: AllowSharedBufferSource, options: FileSystemReadWriteOptions) anyerror!u64 {
+    pub fn call_write(instance: *runtime.Instance, buffer: AllowSharedBufferSource, options: webidl.Opt(FileSystemReadWriteOptions)) anyerror!u64 {
         
         return try FileSystemSyncAccessHandleImpl.call_write(instance, buffer, options);
     }

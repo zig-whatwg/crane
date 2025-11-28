@@ -1,11 +1,13 @@
 //! Generated from: csp-next.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const ScriptingPolicyReportBodyImpl = @import("impls").ScriptingPolicyReportBody;
+const mixins = @import("mixins");
 const ReportBody = @import("dictionaries").ReportBody;
 const USVString = @import("interfaces").USVString;
 const DOMString = @import("typedefs").DOMString;

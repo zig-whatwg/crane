@@ -4,4 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const EncodedVideoChunkOutputCallback = *const fn (chunk: *const anyopaque, metadata: *const anyopaque) void;
+pub const EncodedVideoChunkOutputCallback = *const fn (chunk: *const anyopaque, metadata: webidl.Opt(*const anyopaque)) void;

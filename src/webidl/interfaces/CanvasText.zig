@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const CanvasTextImpl = @import("impls").CanvasText;
+const mixins = @import("mixins");
 const TextMetrics = @import("interfaces").TextMetrics;
 const DOMString = @import("typedefs").DOMString;
 
@@ -78,12 +80,12 @@ pub const CanvasText = struct {
         CanvasTextImpl.deinit(instance);
     }
 
-    pub fn call_strokeText(instance: *runtime.Instance, text: DOMString, x: f64, y: f64, maxWidth: f64) anyerror!void {
+    pub fn call_strokeText(instance: *runtime.Instance, text: DOMString, x: f64, y: f64, maxWidth: webidl.Opt(f64)) anyerror!void {
         
         return try CanvasTextImpl.call_strokeText(instance, text, x, y, maxWidth);
     }
 
-    pub fn call_fillText(instance: *runtime.Instance, text: DOMString, x: f64, y: f64, maxWidth: f64) anyerror!void {
+    pub fn call_fillText(instance: *runtime.Instance, text: DOMString, x: f64, y: f64, maxWidth: webidl.Opt(f64)) anyerror!void {
         
         return try CanvasTextImpl.call_fillText(instance, text, x, y, maxWidth);
     }

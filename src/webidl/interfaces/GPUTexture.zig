@@ -1,11 +1,13 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const GPUTextureImpl = @import("impls").GPUTexture;
+const mixins = @import("mixins");
 const GPUObjectBase = @import("interfaces").GPUObjectBase;
 const GPUTextureView = @import("interfaces").GPUTextureView;
 const GPUTextureDimension = @import("enums").GPUTextureDimension;
@@ -176,7 +178,7 @@ pub const GPUTexture = struct {
         return try GPUTextureImpl.call_destroy(instance);
     }
 
-    pub fn call_createView(instance: *runtime.Instance, descriptor: GPUTextureViewDescriptor) anyerror!*runtime.Instance {
+    pub fn call_createView(instance: *runtime.Instance, descriptor: webidl.Opt(GPUTextureViewDescriptor)) anyerror!*runtime.Instance {
         
         return try GPUTextureImpl.call_createView(instance, descriptor);
     }

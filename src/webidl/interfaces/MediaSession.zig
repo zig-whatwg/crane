@@ -1,11 +1,13 @@
 //! Generated from: mediasession.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const MediaSessionImpl = @import("impls").MediaSession;
+const mixins = @import("mixins");
 const MediaSessionPlaybackState = @import("enums").MediaSessionPlaybackState;
 const MediaPositionState = @import("dictionaries").MediaPositionState;
 const MediaSessionActionHandler = @import("callbacks").MediaSessionActionHandler;
@@ -130,7 +132,7 @@ pub const MediaSession = struct {
         return try MediaSessionImpl.call_setCameraActive(instance, active);
     }
 
-    pub fn call_setPositionState(instance: *runtime.Instance, state: MediaPositionState) anyerror!void {
+    pub fn call_setPositionState(instance: *runtime.Instance, state: webidl.Opt(MediaPositionState)) anyerror!void {
         
         return try MediaSessionImpl.call_setPositionState(instance, state);
     }
@@ -140,7 +142,7 @@ pub const MediaSession = struct {
         return try MediaSessionImpl.call_setScreenshareActive(instance, active);
     }
 
-    pub fn call_setActionHandler(instance: *runtime.Instance, action: MediaSessionAction, handler: MediaSessionActionHandler) anyerror!void {
+    pub fn call_setActionHandler(instance: *runtime.Instance, action: MediaSessionAction, handler: ?MediaSessionActionHandler) anyerror!void {
         
         return try MediaSessionImpl.call_setActionHandler(instance, action, handler);
     }

@@ -1,11 +1,13 @@
 //! Generated from: direct-sockets.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const TCPSocketImpl = @import("impls").TCPSocket;
+const mixins = @import("mixins");
 const TCPSocketOptions = @import("dictionaries").TCPSocketOptions;
 const TCPSocketOpenInfo = @import("dictionaries").TCPSocketOpenInfo;
 const DOMString = @import("typedefs").DOMString;
@@ -93,7 +95,7 @@ pub const TCPSocket = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, remoteAddress: DOMString, remotePort: u16, options: TCPSocketOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, remoteAddress: DOMString, remotePort: u16, options: webidl.Opt(TCPSocketOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try TCPSocketImpl.call_constructor(allocator, ctx, remoteAddress, remotePort, options);
     }

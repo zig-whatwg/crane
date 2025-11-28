@@ -1,11 +1,13 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const DOMQuadImpl = @import("impls").DOMQuad;
+const mixins = @import("mixins");
 const DOMPoint = @import("interfaces").DOMPoint;
 const DOMRect = @import("interfaces").DOMRect;
 const DOMRectInit = @import("dictionaries").DOMRectInit;
@@ -119,7 +121,7 @@ pub const DOMQuad = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, p1: DOMPointInit, p2: DOMPointInit, p3: DOMPointInit, p4: DOMPointInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, p1: webidl.Opt(DOMPointInit), p2: webidl.Opt(DOMPointInit), p3: webidl.Opt(DOMPointInit), p4: webidl.Opt(DOMPointInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try DOMQuadImpl.call_constructor(allocator, ctx, p1, p2, p3, p4);
     }
@@ -179,14 +181,14 @@ pub const DOMQuad = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_fromQuad(instance: *runtime.Instance, other: DOMQuadInit) anyerror!*runtime.Instance {
+    pub fn call_fromQuad(instance: *runtime.Instance, other: webidl.Opt(DOMQuadInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMQuadImpl.call_fromQuad(instance, other);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_fromRect(instance: *runtime.Instance, other: DOMRectInit) anyerror!*runtime.Instance {
+    pub fn call_fromRect(instance: *runtime.Instance, other: webidl.Opt(DOMRectInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMQuadImpl.call_fromRect(instance, other);

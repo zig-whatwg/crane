@@ -1,11 +1,13 @@
 //! Generated from: FileAPI.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const FileImpl = @import("impls").File;
+const mixins = @import("mixins");
 const Blob = @import("interfaces").Blob;
 const FilePropertyBag = @import("dictionaries").FilePropertyBag;
 const BlobPart = @import("typedefs").BlobPart;
@@ -101,7 +103,7 @@ pub const File = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, fileBits: *const anyopaque, fileName: runtime.USVString, options: FilePropertyBag) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, fileBits: *const anyopaque, fileName: runtime.USVString, options: webidl.Opt(FilePropertyBag)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try FileImpl.call_constructor(allocator, ctx, fileBits, fileName, options);
     }

@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const ImageBitmapRenderingContextImpl = @import("impls").ImageBitmapRenderingContext;
+const mixins = @import("mixins");
 const HTMLCanvasElement = @import("interfaces").HTMLCanvasElement;
 const OffscreenCanvas = @import("interfaces").OffscreenCanvas;
 const ImageBitmap = @import("interfaces").ImageBitmap;
@@ -93,7 +95,7 @@ pub const ImageBitmapRenderingContext = struct {
         return try ImageBitmapRenderingContextImpl.get_canvas(instance);
     }
 
-    pub fn call_transferFromImageBitmap(instance: *runtime.Instance, bitmap: *runtime.Instance) anyerror!void {
+    pub fn call_transferFromImageBitmap(instance: *runtime.Instance, bitmap: ?*runtime.Instance) anyerror!void {
         
         return try ImageBitmapRenderingContextImpl.call_transferFromImageBitmap(instance, bitmap);
     }

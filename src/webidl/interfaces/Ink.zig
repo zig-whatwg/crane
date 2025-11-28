@@ -1,11 +1,13 @@
 //! Generated from: ink-enhancement.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const InkImpl = @import("impls").Ink;
+const mixins = @import("mixins");
 const DelegatedInkTrailPresenter = @import("interfaces").DelegatedInkTrailPresenter;
 const InkPresenterParam = @import("dictionaries").InkPresenterParam;
 
@@ -77,7 +79,7 @@ pub const Ink = struct {
         InkImpl.deinit(instance);
     }
 
-    pub fn call_requestPresenter(instance: *runtime.Instance, param: InkPresenterParam) anyerror!*const anyopaque {
+    pub fn call_requestPresenter(instance: *runtime.Instance, param: webidl.Opt(InkPresenterParam)) anyerror!*const anyopaque {
         
         return try InkImpl.call_requestPresenter(instance, param);
     }

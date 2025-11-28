@@ -1,11 +1,13 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const CSSMathProductImpl = @import("impls").CSSMathProduct;
+const mixins = @import("mixins");
 const CSSMathValue = @import("interfaces").CSSMathValue;
 const CSSNumericArray = @import("interfaces").CSSNumericArray;
 const CSSNumericValue = @import("interfaces").CSSNumericValue;
@@ -106,7 +108,7 @@ pub const CSSMathProduct = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, args: CSSNumberish) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, args: []const CSSNumberish) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try CSSMathProductImpl.call_constructor(allocator, ctx, args);
     }

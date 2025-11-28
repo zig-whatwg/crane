@@ -1,11 +1,13 @@
 //! Generated from: fetch.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const RequestImpl = @import("impls").Request;
+const mixins = @import("mixins");
 const Body = @import("interfaces").Body;
 const RequestDestination = @import("enums").RequestDestination;
 const RequestCredentials = @import("enums").RequestCredentials;
@@ -196,7 +198,7 @@ pub const Request = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, input: RequestInfo, init_data: RequestInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, input: RequestInfo, init_data: webidl.Opt(RequestInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try RequestImpl.call_constructor(allocator, ctx, input, init_data);
     }

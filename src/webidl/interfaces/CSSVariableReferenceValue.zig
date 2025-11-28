@@ -1,11 +1,13 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const CSSVariableReferenceValueImpl = @import("impls").CSSVariableReferenceValue;
+const mixins = @import("mixins");
 const USVString = @import("interfaces").USVString;
 const CSSUnparsedValue = @import("interfaces").CSSUnparsedValue;
 
@@ -90,7 +92,7 @@ pub const CSSVariableReferenceValue = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, variable: runtime.USVString, fallback: *runtime.Instance) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, variable: runtime.USVString, fallback: webidl.Opt(?*runtime.Instance)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try CSSVariableReferenceValueImpl.call_constructor(allocator, ctx, variable, fallback);
     }

@@ -1,11 +1,13 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const ReadableStreamImpl = @import("impls").ReadableStream;
+const mixins = @import("mixins");
 const ReadableWritablePair = @import("dictionaries").ReadableWritablePair;
 const ReadableStreamGetReaderOptions = @import("dictionaries").ReadableStreamGetReaderOptions;
 const StreamPipeOptions = @import("dictionaries").StreamPipeOptions;
@@ -121,7 +123,7 @@ pub const ReadableStream = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, underlyingSource: *const anyopaque, strategy: QueuingStrategy) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, underlyingSource: webidl.Opt(*const anyopaque), strategy: webidl.Opt(QueuingStrategy)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try ReadableStreamImpl.call_constructor(allocator, ctx, underlyingSource, strategy);
     }
@@ -130,12 +132,12 @@ pub const ReadableStream = struct {
         return try ReadableStreamImpl.get_locked(instance);
     }
 
-    pub fn call_pipeTo(instance: *runtime.Instance, destination: *runtime.Instance, options: StreamPipeOptions) anyerror!*const anyopaque {
+    pub fn call_pipeTo(instance: *runtime.Instance, destination: *runtime.Instance, options: webidl.Opt(StreamPipeOptions)) anyerror!*const anyopaque {
         
         return try ReadableStreamImpl.call_pipeTo(instance, destination, options);
     }
 
-    pub fn call_pipeThrough(instance: *runtime.Instance, transform: ReadableWritablePair, options: StreamPipeOptions) anyerror!*runtime.Instance {
+    pub fn call_pipeThrough(instance: *runtime.Instance, transform: ReadableWritablePair, options: webidl.Opt(StreamPipeOptions)) anyerror!*runtime.Instance {
         
         return try ReadableStreamImpl.call_pipeThrough(instance, transform, options);
     }
@@ -149,22 +151,22 @@ pub const ReadableStream = struct {
         return try ReadableStreamImpl.call_tee(instance);
     }
 
-    pub fn call_cancel(instance: *runtime.Instance, reason: *const anyopaque) anyerror!*const anyopaque {
+    pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
         
         return try ReadableStreamImpl.call_cancel(instance, reason);
     }
 
-    pub fn call_getReader(instance: *runtime.Instance, options: ReadableStreamGetReaderOptions) anyerror!ReadableStreamReader {
+    pub fn call_getReader(instance: *runtime.Instance, options: webidl.Opt(ReadableStreamGetReaderOptions)) anyerror!ReadableStreamReader {
         
         return try ReadableStreamImpl.call_getReader(instance, options);
     }
 
-    pub fn call_values(instance: *runtime.Instance, options: ReadableStreamIteratorOptions) anyerror!*const anyopaque {
+    pub fn call_values(instance: *runtime.Instance, options: webidl.Opt(ReadableStreamIteratorOptions)) anyerror!*const anyopaque {
         
         return try ReadableStreamImpl.call_values(instance, options);
     }
 
-    pub fn call_getAsyncIterator(instance: *runtime.Instance, options: ReadableStreamIteratorOptions) anyerror!*const anyopaque {
+    pub fn call_getAsyncIterator(instance: *runtime.Instance, options: webidl.Opt(ReadableStreamIteratorOptions)) anyerror!*const anyopaque {
         
         return try ReadableStreamImpl.call_getAsyncIterator(instance, options);
     }

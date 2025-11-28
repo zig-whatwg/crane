@@ -1,11 +1,13 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const VideoEncoderImpl = @import("impls").VideoEncoder;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -159,7 +161,7 @@ pub const VideoEncoder = struct {
         return try VideoEncoderImpl.call_isConfigSupported(instance, config);
     }
 
-    pub fn call_encode(instance: *runtime.Instance, frame: *runtime.Instance, options: VideoEncoderEncodeOptions) anyerror!void {
+    pub fn call_encode(instance: *runtime.Instance, frame: *runtime.Instance, options: webidl.Opt(VideoEncoderEncodeOptions)) anyerror!void {
         
         return try VideoEncoderImpl.call_encode(instance, frame, options);
     }

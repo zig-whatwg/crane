@@ -1,11 +1,13 @@
 //! Generated from: push-api.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const PushSubscriptionImpl = @import("impls").PushSubscription;
+const mixins = @import("mixins");
 const EpochTimeStamp = @import("typedefs").EpochTimeStamp;
 const PushSubscriptionOptions = @import("interfaces").PushSubscriptionOptions;
 const PushSubscriptionJSON = @import("dictionaries").PushSubscriptionJSON;

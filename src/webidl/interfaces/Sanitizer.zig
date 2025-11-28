@@ -1,11 +1,13 @@
 //! Generated from: sanitizer-api.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const SanitizerImpl = @import("impls").Sanitizer;
+const mixins = @import("mixins");
 const SanitizerConfig = @import("dictionaries").SanitizerConfig;
 const SanitizerAttribute = @import("typedefs").SanitizerAttribute;
 const SanitizerPresets = @import("enums").SanitizerPresets;
@@ -105,7 +107,7 @@ pub const Sanitizer = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, configuration: *const anyopaque) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, configuration: webidl.Opt(*const anyopaque)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try SanitizerImpl.call_constructor(allocator, ctx, configuration);
     }

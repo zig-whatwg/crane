@@ -1,11 +1,13 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const EventTargetImpl = @import("impls").EventTarget;
+const mixins = @import("mixins");
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const Event = @import("interfaces").Event;
@@ -102,17 +104,17 @@ pub const EventTarget = struct {
         return try EventTargetImpl.call_dispatchEvent(instance, event);
     }
 
-    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: ObservableEventListenerOptions) anyerror!*runtime.Instance {
+    pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: webidl.Opt(ObservableEventListenerOptions)) anyerror!*runtime.Instance {
         
         return try EventTargetImpl.call_when(instance, @"type", options);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: ?*runtime.CallbackWrapper, options: *const anyopaque) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(*const anyopaque)) anyerror!void {
         
         return try EventTargetImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: ?*runtime.CallbackWrapper, options: *const anyopaque) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(*const anyopaque)) anyerror!void {
         
         return try EventTargetImpl.call_removeEventListener(instance, @"type", callback, options);
     }

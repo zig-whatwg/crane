@@ -1,11 +1,13 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const BluetoothDeviceImpl = @import("impls").BluetoothDevice;
+const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
 const BluetoothDeviceEventHandlers = @import("interfaces").BluetoothDeviceEventHandlers;
 const CharacteristicEventHandlers = @import("interfaces").CharacteristicEventHandlers;
@@ -213,7 +215,7 @@ pub const BluetoothDevice = struct {
         try BluetoothDeviceImpl.set_onserviceremoved(instance, value);
     }
 
-    pub fn call_watchAdvertisements(instance: *runtime.Instance, options: WatchAdvertisementsOptions) anyerror!*const anyopaque {
+    pub fn call_watchAdvertisements(instance: *runtime.Instance, options: webidl.Opt(WatchAdvertisementsOptions)) anyerror!*const anyopaque {
         
         return try BluetoothDeviceImpl.call_watchAdvertisements(instance, options);
     }

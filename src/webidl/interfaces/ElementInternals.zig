@@ -1,11 +1,13 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const ElementInternalsImpl = @import("impls").ElementInternals;
+const mixins = @import("mixins");
 const ARIAMixin = @import("interfaces").ARIAMixin;
 const HTMLElement = @import("interfaces").HTMLElement;
 const ShadowRoot = @import("interfaces").ShadowRoot;
@@ -1154,7 +1156,7 @@ pub const ElementInternals = struct {
         try ElementInternalsImpl.set_ariaValueText(instance, value);
     }
 
-    pub fn call_setValidity(instance: *runtime.Instance, flags: ValidityStateFlags, message: DOMString, anchor: *runtime.Instance) anyerror!void {
+    pub fn call_setValidity(instance: *runtime.Instance, flags: webidl.Opt(ValidityStateFlags), message: webidl.Opt(DOMString), anchor: webidl.Opt(*runtime.Instance)) anyerror!void {
         
         return try ElementInternalsImpl.call_setValidity(instance, flags, message, anchor);
     }
@@ -1167,7 +1169,7 @@ pub const ElementInternals = struct {
         return try ElementInternalsImpl.call_reportValidity(instance);
     }
 
-    pub fn call_setFormValue(instance: *runtime.Instance, value: *const anyopaque, state: *const anyopaque) anyerror!void {
+    pub fn call_setFormValue(instance: *runtime.Instance, value: ?*const anyopaque, state: webidl.Opt(?*const anyopaque)) anyerror!void {
         
         return try ElementInternalsImpl.call_setFormValue(instance, value, state);
     }

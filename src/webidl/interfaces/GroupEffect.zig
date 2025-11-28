@@ -1,11 +1,13 @@
 //! Generated from: web-animations-2.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const GroupEffectImpl = @import("impls").GroupEffect;
+const mixins = @import("mixins");
 const AnimationNodeList = @import("interfaces").AnimationNodeList;
 const AnimationEffect = @import("interfaces").AnimationEffect;
 const EffectTiming = @import("dictionaries").EffectTiming;
@@ -98,7 +100,7 @@ pub const GroupEffect = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, children: *const anyopaque, timing: *const anyopaque) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, children: ?*const anyopaque, timing: webidl.Opt(*const anyopaque)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try GroupEffectImpl.call_constructor(allocator, ctx, children, timing);
     }
@@ -119,12 +121,12 @@ pub const GroupEffect = struct {
         return try GroupEffectImpl.call_clone(instance);
     }
 
-    pub fn call_append(instance: *runtime.Instance, effects: *runtime.Instance) anyerror!void {
+    pub fn call_append(instance: *runtime.Instance, effects: []const *runtime.Instance) anyerror!void {
         
         return try GroupEffectImpl.call_append(instance, effects);
     }
 
-    pub fn call_prepend(instance: *runtime.Instance, effects: *runtime.Instance) anyerror!void {
+    pub fn call_prepend(instance: *runtime.Instance, effects: []const *runtime.Instance) anyerror!void {
         
         return try GroupEffectImpl.call_prepend(instance, effects);
     }

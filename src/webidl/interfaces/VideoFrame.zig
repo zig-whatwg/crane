@@ -1,11 +1,13 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const VideoFrameImpl = @import("impls").VideoFrame;
+const mixins = @import("mixins");
 const AllowSharedBufferSource = @import("typedefs").AllowSharedBufferSource;
 const VideoFrameMetadata = @import("dictionaries").VideoFrameMetadata;
 const VideoFrameInit = @import("dictionaries").VideoFrameInit;
@@ -151,7 +153,7 @@ pub const VideoFrame = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, image: CanvasImageSource, init_data: VideoFrameInit) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, image: CanvasImageSource, init_data: webidl.Opt(VideoFrameInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try VideoFrameImpl.call_constructor(allocator, ctx, image, init_data);
     }
@@ -204,12 +206,12 @@ pub const VideoFrame = struct {
         return try VideoFrameImpl.get_colorSpace(instance);
     }
 
-    pub fn call_allocationSize(instance: *runtime.Instance, options: VideoFrameCopyToOptions) anyerror!u32 {
+    pub fn call_allocationSize(instance: *runtime.Instance, options: webidl.Opt(VideoFrameCopyToOptions)) anyerror!u32 {
         
         return try VideoFrameImpl.call_allocationSize(instance, options);
     }
 
-    pub fn call_copyTo(instance: *runtime.Instance, destination: AllowSharedBufferSource, options: VideoFrameCopyToOptions) anyerror!*const anyopaque {
+    pub fn call_copyTo(instance: *runtime.Instance, destination: AllowSharedBufferSource, options: webidl.Opt(VideoFrameCopyToOptions)) anyerror!*const anyopaque {
         
         return try VideoFrameImpl.call_copyTo(instance, destination, options);
     }

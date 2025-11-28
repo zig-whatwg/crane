@@ -1,11 +1,13 @@
 //! Generated from: web-animations.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const KeyframeEffectImpl = @import("impls").KeyframeEffect;
+const mixins = @import("mixins");
 const AnimationEffect = @import("interfaces").AnimationEffect;
 const Element = @import("interfaces").Element;
 const IterationCompositeOperation = @import("enums").IterationCompositeOperation;
@@ -121,9 +123,9 @@ pub const KeyframeEffect = struct {
     pub const ConstructorArgs = union(enum) {
         /// constructor(target, keyframes, options)
         Element_object_union: struct {
-            target: Element,
-            keyframes: *const anyopaque,
-            options: *const anyopaque,
+            target: ?Element,
+            keyframes: ?*const anyopaque,
+            options: webidl.Opt(*const anyopaque),
         },
         /// constructor(source)
         KeyframeEffect: KeyframeEffect,
@@ -167,7 +169,7 @@ pub const KeyframeEffect = struct {
         try KeyframeEffectImpl.set_iterationComposite(instance, value);
     }
 
-    pub fn call_setKeyframes(instance: *runtime.Instance, keyframes: *const anyopaque) anyerror!void {
+    pub fn call_setKeyframes(instance: *runtime.Instance, keyframes: ?*const anyopaque) anyerror!void {
         
         return try KeyframeEffectImpl.call_setKeyframes(instance, keyframes);
     }

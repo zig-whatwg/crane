@@ -1,11 +1,13 @@
 //! Generated from: direct-sockets.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const UDPSocketImpl = @import("impls").UDPSocket;
+const mixins = @import("mixins");
 const UDPSocketOptions = @import("dictionaries").UDPSocketOptions;
 const UDPSocketOpenInfo = @import("dictionaries").UDPSocketOpenInfo;
 
@@ -92,7 +94,7 @@ pub const UDPSocket = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: UDPSocketOptions) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(UDPSocketOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try UDPSocketImpl.call_constructor(allocator, ctx, options);
     }

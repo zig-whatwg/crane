@@ -1,11 +1,13 @@
 //! Generated from: writing-assistance-apis.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const RewriterImpl = @import("impls").Rewriter;
+const mixins = @import("mixins");
 const DestroyableModel = @import("interfaces").DestroyableModel;
 const Availability = @import("enums").Availability;
 const RewriterTone = @import("enums").RewriterTone;
@@ -172,22 +174,22 @@ pub const Rewriter = struct {
         return try RewriterImpl.get_inputQuota(instance);
     }
 
-    pub fn call_availability(instance: *runtime.Instance, options: RewriterCreateCoreOptions) anyerror!*const anyopaque {
+    pub fn call_availability(instance: *runtime.Instance, options: webidl.Opt(RewriterCreateCoreOptions)) anyerror!*const anyopaque {
         
         return try RewriterImpl.call_availability(instance, options);
     }
 
-    pub fn call_rewrite(instance: *runtime.Instance, input: DOMString, options: RewriterRewriteOptions) anyerror!*const anyopaque {
+    pub fn call_rewrite(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(RewriterRewriteOptions)) anyerror!*const anyopaque {
         
         return try RewriterImpl.call_rewrite(instance, input, options);
     }
 
-    pub fn call_rewriteStreaming(instance: *runtime.Instance, input: DOMString, options: RewriterRewriteOptions) anyerror!*runtime.Instance {
+    pub fn call_rewriteStreaming(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(RewriterRewriteOptions)) anyerror!*runtime.Instance {
         
         return try RewriterImpl.call_rewriteStreaming(instance, input, options);
     }
 
-    pub fn call_measureInputUsage(instance: *runtime.Instance, input: DOMString, options: RewriterRewriteOptions) anyerror!*const anyopaque {
+    pub fn call_measureInputUsage(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(RewriterRewriteOptions)) anyerror!*const anyopaque {
         
         return try RewriterImpl.call_measureInputUsage(instance, input, options);
     }
@@ -196,7 +198,7 @@ pub const Rewriter = struct {
         return try RewriterImpl.call_destroy(instance);
     }
 
-    pub fn call_create(instance: *runtime.Instance, options: RewriterCreateOptions) anyerror!*const anyopaque {
+    pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(RewriterCreateOptions)) anyerror!*const anyopaque {
         
         return try RewriterImpl.call_create(instance, options);
     }

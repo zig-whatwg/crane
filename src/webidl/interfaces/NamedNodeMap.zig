@@ -1,11 +1,13 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T18:02:26Z
+//! Generated at: 2025-11-28T18:57:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const NamedNodeMapImpl = @import("impls").NamedNodeMap;
+const mixins = @import("mixins");
 const Attr = @import("interfaces").Attr;
 const DOMString = @import("typedefs").DOMString;
 
@@ -110,7 +112,7 @@ pub const NamedNodeMap = struct {
         return try NamedNodeMapImpl.call_item(instance, index);
     }
 
-    pub fn call_getNamedItemNS(instance: *runtime.Instance, namespace: DOMString, localName: DOMString) anyerror!?*runtime.Instance {
+    pub fn call_getNamedItemNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!?*runtime.Instance {
         
         return try NamedNodeMapImpl.call_getNamedItemNS(instance, namespace, localName);
     }
@@ -141,7 +143,7 @@ pub const NamedNodeMap = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_removeNamedItemNS(instance: *runtime.Instance, namespace: DOMString, localName: DOMString) anyerror!*runtime.Instance {
+    pub fn call_removeNamedItemNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

@@ -1,11 +1,13 @@
 //! Generated from: WEBGL_clip_cull_distance.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const WEBGL_clip_cull_distanceImpl = @import("impls").WEBGL_clip_cull_distance;
+const mixins = @import("mixins");
 const GLenum = @import("typedefs").GLenum;
 
 pub const WEBGL_clip_cull_distance = struct {

@@ -1,11 +1,13 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const XPathEvaluatorImpl = @import("impls").XPathEvaluator;
+const mixins = @import("mixins");
 const XPathEvaluatorBase = @import("interfaces").XPathEvaluatorBase;
 const XPathExpression = @import("interfaces").XPathExpression;
 const XPathResult = @import("interfaces").XPathResult;
@@ -100,13 +102,13 @@ pub const XPathEvaluator = struct {
         return try XPathEvaluatorImpl.call_createNSResolver(instance, nodeResolver);
     }
 
-    pub fn call_evaluate(instance: *runtime.Instance, expression: DOMString, contextNode: *runtime.Instance, resolver: ?*runtime.CallbackWrapper, @"type": u16, result: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_evaluate(instance: *runtime.Instance, expression: DOMString, contextNode: *runtime.Instance, resolver: webidl.Opt(??*runtime.CallbackWrapper), @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
         
         return try XPathEvaluatorImpl.call_evaluate(instance, expression, contextNode, resolver, @"type", result);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createExpression(instance: *runtime.Instance, expression: DOMString, resolver: ?*runtime.CallbackWrapper) anyerror!*runtime.Instance {
+    pub fn call_createExpression(instance: *runtime.Instance, expression: DOMString, resolver: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try XPathEvaluatorImpl.call_createExpression(instance, expression, resolver);

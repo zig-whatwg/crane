@@ -1,11 +1,13 @@
 //! Generated from: gamepad.idl
-//! Generated at: 2025-11-28T18:02:25Z
+//! Generated at: 2025-11-28T18:57:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const GamepadHapticActuatorImpl = @import("impls").GamepadHapticActuator;
+const mixins = @import("mixins");
 const GamepadHapticEffectType = @import("enums").GamepadHapticEffectType;
 const GamepadHapticsResult = @import("enums").GamepadHapticsResult;
 const GamepadEffectParameters = @import("dictionaries").GamepadEffectParameters;
@@ -111,7 +113,7 @@ pub const GamepadHapticActuator = struct {
         return try GamepadHapticActuatorImpl.call_pulse(instance, value, duration);
     }
 
-    pub fn call_playEffect(instance: *runtime.Instance, @"type": GamepadHapticEffectType, params: GamepadEffectParameters) anyerror!*const anyopaque {
+    pub fn call_playEffect(instance: *runtime.Instance, @"type": GamepadHapticEffectType, params: webidl.Opt(GamepadEffectParameters)) anyerror!*const anyopaque {
         
         return try GamepadHapticActuatorImpl.call_playEffect(instance, @"type", params);
     }

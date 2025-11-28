@@ -1,11 +1,13 @@
 //! Generated from: credential-management.idl
-//! Generated at: 2025-11-28T18:02:24Z
+//! Generated at: 2025-11-28T18:57:54Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const PasswordCredentialImpl = @import("impls").PasswordCredential;
+const mixins = @import("mixins");
 const Credential = @import("interfaces").Credential;
 const CredentialUserData = @import("interfaces").CredentialUserData;
 const HTMLFormElement = @import("interfaces").HTMLFormElement;
