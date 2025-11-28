@@ -1192,15 +1192,11 @@ pub fn V8Interface(comptime Interface: type) type {
                     const v8_arg1 = info.get(0);
                     break :blk try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
                 } else blk: {
-                    // No argument provided - try to use default
-                    const param1_info = @typeInfo(Param1Type);
-                    if (param1_info == .@"struct" and canDefaultInit(Param1Type)) {
-                        break :blk defaultInit(Param1Type);
-                    } else if (param1_info == .optional) {
-                        break :blk null;
-                    } else if (Param1Type == runtime.DOMString) {
-                        // DOMString defaults to empty string (common case like Text(""))
-                        break :blk runtime.DOMString.initEmpty();
+                    // No argument provided - use getDefaultArgValue for consistent handling
+                    if (comptime getDefaultArgValue(Param1Type)) |default_val| {
+                        break :blk default_val;
+                    } else if (comptime canUseUndefined(Param1Type)) {
+                        break :blk undefined;
                     } else {
                         return error.NotEnoughArguments;
                     }
@@ -1212,24 +1208,31 @@ pub fn V8Interface(comptime Interface: type) type {
                 const Param1Type = params[2].type.?;
                 const Param2Type = params[3].type.?;
 
-                // First param is required
-                if (js_arg_count < 1) {
-                    return error.NotEnoughArguments;
-                }
-
-                const v8_arg1 = info.get(0);
-                const arg1 = try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                // Check if first param has a default (e.g., webidl.Opt or optional)
+                const arg1 = if (js_arg_count >= 1) blk: {
+                    const v8_arg1 = info.get(0);
+                    break :blk try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                } else blk: {
+                    // Try default for first param
+                    if (comptime getDefaultArgValue(Param1Type)) |default_val| {
+                        break :blk default_val;
+                    } else if (comptime canUseUndefined(Param1Type)) {
+                        break :blk undefined;
+                    } else {
+                        return error.NotEnoughArguments;
+                    }
+                };
 
                 // Second param may be optional (use default if not provided)
-                // Check if it's a struct (dictionary) type that has default values
                 const arg2 = if (js_arg_count >= 2) blk: {
                     const v8_arg2 = info.get(1);
                     break :blk try conv.fromV8Value(Param2Type, allocator, isolate, v8_context, v8_arg2);
                 } else blk: {
-                    // Use recursively default-initialized struct (handles nested base fields)
-                    const param2_info = @typeInfo(Param2Type);
-                    if (param2_info == .@"struct" and canDefaultInit(Param2Type)) {
-                        break :blk defaultInit(Param2Type);
+                    // Use getDefaultArgValue for consistent handling
+                    if (comptime getDefaultArgValue(Param2Type)) |default_val| {
+                        break :blk default_val;
+                    } else if (comptime canUseUndefined(Param2Type)) {
+                        break :blk undefined;
                     } else {
                         return error.NotEnoughArguments;
                     }
