@@ -36,11 +36,25 @@ pub const ImplError = error{
     InvalidState,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Internal state for AbortSignal
+/// Spec: https://dom.spec.whatwg.org/#abortsignal
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+
+    /// [[aborted]]: Whether the signal is aborted
+    aborted: bool,
+
+    /// [[reason]]: The abort reason (null if not aborted or no reason provided)
+    reason: ?*const anyopaque,
+
+    /// [[onabort]]: Event handler for abort event (stub for now)
+    onabort: ?typedefs.EventHandler,
+
+    pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
+        // reason is borrowed, not owned
+        allocator.destroy(self);
+    }
+};
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -50,13 +64,28 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    errdefer runtime.Instance.deinit(instance);
+
+    const state = instance.getState(StateType);
+    state.own._internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(state.own._internal.?);
+
+    state.own._internal.?.* = InternalState{
+        .allocator = allocator,
+        .aborted = false,
+        .reason = null,
+        .onabort = null,
+    };
+
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.deinit(internal.allocator);
+    }
     runtime.Instance.deinit(instance);
 }
 
