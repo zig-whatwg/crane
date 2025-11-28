@@ -28,6 +28,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const mixins = @import("mixins");
 const Element = interfaces.Element;
+const NodeImpl = @import("Node.zig");
 
 pub const State = Element.State;
 
@@ -35,11 +36,89 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Internal state for Element instances
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+    namespace_uri: ?runtime.DOMString = null,
+    prefix: ?runtime.DOMString = null,
+    local_name: runtime.DOMString,
+    id: runtime.DOMString,
+    class_name: runtime.DOMString,
+    slot: runtime.DOMString,
+    shadow_root: ?*runtime.Instance = null,
+    custom_element_state: CustomElementState = .undefined,
+    is_value: ?runtime.DOMString = null,
+    assigned_slot: ?*runtime.Instance = null,
+    manual_slot_assignment: ?*runtime.Instance = null,
+    attributes: std.ArrayList(AttributeEntry),
+
+    pub const AttributeEntry = struct {
+        namespace_uri: ?[]const u8,
+        prefix: ?[]const u8,
+        local_name: []const u8,
+        value: []const u8,
+    };
+
+    pub fn init(allocator: std.mem.Allocator) InternalState {
+        return .{
+            .allocator = allocator,
+            .namespace_uri = null,
+            .prefix = null,
+            .local_name = runtime.DOMString.initEmpty(),
+            .id = runtime.DOMString.initEmpty(),
+            .class_name = runtime.DOMString.initEmpty(),
+            .slot = runtime.DOMString.initEmpty(),
+            .attributes = std.ArrayList(AttributeEntry).init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *InternalState) void {
+        if (self.namespace_uri) |*ns| ns.deinit(self.allocator);
+        if (self.prefix) |*p| p.deinit(self.allocator);
+        self.local_name.deinit(self.allocator);
+        self.id.deinit(self.allocator);
+        self.class_name.deinit(self.allocator);
+        self.slot.deinit(self.allocator);
+        if (self.is_value) |*v| v.deinit(self.allocator);
+        for (self.attributes.items) |entry| {
+            if (entry.namespace_uri) |ns| self.allocator.free(ns);
+            if (entry.prefix) |p| self.allocator.free(p);
+            self.allocator.free(entry.local_name);
+            self.allocator.free(entry.value);
+        }
+        self.attributes.deinit();
+    }
+};
+
+const CustomElementState = enum { undefined, failed, uncustomized, custom };
+
+var element_registry: std.AutoHashMap(usize, *InternalState) = undefined;
+var element_registry_initialized: bool = false;
+
+fn ensureElementRegistry() void {
+    if (!element_registry_initialized) {
+        element_registry = std.AutoHashMap(usize, *InternalState).init(std.heap.page_allocator);
+        element_registry_initialized = true;
+    }
+}
+
+fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) !void {
+    ensureElementRegistry();
+    try element_registry.put(@intFromPtr(instance), internal);
+}
+
+fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
+    ensureElementRegistry();
+    return element_registry.get(@intFromPtr(instance));
+}
+
+pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    return getInternalFromRegistry(instance);
+}
+
+pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
+    return getInternalFromRegistry(instance);
+}
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -48,15 +127,26 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    const instance = try NodeImpl.init(allocator, StateType, vtable, ctx);
+    errdefer NodeImpl.deinit(instance);
+
+    const ArenaAllocator = @import("runtime").ArenaAllocator;
+    const internal = try ArenaAllocator.get().create(InternalState);
+    internal.* = InternalState.init(allocator);
+    try setInternalInRegistry(instance, internal);
+
+    try NodeImpl.setNodeType(instance, NodeImpl.NodeType.ELEMENT_NODE);
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    runtime.Instance.deinit(instance);
+    if (getInternal(instance)) |internal| {
+        internal.deinit();
+        ensureElementRegistry();
+        _ = element_registry.remove(@intFromPtr(instance));
+    }
+    NodeImpl.deinit(instance);
 }
 
 /// Getter for namespaceURI
@@ -1468,4 +1558,3 @@ pub fn call_setPointerCapture(instance: *runtime.Instance, pointerId: i32) ImplE
     _ = pointerId;
     return error.NotImplemented;
 }
-
