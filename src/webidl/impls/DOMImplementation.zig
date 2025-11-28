@@ -221,7 +221,7 @@ pub fn call_createDocument(instance: *runtime.Instance, namespace: ?runtime.DOMS
     }
 
     // Step 7: Set content type based on namespace
-    const ns_slice = namespace.asSlice();
+    const ns_slice = if (namespace) |ns| ns.asSlice() else "";
     const content_type = if (ns_slice.len > 0) blk: {
         if (std.mem.eql(u8, ns_slice, HTML_NAMESPACE)) {
             break :blk "application/xhtml+xml";

@@ -139,7 +139,7 @@ pub fn call_remove(instance: *runtime.Instance) !void {
 /// Operation: before (from ChildNode mixin)
 /// Inserts nodes just before this doctype
 /// Spec: https://dom.spec.whatwg.org/#dom-childnode-before
-pub fn call_before(instance: *runtime.Instance, nodes: []const mixins.ChildNode.NodeOrString) !void {
+pub fn call_before(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) !void {
     _ = nodes;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     _ = internal;
@@ -160,7 +160,7 @@ pub fn call_before(instance: *runtime.Instance, nodes: []const mixins.ChildNode.
 /// Operation: after (from ChildNode mixin)
 /// Inserts nodes just after this doctype
 /// Spec: https://dom.spec.whatwg.org/#dom-childnode-after
-pub fn call_after(instance: *runtime.Instance, nodes: []const mixins.ChildNode.NodeOrString) !void {
+pub fn call_after(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) !void {
     _ = nodes;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     _ = internal;
@@ -180,7 +180,7 @@ pub fn call_after(instance: *runtime.Instance, nodes: []const mixins.ChildNode.N
 /// Operation: replaceWith (from ChildNode mixin)
 /// Replaces this doctype with nodes
 /// Spec: https://dom.spec.whatwg.org/#dom-childnode-replacewith
-pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const mixins.ChildNode.NodeOrString) !void {
+pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) !void {
     _ = nodes;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     _ = internal;
