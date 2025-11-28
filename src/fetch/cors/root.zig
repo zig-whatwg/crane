@@ -45,6 +45,7 @@ const std = @import("std");
 
 pub const check = @import("check.zig");
 pub const preflight = @import("preflight.zig");
+pub const preflight_cache = @import("preflight_cache.zig");
 
 // Re-export check types and functions
 pub const CredentialsMode = check.CredentialsMode;
@@ -68,6 +69,11 @@ pub const PreflightCacheEntry = preflight.PreflightCacheEntry;
 pub const createPreflightRequest = preflight.createPreflightRequest;
 pub const validatePreflightResponse = preflight.validatePreflightResponse;
 pub const getCorsUnsafeHeaderNames = preflight.getCorsUnsafeHeaderNames;
+
+// Re-export preflight cache types and functions
+pub const PreflightCache = preflight_cache.PreflightCache;
+pub const CacheKey = preflight_cache.CacheKey;
+pub const CacheEntry = preflight_cache.CacheEntry;
 
 test {
     std.testing.refAllDecls(@This());
