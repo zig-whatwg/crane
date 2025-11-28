@@ -7,6 +7,9 @@ const xhr_root = @import("../root.zig");
 const XMLHttpRequestState = xhr_root.state_machine.XMLHttpRequestState;
 const ReadyState = xhr_root.state_machine.ReadyState;
 const ProgressTracker = @import("../internal/progress_tracker.zig").ProgressTracker;
+const event_support = @import("../internal/event_support.zig");
+const XHREventType = event_support.XHREventType;
+const ProgressEventData = event_support.ProgressEventData;
 
 /// Response processor - handles response callbacks
 pub const ResponseProcessor = struct {
@@ -26,11 +29,11 @@ pub const ResponseProcessor = struct {
     pub fn processResponse(self: *ResponseProcessor) void {
         // Transition to HEADERS_RECEIVED
         self.state.changeState(.HEADERS_RECEIVED);
+        event_support.fireEvent(.readystatechange);
 
         // Transition to LOADING if body expected
         self.state.changeState(.LOADING);
-
-        // TODO: Fire readystatechange events (requires event dispatch)
+        event_support.fireEvent(.readystatechange);
     }
 
     /// Process response body chunk
@@ -43,8 +46,15 @@ pub const ResponseProcessor = struct {
         // Update progress tracker (fires throttled progress events)
         const should_fire = self.progress_tracker.onChunk(chunk.len);
 
-        // TODO: Fire progress event if should_fire (requires event dispatch)
-        _ = should_fire;
+        // Fire progress event if throttle passed
+        if (should_fire) {
+            const progress_info = self.progress_tracker.getProgress();
+            event_support.fireProgressEvent(.progress, .{
+                .lengthComputable = progress_info.length_computable,
+                .loaded = progress_info.loaded,
+                .total = progress_info.total orelse 0,
+            });
+        }
     }
 
     /// Process response end of body
@@ -53,14 +63,33 @@ pub const ResponseProcessor = struct {
     pub fn processResponseEndOfBody(self: *ResponseProcessor) void {
         // Fire final progress event
         self.progress_tracker.forceFire();
+        const final_progress = self.progress_tracker.getProgress();
+        event_support.fireProgressEvent(.progress, .{
+            .lengthComputable = final_progress.length_computable,
+            .loaded = final_progress.loaded,
+            .total = final_progress.total orelse 0,
+        });
 
         // Transition to DONE
         self.state.changeState(.DONE);
+        event_support.fireEvent(.readystatechange);
 
         // Unset send flag
         self.state.send_flag = false;
 
-        // TODO: Fire load, loadend events (requires event dispatch)
+        // Fire load event
+        event_support.fireProgressEvent(.load, .{
+            .lengthComputable = final_progress.length_computable,
+            .loaded = final_progress.loaded,
+            .total = final_progress.total orelse 0,
+        });
+
+        // Fire loadend event
+        event_support.fireProgressEvent(.loadend, .{
+            .lengthComputable = final_progress.length_computable,
+            .loaded = final_progress.loaded,
+            .total = final_progress.total orelse 0,
+        });
     }
 
     /// Handle network error
@@ -70,11 +99,25 @@ pub const ResponseProcessor = struct {
 
         // Transition to DONE
         self.state.changeState(.DONE);
+        event_support.fireEvent(.readystatechange);
 
         // Unset send flag
         self.state.send_flag = false;
 
-        // TODO: Fire error, loadend events (requires event dispatch)
+        // Fire error event
+        const progress = self.progress_tracker.getProgress();
+        event_support.fireProgressEvent(.@"error", .{
+            .lengthComputable = progress.length_computable,
+            .loaded = progress.loaded,
+            .total = progress.total orelse 0,
+        });
+
+        // Fire loadend event
+        event_support.fireProgressEvent(.loadend, .{
+            .lengthComputable = progress.length_computable,
+            .loaded = progress.loaded,
+            .total = progress.total orelse 0,
+        });
     }
 
     /// Handle timeout
@@ -82,8 +125,22 @@ pub const ResponseProcessor = struct {
         self.state.timed_out_flag = true;
         self.state.send_flag = false;
         self.state.changeState(.DONE);
+        event_support.fireEvent(.readystatechange);
 
-        // TODO: Fire timeout, loadend events (requires event dispatch)
+        // Fire timeout event
+        const progress = self.progress_tracker.getProgress();
+        event_support.fireProgressEvent(.timeout, .{
+            .lengthComputable = progress.length_computable,
+            .loaded = progress.loaded,
+            .total = progress.total orelse 0,
+        });
+
+        // Fire loadend event
+        event_support.fireProgressEvent(.loadend, .{
+            .lengthComputable = progress.length_computable,
+            .loaded = progress.loaded,
+            .total = progress.total orelse 0,
+        });
     }
 };
 
