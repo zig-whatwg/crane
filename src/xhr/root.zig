@@ -48,6 +48,9 @@ pub const send = @import("algorithms/send.zig");
 pub const response = @import("algorithms/response.zig");
 pub const upload = @import("algorithms/upload.zig");
 
+// FormData implementation
+pub const form_data = @import("form_data.zig");
+
 // TODO: Add in later phases
 // pub const abort = @import("algorithms/abort.zig");
 
