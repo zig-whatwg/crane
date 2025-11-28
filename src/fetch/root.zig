@@ -37,6 +37,7 @@ pub const internal = @import("internal/root.zig");
 pub const referrer_policy = @import("referrer_policy/root.zig");
 pub const cookies = @import("cookies/root.zig");
 pub const cors = @import("cors/root.zig");
+pub const network = @import("network/root.zig");
 
 // Re-export commonly used types
 pub const HeaderList = internal.HeaderList;
@@ -53,9 +54,17 @@ pub const Cookie = cookies.Cookie;
 pub const CredentialsMode = cors.CredentialsMode;
 pub const corsCheck = cors.corsCheck;
 
+// Re-export network types
+pub const NetworkBackend = network.NetworkBackend;
+pub const NetworkRequest = network.NetworkRequest;
+pub const NetworkResponse = network.NetworkResponse;
+pub const NetworkError = network.NetworkError;
+pub const MockBackend = network.MockBackend;
+
 test {
     _ = internal;
     _ = referrer_policy;
     _ = cookies;
     _ = cors;
+    _ = network;
 }
