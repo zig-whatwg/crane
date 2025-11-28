@@ -29,6 +29,7 @@ const std = @import("std");
 pub const data_url = @import("data_url.zig");
 pub const scheme_fetch = @import("scheme_fetch.zig");
 pub const main_fetch = @import("main_fetch.zig");
+pub const http_fetch = @import("http_fetch.zig");
 
 // Re-export main types and functions
 pub const DataUrlResult = data_url.DataUrlResult;
@@ -46,6 +47,14 @@ pub const isFetchScheme = scheme_fetch.isFetchScheme;
 pub const MainFetchError = main_fetch.MainFetchError;
 pub const MainFetchResult = main_fetch.MainFetchResult;
 pub const mainFetch = main_fetch.mainFetch;
+
+pub const HttpFetchError = http_fetch.HttpFetchError;
+pub const HttpFetchOptions = http_fetch.HttpFetchOptions;
+pub const httpFetch = http_fetch.httpFetch;
+pub const httpRedirectFetch = http_fetch.httpRedirectFetch;
+pub const httpNetworkOrCacheFetch = http_fetch.httpNetworkOrCacheFetch;
+pub const httpNetworkFetch = http_fetch.httpNetworkFetch;
+pub const corsCheck = http_fetch.corsCheck;
 
 test {
     std.testing.refAllDecls(@This());

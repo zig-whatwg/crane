@@ -104,6 +104,20 @@ pub const HeaderList = struct {
         return try std.mem.join(allocator, ", ", values.items);
     }
 
+    /// Get the first value for a header name (non-allocating).
+    ///
+    /// Returns the value of the first header whose name matches (case-insensitive).
+    /// Returns null if no header with that name exists.
+    /// Does NOT allocate - returns a reference to the stored value.
+    pub fn getFirstValue(self: *const HeaderList, name: []const u8) ?[]const u8 {
+        for (self.entries.items) |header| {
+            if (std.ascii.eqlIgnoreCase(header.name, name)) {
+                return header.value;
+            }
+        }
+        return null;
+    }
+
     /// Get all values for Set-Cookie headers (never combined).
     ///
     /// Set-Cookie headers are special and must not be combined per spec.
