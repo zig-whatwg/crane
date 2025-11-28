@@ -40,6 +40,7 @@ pub const cors = @import("cors/root.zig");
 pub const network = @import("network/root.zig");
 pub const cache = @import("cache/root.zig");
 pub const algorithms = @import("algorithms/root.zig");
+pub const webidl = @import("webidl/root.zig");
 
 // Re-export commonly used types
 pub const HeaderList = internal.HeaderList;
@@ -75,6 +76,15 @@ pub const processDataUrl = algorithms.processDataUrl;
 pub const DataUrlResult = algorithms.DataUrlResult;
 pub const schemeFetch = algorithms.schemeFetch;
 pub const SchemeFetchResult = algorithms.SchemeFetchResult;
+pub const fetch = algorithms.fetch;
+pub const fetchSimple = algorithms.fetchSimple;
+pub const FetchResult = algorithms.FetchResult;
+pub const FetchError = algorithms.FetchError;
+
+// Re-export WebIDL types
+pub const Headers = webidl.Headers;
+pub const Request = webidl.Request;
+pub const Response = webidl.Response;
 
 test {
     _ = internal;
@@ -84,4 +94,5 @@ test {
     _ = network;
     _ = cache;
     _ = algorithms;
+    _ = webidl;
 }
