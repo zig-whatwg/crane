@@ -291,19 +291,19 @@ fn startsWithIgnoreCase(haystack: []const u8, needle: []const u8) bool {
 const MockHeaders = struct {
     headers: std.StringHashMap([]const u8),
 
-    fn init(allocator: Allocator) MockHeaders {
+    pub fn init(allocator: Allocator) MockHeaders {
         return .{ .headers = std.StringHashMap([]const u8).init(allocator) };
     }
 
-    fn deinit(self: *MockHeaders) void {
+    pub fn deinit(self: *MockHeaders) void {
         self.headers.deinit();
     }
 
-    fn put(self: *MockHeaders, name: []const u8, value: []const u8) !void {
+    pub fn put(self: *MockHeaders, name: []const u8, value: []const u8) !void {
         try self.headers.put(name, value);
     }
 
-    fn get(self: *const MockHeaders, name: []const u8) ?[]const u8 {
+    pub fn get(self: *const MockHeaders, name: []const u8) ?[]const u8 {
         return self.headers.get(name);
     }
 };
