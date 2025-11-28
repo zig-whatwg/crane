@@ -59,6 +59,37 @@ pub const createOpaqueTimingInfo = fetch_timing.createOpaqueTimingInfo;
 pub const coarsenTime = fetch_timing.coarsenTime;
 pub const clampAndCoarsenConnectionTimingInfo = fetch_timing.clampAndCoarsenConnectionTimingInfo;
 
+pub const request = @import("request.zig");
+pub const InternalRequest = request.InternalRequest;
+pub const ServiceWorkersMode = request.ServiceWorkersMode;
+pub const Initiator = request.Initiator;
+pub const Destination = request.Destination;
+pub const Priority = request.Priority;
+pub const RequestMode = request.RequestMode;
+pub const CredentialsMode = request.CredentialsMode;
+pub const CacheMode = request.CacheMode;
+pub const RedirectMode = request.RedirectMode;
+pub const ResponseTainting = request.ResponseTainting;
+pub const ParserMetadata = request.ParserMetadata;
+pub const InitiatorType = request.InitiatorType;
+pub const ReferrerPolicy = request.ReferrerPolicy;
+
+pub const response = @import("response.zig");
+pub const InternalResponse = response.InternalResponse;
+pub const ResponseType = response.ResponseType;
+pub const CacheState = response.CacheState;
+pub const FilteredResponse = response.FilteredResponse;
+pub const FilterType = response.FilterType;
+pub const networkError = response.networkError;
+pub const abortedNetworkError = response.abortedNetworkError;
+pub const isNullBodyStatus = response.isNullBodyStatus;
+pub const isOkStatus = response.isOkStatus;
+pub const isRedirectStatus = response.isRedirectStatus;
+pub const createBasicFilteredResponse = response.createBasicFilteredResponse;
+pub const createCORSFilteredResponse = response.createCORSFilteredResponse;
+pub const createOpaqueFilteredResponse = response.createOpaqueFilteredResponse;
+pub const createOpaqueRedirectFilteredResponse = response.createOpaqueRedirectFilteredResponse;
+
 test {
     _ = header_list;
     _ = validation;
@@ -66,4 +97,6 @@ test {
     _ = guards;
     _ = body;
     _ = fetch_timing;
+    _ = request;
+    _ = response;
 }
