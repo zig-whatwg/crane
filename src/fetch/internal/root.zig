@@ -101,6 +101,15 @@ pub const ParallelQueue = fetch_params.ParallelQueue;
 pub const queueFetchTask = fetch_params.queueFetchTask;
 pub const createAppropriateNetworkError = fetch_params.createAppropriateNetworkError;
 
+pub const body_extraction = @import("body_extraction.zig");
+pub const BodyInit = body_extraction.BodyInit;
+pub const BufferSource = body_extraction.BufferSource;
+pub const extract = body_extraction.extract;
+pub const safelyExtract = body_extraction.safelyExtract;
+pub const CONTENT_TYPE_TEXT_PLAIN = body_extraction.CONTENT_TYPE_TEXT_PLAIN;
+pub const CONTENT_TYPE_FORM_URLENCODED = body_extraction.CONTENT_TYPE_FORM_URLENCODED;
+pub const CONTENT_TYPE_MULTIPART_PREFIX = body_extraction.CONTENT_TYPE_MULTIPART_PREFIX;
+
 test {
     _ = header_list;
     _ = validation;
@@ -112,4 +121,5 @@ test {
     _ = response;
     _ = fetch_controller;
     _ = fetch_params;
+    _ = body_extraction;
 }
