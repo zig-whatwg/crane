@@ -619,12 +619,14 @@ pub fn call_getRootNode(instance: *runtime.Instance, options: dictionaries.GetRo
 /// Operation: contains
 /// https://dom.spec.whatwg.org/#dom-node-contains
 /// Returns true if other is an inclusive descendant of this node
-pub fn call_contains(instance: *runtime.Instance, other: *runtime.Instance) !bool {
+pub fn call_contains(instance: *runtime.Instance, other: ?*runtime.Instance) !bool {
+    const other_node = other orelse return false;
+
     // A node contains itself
-    if (instance == other) return true;
+    if (instance == other_node) return true;
 
     // Walk up from other to see if we find instance
-    var current: ?*runtime.Instance = other;
+    var current: ?*runtime.Instance = other_node;
     while (current) |curr| {
         if (curr == instance) return true;
         const curr_internal = getInternal(curr) orelse break;
@@ -685,16 +687,18 @@ pub fn call_compareDocumentPosition(instance: *runtime.Instance, other: *runtime
 /// Operation: isSameNode
 /// https://dom.spec.whatwg.org/#dom-node-issamenode
 /// Returns true if other is the same node (reference equality)
-pub fn call_isSameNode(instance: *runtime.Instance, otherNode: *runtime.Instance) !bool {
-    return instance == otherNode;
+pub fn call_isSameNode(instance: *runtime.Instance, otherNode: ?*runtime.Instance) !bool {
+    const other = otherNode orelse return false;
+    return instance == other;
 }
 
 /// Operation: isEqualNode
 /// https://dom.spec.whatwg.org/#dom-node-isequalnode
 /// Returns true if nodes are equal (same type, attributes, children)
-pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: *runtime.Instance) !bool {
+pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: ?*runtime.Instance) !bool {
+    const other = otherNode orelse return false;
     const self_internal = getInternal(instance) orelse return false;
-    const other_internal = getInternal(otherNode) orelse return false;
+    const other_internal = getInternal(other) orelse return false;
 
     // Must be same node type
     if (self_internal.node_type != other_internal.node_type) return false;
@@ -1066,9 +1070,14 @@ pub fn call_appendChild(instance: *runtime.Instance, node: *runtime.Instance) !*
 
 /// Operation: insertBefore
 /// https://dom.spec.whatwg.org/#dom-node-insertbefore
-pub fn call_insertBefore(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) !*runtime.Instance {
-    try preInsertValidation(instance, node, child);
-    try insertNode(node, instance, child);
+pub fn call_insertBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) !*runtime.Instance {
+    const child_node = child orelse {
+        // If child is null, insert at the end
+        try appendChild(instance, node);
+        return node;
+    };
+    try preInsertValidation(instance, node, child_node);
+    try insertNode(node, instance, child_node);
     return node;
 }
 
@@ -1116,18 +1125,20 @@ pub fn call_replaceChild(instance: *runtime.Instance, node: *runtime.Instance, c
 
 /// Operation: lookupPrefix
 /// https://dom.spec.whatwg.org/#dom-node-lookupprefix
-pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: runtime.DOMString) !runtime.DOMString {
+pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: ?runtime.DOMString) !?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    if (namespace.len() == 0) {
-        return runtime.DOMString.initEmpty();
+    const ns = namespace orelse return null;
+
+    if (ns.len() == 0) {
+        return null;
     }
 
     switch (internal.node_type) {
         NodeType.ELEMENT_NODE => {
             // Check this element's namespace
-            if (internal.namespace_uri) |ns| {
-                if (std.mem.eql(u8, ns.asSlice(), namespace.asSlice())) {
+            if (internal.namespace_uri) |elem_ns| {
+                if (std.mem.eql(u8, elem_ns.asSlice(), ns.asSlice())) {
                     if (internal.prefix) |prefix| {
                         return prefix;
                     }
@@ -1142,7 +1153,7 @@ pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: runtime.DOMStri
             }
         },
         NodeType.DOCUMENT_TYPE_NODE, NodeType.DOCUMENT_FRAGMENT_NODE => {
-            return runtime.DOMString.initEmpty();
+            return null;
         },
         NodeType.ATTRIBUTE_NODE => {
             // Lookup on owner element
@@ -1151,7 +1162,7 @@ pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: runtime.DOMStri
         else => {
             // Lookup on parent element
             if (internal.parent) |parent| {
-                const parent_internal = getInternal(parent) orelse return runtime.DOMString.initEmpty();
+                const parent_internal = getInternal(parent) orelse return null;
                 if (parent_internal.node_type == NodeType.ELEMENT_NODE) {
                     return call_lookupPrefix(parent, namespace);
                 }
@@ -1159,12 +1170,12 @@ pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: runtime.DOMStri
         },
     }
 
-    return runtime.DOMString.initEmpty();
+    return null;
 }
 
 /// Operation: lookupNamespaceURI
 /// https://dom.spec.whatwg.org/#dom-node-lookupnamespaceuri
-pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: runtime.DOMString) !runtime.DOMString {
+pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: ?runtime.DOMString) !?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     switch (internal.node_type) {
@@ -1172,15 +1183,18 @@ pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: runtime.DOMS
             // Check this element's namespace
             if (internal.namespace_uri) |ns| {
                 const has_prefix = internal.prefix != null;
-                const prefix_matches = if (internal.prefix) |p|
-                    std.mem.eql(u8, p.asSlice(), prefix.asSlice())
-                else
-                    false;
+                const prefix_matches = if (internal.prefix) |p| blk: {
+                    if (prefix) |pfx| {
+                        break :blk std.mem.eql(u8, p.asSlice(), pfx.asSlice());
+                    }
+                    break :blk false;
+                } else false;
 
                 if (has_prefix and prefix_matches) {
                     return ns;
                 }
-                if (!has_prefix and prefix.len() == 0) {
+                const is_empty_prefix = if (prefix) |p| p.len() == 0 else true;
+                if (!has_prefix and is_empty_prefix) {
                     return ns;
                 }
             }
@@ -1193,7 +1207,7 @@ pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: runtime.DOMS
             }
         },
         NodeType.DOCUMENT_TYPE_NODE, NodeType.DOCUMENT_FRAGMENT_NODE => {
-            return runtime.DOMString.initEmpty();
+            return null;
         },
         NodeType.ATTRIBUTE_NODE => {
             // Lookup on owner element
@@ -1207,19 +1221,18 @@ pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: runtime.DOMS
         },
     }
 
-    return runtime.DOMString.initEmpty();
+    return null;
 }
 
 /// Operation: isDefaultNamespace
 /// https://dom.spec.whatwg.org/#dom-node-isdefaultnamespace
-pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: runtime.DOMString) !bool {
-    const default_ns = try call_lookupNamespaceURI(instance, runtime.DOMString.initEmpty());
+pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: ?runtime.DOMString) !bool {
+    const default_ns = try call_lookupNamespaceURI(instance, null);
 
-    if (namespace.len() == 0) {
-        return default_ns.len() == 0;
-    }
+    const ns = namespace orelse return (default_ns == null or default_ns.?.len() == 0);
+    const def_ns = default_ns orelse return ns.len() == 0;
 
-    return std.mem.eql(u8, default_ns.asSlice(), namespace.asSlice());
+    return std.mem.eql(u8, def_ns.asSlice(), ns.asSlice());
 }
 
 // =============================================================================

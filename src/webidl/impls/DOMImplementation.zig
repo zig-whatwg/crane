@@ -173,7 +173,7 @@ pub fn call_createDocumentType(instance: *runtime.Instance, name: runtime.DOMStr
 ///    - SVG namespace: "image/svg+xml"
 ///    - Any other namespace: "application/xml"
 /// 8. Return document.
-pub fn call_createDocument(instance: *runtime.Instance, namespace: runtime.DOMString, qualifiedName: runtime.DOMString, doctype: ?*runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_createDocument(instance: *runtime.Instance, namespace: ?runtime.DOMString, qualifiedName: runtime.DOMString, doctype: ?*runtime.Instance) ImplError!*runtime.Instance {
     const internal = getInternal(instance);
     const allocator = internal.allocator;
     const ctx = instance.ctx;
@@ -195,7 +195,7 @@ pub fn call_createDocument(instance: *runtime.Instance, namespace: runtime.DOMSt
     var element: ?*runtime.Instance = null;
 
     if (qname_slice.len > 0) {
-        const ns_slice = namespace.asSlice();
+        const ns_slice = if (namespace) |ns| ns.asSlice() else "";
 
         // Validate namespace and qualified name per WebIDL
         try validateNamespace(ns_slice, qname_slice);
