@@ -1093,9 +1093,17 @@ pub fn build(b: *std.Build) void {
     // fetch_mod.addImport("streams", streams_mod);
     // fetch_mod.addImport("encoding", encoding_mod);
 
+    // XMLHttpRequest module (WHATWG XHR Standard)
+    const xhr_mod = b.addModule("xhr", .{
+        .root_source_file = b.path("src/xhr/root.zig"),
+        .target = target,
+    });
+    xhr_mod.addImport("fetch", fetch_mod); // XHR uses Fetch infrastructure
+
     // Allow impls to access fetch for Headers, Request, Response implementations
     impls_mod.addImport("fetch", fetch_mod);
     impls_mod.addImport("url", url_mod); // For Request constructor URL parsing
+    impls_mod.addImport("xhr", xhr_mod); // For FormData implementation
 
     // Wire spec modules into whatwg module
     whatwg_mod.addImport("infra", infra_mod);

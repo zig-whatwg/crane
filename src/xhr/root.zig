@@ -51,6 +51,9 @@ pub const upload = @import("algorithms/upload.zig");
 // FormData implementation
 pub const form_data = @import("form_data.zig");
 
+// Multipart parser (for FormData)
+pub const multipart_parser = @import("multipart_parser.zig");
+
 // TODO: Add in later phases
 // pub const abort = @import("algorithms/abort.zig");
 

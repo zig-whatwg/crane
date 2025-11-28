@@ -114,7 +114,7 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// Appends a new value to an existing key, or adds the key if it doesn't exist.
 pub fn call_append(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) ImplError!void {
     const internal = getInternal(instance) orelse return error.InvalidState;
-    try internal.form_data.appendString(name.asSlice(), value.asSlice());
+    try internal.form_data.appendString(name, value);
 }
 
 /// Operation: delete
@@ -123,7 +123,7 @@ pub fn call_append(instance: *runtime.Instance, name: runtime.USVString, value: 
 /// Removes all values associated with a given key.
 pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) ImplError!void {
     const internal = getInternal(instance) orelse return error.InvalidState;
-    internal.form_data.delete(name.asSlice());
+    internal.form_data.delete(name);
 }
 
 /// Operation: get
@@ -133,7 +133,7 @@ pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) ImplErr
 pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) ImplError!?typedefs.FormDataEntryValue {
     const internal = getInternal(instance) orelse return error.InvalidState;
 
-    const entry = internal.form_data.get(name.asSlice()) orelse return null;
+    const entry = internal.form_data.get(name) orelse return null;
 
     return switch (entry) {
         .string => |s| .{ .variant_1 = runtime.USVString.initInterned(s) },
@@ -148,7 +148,7 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) ImplError!
 pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) ImplError!*const anyopaque {
     const internal = getInternal(instance) orelse return error.InvalidState;
 
-    const values = try internal.form_data.getAll(internal.allocator, name.asSlice());
+    const values = try internal.form_data.getAll(internal.allocator, name);
 
     // Return as opaque pointer (V8 binding will convert to JS array)
     return @ptrCast(values.ptr);
@@ -160,7 +160,7 @@ pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) ImplErr
 /// Returns whether a FormData object contains a certain key.
 pub fn call_has(instance: *runtime.Instance, name: runtime.USVString) ImplError!bool {
     const internal = getInternal(instance) orelse return error.InvalidState;
-    return internal.form_data.has(name.asSlice());
+    return internal.form_data.has(name);
 }
 
 /// Operation: set
@@ -170,7 +170,7 @@ pub fn call_has(instance: *runtime.Instance, name: runtime.USVString) ImplError!
 /// Replaces all existing values.
 pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) ImplError!void {
     const internal = getInternal(instance) orelse return error.InvalidState;
-    try internal.form_data.setString(name.asSlice(), value.asSlice());
+    try internal.form_data.setString(name, value);
 }
 
 /// Operation: forEach

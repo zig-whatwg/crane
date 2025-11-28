@@ -13,12 +13,13 @@ const XMLHttpRequestState = xhr_root.state_machine.XMLHttpRequestState;
 const ResponseProcessor = @import("response.zig").ResponseProcessor;
 const UploadTracker = @import("upload.zig").UploadTracker;
 
-// Fetch infrastructure
-const InternalRequest = @import("../../fetch/internal/request.zig").InternalRequest;
-const InternalResponse = @import("../../fetch/internal/response.zig").InternalResponse;
-const FetchParams = @import("../../fetch/internal/fetch_params.zig").FetchParams;
-const FetchController = @import("../../fetch/internal/fetch_controller.zig").FetchController;
-const FetchTimingInfo = @import("../../fetch/internal/fetch_timing.zig").FetchTimingInfo;
+// Fetch infrastructure - use module import to avoid cross-module file conflicts
+const fetch_mod = @import("fetch");
+const InternalRequest = fetch_mod.internal.InternalRequest;
+const InternalResponse = fetch_mod.internal.InternalResponse;
+const FetchParams = fetch_mod.internal.FetchParams;
+const FetchController = fetch_mod.internal.FetchController;
+const FetchTimingInfo = fetch_mod.internal.FetchTimingInfo;
 
 /// Fetch context - passed as user data to callbacks
 const FetchContext = struct {
