@@ -110,6 +110,17 @@ pub const CONTENT_TYPE_TEXT_PLAIN = body_extraction.CONTENT_TYPE_TEXT_PLAIN;
 pub const CONTENT_TYPE_FORM_URLENCODED = body_extraction.CONTENT_TYPE_FORM_URLENCODED;
 pub const CONTENT_TYPE_MULTIPART_PREFIX = body_extraction.CONTENT_TYPE_MULTIPART_PREFIX;
 
+pub const body_cloning = @import("body_cloning.zig");
+pub const BodyCloneError = body_cloning.BodyCloneError;
+pub const isBodyUsed = body_cloning.isBodyUsed;
+pub const canClone = body_cloning.canClone;
+pub const cloneBody = body_cloning.cloneBody;
+pub const cloneBodyOrThrow = body_cloning.cloneBodyOrThrow;
+pub const cloneRequestBody = body_cloning.cloneRequestBody;
+pub const cloneRequestBodyOrThrow = body_cloning.cloneRequestBodyOrThrow;
+pub const cloneResponseBody = body_cloning.cloneResponseBody;
+pub const cloneResponseBodyOrThrow = body_cloning.cloneResponseBodyOrThrow;
+
 test {
     _ = header_list;
     _ = validation;
@@ -122,4 +133,5 @@ test {
     _ = fetch_controller;
     _ = fetch_params;
     _ = body_extraction;
+    _ = body_cloning;
 }
