@@ -193,12 +193,13 @@ pub fn build(b: *std.Build) void {
     // WHATWG TestUtils Standard - Build-time gating
     // Per spec: "must not be enabled in the default shipping configuration of user agents"
     // See: https://testutils.spec.whatwg.org/
+    // Default is true for development builds; production builds should use -Denable-test-utils=false
     const enable_test_utils = b.option(
         bool,
         "enable-test-utils",
         "Enable TestUtils namespace (WHATWG TestUtils Standard). " ++
-            "WARNING: Only enable for testing builds, not production.",
-    ) orelse false;
+            "Disable with -Denable-test-utils=false for production builds.",
+    ) orelse true;
 
     // ========================================================================
     // BUILD OPTIONS MODULE
@@ -1620,9 +1621,6 @@ pub fn build(b: *std.Build) void {
 
             // Exclude prototype_property_access_test (uses console.log format)
             if (std.mem.eql(u8, filename, "prototype_property_access_test.js")) return true;
-
-            // Exclude testutils_gc_test (requires -Denable-test-utils=true build)
-            if (std.mem.eql(u8, filename, "testutils_gc_test.js")) return true;
 
             return false;
         }
