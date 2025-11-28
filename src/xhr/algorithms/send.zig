@@ -12,10 +12,12 @@ const xhr_root = @import("../root.zig");
 const state_machine = xhr_root.state_machine;
 const XMLHttpRequestState = state_machine.XMLHttpRequestState;
 const ReadyState = state_machine.ReadyState;
+const ResponseProcessor = @import("response.zig").ResponseProcessor;
+const UploadTracker = @import("upload.zig").UploadTracker;
 
 // TODO: Import real Fetch when integrated
-// For now, use mock fetch for Week 4
-const MockFetch = @import("mock_fetch.zig");
+// For now, use simplified mock for Week 4
+const SimpleFetch = @import("simple_fetch.zig");
 
 /// Send request
 ///
@@ -58,17 +60,28 @@ fn sendAsync(
     state: *XMLHttpRequestState,
     body: ?[]const u8,
 ) !void {
+    // Create response processor
+    var processor = ResponseProcessor.init(state);
+
+    // Create upload tracker if body exists
+    var upload_tracker: ?UploadTracker = null;
+    if (body) |b| {
+        if (b.len > 0 and state.upload_listener_flag) {
+            upload_tracker = UploadTracker.init(b.len);
+        }
+    }
+
     // Fire loadstart event (caller will handle)
-    // Event firing requires XMLHttpRequest instance
+    // TODO: Event firing requires XMLHttpRequest instance
 
     // TODO: Fire loadstart on upload if listeners
     // if (state.upload_listener_flag) {
     //     try fireProgressEvent(xhr.upload, "loadstart", 0, null);
     // }
 
-    // Start mock fetch
+    // Start simplified fetch
     // TODO: Replace with real Fetch integration
-    try MockFetch.fetch(state, body);
+    try SimpleFetch.fetch(state, body, &processor, &upload_tracker);
 }
 
 /// Send request synchronously (Week 5)

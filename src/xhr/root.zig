@@ -39,10 +39,14 @@ pub const GlobalContext = context.GlobalContext;
 pub const state_machine = @import("internal/state_machine.zig");
 pub const XMLHttpRequestState = state_machine.XMLHttpRequestState;
 pub const ReadyState = state_machine.ReadyState;
+pub const progress_tracker = @import("internal/progress_tracker.zig");
+pub const ProgressTracker = progress_tracker.ProgressTracker;
 
 // Algorithms
 pub const open = @import("algorithms/open.zig");
 pub const send = @import("algorithms/send.zig");
+pub const response = @import("algorithms/response.zig");
+pub const upload = @import("algorithms/upload.zig");
 
 // TODO: Add in later phases
 // pub const abort = @import("algorithms/abort.zig");
