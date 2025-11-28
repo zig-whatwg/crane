@@ -86,7 +86,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 pub fn call_constructor(
     allocator: std.mem.Allocator,
     ctx: runtime.Context,
-    body: typedefs.BodyInit,
+    body: ?typedefs.BodyInit,
     init_data: dictionaries.ResponseInit,
 ) !*runtime.Instance {
     const instance = try init(allocator, State, &Response.vtable, ctx);
@@ -94,6 +94,8 @@ pub fn call_constructor(
 
     const state = instance.getState(State);
     const internal = state.own._internal.?;
+
+    _ = body; // TODO: Handle body parameter
 
     if (init_data.status) |status| {
         if (status < 200 or status > 599) {

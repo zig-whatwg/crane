@@ -68,9 +68,9 @@ pub fn call_evaluate(
     instance: *runtime.Instance,
     expression: runtime.DOMString,
     contextNode: *runtime.Instance,
-    resolver: ?*runtime.CallbackWrapper,
-    @"type": u16,
-    result: *runtime.Instance,
+    resolver: ??*runtime.CallbackWrapper,
+    @"type": ?u16,
+    result: ?*runtime.Instance,
 ) ImplError!*runtime.Instance {
     _ = instance;
     _ = expression;
@@ -91,7 +91,7 @@ pub fn call_evaluate(
 pub fn call_createExpression(
     instance: *runtime.Instance,
     expression: runtime.DOMString,
-    resolver: ?*runtime.CallbackWrapper,
+    resolver: ??*runtime.CallbackWrapper,
 ) ImplError!*runtime.Instance {
     _ = instance;
     _ = expression;
