@@ -373,7 +373,8 @@ pub fn redirectResponse(status: u16, location: []const u8) MockResponse {
 }
 
 /// Create a CORS-enabled response.
-pub fn corsResponse(status: u16, body: ?[]const u8, origin: []const u8) MockResponse {
+/// Note: origin must be a comptime-known string literal for the headers slice to work correctly.
+pub fn corsResponse(status: u16, body: ?[]const u8, comptime origin: []const u8) MockResponse {
     return .{
         .status = status,
         .headers = &.{
