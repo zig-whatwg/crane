@@ -150,3 +150,16 @@ pub fn call_selectURL(instance: *runtime.Instance, name: runtime.DOMString, urls
     return error.NotImplemented;
 }
 
+/// Async iterator: values
+/// Returns an async iterator over storage values
+pub fn call_values(instance: *runtime.Instance) ImplError!*const anyopaque {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Async iterator: getAsyncIterator
+/// Returns an async iterator over storage entries
+pub fn call_getAsyncIterator(instance: *runtime.Instance) ImplError!*const anyopaque {
+    _ = instance;
+    return error.NotImplemented;
+}
