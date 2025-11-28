@@ -35,6 +35,7 @@ pub const cache_api = @import("cache_api.zig");
 pub const file_system = @import("file_system.zig");
 pub const structured_clone = @import("structured_clone.zig");
 pub const environment = @import("environment.zig");
+pub const origin_utils = @import("origin_utils.zig");
 
 // Environment exports for convenience.
 pub const EnvironmentSettingsObject = environment.EnvironmentSettingsObject;
@@ -44,6 +45,12 @@ pub const EmbedderPolicy = environment.EmbedderPolicy;
 pub const createMockGlobal = environment.createMockGlobal;
 pub const destroyMockGlobal = environment.destroyMockGlobal;
 pub const sameOrigin = environment.sameOrigin;
+
+// Origin utilities exports
+pub const isSameOriginDomain = origin_utils.isSameOriginDomain;
+pub const isSameSite = origin_utils.isSameSite;
+pub const isSchemelesslySameSite = origin_utils.isSchemelesslySameSite;
+pub const getRegistrableDomain = origin_utils.getRegistrableDomain;
 
 /// Common error type for mock implementations
 pub const MockError = error{
