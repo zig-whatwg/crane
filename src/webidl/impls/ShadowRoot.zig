@@ -267,17 +267,16 @@ pub fn set_onslotchange(instance: *runtime.Instance, value: typedefs.EventHandle
 // ============================================================================
 
 /// InnerHTML.innerHTML getter
-pub fn get_innerHTML(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_innerHTML(instance: *runtime.Instance) ImplError!runtime.DOMString {
     // TODO: Implement HTML serialization
     _ = instance;
-    // Return empty string as opaque pointer
-    const empty: []const u8 = "";
-    return @ptrCast(empty.ptr);
+    // Return empty string
+    return runtime.DOMString.initEmpty();
 }
 
 /// InnerHTML.innerHTML setter
 /// Spec: https://w3c.github.io/DOM-Parsing/#dom-innerhtml-innerhtml
-pub fn set_innerHTML(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_innerHTML(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
     // TODO: Implement HTML parsing and fragment replacement
     // For now, throw NotSupportedError per WebIDL for unimplemented features
     _ = instance;
@@ -371,7 +370,7 @@ pub fn call_getHTML(instance: *runtime.Instance, options: dictionaries.GetHTMLOp
 
 /// setHTMLUnsafe(html) - Parse and replace shadow tree contents
 /// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-element-sethtmlunsafe
-pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: *const anyopaque) ImplError!void {
+pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: runtime.DOMString) ImplError!void {
     // TODO: Implement unsafe HTML parsing
     // For now, throw NotSupportedError per WebIDL for unimplemented features
     _ = instance;

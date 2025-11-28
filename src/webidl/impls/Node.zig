@@ -1073,7 +1073,7 @@ pub fn call_appendChild(instance: *runtime.Instance, node: *runtime.Instance) !*
 pub fn call_insertBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) !*runtime.Instance {
     const child_node = child orelse {
         // If child is null, insert at the end
-        try appendChild(instance, node);
+        _ = try appendChild(instance, node);
         return node;
     };
     try preInsertValidation(instance, node, child_node);

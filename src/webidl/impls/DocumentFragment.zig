@@ -171,7 +171,7 @@ pub fn get_childElementCount(instance: *runtime.Instance) !u32 {
 /// Operation: prepend (from ParentNode mixin)
 /// Inserts nodes before the first child of this document fragment
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-prepend
-pub fn call_prepend(instance: *runtime.Instance, nodes: *const anyopaque) !void {
+pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) !void {
     _ = nodes;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     _ = internal;
@@ -196,7 +196,7 @@ pub fn call_prepend(instance: *runtime.Instance, nodes: *const anyopaque) !void 
 /// Operation: append (from ParentNode mixin)
 /// Inserts nodes after the last child of this document fragment
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-append
-pub fn call_append(instance: *runtime.Instance, nodes: *const anyopaque) !void {
+pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) !void {
     _ = nodes;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     _ = internal;
@@ -210,7 +210,7 @@ pub fn call_append(instance: *runtime.Instance, nodes: *const anyopaque) !void {
 /// Operation: replaceChildren (from ParentNode mixin)
 /// Replaces all children of this document fragment with nodes
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-replacechildren
-pub fn call_replaceChildren(instance: *runtime.Instance, nodes: *const anyopaque) !void {
+pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) !void {
     _ = nodes;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
@@ -234,17 +234,19 @@ pub fn call_replaceChildren(instance: *runtime.Instance, nodes: *const anyopaque
 /// Operation: moveBefore (from ParentNode mixin)
 /// Moves node to before child within this document fragment
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-movebefore
-pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) !void {
+pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     _ = internal;
 
-    // Step 1: If child's parent is not this, throw NotFoundError
-    if (NodeImpl.getParent(child) != instance) {
-        return error.InvalidStateError; // NotFoundError
-    }
+    if (child) |c| {
+        // Step 1: If child's parent is not this, throw NotFoundError
+        if (NodeImpl.getParent(c) != instance) {
+            return error.InvalidStateError; // NotFoundError
+        }
 
-    // Step 2: If node is the same as child, return
-    if (node == child) return;
+        // Step 2: If node is the same as child, return
+        if (node == c) return;
+    }
 
     // Step 3: Remove node from its current position (if it has a parent)
     if (NodeImpl.getParent(node)) |oldParent| {
