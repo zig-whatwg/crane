@@ -37,6 +37,7 @@ Crane is a comprehensive, spec-compliant implementation of the [WHATWG](https://
 | **[DOM](https://dom.spec.whatwg.org/)** | 🚧 In Progress | EventTarget, Node, Element, CharacterData, Document, Events, XPath |
 | **[MIME Sniffing](https://mimesniff.spec.whatwg.org/)** | ✅ Complete | MIME type parsing, content sniffing, resource detection |
 | **[Quirks Mode](https://quirks.spec.whatwg.org/)** | ✅ Complete | Document mode detection, CSS value quirks, selector quirks |
+| **[Fetch](https://fetch.spec.whatwg.org/)** | ✅ Complete | Request/Response, Headers, Body mixin, data/about URL schemes, HTTP fetch algorithms |
 
 ### CSS Support 🎨
 
@@ -57,7 +58,6 @@ Crane is a comprehensive, spec-compliant implementation of the [WHATWG](https://
 
 ### Planned 🚧
 
-- **Fetch** - HTTP requests, Response/Request APIs
 - **Web Sockets** - WebSocket protocol implementation  
 - **Storage** - localStorage, sessionStorage
 - **HTML Parser** - Full HTML5 parsing algorithm
@@ -164,6 +164,47 @@ pub fn main() !void {
         if (result.done) break;
         // Process result.value
     }
+}
+```
+
+#### Fetch API
+
+```zig
+const std = @import("std");
+const crane = @import("crane");
+
+pub fn main() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    // Create a Request
+    const request = try crane.fetch.Request.init(allocator, .{
+        .url = "https://api.example.com/data",
+    }, .{
+        .method = "GET",
+    });
+    defer request.deinit();
+
+    // Work with Headers
+    const headers = try crane.fetch.Headers.init(allocator, .none);
+    defer headers.deinit();
+    
+    try headers.append("Content-Type", "application/json");
+    try headers.append("Authorization", "Bearer token");
+    
+    // Check if header exists
+    const has_auth = try headers.has("Authorization"); // true
+
+    // Create a Response
+    const response = try crane.fetch.Response.init(allocator, "Hello, World!", .{
+        .status = 200,
+        .statusText = "OK",
+    });
+    defer response.deinit();
+    
+    std.debug.print("Response status: {d}\n", .{response.status()}); // 200
+    std.debug.print("Response ok: {}\n", .{response.ok()}); // true
 }
 ```
 

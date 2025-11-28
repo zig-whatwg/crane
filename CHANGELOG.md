@@ -7,6 +7,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Fetch API Implementation (v0.7.0 - 2025-11-27)
+
+#### Core Fetch Infrastructure (`src/fetch/`)
+- **Headers** - WHATWG-compliant header list implementation
+  - Case-insensitive header name handling
+  - append/delete/get/has/set operations
+  - Header validation and guard modes (none, immutable, request, request-no-cors, response)
+  - Iterator support via entries/keys/values
+
+- **Request** - HTTP request representation
+  - Full request initialization from URL string or RequestInfo
+  - Supported modes: cors, navigate, no-cors, same-origin
+  - Credentials modes: include, omit, same-origin
+  - Redirect modes: error, follow, manual
+  - Cache modes: default, force-cache, no-cache, no-store, only-if-cached, reload
+  - Body handling and cloning support
+
+- **Response** - HTTP response representation
+  - Status code and status text
+  - Response types: basic, cors, default, error, opaque, opaqueredirect
+  - Static constructors: error(), redirect(), json()
+  - Body reading with clone support
+  - ok property (200-299 status range)
+
+- **Body Mixin** - Shared body handling
+  - arrayBuffer(), blob(), formData(), json(), text() methods
+  - Body used/disturbed tracking
+  - Stream-based body consumption
+
+#### Fetch Algorithms (`src/fetch/algorithms/`)
+- **Main Fetch** - Top-level fetch algorithm
+  - Request validation and preprocessing
+  - Recursive fetch with redirect handling
+  - Response filtering and CORS checks
+
+- **Scheme Fetch** - URL scheme-specific handlers
+  - about: scheme (about:blank support)
+  - data: URL processing with MIME type extraction
+  - blob: scheme placeholder
+  - file: scheme placeholder
+
+- **HTTP Fetch** - Network layer algorithms
+  - HTTP request preparation
+  - Response header processing
+  - Redirect following (301, 302, 303, 307, 308)
+  - Network error handling
+
+- **Data URL Processing** - RFC 2397 implementation
+  - MIME type parsing
+  - Base64 decoding
+  - Percent-decoding
+
+#### WebIDL Integration (`src/fetch/webidl/`)
+- **Global fetch()** - Fetch function entry point
+- **Typed interfaces** - Request, Response, Headers with proper WebIDL bindings
+
+#### Test Infrastructure (`tests/fetch/`)
+- **MockServer** - Configurable mock HTTP server for testing
+  - Route matching (exact, prefix, any)
+  - Method-specific routing
+  - Request recording
+  - Preset response builders (json, text, html, redirect, cors, error)
+  
+- **Integration Tests** - Comprehensive test coverage
+  - Headers operations
+  - Request creation and cloning
+  - Response creation and status handling
+  - Data URL processing
+  - Mock server interactions
+
+#### WHATWG Specification Compliance
+- Fetch Standard §4: HTTP Fetch
+- Fetch Standard §5: Requests
+- Fetch Standard §6: Responses
+- Fetch Standard §8: Headers
+- Fetch Standard §9: Body
+
 ### Added - Quirks Mode and CSS Property Value Parser (v0.6.0 - 2025-11-26)
 
 #### Quirks Mode Module (`src/quirks/`)
