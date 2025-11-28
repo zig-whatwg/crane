@@ -33,6 +33,7 @@ pub const State = AbortSignal.State;
 
 pub const ImplError = error{
     NotImplemented,
+    InvalidState,
 };
 
 /// Internal state for implementation-specific data
@@ -111,3 +112,22 @@ pub fn call_throwIfAborted(instance: *runtime.Instance) ImplError!void {
     return error.NotImplemented;
 }
 
+/// Helper: Signal abort on this signal (called by AbortController)
+pub fn signalAbort(instance: *runtime.Instance, reason: ?*const anyopaque) ImplError!void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+
+    // If already aborted, do nothing
+    if (internal.aborted) {
+        return;
+    }
+
+    // Set aborted to true
+    internal.aborted = true;
+
+    // Set reason
+    internal.reason = reason;
+
+    // Fire abort event (requires DOM event infrastructure)
+    // For now, just set the flag - event firing would happen here
+}
