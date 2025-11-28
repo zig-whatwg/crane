@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-25T20:02:33Z
+//! Generated at: 2025-11-28T03:24:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -274,7 +274,7 @@ pub const Range = struct {
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
-    pub fn call_createContextualFragment(instance: *runtime.Instance, string: *const anyopaque) anyerror!*runtime.Instance {
+    pub fn call_createContextualFragment(instance: *runtime.Instance, string: DOMString) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

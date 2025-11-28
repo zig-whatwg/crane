@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-25T20:02:33Z
+//! Generated at: 2025-11-28T03:24:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -404,7 +404,7 @@ pub const WorkerGlobalScope = struct {
         return try WorkerGlobalScopeImpl.call_structuredClone(instance, value, options);
     }
 
-    pub fn call_importScripts(instance: *runtime.Instance, urls: *const anyopaque) anyerror!void {
+    pub fn call_importScripts(instance: *runtime.Instance, urls: DOMString) anyerror!void {
         
         return try WorkerGlobalScopeImpl.call_importScripts(instance, urls);
     }

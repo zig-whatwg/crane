@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-25T20:02:34Z
+//! Generated at: 2025-11-28T03:24:38Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -385,12 +385,12 @@ pub const HTMLIFrameElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_srcdoc(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_srcdoc(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLIFrameElementImpl.get_srcdoc(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_srcdoc(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_srcdoc(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

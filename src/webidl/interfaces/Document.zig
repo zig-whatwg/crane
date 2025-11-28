@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-25T20:02:33Z
+//! Generated at: 2025-11-28T03:24:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -2638,7 +2638,7 @@ pub const Document = struct {
         return try DocumentImpl.call_queryCommandState(instance, commandId);
     }
 
-    pub fn call_parseHTMLUnsafe(instance: *runtime.Instance, html: *const anyopaque) anyerror!*runtime.Instance {
+    pub fn call_parseHTMLUnsafe(instance: *runtime.Instance, html: DOMString) anyerror!*runtime.Instance {
         
         return try DocumentImpl.call_parseHTMLUnsafe(instance, html);
     }
@@ -2741,7 +2741,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_write(instance: *runtime.Instance, text: *const anyopaque) anyerror!void {
+    pub fn call_write(instance: *runtime.Instance, text: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -2917,7 +2917,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_writeln(instance: *runtime.Instance, text: *const anyopaque) anyerror!void {
+    pub fn call_writeln(instance: *runtime.Instance, text: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

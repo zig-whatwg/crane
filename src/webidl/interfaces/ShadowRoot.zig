@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-25T20:02:34Z
+//! Generated at: 2025-11-28T03:24:38Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -236,12 +236,12 @@ pub const ShadowRoot = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_innerHTML(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_innerHTML(instance: *runtime.Instance) anyerror!DOMString {
         return try ShadowRootImpl.get_innerHTML(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_innerHTML(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_innerHTML(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -296,7 +296,7 @@ pub const ShadowRoot = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: *const anyopaque) anyerror!void {
+    pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

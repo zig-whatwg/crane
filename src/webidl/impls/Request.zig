@@ -101,11 +101,12 @@ pub fn get_method(instance: *runtime.Instance) ImplError![]const u8 {
     return internal.request.method;
 }
 
-/// Get URL - STUB: Returns empty (Option A)
+/// Get URL
 pub fn get_url(instance: *runtime.Instance) ImplError![]const u8 {
-    // TODO (Option B): Serialize URL from internal.request.url
-    _ = instance;
-    return "";
+    const state = instance.getState(State);
+    const internal = state.own._internal.?;
+    // Use accessor method - returns first URL in url_list
+    return internal.request.getUrl();
 }
 
 /// Get headers - STUB: Returns field without caching (Option A)

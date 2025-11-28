@@ -1,5 +1,5 @@
 //! Generated from: orientation-event.idl
-//! Generated at: 2025-11-25T20:02:33Z
+//! Generated at: 2025-11-28T03:24:37Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 

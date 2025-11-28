@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-25T20:02:34Z
+//! Generated at: 2025-11-28T03:24:38Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -86,7 +86,7 @@ pub const DOMParser = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_parseFromString(instance: *runtime.Instance, string: *const anyopaque, @"type": DOMParserSupportedType) anyerror!*runtime.Instance {
+    pub fn call_parseFromString(instance: *runtime.Instance, string: DOMString, @"type": DOMParserSupportedType) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try DOMParserImpl.call_parseFromString(instance, string, @"type");

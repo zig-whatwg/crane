@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-25T20:02:34Z
+//! Generated at: 2025-11-28T03:24:38Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -87,11 +87,11 @@ pub const SVGAnimatedString = struct {
         SVGAnimatedStringImpl.deinit(instance);
     }
 
-    pub fn get_baseVal(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_baseVal(instance: *runtime.Instance) anyerror!DOMString {
         return try SVGAnimatedStringImpl.get_baseVal(instance);
     }
 
-    pub fn set_baseVal(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_baseVal(instance: *runtime.Instance, value: DOMString) anyerror!void {
         try SVGAnimatedStringImpl.set_baseVal(instance, value);
     }
 

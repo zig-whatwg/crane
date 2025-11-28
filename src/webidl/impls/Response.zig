@@ -106,14 +106,14 @@ pub fn call_error(instance: *runtime.Instance) !*runtime.Instance {
     const state = instance.getState(State);
     const allocator = state.own._internal.?.allocator;
     const ctx = instance.ctx;
-    
+
     const error_instance = try init(allocator, State, &Response.vtable, ctx);
     const error_state = error_instance.getState(State);
     const internal = error_state.own._internal.?;
-    
+
     internal.response.response_type = .@"error";
     internal.response.status = 0;
-    
+
     return error_instance;
 }
 
@@ -125,32 +125,32 @@ pub fn call_redirect(instance: *runtime.Instance, url: []const u8, status: u16) 
     const state = instance.getState(State);
     const allocator = state.own._internal.?.allocator;
     const ctx = instance.ctx;
-    
+
     const redirect_instance = try init(allocator, State, &Response.vtable, ctx);
     const redirect_state = redirect_instance.getState(State);
     const internal = redirect_state.own._internal.?;
-    
+
     internal.response.status = status;
     try internal.response.header_list.append("Location", url);
-    
+
     return redirect_instance;
 }
 
 pub fn call_json(instance: *runtime.Instance, data: *const anyopaque, init_data: dictionaries.ResponseInit) !*runtime.Instance {
     _ = data;
-    
+
     const state = instance.getState(State);
     const allocator = state.own._internal.?.allocator;
     const ctx = instance.ctx;
-    
+
     const dummy: u8 = 0;
     const empty_body = typedefs.BodyInit{ .variant_0 = @as(*const anyopaque, @ptrCast(&dummy)) };
     const json_instance = try call_constructor(allocator, ctx, empty_body, init_data);
     const json_state = json_instance.getState(State);
     const internal = json_state.own._internal.?;
-    
+
     try internal.response.header_list.set("Content-Type", "application/json");
-    
+
     return json_instance;
 }
 
@@ -159,7 +159,7 @@ pub fn call_json(instance: *runtime.Instance, data: *const anyopaque, init_data:
 pub fn get_type(instance: *runtime.Instance) ImplError!enums.ResponseType {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
-    
+
     return switch (internal.response.response_type) {
         .basic => ._basic_,
         .cors => ._cors_,
@@ -171,7 +171,14 @@ pub fn get_type(instance: *runtime.Instance) ImplError!enums.ResponseType {
 }
 
 pub fn get_url(instance: *runtime.Instance) ImplError![]const u8 {
-    _ = instance;
+    const state = instance.getState(State);
+    const internal = state.own._internal.?;
+
+    // Return last URL in URL list (for redirects)
+    if (internal.response.url_list.items.len > 0) {
+        return internal.response.url_list.items[internal.response.url_list.items.len - 1];
+    }
+
     return "";
 }
 
