@@ -836,20 +836,191 @@ pub fn call_formData(instance: *runtime.Instance) ImplError!*runtime.Instance {
     };
 
     const AsyncPromise = @import("streams_async_promise").AsyncPromise;
-    // Return promise that rejects - FormData parsing requires complex multipart/form-urlencoded parser
+    const FormDataImpl = @import("FormData.zig");
+    const xhr = @import("xhr");
+    const multipart_parser = xhr.multipart_parser;
+    const url_parser = @import("url").form_urlencoded.parser;
+
     var promise = try AsyncPromise(*runtime.Instance).init(
         internal.allocator,
         event_loop,
     );
 
-    // TODO: Implement full FormData parsing
-    // Requires parsing multipart/form-data or application/x-www-form-urlencoded
-    // This is a complex operation that should be implemented when the full
-    // FormData WebIDL wrapper is ready
-    const exception = @import("webidl").errors.Exception{
-        .simple = .{ .type = .TypeError, .message = "FormData parsing not yet implemented - requires full parser" },
-    };
-    promise.reject(exception);
+    // Get Content-Type header
+    const content_type = internal.request.header_list.get(internal.allocator, "content-type") catch null;
+
+    if (internal.request.body) |body| {
+        // Read body bytes
+        const bytes = switch (body) {
+            .bytes => |b| b,
+            .body => |body_obj| blk: {
+                if (body_obj.isDisturbed()) {
+                    const exception = @import("webidl").errors.Exception{
+                        .simple = .{ .type = .TypeError, .message = "Body is unusable (already read)" },
+                    };
+                    promise.reject(exception);
+                    return @ptrCast(promise);
+                }
+                break :blk body_obj.readAllBytes() catch {
+                    const exception = @import("webidl").errors.Exception{
+                        .simple = .{ .type = .TypeError, .message = "Failed to read body" },
+                    };
+                    promise.reject(exception);
+                    return @ptrCast(promise);
+                };
+            },
+        };
+
+        // Route to appropriate parser based on Content-Type
+        const form_data = if (content_type) |ct| parse_blk: {
+            if (std.mem.indexOf(u8, ct, "multipart/form-data") != null) {
+                // Extract boundary and parse multipart
+                const boundary = multipart_parser.extractBoundary(internal.allocator, ct) catch {
+                    const exception = @import("webidl").errors.Exception{
+                        .simple = .{ .type = .TypeError, .message = "Invalid multipart Content-Type (missing boundary)" },
+                    };
+                    promise.reject(exception);
+                    return @ptrCast(promise);
+                };
+                defer internal.allocator.free(boundary);
+
+                const entries = multipart_parser.parseMultipartFormData(internal.allocator, bytes, boundary) catch {
+                    const exception = @import("webidl").errors.Exception{
+                        .simple = .{ .type = .TypeError, .message = "Failed to parse multipart/form-data body" },
+                    };
+                    promise.reject(exception);
+                    return @ptrCast(promise);
+                };
+                defer {
+                    for (entries) |*entry| entry.deinit(internal.allocator);
+                    internal.allocator.free(entries);
+                }
+
+                // Build FormData from entries
+                const fd = xhr.form_data.FormData.init(internal.allocator) catch {
+                    const exception = @import("webidl").errors.Exception{
+                        .simple = .{ .type = .TypeError, .message = "Failed to create FormData" },
+                    };
+                    promise.reject(exception);
+                    return @ptrCast(promise);
+                };
+                errdefer fd.deinit();
+
+                for (entries) |entry| {
+                    switch (entry.value) {
+                        .string => |s| try fd.appendString(entry.name, s),
+                        .file => |f| try fd.appendFile(entry.name, f, entry.filename),
+                    }
+                }
+
+                break :parse_blk fd;
+            } else if (std.mem.indexOf(u8, ct, "application/x-www-form-urlencoded") != null) {
+                // Parse URL-encoded
+                const tuples = url_parser.parse(internal.allocator, bytes) catch {
+                    const exception = @import("webidl").errors.Exception{
+                        .simple = .{ .type = .TypeError, .message = "Failed to parse URL-encoded body" },
+                    };
+                    promise.reject(exception);
+                    return @ptrCast(promise);
+                };
+                defer {
+                    for (tuples) |tuple| tuple.deinit(internal.allocator);
+                    internal.allocator.free(tuples);
+                }
+
+                // Build FormData from tuples
+                const fd = xhr.form_data.FormData.init(internal.allocator) catch {
+                    const exception = @import("webidl").errors.Exception{
+                        .simple = .{ .type = .TypeError, .message = "Failed to create FormData" },
+                    };
+                    promise.reject(exception);
+                    return @ptrCast(promise);
+                };
+                errdefer fd.deinit();
+
+                for (tuples) |tuple| {
+                    try fd.appendString(tuple.name, tuple.value);
+                }
+
+                break :parse_blk fd;
+            } else {
+                const exception = @import("webidl").errors.Exception{
+                    .simple = .{ .type = .TypeError, .message = "Invalid Content-Type for FormData (expected multipart/form-data or application/x-www-form-urlencoded)" },
+                };
+                promise.reject(exception);
+                return @ptrCast(promise);
+            }
+        } else url_blk: {
+            // No Content-Type header - default to URL-encoded
+            const tuples = url_parser.parse(internal.allocator, bytes) catch {
+                const exception = @import("webidl").errors.Exception{
+                    .simple = .{ .type = .TypeError, .message = "Failed to parse body as URL-encoded" },
+                };
+                promise.reject(exception);
+                return @ptrCast(promise);
+            };
+            defer {
+                for (tuples) |tuple| tuple.deinit(internal.allocator);
+                internal.allocator.free(tuples);
+            }
+
+            const fd = xhr.form_data.FormData.init(internal.allocator) catch {
+                const exception = @import("webidl").errors.Exception{
+                    .simple = .{ .type = .TypeError, .message = "Failed to create FormData" },
+                };
+                promise.reject(exception);
+                return @ptrCast(promise);
+            };
+            errdefer fd.deinit();
+
+            for (tuples) |tuple| {
+                try fd.appendString(tuple.name, tuple.value);
+            }
+
+            break :url_blk fd;
+        };
+
+        // Wrap in WebIDL instance
+        const formdata_instance = FormDataImpl.createFromInternal(
+            internal.allocator,
+            instance.ctx,
+            form_data,
+        ) catch {
+            form_data.deinit();
+            const exception = @import("webidl").errors.Exception{
+                .simple = .{ .type = .TypeError, .message = "Failed to create FormData wrapper" },
+            };
+            promise.reject(exception);
+            return @ptrCast(promise);
+        };
+
+        // Fulfill promise
+        promise.fulfill(formdata_instance);
+    } else {
+        // Empty body - create empty FormData
+        const form_data = xhr.form_data.FormData.init(internal.allocator) catch {
+            const exception = @import("webidl").errors.Exception{
+                .simple = .{ .type = .TypeError, .message = "Failed to create FormData" },
+            };
+            promise.reject(exception);
+            return @ptrCast(promise);
+        };
+
+        const formdata_instance = FormDataImpl.createFromInternal(
+            internal.allocator,
+            instance.ctx,
+            form_data,
+        ) catch {
+            form_data.deinit();
+            const exception = @import("webidl").errors.Exception{
+                .simple = .{ .type = .TypeError, .message = "Failed to create FormData wrapper" },
+            };
+            promise.reject(exception);
+            return @ptrCast(promise);
+        };
+
+        promise.fulfill(formdata_instance);
+    }
 
     return @ptrCast(promise);
 }
