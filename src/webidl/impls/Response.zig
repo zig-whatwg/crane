@@ -466,7 +466,7 @@ pub fn call_formData(instance: *runtime.Instance) ImplError!*runtime.Instance {
     const FormDataImpl = @import("FormData.zig");
     const xhr = @import("xhr");
     const multipart_parser = xhr.multipart_parser;
-    const url_parser = @import("url").form_urlencoded.parser;
+    const url_parser = @import("form_parser"); // form_parser module from build.zig
 
     var promise = try AsyncPromise(*runtime.Instance).init(
         internal.allocator,

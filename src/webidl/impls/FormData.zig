@@ -136,7 +136,7 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) ImplError!
     const entry = internal.form_data.get(name) orelse return null;
 
     return switch (entry) {
-        .string => |s| .{ .variant_1 = runtime.USVString.initInterned(s) },
+        .string => |s| .{ .variant_1 = s }, // USVString is []const u8
         .file => |f| .{ .variant_0 = @ptrCast(f) }, // Cast File to anyopaque
     };
 }
