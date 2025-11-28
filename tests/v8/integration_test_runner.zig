@@ -10,6 +10,11 @@
 
 const std = @import("std");
 const mock_server = @import("mock_server");
+const HttpMockServer = @import("http_mock_server").HttpMockServer;
+
+/// Shared server instance for communication between main and server thread
+var shared_server: ?*HttpMockServer = null;
+var server_ready: std.Thread.ResetEvent = .{};
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -31,10 +36,9 @@ pub fn main() !void {
     std.debug.print("Starting integration test runner with {d} test(s)\n", .{test_files.len});
 
     // Start mock server in background thread
-    var server_thread = try std.Thread.spawn(.{}, runMockServer, .{allocator});
-    defer server_thread.join();
+    const server_thread = try std.Thread.spawn(.{}, runMockServer, .{allocator});
 
-    // Wait for server to be ready (simple approach: try connecting)
+    // Wait for server to be ready
     try waitForServer(allocator);
 
     std.debug.print("\nMock server is ready. Running tests...\n\n", .{});
@@ -67,19 +71,31 @@ pub fn main() !void {
     std.debug.print("Failed:       {d}\n", .{failed_count});
     std.debug.print("================================================\n", .{});
 
+    // Stop the mock server
+    if (shared_server) |server| {
+        server.stop();
+    }
+
+    // Wait for server thread to finish
+    server_thread.join();
+
     if (failed_count > 0) {
         std.process.exit(1);
     }
 }
 
 fn runMockServer(allocator: std.mem.Allocator) void {
-    const HttpMockServer = @import("http_mock_server").HttpMockServer;
-
-    var server = HttpMockServer.init(allocator) catch |err| {
+    const server = HttpMockServer.init(allocator) catch |err| {
         std.debug.print("Failed to initialize mock server: {}\n", .{err});
         return;
     };
     defer server.deinit();
+
+    // Store server reference for main thread to stop it
+    shared_server = server;
+
+    // Signal that server is ready
+    server_ready.set();
 
     server.start() catch |err| {
         std.debug.print("Mock server error: {}\n", .{err});
@@ -87,6 +103,10 @@ fn runMockServer(allocator: std.mem.Allocator) void {
 }
 
 fn waitForServer(_: std.mem.Allocator) !void {
+    // Wait for the server thread to signal it's ready
+    server_ready.wait();
+
+    // Also verify we can connect
     const max_attempts = 50;
     const delay_ms = 100;
 
@@ -122,7 +142,12 @@ fn runTest(allocator: std.mem.Allocator, repl_exe: []const u8, test_file: []cons
     defer allocator.free(result.stdout);
     defer allocator.free(result.stderr);
 
-    const success = result.term.Exited == 0;
+    const success = switch (result.term) {
+        .Exited => |code| code == 0,
+        .Signal => false,
+        .Stopped => false,
+        .Unknown => false,
+    };
 
     const output = if (!success) blk: {
         if (result.stderr.len > 0) {

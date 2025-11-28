@@ -979,6 +979,117 @@ const Repl = struct {
         return true;
     }
 
+    /// Test result from running a test file
+    const TestFileResult = struct {
+        passed: usize,
+        failed: usize,
+        errors: usize,
+    };
+
+    /// Run a test file - execute each statement and check if it returns true
+    /// Handles multi-line constructs by accumulating lines until they form complete code
+    pub fn runTestFile(self: *Self, file_path: []const u8) !TestFileResult {
+        const stdout = std.fs.File.stdout();
+
+        // Read the file
+        const file = std.fs.cwd().openFile(file_path, .{}) catch |err| {
+            try print(self.allocator, stdout, "Error opening {s}: {}\n", .{ file_path, err });
+            return .{ .passed = 0, .failed = 0, .errors = 1 };
+        };
+        defer file.close();
+
+        const content = file.readToEndAlloc(self.allocator, 1024 * 1024) catch |err| {
+            try print(self.allocator, stdout, "Error reading {s}: {}\n", .{ file_path, err });
+            return .{ .passed = 0, .failed = 0, .errors = 1 };
+        };
+        defer self.allocator.free(content);
+
+        var passed: usize = 0;
+        var failed: usize = 0;
+        var errors: usize = 0;
+
+        // Buffer for accumulating multi-line statements
+        var stmt_buffer = std.ArrayListUnmanaged(u8){};
+        defer stmt_buffer.deinit(self.allocator);
+
+        var lines = std.mem.splitScalar(u8, content, '\n');
+        while (lines.next()) |line| {
+            const trimmed = std.mem.trim(u8, line, &std.ascii.whitespace);
+
+            // Skip empty lines and comments
+            if (trimmed.len == 0) {
+                // Empty line might end a statement
+                if (stmt_buffer.items.len > 0 and self.isCompleteCode(stmt_buffer.items)) {
+                    const result = self.evalStatement(stmt_buffer.items, &passed, &failed, &errors);
+                    _ = result;
+                    stmt_buffer.clearRetainingCapacity();
+                }
+                continue;
+            }
+            if (std.mem.startsWith(u8, trimmed, "//")) continue;
+
+            // Accumulate the line
+            if (stmt_buffer.items.len > 0) {
+                try stmt_buffer.append(self.allocator, '\n');
+            }
+            try stmt_buffer.appendSlice(self.allocator, trimmed);
+
+            // Check if we have complete code
+            if (self.isCompleteCode(stmt_buffer.items)) {
+                const result = self.evalStatement(stmt_buffer.items, &passed, &failed, &errors);
+                _ = result;
+                stmt_buffer.clearRetainingCapacity();
+            }
+        }
+
+        // Handle any remaining code
+        if (stmt_buffer.items.len > 0) {
+            const result = self.evalStatement(stmt_buffer.items, &passed, &failed, &errors);
+            _ = result;
+        }
+
+        // Print summary for this file
+        const total = passed + failed + errors;
+        try print(self.allocator, stdout, "  {d}/{d} passed\n", .{ passed, total });
+
+        return .{ .passed = passed, .failed = failed, .errors = errors };
+    }
+
+    /// Evaluate a statement and update counters
+    fn evalStatement(self: *Self, code: []const u8, passed: *usize, failed: *usize, errors: *usize) bool {
+        // Skip pure declarations (var/let/const without assertions)
+        if (std.mem.startsWith(u8, code, "var ") or
+            std.mem.startsWith(u8, code, "let ") or
+            std.mem.startsWith(u8, code, "const "))
+        {
+            // Execute but don't count as assertion
+            _ = self.eval(code) catch {
+                errors.* += 1;
+                return false;
+            };
+            return true;
+        }
+
+        // Evaluate the statement
+        const result = self.eval(code) catch {
+            errors.* += 1;
+            return false;
+        };
+        defer self.allocator.free(result);
+
+        // Check if result is "true"
+        if (std.mem.eql(u8, result, "true")) {
+            passed.* += 1;
+            return true;
+        } else if (std.mem.eql(u8, result, "undefined")) {
+            // Statements like function calls that return undefined are not assertions
+            return true;
+        } else {
+            failed.* += 1;
+            return false;
+        }
+    }
+
     /// Run the REPL loop
     pub fn run(self: *Self) !void {
         const stdout = std.fs.File.stdout();
@@ -1063,5 +1174,37 @@ pub fn main() !void {
     var repl = try Repl.init(allocator);
     defer repl.deinit();
 
-    try repl.run();
+    // Check for command-line arguments
+    const args = try std.process.argsAlloc(allocator);
+    defer std.process.argsFree(allocator, args);
+
+    if (args.len > 1) {
+        // Run test file(s) instead of interactive mode
+        var total_passed: usize = 0;
+        var total_failed: usize = 0;
+        var total_errors: usize = 0;
+
+        for (args[1..]) |file_path| {
+            const result = try repl.runTestFile(file_path);
+            total_passed += result.passed;
+            total_failed += result.failed;
+            total_errors += result.errors;
+        }
+
+        // Print summary if multiple files
+        if (args.len > 2) {
+            const stdout = std.fs.File.stdout();
+            const summary = try std.fmt.allocPrint(allocator, "\n--- Total: {d} passed, {d} failed, {d} errors ---\n", .{ total_passed, total_failed, total_errors });
+            defer allocator.free(summary);
+            try stdout.writeAll(summary);
+        }
+
+        // Exit with error if any tests failed
+        if (total_failed > 0 or total_errors > 0) {
+            std.process.exit(1);
+        }
+    } else {
+        // Interactive mode
+        try repl.run();
+    }
 }

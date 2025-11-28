@@ -20,6 +20,7 @@ pub const HttpMockServer = struct {
     mock: MockServer,
     server: std.net.Server,
     should_stop: std.atomic.Value(bool),
+    large_content: ?[]u8,
 
     pub fn init(allocator: std.mem.Allocator) !*HttpMockServer {
         const self = try allocator.create(HttpMockServer);
@@ -34,6 +35,7 @@ pub const HttpMockServer = struct {
             .mock = MockServer.init(allocator),
             .server = server,
             .should_stop = std.atomic.Value(bool).init(false),
+            .large_content = null,
         };
 
         // Setup default routes for fetch tests
@@ -43,6 +45,9 @@ pub const HttpMockServer = struct {
     }
 
     pub fn deinit(self: *HttpMockServer) void {
+        if (self.large_content) |lc| {
+            self.allocator.free(lc);
+        }
         self.mock.deinit();
         self.server.deinit();
         self.allocator.destroy(self);
@@ -158,11 +163,11 @@ pub const HttpMockServer = struct {
         });
 
         // Large content
-        const large_content = try self.allocator.alloc(u8, 10240);
-        @memset(large_content, 'X');
+        self.large_content = try self.allocator.alloc(u8, 10240);
+        @memset(self.large_content.?, 'X');
         try self.mock.addRoute("/content/large", .{
             .status = 200,
-            .body = large_content,
+            .body = self.large_content.?,
             .headers = &.{.{ "Content-Type", "text/plain" }},
         });
 
@@ -220,6 +225,11 @@ pub const HttpMockServer = struct {
 
     pub fn stop(self: *HttpMockServer) void {
         self.should_stop.store(true, .release);
+
+        // Make a dummy connection to wake up the accept() call
+        const address = std.net.Address.parseIp("127.0.0.1", 8080) catch return;
+        const stream = std.net.tcpConnectToAddress(address) catch return;
+        stream.close();
     }
 
     fn handleHttpRequest(self: *HttpMockServer, conn: std.net.Server.Connection) !void {
