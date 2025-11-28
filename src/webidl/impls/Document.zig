@@ -53,10 +53,14 @@ pub const InternalState = struct {
     /// Document content type (e.g., "text/html", "application/xml")
     content_type: ?[]const u8 = null,
 
+    /// Document origin (opaque for now)
+    origin: ?*anyopaque = null,
+
     pub fn deinit(self: *InternalState) void {
         if (self.content_type) |ct| {
             self.allocator.free(ct);
         }
+        // origin is borrowed, not owned
     }
 };
 
@@ -78,6 +82,7 @@ pub fn init(
         .allocator = allocator,
         .doc_type = .xml, // Default to XML
         .content_type = null,
+        .origin = null,
     };
 
     return instance;
@@ -2554,4 +2559,13 @@ pub fn setContentType(instance: *runtime.Instance, content_type: []const u8) !vo
 
     // Duplicate and store new content_type
     internal.content_type = try internal.allocator.dupe(u8, content_type);
+}
+
+/// Copy origin from another document (called by DOMImplementation)
+pub fn copyOrigin(instance: *runtime.Instance, source: *runtime.Instance) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const source_internal = getInternal(source) orelse return error.InvalidStateError;
+
+    // Copy origin reference (borrowed, not owned)
+    internal.origin = source_internal.origin;
 }
