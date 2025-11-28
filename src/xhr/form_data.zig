@@ -10,7 +10,7 @@ const Allocator = std.mem.Allocator;
 
 // File/Blob types - will be properly imported when integrated
 // For now, use placeholder types
-const File = struct {
+pub const File = struct {
     data: []const u8,
     allocator: Allocator,
 
