@@ -291,15 +291,35 @@ pub fn call_arrayBuffer(instance: *runtime.Instance) ImplError!*const anyopaque 
     };
 
     const AsyncPromise = @import("streams_async_promise").AsyncPromise;
-    var promise = try AsyncPromise(*const anyopaque).init(
+    const ArrayBufferView = @import("runtime").arraybuffer_view;
+    var promise = try AsyncPromise(ArrayBufferView.ArrayBuffer).init(
         internal.allocator,
         event_loop,
     );
 
-    const exception = @import("webidl").errors.Exception{
-        .simple = .{ .type = .TypeError, .message = "ArrayBuffer creation not yet implemented" },
-    };
-    promise.reject(exception);
+    if (internal.response.body) |body| {
+        if (body.isDisturbed()) {
+            const exception = @import("webidl").errors.Exception{
+                .simple = .{ .type = .TypeError, .message = "Body is unusable (already read)" },
+            };
+            promise.reject(exception);
+        } else {
+            const bytes = body.readAllBytes() catch {
+                const exception = @import("webidl").errors.Exception{
+                    .simple = .{ .type = .TypeError, .message = "Failed to read body" },
+                };
+                promise.reject(exception);
+                return @ptrCast(promise);
+            };
+
+            const buffer = try ArrayBufferView.ArrayBuffer.init(internal.allocator, bytes.len);
+            @memcpy(buffer.data, bytes);
+            promise.fulfill(buffer);
+        }
+    } else {
+        const buffer = try ArrayBufferView.ArrayBuffer.init(internal.allocator, 0);
+        promise.fulfill(buffer);
+    }
 
     return @ptrCast(promise);
 }
@@ -315,15 +335,51 @@ pub fn call_blob(instance: *runtime.Instance) ImplError!*runtime.Instance {
     };
 
     const AsyncPromise = @import("streams_async_promise").AsyncPromise;
+    const file_mod = @import("file");
+    const BlobData = file_mod.BlobData;
     var promise = try AsyncPromise(*runtime.Instance).init(
         internal.allocator,
         event_loop,
     );
 
-    const exception = @import("webidl").errors.Exception{
-        .simple = .{ .type = .TypeError, .message = "Blob creation not yet implemented" },
+    // Get MIME type from Content-Type header
+    const mime_type = blk: {
+        const ct = internal.response.header_list.get(internal.allocator, "content-type") catch null;
+        break :blk ct orelse "";
     };
-    promise.reject(exception);
+
+    if (internal.response.body) |body| {
+        if (body.isDisturbed()) {
+            const exception = @import("webidl").errors.Exception{
+                .simple = .{ .type = .TypeError, .message = "Body is unusable (already read)" },
+            };
+            promise.reject(exception);
+        } else {
+            const bytes = body.readAllBytes() catch {
+                const exception = @import("webidl").errors.Exception{
+                    .simple = .{ .type = .TypeError, .message = "Failed to read body" },
+                };
+                promise.reject(exception);
+                return @ptrCast(promise);
+            };
+
+            const blob_data = try BlobData.init(internal.allocator, bytes, mime_type);
+
+            // TODO: Wrap BlobData in Blob WebIDL instance
+            blob_data.deinit();
+            const exception = @import("webidl").errors.Exception{
+                .simple = .{ .type = .TypeError, .message = "Blob WebIDL wrapper not yet implemented" },
+            };
+            promise.reject(exception);
+        }
+    } else {
+        const blob_data = try BlobData.init(internal.allocator, &[_]u8{}, mime_type);
+        blob_data.deinit();
+        const exception = @import("webidl").errors.Exception{
+            .simple = .{ .type = .TypeError, .message = "Blob WebIDL wrapper not yet implemented" },
+        };
+        promise.reject(exception);
+    }
 
     return @ptrCast(promise);
 }
@@ -386,8 +442,12 @@ pub fn call_formData(instance: *runtime.Instance) ImplError!*runtime.Instance {
         event_loop,
     );
 
+    // TODO: Implement full FormData parsing
+    // Requires parsing multipart/form-data or application/x-www-form-urlencoded
+    // This is a complex operation that should be implemented when the full
+    // FormData WebIDL wrapper is ready
     const exception = @import("webidl").errors.Exception{
-        .simple = .{ .type = .TypeError, .message = "FormData parsing not yet implemented" },
+        .simple = .{ .type = .TypeError, .message = "FormData parsing not yet implemented - requires full parser" },
     };
     promise.reject(exception);
 
@@ -405,7 +465,7 @@ pub fn call_json_read(instance: *runtime.Instance) ImplError!*const anyopaque {
     };
 
     const AsyncPromise = @import("streams_async_promise").AsyncPromise;
-    var promise = try AsyncPromise(*const anyopaque).init(
+    var promise = try AsyncPromise(std.json.Value).init(
         internal.allocator,
         event_loop,
     );
@@ -417,10 +477,27 @@ pub fn call_json_read(instance: *runtime.Instance) ImplError!*const anyopaque {
             };
             promise.reject(exception);
         } else {
-            const exception = @import("webidl").errors.Exception{
-                .simple = .{ .type = .TypeError, .message = "JSON parsing not yet implemented" },
+            const bytes = body.readAllBytes() catch {
+                const exception = @import("webidl").errors.Exception{
+                    .simple = .{ .type = .TypeError, .message = "Failed to read body" },
+                };
+                promise.reject(exception);
+                return @ptrCast(promise);
             };
-            promise.reject(exception);
+
+            const parsed = std.json.parseFromSlice(
+                std.json.Value,
+                internal.allocator,
+                bytes,
+                .{},
+            ) catch {
+                const exception = @import("webidl").errors.Exception{
+                    .simple = .{ .type = .SyntaxError, .message = "Invalid JSON" },
+                };
+                promise.reject(exception);
+                return @ptrCast(promise);
+            };
+            promise.fulfill(parsed.value);
         }
     } else {
         const exception = @import("webidl").errors.Exception{
