@@ -90,6 +90,17 @@ pub const createCORSFilteredResponse = response.createCORSFilteredResponse;
 pub const createOpaqueFilteredResponse = response.createOpaqueFilteredResponse;
 pub const createOpaqueRedirectFilteredResponse = response.createOpaqueRedirectFilteredResponse;
 
+pub const fetch_controller = @import("fetch_controller.zig");
+pub const FetchController = fetch_controller.FetchController;
+pub const deserializeAbortReason = fetch_controller.deserializeAbortReason;
+
+pub const fetch_params = @import("fetch_params.zig");
+pub const FetchParams = fetch_params.FetchParams;
+pub const TaskDestination = fetch_params.TaskDestination;
+pub const ParallelQueue = fetch_params.ParallelQueue;
+pub const queueFetchTask = fetch_params.queueFetchTask;
+pub const createAppropriateNetworkError = fetch_params.createAppropriateNetworkError;
+
 test {
     _ = header_list;
     _ = validation;
@@ -99,4 +110,6 @@ test {
     _ = fetch_timing;
     _ = request;
     _ = response;
+    _ = fetch_controller;
+    _ = fetch_params;
 }
