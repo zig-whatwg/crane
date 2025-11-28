@@ -34,6 +34,16 @@ const std = @import("std");
 pub const cache_api = @import("cache_api.zig");
 pub const file_system = @import("file_system.zig");
 pub const structured_clone = @import("structured_clone.zig");
+pub const environment = @import("environment.zig");
+
+// Environment exports for convenience.
+pub const EnvironmentSettingsObject = environment.EnvironmentSettingsObject;
+pub const PolicyContainer = environment.PolicyContainer;
+pub const ReferrerPolicy = environment.ReferrerPolicy;
+pub const EmbedderPolicy = environment.EmbedderPolicy;
+pub const createMockGlobal = environment.createMockGlobal;
+pub const destroyMockGlobal = environment.destroyMockGlobal;
+pub const sameOrigin = environment.sameOrigin;
 
 /// Common error type for mock implementations
 pub const MockError = error{
