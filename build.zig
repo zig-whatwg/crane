@@ -1590,6 +1590,44 @@ pub fn build(b: *std.Build) void {
     repl_step.dependOn(&run_repl.step);
 
     // ========================================================================
+    // HTTP MOCK SERVER (for V8 fetch integration tests)
+    // ========================================================================
+
+    // Create anonymous module for mock_server.zig
+    const mock_server_mod = b.createModule(.{
+        .root_source_file = b.path("tests/fetch/mock_server.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "fetch", .module = fetch_mod },
+            .{ .name = "infra", .module = infra_mod },
+            .{ .name = "url", .module = url_mod },
+        },
+    });
+
+    const http_mock_server_exe = b.addExecutable(.{
+        .name = "http_mock_server",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/v8/http_mock_server.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "fetch", .module = fetch_mod },
+                .{ .name = "mock_server", .module = mock_server_mod },
+            },
+        }),
+    });
+
+    b.installArtifact(http_mock_server_exe);
+
+    // Add run step for mock server
+    const run_mock_server = b.addRunArtifact(http_mock_server_exe);
+    run_mock_server.step.dependOn(b.getInstallStep());
+
+    const mock_server_step = b.step("run-mock-server", "Run HTTP mock server on localhost:8080");
+    mock_server_step.dependOn(&run_mock_server.step);
+
+    // ========================================================================
     // V8 JAVASCRIPT TEST RUNNER
     // ========================================================================
 
