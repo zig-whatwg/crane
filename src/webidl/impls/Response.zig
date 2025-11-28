@@ -32,6 +32,7 @@ pub const ImplError = error{
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
     response: *InternalResponse,
+    headers_cache: ?*runtime.Instance = null, // Cached Headers instance
 };
 
 /// Initialize instance
@@ -53,6 +54,7 @@ pub fn init(
     internal.* = .{
         .allocator = allocator,
         .response = response,
+        .headers_cache = null,
     };
 
     const state = instance.getState(StateType);
@@ -66,6 +68,11 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         const allocator = internal.allocator;
+        // Clean up cached headers if exists
+        if (internal.headers_cache) |headers| {
+            const Headers = @import("Headers.zig");
+            Headers.deinit(headers);
+        }
         internal.response.deinit();
         allocator.destroy(internal);
     }
@@ -208,7 +215,26 @@ pub fn get_statusText(instance: *runtime.Instance) ImplError![]const u8 {
 
 pub fn get_headers(instance: *runtime.Instance) ImplError!*runtime.Instance {
     const state = instance.getState(State);
-    return state.own.headers;
+    const internal = state.own._internal.?;
+
+    // Return cached instance if exists
+    if (internal.headers_cache) |headers| {
+        return headers;
+    }
+
+    // Create Headers instance wrapping our header_list with "response" guard
+    const Headers = @import("Headers.zig");
+    const headers = try Headers.initWithHeaderList(
+        internal.allocator,
+        instance.ctx,
+        &internal.response.header_list,
+        .response,
+    );
+
+    // Cache it
+    internal.headers_cache = headers;
+
+    return headers;
 }
 
 pub fn get_body(instance: *runtime.Instance) ImplError!?*runtime.Instance {
