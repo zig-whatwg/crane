@@ -129,6 +129,11 @@ pub const FetchParams = struct {
     /// and null, failure, or a byte sequence."
     process_response_consume_body: ?ProcessResponseConsumeBodyFn = null,
 
+    /// Callback: process response body chunk (for streaming/progress).
+    /// Extension for XHR: Called when a chunk of the response body is received.
+    /// This enables progress events during download.
+    process_response_body_chunk: ?ProcessResponseBodyChunkFn = null,
+
     /// Task destination.
     /// Spec: "A fetch params has an associated task destination (default null),
     /// which is null, a global object, or a parallel queue."
@@ -174,6 +179,10 @@ pub const FetchParams = struct {
     /// Process response consume body callback.
     /// The body_result is null (no body), failure marker, or body bytes.
     pub const ProcessResponseConsumeBodyFn = *const fn (response: *InternalResponse, body_result: ?BodyResult) void;
+
+    /// Process response body chunk callback (for streaming/progress).
+    /// Extension for XHR: Called when a chunk of response body bytes is received.
+    pub const ProcessResponseBodyChunkFn = *const fn (chunk: []const u8) void;
 
     /// Body result for consume body callback.
     pub const BodyResult = union(enum) {
@@ -279,14 +288,16 @@ pub const FetchParams = struct {
         }
     }
 
-    // === Task Queuing ===
-
-    /// Queue a task using this fetch params' task destination.
-    pub fn queueTask(self: *Self, algorithm: *const fn () void) void {
-        queueFetchTask(algorithm, self.task_destination);
+    /// Invoke process response body chunk callback if set.
+    pub fn processResponseBodyChunk(self: *Self, chunk: []const u8) void {
+        if (self.process_response_body_chunk) |callback| {
+            callback(chunk);
+        }
     }
 };
 
+// =============================================================================
+// Tests
 // =============================================================================
 // Create Appropriate Network Error
 // =============================================================================

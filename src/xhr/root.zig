@@ -42,9 +42,9 @@ pub const ReadyState = state_machine.ReadyState;
 
 // Algorithms
 pub const open = @import("algorithms/open.zig");
+pub const send = @import("algorithms/send.zig");
 
 // TODO: Add in later phases
-// pub const send = @import("algorithms/send.zig");
 // pub const abort = @import("algorithms/abort.zig");
 
 test {
