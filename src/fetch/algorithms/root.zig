@@ -6,6 +6,7 @@
 //!
 //! - `data_url.zig` - data: URL processor
 //! - `scheme_fetch.zig` - Scheme fetch dispatcher
+//! - `main_fetch.zig` - Main fetch orchestration algorithm
 //!
 //! ## Usage
 //!
@@ -18,12 +19,16 @@
 //!
 //! // Execute scheme fetch
 //! const fetch_result = try algorithms.schemeFetch(allocator, "data", url);
+//!
+//! // Execute main fetch
+//! const response = try algorithms.mainFetch(allocator, &fetch_params, false);
 //! ```
 
 const std = @import("std");
 
 pub const data_url = @import("data_url.zig");
 pub const scheme_fetch = @import("scheme_fetch.zig");
+pub const main_fetch = @import("main_fetch.zig");
 
 // Re-export main types and functions
 pub const DataUrlResult = data_url.DataUrlResult;
@@ -37,6 +42,10 @@ pub const isSupportedScheme = scheme_fetch.isSupportedScheme;
 pub const isLocalScheme = scheme_fetch.isLocalScheme;
 pub const isHttpScheme = scheme_fetch.isHttpScheme;
 pub const isFetchScheme = scheme_fetch.isFetchScheme;
+
+pub const MainFetchError = main_fetch.MainFetchError;
+pub const MainFetchResult = main_fetch.MainFetchResult;
+pub const mainFetch = main_fetch.mainFetch;
 
 test {
     std.testing.refAllDecls(@This());
