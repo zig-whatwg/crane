@@ -1621,6 +1621,9 @@ pub fn build(b: *std.Build) void {
             // Exclude prototype_property_access_test (uses console.log format)
             if (std.mem.eql(u8, filename, "prototype_property_access_test.js")) return true;
 
+            // Exclude testutils_gc_test (requires -Denable-test-utils=true build)
+            if (std.mem.eql(u8, filename, "testutils_gc_test.js")) return true;
+
             return false;
         }
     }.check;
