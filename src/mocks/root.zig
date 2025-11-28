@@ -37,6 +37,7 @@ pub const structured_clone = @import("structured_clone.zig");
 pub const environment = @import("environment.zig");
 pub const origin_utils = @import("origin_utils.zig");
 pub const service_worker = @import("service_worker.zig");
+pub const form_data = @import("form_data.zig");
 
 // Environment exports for convenience.
 pub const EnvironmentSettingsObject = environment.EnvironmentSettingsObject;
@@ -56,6 +57,11 @@ pub const getRegistrableDomain = origin_utils.getRegistrableDomain;
 // Service worker exports
 pub const ServiceWorkerController = service_worker.ServiceWorkerController;
 pub const ServiceWorkersMode = service_worker.ServiceWorkersMode;
+
+// FormData exports
+pub const FormData = form_data.FormData;
+pub const encodeMultipart = form_data.encodeMultipart;
+pub const parseUrlEncoded = form_data.parseUrlEncoded;
 
 /// Common error type for mock implementations
 pub const MockError = error{
