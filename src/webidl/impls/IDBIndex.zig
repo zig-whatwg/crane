@@ -1,6 +1,23 @@
-//! Implementation for IDBIndex interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
 //!
-//! Connects WebIDL IDBIndex interface to storage.indexeddb.IDBIndex implementation.
+//! Implementation stub for IDBIndex interface
+//!
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Remove this header comment block
+//!   3. Add your implementation logic
+//!   4. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -9,32 +26,22 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const storage = @import("storage");
-const IDBIndexInterface = interfaces.IDBIndex;
+const mixins = @import("mixins");
+const IDBIndex = interfaces.IDBIndex;
 
-pub const State = IDBIndexInterface.State;
+pub const State = IDBIndex.State;
 
 pub const ImplError = error{
     NotImplemented,
-    InvalidState,
-    TransactionInactive,
-    NotFound,
-    DataError,
-    OutOfMemory,
 };
 
-/// Internal state wrapping storage.indexeddb.IDBIndex
-pub const InternalState = struct {
-    allocator: std.mem.Allocator,
-    index: ?*storage.indexeddb.IDBIndex,
-    object_store_instance: ?*runtime.Instance,
+/// Internal state for implementation-specific data
+/// Implementations can replace this with a real struct containing:
+/// - Private data not exposed via WebIDL attributes
+/// - Cached computations, buffers, etc.
+pub const InternalState = struct {};
 
-    pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
-        allocator.destroy(self);
-    }
-};
-
-/// Initialize instance
+/// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
@@ -42,252 +49,110 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
-
-    const state = instance.getState(StateType);
-
-    state.own._internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(state.own._internal.?);
-
-    const internal = state.own._internal.?;
-    internal.allocator = allocator;
-    internal.index = null;
-    internal.object_store_instance = null;
-
+    // TODO: Initialize your instance state here if needed
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        internal.deinit(internal.allocator);
-        state.own._internal = null;
-    }
+    // TODO: Clean up your instance resources here
     runtime.Instance.deinit(instance);
 }
 
 /// Getter for name
 pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    const index = internal.index orelse return error.InvalidState;
-    return runtime.DOMString.initInterned(index.name);
+    _ = instance;
+    return error.NotImplemented;
 }
 
-/// Getter for objectStore - returns the associated IDBObjectStore
+/// Getter for objectStore
 pub fn get_objectStore(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    return internal.object_store_instance orelse error.InvalidState;
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for keyPath
 pub fn get_keyPath(instance: *runtime.Instance) ImplError!*const anyopaque {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    const index = internal.index orelse return error.InvalidState;
-    if (index.key_path) |kp| {
-        // Return key path as opaque pointer (would be string or sequence<string>)
-        return @ptrCast(kp.ptr);
-    }
-    return error.NotFound;
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for multiEntry
 pub fn get_multiEntry(instance: *runtime.Instance) ImplError!bool {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    const index = internal.index orelse return error.InvalidState;
-    return index.multi_entry;
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for unique
 pub fn get_unique(instance: *runtime.Instance) ImplError!bool {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    const index = internal.index orelse return error.InvalidState;
-    return index.unique;
+    _ = instance;
+    return error.NotImplemented;
 }
 
-/// Setter for name - renames the index (only during version change transaction)
+/// Setter for name
 pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    _ = internal.index orelse return error.InvalidState;
-    // Note: Renaming requires being in a version change transaction
-    // For now, just return not implemented
+    _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
-/// Operation: get - retrieves the value of the first record matching the given key or key range
-pub fn call_get(instance: *runtime.Instance, query: *const anyopaque) ImplError!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    const index = internal.index orelse return error.InvalidState;
-
-    // Convert query to IDBKeyRange
-    const key_range = convertQueryToKeyRange(query) orelse return error.DataError;
-
-    const request = index.get(key_range) catch |err| {
-        return mapIDBError(err);
-    };
-
-    // Wrap request in WebIDL instance
-    _ = request;
-    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
-        return error.OutOfMemory;
-    };
-    return req_instance;
-}
-
-/// Operation: getKey - retrieves the primary key of the first record matching the given key or key range
-pub fn call_getKey(instance: *runtime.Instance, query: *const anyopaque) ImplError!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    const index = internal.index orelse return error.InvalidState;
-
-    const key_range = convertQueryToKeyRange(query) orelse return error.DataError;
-
-    const request = index.getKey(key_range) catch |err| {
-        return mapIDBError(err);
-    };
-
-    _ = request;
-    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
-        return error.OutOfMemory;
-    };
-    return req_instance;
-}
-
-/// Operation: getAll - retrieves all values matching the query
+/// Operation: getAll
 pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: *const anyopaque, count: u32) ImplError!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    _ = internal.index orelse return error.InvalidState;
+    _ = instance;
     _ = queryOrOptions;
     _ = count;
-    // Would iterate through index entries and collect all matching values
-    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
-        return error.OutOfMemory;
-    };
-    return req_instance;
+    return error.NotImplemented;
 }
 
-/// Operation: getAllKeys - retrieves all primary keys matching the query
-pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: *const anyopaque, count: u32) ImplError!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    _ = internal.index orelse return error.InvalidState;
-    _ = queryOrOptions;
-    _ = count;
-    // Would iterate through index entries and collect all matching primary keys
-    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
-        return error.OutOfMemory;
-    };
-    return req_instance;
-}
-
-/// Operation: getAllRecords - retrieves all records matching the options
-pub fn call_getAllRecords(instance: *runtime.Instance, options: dictionaries.IDBGetAllOptions) ImplError!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    _ = internal.index orelse return error.InvalidState;
-    _ = options;
-    // Would return array of {key, primaryKey, value} objects
-    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
-        return error.OutOfMemory;
-    };
-    return req_instance;
-}
-
-/// Operation: count - returns the count of records matching the query
-pub fn call_count(instance: *runtime.Instance, query: *const anyopaque) ImplError!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    const index = internal.index orelse return error.InvalidState;
-
-    // Convert query to key range (query parameter is always provided)
-    const key_range = convertQueryToKeyRange(query);
-
-    const request = index.count(key_range) catch |err| {
-        return mapIDBError(err);
-    };
-
-    _ = request;
-    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
-        return error.OutOfMemory;
-    };
-    return req_instance;
-}
-
-/// Operation: openCursor - opens a cursor over the index
-pub fn call_openCursor(instance: *runtime.Instance, query: *const anyopaque, direction: enums.IDBCursorDirection) ImplError!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    const index = internal.index orelse return error.InvalidState;
-
-    // Convert query to key range (null query means unbounded)
-    const key_range = convertQueryToKeyRange(query);
-    const cursor_direction = convertCursorDirection(direction);
-
-    const request = index.openCursor(key_range, cursor_direction) catch |err| {
-        return mapIDBError(err);
-    };
-
-    _ = request;
-    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
-        return error.OutOfMemory;
-    };
-    return req_instance;
-}
-
-/// Operation: openKeyCursor - opens a key cursor over the index
+/// Operation: openKeyCursor
 pub fn call_openKeyCursor(instance: *runtime.Instance, query: *const anyopaque, direction: enums.IDBCursorDirection) ImplError!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    const index = internal.index orelse return error.InvalidState;
-
-    // Convert query to key range (null query means unbounded)
-    const key_range = convertQueryToKeyRange(query);
-    const cursor_direction = convertCursorDirection(direction);
-
-    const request = index.openKeyCursor(key_range, cursor_direction) catch |err| {
-        return mapIDBError(err);
-    };
-
-    _ = request;
-    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
-        return error.OutOfMemory;
-    };
-    return req_instance;
-}
-
-// Helper functions
-
-fn convertQueryToKeyRange(query: *const anyopaque) ?storage.indexeddb.IDBKeyRange {
-    // In a full implementation, this would:
-    // 1. Check if query is an IDBKeyRange and return it directly
-    // 2. If query is a key value, create an IDBKeyRange.only(key)
+    _ = instance;
     _ = query;
-    return storage.indexeddb.IDBKeyRange.unbounded();
+    _ = direction;
+    return error.NotImplemented;
 }
 
-fn convertCursorDirection(direction: enums.IDBCursorDirection) storage.indexeddb.cursor.IDBCursorDirection {
-    return switch (direction) {
-        ._next_ => .next,
-        ._nextunique_ => .nextunique,
-        ._prev_ => .prev,
-        ._prevunique_ => .prevunique,
-    };
+/// Operation: getAllRecords
+pub fn call_getAllRecords(instance: *runtime.Instance, options: dictionaries.IDBGetAllOptions) ImplError!*runtime.Instance {
+    _ = instance;
+    _ = options;
+    return error.NotImplemented;
 }
 
-fn mapIDBError(err: storage.indexeddb.IDBError) ImplError {
-    return switch (err) {
-        storage.indexeddb.IDBError.InvalidStateError => error.InvalidState,
-        storage.indexeddb.IDBError.TransactionInactiveError => error.TransactionInactive,
-        storage.indexeddb.IDBError.DataError => error.DataError,
-        else => error.NotImplemented,
-    };
+/// Operation: count
+pub fn call_count(instance: *runtime.Instance, query: *const anyopaque) ImplError!*runtime.Instance {
+    _ = instance;
+    _ = query;
+    return error.NotImplemented;
 }
+
+/// Operation: getKey
+pub fn call_getKey(instance: *runtime.Instance, query: *const anyopaque) ImplError!*runtime.Instance {
+    _ = instance;
+    _ = query;
+    return error.NotImplemented;
+}
+
+/// Operation: get
+pub fn call_get(instance: *runtime.Instance, query: *const anyopaque) ImplError!*runtime.Instance {
+    _ = instance;
+    _ = query;
+    return error.NotImplemented;
+}
+
+/// Operation: getAllKeys
+pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: *const anyopaque, count: u32) ImplError!*runtime.Instance {
+    _ = instance;
+    _ = queryOrOptions;
+    _ = count;
+    return error.NotImplemented;
+}
+
+/// Operation: openCursor
+pub fn call_openCursor(instance: *runtime.Instance, query: *const anyopaque, direction: enums.IDBCursorDirection) ImplError!*runtime.Instance {
+    _ = instance;
+    _ = query;
+    _ = direction;
+    return error.NotImplemented;
+}
+

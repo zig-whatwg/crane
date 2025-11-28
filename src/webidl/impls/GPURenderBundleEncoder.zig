@@ -1,4 +1,23 @@
-//! Implementation for GPURenderBundleEncoder interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
+//!
+//! Implementation stub for GPURenderBundleEncoder interface
+//!
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Remove this header comment block
+//!   3. Add your implementation logic
+//!   4. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -7,6 +26,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const mixins = @import("mixins");
 const GPURenderBundleEncoder = interfaces.GPURenderBundleEncoder;
 
 pub const State = GPURenderBundleEncoder.State;
@@ -77,7 +97,7 @@ pub fn call_popDebugGroup(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: setBindGroup
-pub fn call_setBindGroup(instance: *runtime.Instance, index: typedefs.GPUIndex32, bindGroup: *runtime.Instance, dynamicOffsets: *const anyopaque) ImplError!void {
+pub fn call_setBindGroup(instance: *runtime.Instance, index: typedefs.GPUIndex32, bindGroup: ?*runtime.Instance, dynamicOffsets: *const anyopaque) ImplError!void {
     _ = instance;
     _ = index;
     _ = bindGroup;
@@ -86,7 +106,7 @@ pub fn call_setBindGroup(instance: *runtime.Instance, index: typedefs.GPUIndex32
 }
 
 /// Operation: setVertexBuffer
-pub fn call_setVertexBuffer(instance: *runtime.Instance, slot: typedefs.GPUIndex32, buffer: *runtime.Instance, offset: typedefs.GPUSize64, size: typedefs.GPUSize64) ImplError!void {
+pub fn call_setVertexBuffer(instance: *runtime.Instance, slot: typedefs.GPUIndex32, buffer: ?*runtime.Instance, offset: typedefs.GPUSize64, size: typedefs.GPUSize64) ImplError!void {
     _ = instance;
     _ = slot;
     _ = buffer;

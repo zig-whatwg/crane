@@ -1,4 +1,23 @@
-//! Implementation for WebGL2RenderingContextOverloads interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
+//!
+//! Implementation stub for WebGL2RenderingContextOverloads interface
+//!
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Remove this header comment block
+//!   3. Add your implementation logic
+//!   4. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -7,6 +26,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const mixins = @import("mixins");
 const WebGL2RenderingContextOverloads = interfaces.WebGL2RenderingContextOverloads;
 
 pub const State = WebGL2RenderingContextOverloads.State;
@@ -64,7 +84,7 @@ pub fn call_compressedTexSubImage2D(instance: *runtime.Instance, target: typedef
 }
 
 /// Operation: texSubImage2D
-pub fn call_texSubImage2D(instance: *runtime.Instance, target: typedefs.GLenum, level: typedefs.GLint, xoffset: typedefs.GLint, yoffset: typedefs.GLint, width: typedefs.GLsizei, height: typedefs.GLsizei, format: typedefs.GLenum, @"type": typedefs.GLenum, pixels: typedefs.ArrayBufferView) ImplError!void {
+pub fn call_texSubImage2D(instance: *runtime.Instance, target: typedefs.GLenum, level: typedefs.GLint, xoffset: typedefs.GLint, yoffset: typedefs.GLint, width: typedefs.GLsizei, height: typedefs.GLsizei, format: typedefs.GLenum, @"type": typedefs.GLenum, pixels: ?typedefs.ArrayBufferView) ImplError!void {
     _ = instance;
     _ = target;
     _ = level;
@@ -79,7 +99,7 @@ pub fn call_texSubImage2D(instance: *runtime.Instance, target: typedefs.GLenum, 
 }
 
 /// Operation: uniformMatrix2fv
-pub fn call_uniformMatrix2fv(instance: *runtime.Instance, location: *runtime.Instance, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniformMatrix2fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
     _ = instance;
     _ = location;
     _ = transpose;
@@ -90,7 +110,7 @@ pub fn call_uniformMatrix2fv(instance: *runtime.Instance, location: *runtime.Ins
 }
 
 /// Operation: readPixels
-pub fn call_readPixels(instance: *runtime.Instance, x: typedefs.GLint, y: typedefs.GLint, width: typedefs.GLsizei, height: typedefs.GLsizei, format: typedefs.GLenum, @"type": typedefs.GLenum, dstData: typedefs.ArrayBufferView) ImplError!void {
+pub fn call_readPixels(instance: *runtime.Instance, x: typedefs.GLint, y: typedefs.GLint, width: typedefs.GLsizei, height: typedefs.GLsizei, format: typedefs.GLenum, @"type": typedefs.GLenum, dstData: ?typedefs.ArrayBufferView) ImplError!void {
     _ = instance;
     _ = x;
     _ = y;
@@ -103,7 +123,7 @@ pub fn call_readPixels(instance: *runtime.Instance, x: typedefs.GLint, y: typede
 }
 
 /// Operation: uniform4fv
-pub fn call_uniform4fv(instance: *runtime.Instance, location: *runtime.Instance, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniform4fv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
     _ = instance;
     _ = location;
     _ = data;
@@ -113,7 +133,7 @@ pub fn call_uniform4fv(instance: *runtime.Instance, location: *runtime.Instance,
 }
 
 /// Operation: uniform2fv
-pub fn call_uniform2fv(instance: *runtime.Instance, location: *runtime.Instance, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniform2fv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
     _ = instance;
     _ = location;
     _ = data;
@@ -132,7 +152,7 @@ pub fn call_bufferSubData(instance: *runtime.Instance, target: typedefs.GLenum, 
 }
 
 /// Operation: uniform4iv
-pub fn call_uniform4iv(instance: *runtime.Instance, location: *runtime.Instance, data: typedefs.Int32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniform4iv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Int32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
     _ = instance;
     _ = location;
     _ = data;
@@ -142,7 +162,7 @@ pub fn call_uniform4iv(instance: *runtime.Instance, location: *runtime.Instance,
 }
 
 /// Operation: uniformMatrix4fv
-pub fn call_uniformMatrix4fv(instance: *runtime.Instance, location: *runtime.Instance, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniformMatrix4fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
     _ = instance;
     _ = location;
     _ = transpose;
@@ -153,7 +173,7 @@ pub fn call_uniformMatrix4fv(instance: *runtime.Instance, location: *runtime.Ins
 }
 
 /// Operation: texImage2D
-pub fn call_texImage2D(instance: *runtime.Instance, target: typedefs.GLenum, level: typedefs.GLint, internalformat: typedefs.GLint, width: typedefs.GLsizei, height: typedefs.GLsizei, border: typedefs.GLint, format: typedefs.GLenum, @"type": typedefs.GLenum, pixels: typedefs.ArrayBufferView) ImplError!void {
+pub fn call_texImage2D(instance: *runtime.Instance, target: typedefs.GLenum, level: typedefs.GLint, internalformat: typedefs.GLint, width: typedefs.GLsizei, height: typedefs.GLsizei, border: typedefs.GLint, format: typedefs.GLenum, @"type": typedefs.GLenum, pixels: ?typedefs.ArrayBufferView) ImplError!void {
     _ = instance;
     _ = target;
     _ = level;
@@ -168,7 +188,7 @@ pub fn call_texImage2D(instance: *runtime.Instance, target: typedefs.GLenum, lev
 }
 
 /// Operation: uniform1fv
-pub fn call_uniform1fv(instance: *runtime.Instance, location: *runtime.Instance, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniform1fv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
     _ = instance;
     _ = location;
     _ = data;
@@ -192,7 +212,7 @@ pub fn call_compressedTexImage2D(instance: *runtime.Instance, target: typedefs.G
 }
 
 /// Operation: uniform1iv
-pub fn call_uniform1iv(instance: *runtime.Instance, location: *runtime.Instance, data: typedefs.Int32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniform1iv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Int32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
     _ = instance;
     _ = location;
     _ = data;
@@ -202,7 +222,7 @@ pub fn call_uniform1iv(instance: *runtime.Instance, location: *runtime.Instance,
 }
 
 /// Operation: uniform2iv
-pub fn call_uniform2iv(instance: *runtime.Instance, location: *runtime.Instance, data: typedefs.Int32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniform2iv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Int32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
     _ = instance;
     _ = location;
     _ = data;
@@ -212,7 +232,7 @@ pub fn call_uniform2iv(instance: *runtime.Instance, location: *runtime.Instance,
 }
 
 /// Operation: uniformMatrix3fv
-pub fn call_uniformMatrix3fv(instance: *runtime.Instance, location: *runtime.Instance, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniformMatrix3fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
     _ = instance;
     _ = location;
     _ = transpose;
@@ -223,7 +243,7 @@ pub fn call_uniformMatrix3fv(instance: *runtime.Instance, location: *runtime.Ins
 }
 
 /// Operation: uniform3iv
-pub fn call_uniform3iv(instance: *runtime.Instance, location: *runtime.Instance, data: typedefs.Int32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniform3iv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Int32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
     _ = instance;
     _ = location;
     _ = data;
@@ -233,7 +253,7 @@ pub fn call_uniform3iv(instance: *runtime.Instance, location: *runtime.Instance,
 }
 
 /// Operation: uniform3fv
-pub fn call_uniform3fv(instance: *runtime.Instance, location: *runtime.Instance, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniform3fv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
     _ = instance;
     _ = location;
     _ = data;

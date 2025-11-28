@@ -1,5 +1,5 @@
 //! Generated from: WEBGL_compressed_texture_etc1.idl
-//! Generated at: 2025-11-28T18:57:54Z
+//! Generated at: 2025-11-28T19:11:17Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 

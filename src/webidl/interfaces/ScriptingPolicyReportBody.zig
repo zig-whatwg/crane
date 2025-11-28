@@ -1,5 +1,5 @@
 //! Generated from: csp-next.idl
-//! Generated at: 2025-11-28T18:57:57Z
+//! Generated at: 2025-11-28T19:11:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 

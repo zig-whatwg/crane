@@ -1,4 +1,23 @@
-//! Implementation for BaseAudioContext interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
+//!
+//! Implementation stub for BaseAudioContext interface
+//!
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Remove this header comment block
+//!   3. Add your implementation logic
+//!   4. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -7,6 +26,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const mixins = @import("mixins");
 const BaseAudioContext = interfaces.BaseAudioContext;
 
 pub const State = BaseAudioContext.State;
@@ -217,7 +237,7 @@ pub fn call_createChannelSplitter(instance: *runtime.Instance, numberOfOutputs: 
 }
 
 /// Operation: decodeAudioData
-pub fn call_decodeAudioData(instance: *runtime.Instance, audioData: *const anyopaque, successCallback: callbacks.DecodeSuccessCallback, errorCallback: callbacks.DecodeErrorCallback) ImplError!*const anyopaque {
+pub fn call_decodeAudioData(instance: *runtime.Instance, audioData: *const anyopaque, successCallback: ?callbacks.DecodeSuccessCallback, errorCallback: ?callbacks.DecodeErrorCallback) ImplError!*const anyopaque {
     _ = instance;
     _ = audioData;
     _ = successCallback;

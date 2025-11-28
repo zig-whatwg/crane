@@ -1,12 +1,23 @@
-//! Implementation for Attr interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
 //!
-//! Spec: https://dom.spec.whatwg.org/#interface-attr
-//! WHATWG DOM Standard §4.9
+//! Implementation stub for Attr interface
 //!
-//! Attr nodes represent attributes on elements.
-//! Attributes have a namespace, namespace prefix, local name, value, and element.
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
 //!
-//! Migrated from: webidl/src/dom/Attr.zig
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Remove this header comment block
+//!   3. Add your implementation logic
+//!   4. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -15,65 +26,20 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const mixins = @import("mixins");
 const Attr = interfaces.Attr;
-
-// Import related impls
-const NodeImpl = @import("Node.zig");
-
-// Import DOM algorithms
-const dom = @import("dom");
 
 pub const State = Attr.State;
 
 pub const ImplError = error{
     NotImplemented,
-    InvalidStateError,
-    OutOfMemory,
 };
 
-/// Internal state for Attr implementation
-pub const InternalState = struct {
-    allocator: std.mem.Allocator,
-
-    /// The attribute's namespace (null or a non-empty string)
-    namespace_uri: ?[]const u8,
-
-    /// The attribute's namespace prefix (null or a non-empty string)
-    prefix: ?[]const u8,
-
-    /// The attribute's local name (a non-empty string)
-    local_name: []const u8,
-
-    /// The attribute's value (a string)
-    value: []u8,
-
-    /// The element this attribute belongs to (null or an element)
-    owner_element: ?*runtime.Instance,
-
-    pub fn init(allocator: std.mem.Allocator) InternalState {
-        return .{
-            .allocator = allocator,
-            .namespace_uri = null,
-            .prefix = null,
-            .local_name = "",
-            .value = &[_]u8{},
-            .owner_element = null,
-        };
-    }
-
-    pub fn deinit(self: *InternalState) void {
-        if (self.namespace_uri) |ns| self.allocator.free(ns);
-        if (self.prefix) |p| self.allocator.free(p);
-        if (self.local_name.len > 0) self.allocator.free(self.local_name);
-        if (self.value.len > 0) self.allocator.free(self.value);
-    }
-};
-
-/// Get the internal state from an instance
-fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    const state = instance.getState(State);
-    return state.own._internal;
-}
+/// Internal state for implementation-specific data
+/// Implementations can replace this with a real struct containing:
+/// - Private data not exposed via WebIDL attributes
+/// - Cached computations, buffers, etc.
+pub const InternalState = struct {};
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -83,162 +49,62 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
-
-    // Initialize Attr internal state
-    const state = instance.getState(StateType);
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const internal = try ArenaAllocator.get().create(InternalState);
-    internal.* = InternalState.init(allocator);
-    state.own._internal = internal;
-
+    // TODO: Initialize your instance state here if needed
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        internal.deinit();
-    }
+    // TODO: Clean up your instance resources here
     runtime.Instance.deinit(instance);
 }
 
-// =============================================================================
-// Getters - DOM §4.9
-// =============================================================================
-
 /// Getter for namespaceURI
-/// DOM §4.9 - Returns this's namespace.
-pub fn get_namespaceURI(instance: *runtime.Instance) !?runtime.DOMString {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.namespace_uri) |ns| {
-        return runtime.DOMString.initInterned(ns);
-    }
-    return runtime.DOMString.initEmpty();
+pub fn get_namespaceURI(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+    _ = instance;
+    return null;
 }
 
 /// Getter for prefix
-/// DOM §4.9 - Returns this's namespace prefix.
-pub fn get_prefix(instance: *runtime.Instance) !?runtime.DOMString {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.prefix) |p| {
-        return runtime.DOMString.initInterned(p);
-    }
-    return runtime.DOMString.initEmpty();
+pub fn get_prefix(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+    _ = instance;
+    return null;
 }
 
 /// Getter for localName
-/// DOM §4.9 - Returns this's local name.
-pub fn get_localName(instance: *runtime.Instance) !runtime.DOMString {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return runtime.DOMString.initInterned(internal.local_name);
+pub fn get_localName(instance: *runtime.Instance) ImplError!runtime.DOMString {
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for name
-/// DOM §4.9 - Returns this's qualified name.
-/// The qualified name is local name if namespace prefix is null,
-/// otherwise it's prefix + ":" + local name.
-pub fn get_name(instance: *runtime.Instance) !runtime.DOMString {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    if (internal.prefix) |p| {
-        // Qualified name: prefix + ":" + localName
-        const qualified = try std.fmt.allocPrint(
-            internal.allocator,
-            "{s}:{s}",
-            .{ p, internal.local_name },
-        );
-        return runtime.DOMString.initOwned(qualified);
-    }
-    // No prefix, just return local name
-    return runtime.DOMString.initInterned(internal.local_name);
+pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for value
-/// DOM §4.9 - Returns this's value.
-pub fn get_value(instance: *runtime.Instance) !runtime.DOMString {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return runtime.DOMString.initInterned(internal.value);
+pub fn get_value(instance: *runtime.Instance) ImplError!runtime.DOMString {
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for ownerElement
-/// DOM §4.9 - Returns this's element.
-pub fn get_ownerElement(instance: *runtime.Instance) !?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.owner_element) |elem| {
-        return elem;
-    }
-    return error.NotImplemented; // null
+pub fn get_ownerElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+    _ = instance;
+    return null;
 }
 
 /// Getter for specified
-/// DOM §4.9 - Always returns true (this is a legacy attribute).
-pub fn get_specified(instance: *runtime.Instance) !bool {
+pub fn get_specified(instance: *runtime.Instance) ImplError!bool {
     _ = instance;
-    return true;
+    return error.NotImplemented;
 }
-
-// =============================================================================
-// Setters - DOM §4.9
-// =============================================================================
 
 /// Setter for value
-/// DOM §4.9 - Sets this's value.
-/// Steps: Set an existing attribute value with this and the given value.
-pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) !void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const new_value = value.asSlice();
-
-    // Step 1: If attribute's element is null, set attribute's value directly
-    if (internal.owner_element == null) {
-        if (internal.value.len > 0) {
-            internal.allocator.free(internal.value);
-        }
-        internal.value = try internal.allocator.dupe(u8, new_value);
-        return;
-    }
-
-    // Step 2: Otherwise, change attribute to value (with mutation observer notification)
-    // TODO: Call dom.mutation_observer_algorithms.queueMutationRecord for "attributes"
-    if (internal.value.len > 0) {
-        internal.allocator.free(internal.value);
-    }
-    internal.value = try internal.allocator.dupe(u8, new_value);
+pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
-// =============================================================================
-// Helper Functions
-// =============================================================================
-
-/// Create an Attr with the given properties
-pub fn createAttr(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    namespace_uri: ?[]const u8,
-    prefix: ?[]const u8,
-    local_name: []const u8,
-    value: []const u8,
-) !*runtime.Instance {
-    const instance = try init(allocator, State, &Attr.vtable, ctx);
-    errdefer deinit(instance);
-
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Set node type to ATTRIBUTE_NODE (2)
-    try NodeImpl.setNodeType(instance, NodeImpl.NodeType.ATTRIBUTE_NODE);
-
-    // Set attribute properties
-    internal.namespace_uri = if (namespace_uri) |ns| try allocator.dupe(u8, ns) else null;
-    internal.prefix = if (prefix) |p| try allocator.dupe(u8, p) else null;
-    internal.local_name = try allocator.dupe(u8, local_name);
-    internal.value = try allocator.dupe(u8, value);
-
-    return instance;
-}
-
-/// Set the owner element
-pub fn setOwnerElement(instance: *runtime.Instance, element: ?*runtime.Instance) !void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    internal.owner_element = element;
-}

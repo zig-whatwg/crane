@@ -1990,6 +1990,7 @@ pub fn generateNamespace(
 
     // Write imports
     try w.writeAll("const runtime = @import(\"runtime\");\n");
+    try w.writeAll("const webidl = @import(\"webidl\");\n");
     try w.print("const {s}_impl = @import(\"impls\").{s};\n\n", .{ namespace.name, namespace.name });
 
     // Generate namespace as a struct with only static methods

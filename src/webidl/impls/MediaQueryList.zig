@@ -1,4 +1,23 @@
-//! Implementation for MediaQueryList interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
+//!
+//! Implementation stub for MediaQueryList interface
+//!
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Remove this header comment block
+//!   3. Add your implementation logic
+//!   4. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -7,6 +26,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const mixins = @import("mixins");
 const MediaQueryList = interfaces.MediaQueryList;
 
 pub const State = MediaQueryList.State;
@@ -65,15 +85,16 @@ pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) I
 }
 
 /// Operation: removeListener
-pub fn call_removeListener(instance: *runtime.Instance, callback: ?*runtime.CallbackWrapper) ImplError!void {
+pub fn call_removeListener(instance: *runtime.Instance, callback: ??*runtime.CallbackWrapper) ImplError!void {
     _ = instance;
     _ = callback;
     return error.NotImplemented;
 }
 
 /// Operation: addListener
-pub fn call_addListener(instance: *runtime.Instance, callback: ?*runtime.CallbackWrapper) ImplError!void {
+pub fn call_addListener(instance: *runtime.Instance, callback: ??*runtime.CallbackWrapper) ImplError!void {
     _ = instance;
     _ = callback;
     return error.NotImplemented;
 }
+

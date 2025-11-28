@@ -352,6 +352,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     namespaces_mod.addImport("runtime", runtime_mod);
+    namespaces_mod.addImport("webidl", webidl_mod); // For Opt wrapper in optional parameters
     namespaces_mod.addOptions("build_options", build_options);
 
     // ========================================================================

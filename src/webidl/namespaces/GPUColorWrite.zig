@@ -3,6 +3,7 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const GPUColorWrite_impl = @import("impls").GPUColorWrite;
 
 pub const GPUColorWrite = struct {

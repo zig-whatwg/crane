@@ -1,4 +1,23 @@
-//! Implementation for TrustedTypePolicyFactory interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
+//!
+//! Implementation stub for TrustedTypePolicyFactory interface
+//!
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Remove this header comment block
+//!   3. Add your implementation logic
+//!   4. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -7,6 +26,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const mixins = @import("mixins");
 const TrustedTypePolicyFactory = interfaces.TrustedTypePolicyFactory;
 
 pub const State = TrustedTypePolicyFactory.State;
@@ -80,7 +100,7 @@ pub fn call_isScriptURL(instance: *runtime.Instance, value: *const anyopaque) Im
 }
 
 /// Operation: getPropertyType
-pub fn call_getPropertyType(instance: *runtime.Instance, tagName: runtime.DOMString, property: runtime.DOMString, elementNs: runtime.DOMString) ImplError!?runtime.DOMString {
+pub fn call_getPropertyType(instance: *runtime.Instance, tagName: runtime.DOMString, property: runtime.DOMString, elementNs: ?runtime.DOMString) ImplError!?runtime.DOMString {
     _ = instance;
     _ = tagName;
     _ = property;
@@ -96,7 +116,7 @@ pub fn call_isHTML(instance: *runtime.Instance, value: *const anyopaque) ImplErr
 }
 
 /// Operation: getAttributeType
-pub fn call_getAttributeType(instance: *runtime.Instance, tagName: runtime.DOMString, attribute: runtime.DOMString, elementNs: runtime.DOMString, attrNs: runtime.DOMString) ImplError!?runtime.DOMString {
+pub fn call_getAttributeType(instance: *runtime.Instance, tagName: runtime.DOMString, attribute: runtime.DOMString, elementNs: ?runtime.DOMString, attrNs: ?runtime.DOMString) ImplError!?runtime.DOMString {
     _ = instance;
     _ = tagName;
     _ = attribute;

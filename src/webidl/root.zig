@@ -103,6 +103,7 @@ pub const CallbackVTable = callbacks.CallbackVTable;
 // Re-export wrapper types
 pub const Nullable = wrappers.Nullable;
 pub const Optional = wrappers.Optional;
+pub const Opt = wrappers.Opt; // Alias for Optional (codegen convenience)
 pub const Sequence = wrappers.Sequence;
 pub const Record = wrappers.Record;
 pub const Promise = wrappers.Promise;

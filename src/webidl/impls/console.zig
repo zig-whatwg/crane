@@ -120,3 +120,4 @@ pub fn call_countReset(ctx: runtime.Context, label: runtime.DOMString) anyerror!
     _ = label;
     return error.NotImplemented;
 }
+

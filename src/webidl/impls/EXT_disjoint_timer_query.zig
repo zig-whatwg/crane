@@ -1,4 +1,23 @@
-//! Implementation for EXT_disjoint_timer_query interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
+//!
+//! Implementation stub for EXT_disjoint_timer_query interface
+//!
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Remove this header comment block
+//!   3. Add your implementation logic
+//!   4. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -7,6 +26,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const mixins = @import("mixins");
 const EXT_disjoint_timer_query = interfaces.EXT_disjoint_timer_query;
 
 pub const State = EXT_disjoint_timer_query.State;
@@ -61,7 +81,7 @@ pub fn call_endQueryEXT(instance: *runtime.Instance, target: typedefs.GLenum) Im
 }
 
 /// Operation: isQueryEXT
-pub fn call_isQueryEXT(instance: *runtime.Instance, query: *runtime.Instance) ImplError!bool {
+pub fn call_isQueryEXT(instance: *runtime.Instance, query: ?*runtime.Instance) ImplError!bool {
     _ = instance;
     _ = query;
     return error.NotImplemented;
@@ -92,7 +112,7 @@ pub fn call_getQueryEXT(instance: *runtime.Instance, target: typedefs.GLenum, pn
 }
 
 /// Operation: deleteQueryEXT
-pub fn call_deleteQueryEXT(instance: *runtime.Instance, query: *runtime.Instance) ImplError!void {
+pub fn call_deleteQueryEXT(instance: *runtime.Instance, query: ?*runtime.Instance) ImplError!void {
     _ = instance;
     _ = query;
     return error.NotImplemented;

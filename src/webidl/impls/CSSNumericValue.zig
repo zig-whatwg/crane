@@ -1,4 +1,23 @@
-//! Implementation for CSSNumericValue interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
+//!
+//! Implementation stub for CSSNumericValue interface
+//!
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Remove this header comment block
+//!   3. Add your implementation logic
+//!   4. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -7,6 +26,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const mixins = @import("mixins");
 const CSSNumericValue = interfaces.CSSNumericValue;
 
 pub const State = CSSNumericValue.State;
@@ -40,42 +60,42 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: equals
-pub fn call_equals(instance: *runtime.Instance, value: typedefs.CSSNumberish) ImplError!bool {
+pub fn call_equals(instance: *runtime.Instance, value: []const typedefs.CSSNumberish) ImplError!bool {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: max
-pub fn call_max(instance: *runtime.Instance, values: typedefs.CSSNumberish) ImplError!*runtime.Instance {
+pub fn call_max(instance: *runtime.Instance, values: []const typedefs.CSSNumberish) ImplError!*runtime.Instance {
     _ = instance;
     _ = values;
     return error.NotImplemented;
 }
 
 /// Operation: sub
-pub fn call_sub(instance: *runtime.Instance, values: typedefs.CSSNumberish) ImplError!*runtime.Instance {
+pub fn call_sub(instance: *runtime.Instance, values: []const typedefs.CSSNumberish) ImplError!*runtime.Instance {
     _ = instance;
     _ = values;
     return error.NotImplemented;
 }
 
 /// Operation: min
-pub fn call_min(instance: *runtime.Instance, values: typedefs.CSSNumberish) ImplError!*runtime.Instance {
+pub fn call_min(instance: *runtime.Instance, values: []const typedefs.CSSNumberish) ImplError!*runtime.Instance {
     _ = instance;
     _ = values;
     return error.NotImplemented;
 }
 
 /// Operation: mul
-pub fn call_mul(instance: *runtime.Instance, values: typedefs.CSSNumberish) ImplError!*runtime.Instance {
+pub fn call_mul(instance: *runtime.Instance, values: []const typedefs.CSSNumberish) ImplError!*runtime.Instance {
     _ = instance;
     _ = values;
     return error.NotImplemented;
 }
 
 /// Operation: add
-pub fn call_add(instance: *runtime.Instance, values: typedefs.CSSNumberish) ImplError!*runtime.Instance {
+pub fn call_add(instance: *runtime.Instance, values: []const typedefs.CSSNumberish) ImplError!*runtime.Instance {
     _ = instance;
     _ = values;
     return error.NotImplemented;
@@ -89,14 +109,14 @@ pub fn call_to(instance: *runtime.Instance, unit: runtime.USVString) ImplError!*
 }
 
 /// Operation: toSum
-pub fn call_toSum(instance: *runtime.Instance, units: runtime.USVString) ImplError!*runtime.Instance {
+pub fn call_toSum(instance: *runtime.Instance, units: []const runtime.USVString) ImplError!*runtime.Instance {
     _ = instance;
     _ = units;
     return error.NotImplemented;
 }
 
 /// Operation: div
-pub fn call_div(instance: *runtime.Instance, values: typedefs.CSSNumberish) ImplError!*runtime.Instance {
+pub fn call_div(instance: *runtime.Instance, values: []const typedefs.CSSNumberish) ImplError!*runtime.Instance {
     _ = instance;
     _ = values;
     return error.NotImplemented;

@@ -1,4 +1,23 @@
-//! Implementation for StorageEvent interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
+//!
+//! Implementation stub for StorageEvent interface
+//!
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Remove this header comment block
+//!   3. Add your implementation logic
+//!   4. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -7,6 +26,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const mixins = @import("mixins");
 const StorageEvent = interfaces.StorageEvent;
 
 pub const State = StorageEvent.State;
@@ -84,7 +104,7 @@ pub fn get_storageArea(instance: *runtime.Instance) ImplError!?*runtime.Instance
 }
 
 /// Operation: initStorageEvent
-pub fn call_initStorageEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: bool, cancelable: bool, key: runtime.DOMString, oldValue: runtime.DOMString, newValue: runtime.DOMString, url: runtime.USVString, storageArea: *runtime.Instance) ImplError!void {
+pub fn call_initStorageEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: bool, cancelable: bool, key: ?runtime.DOMString, oldValue: ?runtime.DOMString, newValue: ?runtime.DOMString, url: runtime.USVString, storageArea: ?*runtime.Instance) ImplError!void {
     _ = instance;
     _ = @"type";
     _ = bubbles;

@@ -3,6 +3,7 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const TestUtils_impl = @import("impls").TestUtils;
 
 pub const TestUtils = struct {

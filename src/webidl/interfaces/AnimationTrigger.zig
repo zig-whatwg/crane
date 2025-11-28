@@ -1,5 +1,5 @@
 //! Generated from: web-animations-2.idl
-//! Generated at: 2025-11-28T18:57:57Z
+//! Generated at: 2025-11-28T19:11:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 

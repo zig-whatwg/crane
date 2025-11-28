@@ -1,4 +1,23 @@
-//! Implementation for Window interface
+//! ============================================================================
+//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
+//! ============================================================================
+//!
+//! Implementation stub for Window interface
+//!
+//! This file is AUTO-GENERATED into impls_tmp/ directory.
+//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//!
+//! TO USE THIS STUB:
+//!   1. Copy this file to src/webidl/impls/
+//!   2. Remove this header comment block
+//!   3. Add your implementation logic
+//!   4. The impls/ directory is the canonical location for implementations
+//!
+//! If updating an existing implementation:
+//!   1. Diff this stub against the existing file in impls/
+//!   2. Manually merge new signatures while preserving custom code
+//!
+//! ============================================================================
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -7,6 +26,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const mixins = @import("mixins");
 const Window = interfaces.Window;
 
 pub const State = Window.State;
@@ -2219,7 +2239,7 @@ pub fn call_showSaveFilePicker(instance: *runtime.Instance, options: dictionarie
 }
 
 /// Operation: setTimeout
-pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: i32, arguments: *const anyopaque) ImplError!i32 {
+pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: i32, arguments: []const *const anyopaque) ImplError!i32 {
     _ = instance;
     _ = handler;
     _ = timeout;
@@ -2405,7 +2425,7 @@ pub fn call_clearTimeout(instance: *runtime.Instance, id: i32) ImplError!void {
 }
 
 /// Operation: getComputedStyle
-pub fn call_getComputedStyle(instance: *runtime.Instance, elt: *runtime.Instance, pseudoElt: typedefs.CSSOMString) ImplError!*runtime.Instance {
+pub fn call_getComputedStyle(instance: *runtime.Instance, elt: *runtime.Instance, pseudoElt: ?typedefs.CSSOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = elt;
     _ = pseudoElt;
@@ -2413,7 +2433,7 @@ pub fn call_getComputedStyle(instance: *runtime.Instance, elt: *runtime.Instance
 }
 
 /// Operation: setInterval
-pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: i32, arguments: *const anyopaque) ImplError!i32 {
+pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: i32, arguments: []const *const anyopaque) ImplError!i32 {
     _ = instance;
     _ = handler;
     _ = timeout;

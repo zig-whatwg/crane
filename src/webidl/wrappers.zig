@@ -177,6 +177,25 @@ pub fn Optional(comptime T: type) type {
 }
 
 // ============================================================================
+// Opt<T> - Alias for Optional<T> (codegen convenience)
+// ============================================================================
+
+/// Opt<T> is a convenience alias for Optional<T>.
+///
+/// Used in code generation to represent WebIDL optional parameters.
+/// This provides a shorter, clearer name in generated signatures.
+///
+/// Example:
+/// ```zig
+/// // WebIDL: void foo(optional DOMString x);
+/// // Generated: fn foo(x: Opt(DOMString)) void
+///
+/// // WebIDL: void bar(optional DOMString? x);
+/// // Generated: fn bar(x: Opt(?DOMString)) void
+/// ```
+pub const Opt = Optional;
+
+// ============================================================================
 // Sequence<T> - WebIDL sequence<T>
 // ============================================================================
 
@@ -435,13 +454,3 @@ pub fn Promise(comptime T: type) type {
 // ============================================================================
 
 const testing = std.testing;
-
-
-
-
-
-
-
-
-
-

@@ -3,6 +3,7 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const GPUTextureUsage_impl = @import("impls").GPUTextureUsage;
 
 pub const GPUTextureUsage = struct {

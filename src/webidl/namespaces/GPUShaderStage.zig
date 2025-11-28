@@ -3,6 +3,7 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const GPUShaderStage_impl = @import("impls").GPUShaderStage;
 
 pub const GPUShaderStage = struct {
