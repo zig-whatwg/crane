@@ -39,6 +39,7 @@ pub const cookies = @import("cookies/root.zig");
 pub const cors = @import("cors/root.zig");
 pub const network = @import("network/root.zig");
 pub const cache = @import("cache/root.zig");
+pub const algorithms = @import("algorithms/root.zig");
 
 // Re-export commonly used types
 pub const HeaderList = internal.HeaderList;
@@ -69,6 +70,12 @@ pub const CacheEntry = cache.CacheEntry;
 pub const CacheControl = cache.CacheControl;
 pub const MemoryCacheBackend = cache.MemoryCacheBackend;
 
+// Re-export algorithm types and functions
+pub const processDataUrl = algorithms.processDataUrl;
+pub const DataUrlResult = algorithms.DataUrlResult;
+pub const schemeFetch = algorithms.schemeFetch;
+pub const SchemeFetchResult = algorithms.SchemeFetchResult;
+
 test {
     _ = internal;
     _ = referrer_policy;
@@ -76,4 +83,5 @@ test {
     _ = cors;
     _ = network;
     _ = cache;
+    _ = algorithms;
 }
