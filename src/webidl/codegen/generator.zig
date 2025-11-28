@@ -535,6 +535,12 @@ fn isTrustedTypeOrStringUnion(union_types: []const types.IDLType) bool {
 /// Write a parameter type with proper nullable and variadic handling
 /// Handles: nullable types (T?), variadic (T...), and combinations
 fn writeParamType(w: anytype, arg: types.Argument, type_registry: ?*const ir_mod.TypeRegistry) !void {
+    // Handle optional parameters: optional T becomes webidl.Opt(T)
+    // Must happen BEFORE variadic/nullable wrapping
+    if (arg.optional) {
+        try w.writeAll("webidl.Opt(");
+    }
+
     // Handle variadic parameters: T... becomes []const T
     if (arg.variadic) {
         try w.writeAll("[]const ");
@@ -546,6 +552,11 @@ fn writeParamType(w: anytype, arg: types.Argument, type_registry: ?*const ir_mod
     }
 
     try writeTypeSimple(w, arg.idlType, type_registry);
+
+    // Close optional wrapper
+    if (arg.optional) {
+        try w.writeAll(")");
+    }
 }
 
 /// Helper to write a WebIDL type as Zig type string (simplified)
@@ -713,6 +724,7 @@ fn generateImplFile(
     // Write imports
     try w.writeAll("const std = @import(\"std\");\n");
     try w.writeAll("const runtime = @import(\"runtime\");\n");
+    try w.writeAll("const webidl = @import(\"webidl\");\n");
     try w.writeAll("const interfaces = @import(\"interfaces\");\n");
     try w.writeAll("const typedefs = @import(\"typedefs\");\n");
     try w.writeAll("const enums = @import(\"enums\");\n");

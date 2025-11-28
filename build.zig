@@ -375,6 +375,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     interfaces_mod.addImport("runtime", runtime_mod);
+    interfaces_mod.addImport("webidl", webidl_mod); // For Opt wrapper and other WebIDL types
 
     // ========================================================================
     // IMPLEMENTATIONS MODULE (WebIDL interface implementations)
