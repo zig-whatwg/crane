@@ -249,37 +249,227 @@ pub fn get_bodyUsed(instance: *runtime.Instance) ImplError!bool {
 
 // === Methods - STUBS (Option A) ===
 
+/// clone() - Clones the Response
+/// Spec: https://fetch.spec.whatwg.org/#dom-response-clone
 pub fn call_clone(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.InvalidState;
+    const state = instance.getState(State);
+    const internal = state.own._internal.?;
+
+    // Step 1: If this is unusable, throw TypeError
+    if (internal.response.body) |body| {
+        if (body.isDisturbed()) {
+            return error.TypeError;
+        }
+    }
+
+    // Step 2: Clone the internal response
+    const cloned_response = try internal.response.clone();
+    errdefer cloned_response.deinit();
+
+    // Step 3: Create new Response instance with cloned response
+    const cloned_instance = try init(internal.allocator, State, &Response.vtable, instance.ctx);
+    errdefer deinit(cloned_instance);
+
+    const cloned_state = cloned_instance.getState(State);
+    const cloned_internal = cloned_state.own._internal.?;
+
+    // Replace default response with cloned one
+    cloned_internal.response.deinit();
+    cloned_internal.response = cloned_response;
+
+    return cloned_instance;
 }
 
+/// arrayBuffer() - Returns promise fulfilled with body as ArrayBuffer
+/// Spec: https://fetch.spec.whatwg.org/#dom-body-arraybuffer
 pub fn call_arrayBuffer(instance: *runtime.Instance) ImplError!*const anyopaque {
-    _ = instance;
-    return error.InvalidState;
+    const state = instance.getState(State);
+    const internal = state.own._internal.?;
+
+    const event_loop = instance.ctx.getEventLoop() catch {
+        return error.InvalidState;
+    };
+
+    const AsyncPromise = @import("streams_async_promise").AsyncPromise;
+    var promise = try AsyncPromise(*const anyopaque).init(
+        internal.allocator,
+        event_loop,
+    );
+
+    const exception = @import("webidl").errors.Exception{
+        .simple = .{ .type = .TypeError, .message = "ArrayBuffer creation not yet implemented" },
+    };
+    promise.reject(exception);
+
+    return @ptrCast(promise);
 }
 
+/// blob() - Returns promise fulfilled with body as Blob
+/// Spec: https://fetch.spec.whatwg.org/#dom-body-blob
 pub fn call_blob(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.InvalidState;
+    const state = instance.getState(State);
+    const internal = state.own._internal.?;
+
+    const event_loop = instance.ctx.getEventLoop() catch {
+        return error.InvalidState;
+    };
+
+    const AsyncPromise = @import("streams_async_promise").AsyncPromise;
+    var promise = try AsyncPromise(*runtime.Instance).init(
+        internal.allocator,
+        event_loop,
+    );
+
+    const exception = @import("webidl").errors.Exception{
+        .simple = .{ .type = .TypeError, .message = "Blob creation not yet implemented" },
+    };
+    promise.reject(exception);
+
+    return @ptrCast(promise);
 }
 
+/// bytes() - Returns promise fulfilled with body as Uint8Array
+/// Spec: https://fetch.spec.whatwg.org/#dom-body-bytes
 pub fn call_bytes(instance: *runtime.Instance) ImplError!*const anyopaque {
-    _ = instance;
-    return error.InvalidState;
+    const state = instance.getState(State);
+    const internal = state.own._internal.?;
+
+    const event_loop = instance.ctx.getEventLoop() catch {
+        return error.InvalidState;
+    };
+
+    const AsyncPromise = @import("streams_async_promise").AsyncPromise;
+    var promise = try AsyncPromise([]const u8).init(
+        internal.allocator,
+        event_loop,
+    );
+
+    if (internal.response.body) |body| {
+        if (body.isDisturbed()) {
+            const exception = @import("webidl").errors.Exception{
+                .simple = .{ .type = .TypeError, .message = "Body is unusable (already read)" },
+            };
+            promise.reject(exception);
+        } else {
+            const bytes = body.readAllBytes() catch {
+                const exception = @import("webidl").errors.Exception{
+                    .simple = .{ .type = .TypeError, .message = "Failed to read body" },
+                };
+                promise.reject(exception);
+                return @ptrCast(promise);
+            };
+
+            const bytes_copy = try internal.allocator.dupe(u8, bytes);
+            promise.fulfill(bytes_copy);
+        }
+    } else {
+        const empty = try internal.allocator.alloc(u8, 0);
+        promise.fulfill(empty);
+    }
+
+    return @ptrCast(promise);
 }
 
+/// formData() - Returns promise fulfilled with body as FormData
+/// Spec: https://fetch.spec.whatwg.org/#dom-body-formdata
 pub fn call_formData(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    _ = instance;
-    return error.InvalidState;
+    const state = instance.getState(State);
+    const internal = state.own._internal.?;
+
+    const event_loop = instance.ctx.getEventLoop() catch {
+        return error.InvalidState;
+    };
+
+    const AsyncPromise = @import("streams_async_promise").AsyncPromise;
+    var promise = try AsyncPromise(*runtime.Instance).init(
+        internal.allocator,
+        event_loop,
+    );
+
+    const exception = @import("webidl").errors.Exception{
+        .simple = .{ .type = .TypeError, .message = "FormData parsing not yet implemented" },
+    };
+    promise.reject(exception);
+
+    return @ptrCast(promise);
 }
 
+/// json() - Returns promise fulfilled with body parsed as JSON
+/// Spec: https://fetch.spec.whatwg.org/#dom-body-json
 pub fn call_json_read(instance: *runtime.Instance) ImplError!*const anyopaque {
-    _ = instance;
-    return error.InvalidState;
+    const state = instance.getState(State);
+    const internal = state.own._internal.?;
+
+    const event_loop = instance.ctx.getEventLoop() catch {
+        return error.InvalidState;
+    };
+
+    const AsyncPromise = @import("streams_async_promise").AsyncPromise;
+    var promise = try AsyncPromise(*const anyopaque).init(
+        internal.allocator,
+        event_loop,
+    );
+
+    if (internal.response.body) |body| {
+        if (body.isDisturbed()) {
+            const exception = @import("webidl").errors.Exception{
+                .simple = .{ .type = .TypeError, .message = "Body is unusable (already read)" },
+            };
+            promise.reject(exception);
+        } else {
+            const exception = @import("webidl").errors.Exception{
+                .simple = .{ .type = .TypeError, .message = "JSON parsing not yet implemented" },
+            };
+            promise.reject(exception);
+        }
+    } else {
+        const exception = @import("webidl").errors.Exception{
+            .simple = .{ .type = .SyntaxError, .message = "Unexpected end of JSON input" },
+        };
+        promise.reject(exception);
+    }
+
+    return @ptrCast(promise);
 }
 
+/// text() - Returns promise fulfilled with body as string
+/// Spec: https://fetch.spec.whatwg.org/#dom-body-text
 pub fn call_text(instance: *runtime.Instance) ImplError!*const anyopaque {
-    _ = instance;
-    return error.InvalidState;
+    const state = instance.getState(State);
+    const internal = state.own._internal.?;
+
+    const event_loop = instance.ctx.getEventLoop() catch {
+        return error.InvalidState;
+    };
+
+    const AsyncPromise = @import("streams_async_promise").AsyncPromise;
+    var promise = try AsyncPromise(runtime.USVString).init(
+        internal.allocator,
+        event_loop,
+    );
+
+    if (internal.response.body) |body| {
+        if (body.isDisturbed()) {
+            const exception = @import("webidl").errors.Exception{
+                .simple = .{ .type = .TypeError, .message = "Body is unusable (already read)" },
+            };
+            promise.reject(exception);
+        } else {
+            const bytes = body.readAllBytes() catch {
+                const exception = @import("webidl").errors.Exception{
+                    .simple = .{ .type = .TypeError, .message = "Failed to read body" },
+                };
+                promise.reject(exception);
+                return @ptrCast(promise);
+            };
+
+            const text = try internal.allocator.dupe(u8, bytes);
+            promise.fulfill(text);
+        }
+    } else {
+        const empty = try internal.allocator.alloc(u8, 0);
+        promise.fulfill(empty);
+    }
+
+    return @ptrCast(promise);
 }
