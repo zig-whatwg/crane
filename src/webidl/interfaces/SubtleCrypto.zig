@@ -1,5 +1,5 @@
 //! Generated from: webcrypto.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -174,7 +174,7 @@ pub const SubtleCrypto = struct {
 
     pub fn call_deriveBits(instance: *runtime.Instance, algorithm: AlgorithmIdentifier, baseKey: *runtime.Instance, length: webidl.Opt(?u32)) anyerror!*const anyopaque {
         
-        return try SubtleCryptoImpl.call_deriveBits(instance, algorithm, baseKey, length.value);
+        return try SubtleCryptoImpl.call_deriveBits(instance, algorithm, baseKey, length);
     }
 
     pub fn call_getPublicKey(instance: *runtime.Instance, key: *runtime.Instance, keyUsages: *const anyopaque) anyerror!*const anyopaque {
@@ -194,7 +194,7 @@ pub const SubtleCrypto = struct {
 
     pub fn call_supports(instance: *runtime.Instance, operation: DOMString, algorithm: AlgorithmIdentifier, length: webidl.Opt(?u32)) anyerror!bool {
         
-        return try SubtleCryptoImpl.call_supports(instance, operation, algorithm, length.value);
+        return try SubtleCryptoImpl.call_supports(instance, operation, algorithm, length);
     }
 
     pub fn call_digest(instance: *runtime.Instance, algorithm: AlgorithmIdentifier, data: BufferSource) anyerror!*const anyopaque {

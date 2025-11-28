@@ -27,6 +27,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const mixins = @import("mixins");
+const webidl = @import("webidl");
 const PaymentRequest = interfaces.PaymentRequest;
 
 pub const State = PaymentRequest.State;
@@ -61,7 +62,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, methodData: *const anyopaque, details: dictionaries.PaymentDetailsInit, options: dictionaries.PaymentOptions) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, methodData: *const anyopaque, details: dictionaries.PaymentDetailsInit, options: webidl.Opt(dictionaries.PaymentOptions)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &PaymentRequest.vtable, ctx);
     errdefer deinit(instance);
@@ -144,7 +145,7 @@ pub fn call_abort(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Operation: show
-pub fn call_show(instance: *runtime.Instance, detailsPromise: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_show(instance: *runtime.Instance, detailsPromise: webidl.Opt(*const anyopaque)) ImplError!*const anyopaque {
     _ = instance;
     _ = detailsPromise;
     return error.NotImplemented;

@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -67,7 +68,7 @@ pub fn call_get(instance: *runtime.Instance, id: runtime.DOMString) ImplError!*c
 }
 
 /// Operation: matchAll
-pub fn call_matchAll(instance: *runtime.Instance, options: dictionaries.ClientQueryOptions) ImplError!*const anyopaque {
+pub fn call_matchAll(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ClientQueryOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

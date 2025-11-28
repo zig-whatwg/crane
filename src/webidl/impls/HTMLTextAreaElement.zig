@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -354,7 +355,7 @@ pub fn call_checkValidity(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Operation: setSelectionRange
-pub fn call_setSelectionRange(instance: *runtime.Instance, start: u32, end: u32, direction: runtime.DOMString) ImplError!void {
+pub fn call_setSelectionRange(instance: *runtime.Instance, start: u32, end: u32, direction: webidl.Opt(runtime.DOMString)) ImplError!void {
     _ = instance;
     _ = start;
     _ = end;

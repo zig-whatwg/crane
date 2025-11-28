@@ -1,5 +1,5 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:18Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -163,7 +163,7 @@ pub const VideoEncoder = struct {
 
     pub fn call_encode(instance: *runtime.Instance, frame: *runtime.Instance, options: webidl.Opt(VideoEncoderEncodeOptions)) anyerror!void {
         
-        return try VideoEncoderImpl.call_encode(instance, frame, options.value);
+        return try VideoEncoderImpl.call_encode(instance, frame, options);
     }
 
     pub fn call_reset(instance: *runtime.Instance) anyerror!void {

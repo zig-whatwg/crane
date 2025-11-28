@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -60,7 +61,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: file
-pub fn call_file(instance: *runtime.Instance, successCallback: callbacks.FileCallback, errorCallback: callbacks.ErrorCallback) ImplError!void {
+pub fn call_file(instance: *runtime.Instance, successCallback: callbacks.FileCallback, errorCallback: webidl.Opt(callbacks.ErrorCallback)) ImplError!void {
     _ = instance;
     _ = successCallback;
     _ = errorCallback;

@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -81,7 +81,7 @@ pub const XPathExpression = struct {
 
     pub fn call_evaluate(instance: *runtime.Instance, contextNode: *runtime.Instance, @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
         
-        return try XPathExpressionImpl.call_evaluate(instance, contextNode, @"type".value, result.value);
+        return try XPathExpressionImpl.call_evaluate(instance, contextNode, @"type", result);
     }
 
 };

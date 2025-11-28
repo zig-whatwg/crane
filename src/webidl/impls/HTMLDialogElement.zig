@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -111,7 +112,7 @@ pub fn set_closedBy(instance: *runtime.Instance, value: runtime.DOMString) ImplE
 }
 
 /// Operation: requestClose
-pub fn call_requestClose(instance: *runtime.Instance, returnValue: runtime.DOMString) ImplError!void {
+pub fn call_requestClose(instance: *runtime.Instance, returnValue: webidl.Opt(runtime.DOMString)) ImplError!void {
     _ = instance;
     _ = returnValue;
     return error.NotImplemented;
@@ -130,7 +131,7 @@ pub fn call_show(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: close
-pub fn call_close(instance: *runtime.Instance, returnValue: runtime.DOMString) ImplError!void {
+pub fn call_close(instance: *runtime.Instance, returnValue: webidl.Opt(runtime.DOMString)) ImplError!void {
     _ = instance;
     _ = returnValue;
     return error.NotImplemented;

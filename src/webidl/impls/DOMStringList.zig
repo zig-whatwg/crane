@@ -130,7 +130,7 @@ pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
 ///
 /// This method is also the getter for indexed properties, allowing
 /// list[index] access in JavaScript.
-pub fn call_item(instance: *runtime.Instance, index: u32) ImplError!runtime.DOMString {
+pub fn call_item(instance: *runtime.Instance, index: u32) ImplError!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Check bounds

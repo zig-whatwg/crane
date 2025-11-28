@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -85,7 +86,7 @@ pub fn set_ontonechange(instance: *runtime.Instance, value: typedefs.EventHandle
 }
 
 /// Operation: insertDTMF
-pub fn call_insertDTMF(instance: *runtime.Instance, tones: runtime.DOMString, duration: u32, interToneGap: u32) ImplError!void {
+pub fn call_insertDTMF(instance: *runtime.Instance, tones: runtime.DOMString, duration: webidl.Opt(u32), interToneGap: webidl.Opt(u32)) ImplError!void {
     _ = instance;
     _ = tones;
     _ = duration;

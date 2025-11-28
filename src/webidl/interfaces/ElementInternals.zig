@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -1158,7 +1158,7 @@ pub const ElementInternals = struct {
 
     pub fn call_setValidity(instance: *runtime.Instance, flags: webidl.Opt(ValidityStateFlags), message: webidl.Opt(DOMString), anchor: webidl.Opt(*runtime.Instance)) anyerror!void {
         
-        return try ElementInternalsImpl.call_setValidity(instance, flags.value, message.value, anchor.value);
+        return try ElementInternalsImpl.call_setValidity(instance, flags, message, anchor);
     }
 
     pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
@@ -1171,7 +1171,7 @@ pub const ElementInternals = struct {
 
     pub fn call_setFormValue(instance: *runtime.Instance, value: ?*const anyopaque, state: webidl.Opt(?*const anyopaque)) anyerror!void {
         
-        return try ElementInternalsImpl.call_setFormValue(instance, value, state.value);
+        return try ElementInternalsImpl.call_setFormValue(instance, value, state);
     }
 
 };

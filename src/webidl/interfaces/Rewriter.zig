@@ -1,5 +1,5 @@
 //! Generated from: writing-assistance-apis.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:18Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -176,22 +176,22 @@ pub const Rewriter = struct {
 
     pub fn call_availability(instance: *runtime.Instance, options: webidl.Opt(RewriterCreateCoreOptions)) anyerror!*const anyopaque {
         
-        return try RewriterImpl.call_availability(instance, options.value);
+        return try RewriterImpl.call_availability(instance, options);
     }
 
     pub fn call_rewrite(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(RewriterRewriteOptions)) anyerror!*const anyopaque {
         
-        return try RewriterImpl.call_rewrite(instance, input, options.value);
+        return try RewriterImpl.call_rewrite(instance, input, options);
     }
 
     pub fn call_rewriteStreaming(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(RewriterRewriteOptions)) anyerror!*runtime.Instance {
         
-        return try RewriterImpl.call_rewriteStreaming(instance, input, options.value);
+        return try RewriterImpl.call_rewriteStreaming(instance, input, options);
     }
 
     pub fn call_measureInputUsage(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(RewriterRewriteOptions)) anyerror!*const anyopaque {
         
-        return try RewriterImpl.call_measureInputUsage(instance, input, options.value);
+        return try RewriterImpl.call_measureInputUsage(instance, input, options);
     }
 
     pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
@@ -200,7 +200,7 @@ pub const Rewriter = struct {
 
     pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(RewriterCreateOptions)) anyerror!*const anyopaque {
         
-        return try RewriterImpl.call_create(instance, options.value);
+        return try RewriterImpl.call_create(instance, options);
     }
 
 };

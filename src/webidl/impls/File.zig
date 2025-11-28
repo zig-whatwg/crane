@@ -14,6 +14,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const file = @import("file");
 const BlobImpl = @import("Blob.zig");
+const webidl = @import("webidl");
 const File = interfaces.File;
 
 pub const State = File.State;
@@ -74,13 +75,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 2. Use provided fileName
 /// 3. Use lastModified from options or current time
 /// 4. Use type from options (normalized)
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, fileBits: *const anyopaque, fileName: runtime.USVString, options: dictionaries.FilePropertyBag) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, fileBits: *const anyopaque, fileName: runtime.USVString, options: webidl.Opt(dictionaries.FilePropertyBag)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &File.vtable, ctx);
     errdefer deinit(instance);
 
     // Get MIME type from options (inherits from BlobPropertyBag)
-    const mime_type: []const u8 = if (options.base.type) |t| t.asSlice() else "";
+    const mime_type: []const u8 = if (options.wasPassed() and options.value.base.type != null) options.value.base.type.?.asSlice() else "";
 
     // For now, create empty blob data (full BlobPart processing requires V8)
     // TODO: Process fileBits when V8 integration is complete
@@ -92,7 +93,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, file
     // Create FileData with name and lastModified
     // USVString is just []const u8 in Zig
     const file_name = fileName;
-    const last_modified = options.lastModified;
+    const last_modified = if (options.wasPassed()) options.value.lastModified else null;
 
     const file_data = try file.FileData.init(allocator, blob_data, file_name, last_modified);
     errdefer file_data.deinit();

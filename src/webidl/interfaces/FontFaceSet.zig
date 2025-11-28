@@ -1,5 +1,5 @@
 //! Generated from: css-font-loading.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -185,12 +185,12 @@ pub const FontFaceSet = struct {
 
     pub fn call_load(instance: *runtime.Instance, font: CSSOMString, text: webidl.Opt(CSSOMString)) anyerror!*const anyopaque {
         
-        return try FontFaceSetImpl.call_load(instance, font, text.value);
+        return try FontFaceSetImpl.call_load(instance, font, text);
     }
 
     pub fn call_check(instance: *runtime.Instance, font: CSSOMString, text: webidl.Opt(CSSOMString)) anyerror!bool {
         
-        return try FontFaceSetImpl.call_check(instance, font, text.value);
+        return try FontFaceSetImpl.call_check(instance, font, text);
     }
 
 };

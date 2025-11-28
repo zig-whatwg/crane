@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -294,7 +294,7 @@ pub const ShadowRoot = struct {
 
     pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(GetHTMLOptions)) anyerror!DOMString {
         
-        return try ShadowRootImpl.call_getHTML(instance, options.value);
+        return try ShadowRootImpl.call_getHTML(instance, options);
     }
 
     /// Extended attributes: [CEReactions]

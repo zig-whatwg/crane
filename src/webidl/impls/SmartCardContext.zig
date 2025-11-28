@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -66,7 +67,7 @@ pub fn call_listReaders(instance: *runtime.Instance) ImplError!*const anyopaque 
 }
 
 /// Operation: getStatusChange
-pub fn call_getStatusChange(instance: *runtime.Instance, readerStates: *const anyopaque, options: dictionaries.SmartCardGetStatusChangeOptions) ImplError!*const anyopaque {
+pub fn call_getStatusChange(instance: *runtime.Instance, readerStates: *const anyopaque, options: webidl.Opt(dictionaries.SmartCardGetStatusChangeOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = readerStates;
     _ = options;
@@ -74,7 +75,7 @@ pub fn call_getStatusChange(instance: *runtime.Instance, readerStates: *const an
 }
 
 /// Operation: connect
-pub fn call_connect(instance: *runtime.Instance, readerName: runtime.DOMString, accessMode: enums.SmartCardAccessMode, options: dictionaries.SmartCardConnectOptions) ImplError!*const anyopaque {
+pub fn call_connect(instance: *runtime.Instance, readerName: runtime.DOMString, accessMode: enums.SmartCardAccessMode, options: webidl.Opt(dictionaries.SmartCardConnectOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = readerName;
     _ = accessMode;

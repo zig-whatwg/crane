@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -60,14 +61,14 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: clip
-pub fn call_clip(instance: *runtime.Instance, fillRule: enums.CanvasFillRule) ImplError!void {
+pub fn call_clip(instance: *runtime.Instance, fillRule: webidl.Opt(enums.CanvasFillRule)) ImplError!void {
     _ = instance;
     _ = fillRule;
     return error.NotImplemented;
 }
 
 /// Operation: isPointInPath
-pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule: enums.CanvasFillRule) ImplError!bool {
+pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule: webidl.Opt(enums.CanvasFillRule)) ImplError!bool {
     _ = instance;
     _ = x;
     _ = y;
@@ -90,7 +91,7 @@ pub fn call_beginPath(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: fill
-pub fn call_fill(instance: *runtime.Instance, fillRule: enums.CanvasFillRule) ImplError!void {
+pub fn call_fill(instance: *runtime.Instance, fillRule: webidl.Opt(enums.CanvasFillRule)) ImplError!void {
     _ = instance;
     _ = fillRule;
     return error.NotImplemented;

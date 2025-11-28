@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -104,7 +104,7 @@ pub const AbortController = struct {
 
     pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) anyerror!void {
         
-        return try AbortControllerImpl.call_abort(instance, reason.value);
+        return try AbortControllerImpl.call_abort(instance, reason);
     }
 
 };

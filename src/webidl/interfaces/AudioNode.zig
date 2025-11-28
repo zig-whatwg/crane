@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -181,7 +181,7 @@ pub const AudioNode = struct {
 
     pub fn call_connect(instance: *runtime.Instance, destinationNode: *runtime.Instance, output: webidl.Opt(u32), input: webidl.Opt(u32)) anyerror!*runtime.Instance {
         
-        return try AudioNodeImpl.call_connect(instance, destinationNode, output.value, input.value);
+        return try AudioNodeImpl.call_connect(instance, destinationNode, output, input);
     }
 
 };

@@ -1,5 +1,5 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:18Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -191,14 +191,14 @@ pub const IDBDatabase = struct {
     pub fn call_transaction(instance: *runtime.Instance, storeNames: *const anyopaque, mode: webidl.Opt(IDBTransactionMode), options: webidl.Opt(IDBTransactionOptions)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try IDBDatabaseImpl.call_transaction(instance, storeNames, mode.value, options.value);
+        return try IDBDatabaseImpl.call_transaction(instance, storeNames, mode, options);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_createObjectStore(instance: *runtime.Instance, name: DOMString, options: webidl.Opt(IDBObjectStoreParameters)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try IDBDatabaseImpl.call_createObjectStore(instance, name, options.value);
+        return try IDBDatabaseImpl.call_createObjectStore(instance, name, options);
     }
 
     pub fn call_close(instance: *runtime.Instance) anyerror!void {

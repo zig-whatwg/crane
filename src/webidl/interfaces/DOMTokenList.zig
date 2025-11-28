@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:22Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -162,7 +162,7 @@ pub const DOMTokenList = struct {
         defer runtime.CEReactions.end();
         
         
-        return try DOMTokenListImpl.call_toggle(instance, token, force.value);
+        return try DOMTokenListImpl.call_toggle(instance, token, force);
     }
 
     pub fn call_contains(instance: *runtime.Instance, token: DOMString) anyerror!bool {

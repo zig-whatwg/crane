@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -113,7 +113,7 @@ pub const CanvasPath = struct {
 
     pub fn call_arc(instance: *runtime.Instance, x: f64, y: f64, radius: f64, startAngle: f64, endAngle: f64, counterclockwise: webidl.Opt(bool)) anyerror!void {
         
-        return try CanvasPathImpl.call_arc(instance, x, y, radius, startAngle, endAngle, counterclockwise.value);
+        return try CanvasPathImpl.call_arc(instance, x, y, radius, startAngle, endAngle, counterclockwise);
     }
 
     pub fn call_moveTo(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
@@ -133,7 +133,7 @@ pub const CanvasPath = struct {
 
     pub fn call_ellipse(instance: *runtime.Instance, x: f64, y: f64, radiusX: f64, radiusY: f64, rotation: f64, startAngle: f64, endAngle: f64, counterclockwise: webidl.Opt(bool)) anyerror!void {
         
-        return try CanvasPathImpl.call_ellipse(instance, x, y, radiusX, radiusY, rotation, startAngle, endAngle, counterclockwise.value);
+        return try CanvasPathImpl.call_ellipse(instance, x, y, radiusX, radiusY, rotation, startAngle, endAngle, counterclockwise);
     }
 
     pub fn call_closePath(instance: *runtime.Instance) anyerror!void {
@@ -142,7 +142,7 @@ pub const CanvasPath = struct {
 
     pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64, radii: webidl.Opt(*const anyopaque)) anyerror!void {
         
-        return try CanvasPathImpl.call_roundRect(instance, x, y, w, h, radii.value);
+        return try CanvasPathImpl.call_roundRect(instance, x, y, w, h, radii);
     }
 
     pub fn call_rect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {

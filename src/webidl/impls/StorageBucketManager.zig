@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -73,7 +74,7 @@ pub fn call_keys(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Operation: open
-pub fn call_open(instance: *runtime.Instance, name: runtime.DOMString, options: dictionaries.StorageBucketOptions) ImplError!*const anyopaque {
+pub fn call_open(instance: *runtime.Instance, name: runtime.DOMString, options: webidl.Opt(dictionaries.StorageBucketOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = name;
     _ = options;

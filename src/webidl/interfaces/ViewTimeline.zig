@@ -1,5 +1,5 @@
 //! Generated from: scroll-animations.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:18Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -99,7 +99,7 @@ pub const ViewTimeline = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(ViewTimelineOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try ViewTimelineImpl.call_constructor(allocator, ctx, options.value);
+        return try ViewTimelineImpl.call_constructor(allocator, ctx, options);
     }
 
     pub fn get_subject(instance: *runtime.Instance) anyerror!*runtime.Instance {

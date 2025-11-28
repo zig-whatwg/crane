@@ -1,5 +1,5 @@
 //! Generated from: orientation-event.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -114,7 +114,7 @@ pub const DeviceOrientationEvent = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(DeviceOrientationEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try DeviceOrientationEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict.value);
+        return try DeviceOrientationEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
     pub fn get_alpha(instance: *runtime.Instance) anyerror!?f64 {
@@ -135,7 +135,7 @@ pub const DeviceOrientationEvent = struct {
 
     pub fn call_requestPermission(instance: *runtime.Instance, absolute: webidl.Opt(bool)) anyerror!*const anyopaque {
         
-        return try DeviceOrientationEventImpl.call_requestPermission(instance, absolute.value);
+        return try DeviceOrientationEventImpl.call_requestPermission(instance, absolute);
     }
 
 };

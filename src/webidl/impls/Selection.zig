@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -108,7 +109,7 @@ pub fn get_direction(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Operation: setPosition
-pub fn call_setPosition(instance: *runtime.Instance, node: ?*runtime.Instance, offset: u32) ImplError!void {
+pub fn call_setPosition(instance: *runtime.Instance, node: ?*runtime.Instance, offset: webidl.Opt(u32)) ImplError!void {
     _ = instance;
     _ = node;
     _ = offset;
@@ -147,14 +148,14 @@ pub fn call_collapseToEnd(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: getComposedRanges
-pub fn call_getComposedRanges(instance: *runtime.Instance, options: dictionaries.GetComposedRangesOptions) ImplError!*const anyopaque {
+pub fn call_getComposedRanges(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GetComposedRangesOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: collapse
-pub fn call_collapse(instance: *runtime.Instance, node: ?*runtime.Instance, offset: u32) ImplError!void {
+pub fn call_collapse(instance: *runtime.Instance, node: ?*runtime.Instance, offset: webidl.Opt(u32)) ImplError!void {
     _ = instance;
     _ = node;
     _ = offset;
@@ -162,7 +163,7 @@ pub fn call_collapse(instance: *runtime.Instance, node: ?*runtime.Instance, offs
 }
 
 /// Operation: extend
-pub fn call_extend(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) ImplError!void {
+pub fn call_extend(instance: *runtime.Instance, node: *runtime.Instance, offset: webidl.Opt(u32)) ImplError!void {
     _ = instance;
     _ = node;
     _ = offset;
@@ -200,7 +201,7 @@ pub fn call_getRangeAt(instance: *runtime.Instance, index: u32) ImplError!*runti
 }
 
 /// Operation: modify
-pub fn call_modify(instance: *runtime.Instance, alter: runtime.DOMString, direction: runtime.DOMString, granularity: runtime.DOMString) ImplError!void {
+pub fn call_modify(instance: *runtime.Instance, alter: webidl.Opt(runtime.DOMString), direction: webidl.Opt(runtime.DOMString), granularity: webidl.Opt(runtime.DOMString)) ImplError!void {
     _ = instance;
     _ = alter;
     _ = direction;
@@ -209,7 +210,7 @@ pub fn call_modify(instance: *runtime.Instance, alter: runtime.DOMString, direct
 }
 
 /// Operation: containsNode
-pub fn call_containsNode(instance: *runtime.Instance, node: *runtime.Instance, allowPartialContainment: bool) ImplError!bool {
+pub fn call_containsNode(instance: *runtime.Instance, node: *runtime.Instance, allowPartialContainment: webidl.Opt(bool)) ImplError!bool {
     _ = instance;
     _ = node;
     _ = allowPartialContainment;

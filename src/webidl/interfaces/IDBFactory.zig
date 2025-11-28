@@ -1,5 +1,5 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -97,7 +97,7 @@ pub const IDBFactory = struct {
         // [EnforceRange] on version
         if (!runtime.isInRange(u64, version)) return error.TypeError;
         
-        return try IDBFactoryImpl.call_open(instance, name, version.value);
+        return try IDBFactoryImpl.call_open(instance, name, version);
     }
 
     pub fn call_databases(instance: *runtime.Instance) anyerror!*const anyopaque {

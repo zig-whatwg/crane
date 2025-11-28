@@ -1,5 +1,5 @@
 //! Generated from: FileAPI.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -110,7 +110,7 @@ pub const Blob = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, blobParts: webidl.Opt(*const anyopaque), options: webidl.Opt(BlobPropertyBag)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try BlobImpl.call_constructor(allocator, ctx, blobParts.value, options.value);
+        return try BlobImpl.call_constructor(allocator, ctx, blobParts, options);
     }
 
     pub fn get_size(instance: *runtime.Instance) anyerror!u64 {
@@ -129,11 +129,11 @@ pub const Blob = struct {
 
     pub fn call_slice(instance: *runtime.Instance, start: webidl.Opt(i64), end: webidl.Opt(i64), contentType: webidl.Opt(DOMString)) anyerror!*runtime.Instance {
         // [Clamp] on start
-        const clamped_start = runtime.clamp(i64, start.value);
+        const clamped_start = if (start.wasPassed()) webidl.Opt(i64).passed(runtime.clamp(i64, start.value)) else webidl.Opt(i64).notPassed();
         // [Clamp] on end
-        const clamped_end = runtime.clamp(i64, end.value);
+        const clamped_end = if (end.wasPassed()) webidl.Opt(i64).passed(runtime.clamp(i64, end.value)) else webidl.Opt(i64).notPassed();
         
-        return try BlobImpl.call_slice(instance, clamped_start, clamped_end, contentType.value);
+        return try BlobImpl.call_slice(instance, clamped_start, clamped_end, contentType);
     }
 
     /// Extended attributes: [NewObject]

@@ -1,5 +1,5 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -288,12 +288,12 @@ pub const ServiceWorkerRegistration = struct {
 
     pub fn call_showNotification(instance: *runtime.Instance, title: DOMString, options: webidl.Opt(NotificationOptions)) anyerror!*const anyopaque {
         
-        return try ServiceWorkerRegistrationImpl.call_showNotification(instance, title, options.value);
+        return try ServiceWorkerRegistrationImpl.call_showNotification(instance, title, options);
     }
 
     pub fn call_getNotifications(instance: *runtime.Instance, filter: webidl.Opt(GetNotificationOptions)) anyerror!*const anyopaque {
         
-        return try ServiceWorkerRegistrationImpl.call_getNotifications(instance, filter.value);
+        return try ServiceWorkerRegistrationImpl.call_getNotifications(instance, filter);
     }
 
 };

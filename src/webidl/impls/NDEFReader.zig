@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -98,14 +99,14 @@ pub fn set_onreadingerror(instance: *runtime.Instance, value: typedefs.EventHand
 }
 
 /// Operation: scan
-pub fn call_scan(instance: *runtime.Instance, options: dictionaries.NDEFScanOptions) ImplError!*const anyopaque {
+pub fn call_scan(instance: *runtime.Instance, options: webidl.Opt(dictionaries.NDEFScanOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: write
-pub fn call_write(instance: *runtime.Instance, message: typedefs.NDEFMessageSource, options: dictionaries.NDEFWriteOptions) ImplError!*const anyopaque {
+pub fn call_write(instance: *runtime.Instance, message: typedefs.NDEFMessageSource, options: webidl.Opt(dictionaries.NDEFWriteOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = message;
     _ = options;
@@ -113,7 +114,7 @@ pub fn call_write(instance: *runtime.Instance, message: typedefs.NDEFMessageSour
 }
 
 /// Operation: makeReadOnly
-pub fn call_makeReadOnly(instance: *runtime.Instance, options: dictionaries.NDEFMakeReadOnlyOptions) ImplError!*const anyopaque {
+pub fn call_makeReadOnly(instance: *runtime.Instance, options: webidl.Opt(dictionaries.NDEFMakeReadOnlyOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

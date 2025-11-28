@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -146,7 +147,7 @@ pub fn call_scroll(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: intercept
-pub fn call_intercept(instance: *runtime.Instance, options: dictionaries.NavigationInterceptOptions) ImplError!void {
+pub fn call_intercept(instance: *runtime.Instance, options: webidl.Opt(dictionaries.NavigationInterceptOptions)) ImplError!void {
     _ = instance;
     _ = options;
     return error.NotImplemented;

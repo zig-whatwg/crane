@@ -26,6 +26,8 @@ pub const ImplError = error{
     RangeError,
     InvalidState,
     OutOfMemory,
+    IndexOutOfBounds,
+    EmptyQueue,
 };
 
 /// Read result structure
@@ -100,17 +102,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 1. If ! IsReadableStreamLocked(stream) is true, throw a TypeError exception
 /// 2. Perform ! ReadableStreamReaderGenericInitialize(reader, stream)
 /// 3. Set reader.[[readRequests]] to a new empty list
-pub fn call_constructor(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    stream_instance: *runtime.Instance,
-) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, stream: *runtime.Instance) !*runtime.Instance {
     // Get event loop from context (required for async operations)
     const event_loop = try ctx.getEventLoop();
 
     // SetUpReadableStreamDefaultReader Step 1: Check if stream is locked
     // IsReadableStreamLocked(stream): return stream.[[reader]] !== undefined
-    const stream_state = stream_instance.getState(interfaces.ReadableStream.State);
+    const stream_state = stream.getState(interfaces.ReadableStream.State);
     const stream_internal = stream_state.own._internal orelse return error.InvalidState;
 
     if (stream_internal.reader != .none) {
@@ -132,7 +130,7 @@ pub fn call_constructor(
     // This sets up the bidirectional relationship between reader and stream
 
     // ReadableStreamReaderGenericInitialize Step 1: Set reader.[[stream]] to stream
-    reader_internal.stream = stream_instance;
+    reader_internal.stream = stream;
 
     // ReadableStreamReaderGenericInitialize Step 2: Set stream.[[reader]] to reader
     stream_internal.reader = .{ .default = instance };
@@ -172,7 +170,7 @@ pub fn call_constructor(
     };
 
     reader_internal.* = InternalState{
-        .stream = stream_instance,
+        .stream = stream,
         .closed_promise = closed_promise,
         .read_requests = read_requests,
         .event_loop = event_loop,
@@ -193,7 +191,7 @@ pub fn call_constructor(
 /// Returns a promise that fulfills when the stream closes.
 ///
 /// Returns: Pointer to AsyncPromise(void)
-pub fn get_closed(instance: *runtime.Instance) !*const anyopaque {
+pub fn get_closed(instance: *runtime.Instance) ImplError!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.TypeError;
 
@@ -218,7 +216,7 @@ pub fn get_closed(instance: *runtime.Instance) !*const anyopaque {
 /// 5. Return promise
 ///
 /// Returns: Pointer to AsyncPromise(ReadResult) - caller owns and must deinit
-pub fn call_read(instance: *runtime.Instance) !*const anyopaque {
+pub fn call_read(instance: *runtime.Instance) ImplError!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.TypeError;
 
@@ -315,7 +313,7 @@ pub fn call_read(instance: *runtime.Instance) !*const anyopaque {
 /// 7. Perform ! stream.[[controller]].[[ReleaseSteps]]()
 /// 8. Set stream.[[reader]] to undefined
 /// 9. Set reader.[[stream]] to undefined
-pub fn call_releaseLock(instance: *runtime.Instance) !void {
+pub fn call_releaseLock(instance: *runtime.Instance) ImplError!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.TypeError;
 
@@ -377,7 +375,7 @@ pub fn call_releaseLock(instance: *runtime.Instance) !void {
 /// 3. Return ! ReadableStreamCancel(stream, reason)
 ///
 /// Returns: Pointer to AsyncPromise(void) - caller owns and must deinit
-pub fn call_cancel(instance: *runtime.Instance, reason: *const anyopaque) !*const anyopaque {
+pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) ImplError!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.TypeError;
 
@@ -399,11 +397,20 @@ pub fn call_cancel(instance: *runtime.Instance, reason: *const anyopaque) !*cons
 
     // Call stream's cancel method
     // This returns a promise that we return to the caller
-    const opt_reason = webidl.Opt(*const anyopaque).passed(reason);
-    const cancel_promise = try interfaces.ReadableStream.call_cancel(
+    // reason is already webidl.Opt so pass it directly
+    const cancel_promise = interfaces.ReadableStream.call_cancel(
         stream_instance,
-        opt_reason,
-    );
+        reason,
+    ) catch |err| {
+        // Convert anyerror to ImplError
+        return switch (err) {
+            error.TypeError => error.TypeError,
+            error.RangeError => error.RangeError,
+            error.InvalidState => error.InvalidState,
+            error.OutOfMemory => error.OutOfMemory,
+            else => error.InvalidState,
+        };
+    };
 
     return cancel_promise;
 }

@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -60,7 +61,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: hasFeature
-pub fn call_hasFeature(instance: *runtime.Instance, feature: runtime.DOMString, version: runtime.DOMString) ImplError!bool {
+pub fn call_hasFeature(instance: *runtime.Instance, feature: runtime.DOMString, version: webidl.Opt(runtime.DOMString)) ImplError!bool {
     _ = instance;
     _ = feature;
     _ = version;

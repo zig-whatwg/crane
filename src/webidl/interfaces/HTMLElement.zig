@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -2217,7 +2217,7 @@ pub const HTMLElement = struct {
 
     pub fn call_togglePopover(instance: *runtime.Instance, options: webidl.Opt(*const anyopaque)) anyerror!bool {
         
-        return try HTMLElementImpl.call_togglePopover(instance, options.value);
+        return try HTMLElementImpl.call_togglePopover(instance, options);
     }
 
     pub fn call_blur(instance: *runtime.Instance) anyerror!void {
@@ -2230,7 +2230,7 @@ pub const HTMLElement = struct {
 
     pub fn call_showPopover(instance: *runtime.Instance, options: webidl.Opt(ShowPopoverOptions)) anyerror!void {
         
-        return try HTMLElementImpl.call_showPopover(instance, options.value);
+        return try HTMLElementImpl.call_showPopover(instance, options);
     }
 
     pub fn call_hidePopover(instance: *runtime.Instance) anyerror!void {
@@ -2239,7 +2239,7 @@ pub const HTMLElement = struct {
 
     pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(FocusOptions)) anyerror!void {
         
-        return try HTMLElementImpl.call_focus(instance, options.value);
+        return try HTMLElementImpl.call_focus(instance, options);
     }
 
     pub fn call_attachInternals(instance: *runtime.Instance) anyerror!*runtime.Instance {

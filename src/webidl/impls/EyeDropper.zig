@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -72,7 +73,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Operation: open
-pub fn call_open(instance: *runtime.Instance, options: dictionaries.ColorSelectionOptions) ImplError!*const anyopaque {
+pub fn call_open(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ColorSelectionOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

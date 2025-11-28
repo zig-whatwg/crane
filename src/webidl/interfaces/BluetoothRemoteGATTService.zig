@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -204,12 +204,12 @@ pub const BluetoothRemoteGATTService = struct {
 
     pub fn call_getIncludedServices(instance: *runtime.Instance, service: webidl.Opt(BluetoothServiceUUID)) anyerror!*const anyopaque {
         
-        return try BluetoothRemoteGATTServiceImpl.call_getIncludedServices(instance, service.value);
+        return try BluetoothRemoteGATTServiceImpl.call_getIncludedServices(instance, service);
     }
 
     pub fn call_getCharacteristics(instance: *runtime.Instance, characteristic: webidl.Opt(BluetoothCharacteristicUUID)) anyerror!*const anyopaque {
         
-        return try BluetoothRemoteGATTServiceImpl.call_getCharacteristics(instance, characteristic.value);
+        return try BluetoothRemoteGATTServiceImpl.call_getCharacteristics(instance, characteristic);
     }
 
     pub fn call_getIncludedService(instance: *runtime.Instance, service: BluetoothServiceUUID) anyerror!*const anyopaque {

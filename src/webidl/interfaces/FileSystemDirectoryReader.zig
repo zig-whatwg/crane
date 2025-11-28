@@ -1,5 +1,5 @@
 //! Generated from: entries-api.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -81,7 +81,7 @@ pub const FileSystemDirectoryReader = struct {
 
     pub fn call_readEntries(instance: *runtime.Instance, successCallback: FileSystemEntriesCallback, errorCallback: webidl.Opt(ErrorCallback)) anyerror!void {
         
-        return try FileSystemDirectoryReaderImpl.call_readEntries(instance, successCallback, errorCallback.value);
+        return try FileSystemDirectoryReaderImpl.call_readEntries(instance, successCallback, errorCallback);
     }
 
 };

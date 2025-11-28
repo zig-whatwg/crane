@@ -27,6 +27,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const mixins = @import("mixins");
+const webidl = @import("webidl");
 const WebSocket = interfaces.WebSocket;
 
 pub const State = WebSocket.State;
@@ -61,7 +62,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url: runtime.USVString, protocols: *const anyopaque) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url: runtime.USVString, protocols: webidl.Opt(*const anyopaque)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &WebSocket.vtable, ctx);
     errdefer deinit(instance);
@@ -169,7 +170,7 @@ pub fn set_binaryType(instance: *runtime.Instance, value: enums.BinaryType) Impl
 }
 
 /// Operation: close
-pub fn call_close(instance: *runtime.Instance, code: u16, reason: runtime.USVString) ImplError!void {
+pub fn call_close(instance: *runtime.Instance, code: webidl.Opt(u16), reason: webidl.Opt(runtime.USVString)) ImplError!void {
     _ = instance;
     _ = code;
     _ = reason;

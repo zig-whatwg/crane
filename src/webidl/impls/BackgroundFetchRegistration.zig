@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -121,7 +122,7 @@ pub fn set_onprogress(instance: *runtime.Instance, value: typedefs.EventHandler)
 }
 
 /// Operation: matchAll
-pub fn call_matchAll(instance: *runtime.Instance, request: typedefs.RequestInfo, options: dictionaries.CacheQueryOptions) ImplError!*const anyopaque {
+pub fn call_matchAll(instance: *runtime.Instance, request: webidl.Opt(typedefs.RequestInfo), options: webidl.Opt(dictionaries.CacheQueryOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = request;
     _ = options;
@@ -135,7 +136,7 @@ pub fn call_abort(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Operation: match
-pub fn call_match(instance: *runtime.Instance, request: typedefs.RequestInfo, options: dictionaries.CacheQueryOptions) ImplError!*const anyopaque {
+pub fn call_match(instance: *runtime.Instance, request: typedefs.RequestInfo, options: webidl.Opt(dictionaries.CacheQueryOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = request;
     _ = options;

@@ -92,7 +92,7 @@ const GCTaskData = struct {
 /// - `PromiseCreationFailed`: Failed to create V8 Promise
 /// - `ThreadSpawnFailed`: Failed to spawn background GC thread
 ///
-pub fn call_gc(ctx: runtime.Context) TestUtilsError!*const anyopaque {
+pub fn call_gc(ctx: runtime.Context) anyerror!*const anyopaque {
     // Verify we have an engine context configured
     _ = ctx.getEngineContext() orelse return TestUtilsError.NoEngineContext;
 

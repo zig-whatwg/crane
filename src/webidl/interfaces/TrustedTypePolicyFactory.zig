@@ -1,5 +1,5 @@
 //! Generated from: trusted-types.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -127,7 +127,7 @@ pub const TrustedTypePolicyFactory = struct {
 
     pub fn call_createPolicy(instance: *runtime.Instance, policyName: DOMString, policyOptions: webidl.Opt(TrustedTypePolicyOptions)) anyerror!*runtime.Instance {
         
-        return try TrustedTypePolicyFactoryImpl.call_createPolicy(instance, policyName, policyOptions.value);
+        return try TrustedTypePolicyFactoryImpl.call_createPolicy(instance, policyName, policyOptions);
     }
 
     pub fn call_isScript(instance: *runtime.Instance, value: *const anyopaque) anyerror!bool {
@@ -142,7 +142,7 @@ pub const TrustedTypePolicyFactory = struct {
 
     pub fn call_getPropertyType(instance: *runtime.Instance, tagName: DOMString, property: DOMString, elementNs: webidl.Opt(?DOMString)) anyerror!?DOMString {
         
-        return try TrustedTypePolicyFactoryImpl.call_getPropertyType(instance, tagName, property, elementNs.value);
+        return try TrustedTypePolicyFactoryImpl.call_getPropertyType(instance, tagName, property, elementNs);
     }
 
     pub fn call_isHTML(instance: *runtime.Instance, value: *const anyopaque) anyerror!bool {
@@ -152,7 +152,7 @@ pub const TrustedTypePolicyFactory = struct {
 
     pub fn call_getAttributeType(instance: *runtime.Instance, tagName: DOMString, attribute: DOMString, elementNs: webidl.Opt(?DOMString), attrNs: webidl.Opt(?DOMString)) anyerror!?DOMString {
         
-        return try TrustedTypePolicyFactoryImpl.call_getAttributeType(instance, tagName, attribute, elementNs.value, attrNs.value);
+        return try TrustedTypePolicyFactoryImpl.call_getAttributeType(instance, tagName, attribute, elementNs, attrNs);
     }
 
 };

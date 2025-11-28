@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -131,7 +132,7 @@ pub fn call_clear(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: load
-pub fn call_load(instance: *runtime.Instance, font: typedefs.CSSOMString, text: typedefs.CSSOMString) ImplError!*const anyopaque {
+pub fn call_load(instance: *runtime.Instance, font: typedefs.CSSOMString, text: webidl.Opt(typedefs.CSSOMString)) ImplError!*const anyopaque {
     _ = instance;
     _ = font;
     _ = text;
@@ -139,7 +140,7 @@ pub fn call_load(instance: *runtime.Instance, font: typedefs.CSSOMString, text: 
 }
 
 /// Operation: check
-pub fn call_check(instance: *runtime.Instance, font: typedefs.CSSOMString, text: typedefs.CSSOMString) ImplError!bool {
+pub fn call_check(instance: *runtime.Instance, font: typedefs.CSSOMString, text: webidl.Opt(typedefs.CSSOMString)) ImplError!bool {
     _ = instance;
     _ = font;
     _ = text;

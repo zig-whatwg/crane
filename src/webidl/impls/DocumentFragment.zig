@@ -32,6 +32,8 @@ pub const ImplError = error{
     InvalidStateError,
     OutOfMemory,
     SyntaxError,
+    HierarchyRequestError,
+    NotFoundError,
 };
 
 /// Internal state for DocumentFragment implementation
@@ -136,7 +138,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 
 /// Getter for children (from ParentNode mixin)
 /// Returns a live HTMLCollection of element children
-pub fn get_children(instance: *runtime.Instance) !*runtime.Instance {
+pub fn get_children(instance: *runtime.Instance) ImplError!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return ParentNode.children(internal.allocator, instance, instance.ctx) catch |err| {
         return switch (err) {
@@ -148,19 +150,19 @@ pub fn get_children(instance: *runtime.Instance) !*runtime.Instance {
 
 /// Getter for firstElementChild (from ParentNode mixin)
 /// Returns the first child that is an element, or null if none.
-pub fn get_firstElementChild(instance: *runtime.Instance) !?*runtime.Instance {
+pub fn get_firstElementChild(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     return ParentNode.firstElementChild(instance);
 }
 
 /// Getter for lastElementChild (from ParentNode mixin)
 /// Returns the last child that is an element, or null if none.
-pub fn get_lastElementChild(instance: *runtime.Instance) !?*runtime.Instance {
+pub fn get_lastElementChild(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     return ParentNode.lastElementChild(instance);
 }
 
 /// Getter for childElementCount (from ParentNode mixin)
 /// Returns the number of child elements
-pub fn get_childElementCount(instance: *runtime.Instance) !u32 {
+pub fn get_childElementCount(instance: *runtime.Instance) ImplError!u32 {
     return ParentNode.childElementCount(instance);
 }
 
@@ -171,7 +173,7 @@ pub fn get_childElementCount(instance: *runtime.Instance) !u32 {
 /// Operation: prepend (from ParentNode mixin)
 /// Inserts nodes before the first child of this document fragment
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-prepend
-pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) !void {
+pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) ImplError!void {
     _ = nodes;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     _ = internal;
@@ -196,7 +198,7 @@ pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNod
 /// Operation: append (from ParentNode mixin)
 /// Inserts nodes after the last child of this document fragment
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-append
-pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) !void {
+pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) ImplError!void {
     _ = nodes;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     _ = internal;
@@ -210,7 +212,7 @@ pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode
 /// Operation: replaceChildren (from ParentNode mixin)
 /// Replaces all children of this document fragment with nodes
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-replacechildren
-pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) !void {
+pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) ImplError!void {
     _ = nodes;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
@@ -234,7 +236,7 @@ pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.P
 /// Operation: moveBefore (from ParentNode mixin)
 /// Moves node to before child within this document fragment
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-movebefore
-pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) !void {
+pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) ImplError!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     _ = internal;
 

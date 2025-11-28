@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -78,7 +79,7 @@ pub fn call_disconnect(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: getPrimaryServices
-pub fn call_getPrimaryServices(instance: *runtime.Instance, service: typedefs.BluetoothServiceUUID) ImplError!*const anyopaque {
+pub fn call_getPrimaryServices(instance: *runtime.Instance, service: webidl.Opt(typedefs.BluetoothServiceUUID)) ImplError!*const anyopaque {
     _ = instance;
     _ = service;
     return error.NotImplemented;

@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -66,7 +67,7 @@ pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
 }
 
 /// Operation: item
-pub fn call_item(instance: *runtime.Instance, nameOrIndex: runtime.DOMString) ImplError!?*const anyopaque {
+pub fn call_item(instance: *runtime.Instance, nameOrIndex: webidl.Opt(runtime.DOMString)) ImplError!?*const anyopaque {
     _ = instance;
     _ = nameOrIndex;
     return null;

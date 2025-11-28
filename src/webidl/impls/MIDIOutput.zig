@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -66,7 +67,7 @@ pub fn call_clear(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: send
-pub fn call_send(instance: *runtime.Instance, data: *const anyopaque, timestamp: typedefs.DOMHighResTimeStamp) ImplError!void {
+pub fn call_send(instance: *runtime.Instance, data: *const anyopaque, timestamp: webidl.Opt(typedefs.DOMHighResTimeStamp)) ImplError!void {
     _ = instance;
     _ = data;
     _ = timestamp;

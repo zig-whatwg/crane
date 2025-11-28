@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -265,7 +265,7 @@ pub const SVGGeometryElement = struct {
 
     pub fn call_isPointInStroke(instance: *runtime.Instance, point: webidl.Opt(DOMPointInit)) anyerror!bool {
         
-        return try SVGGeometryElementImpl.call_isPointInStroke(instance, point.value);
+        return try SVGGeometryElementImpl.call_isPointInStroke(instance, point);
     }
 
     pub fn call_getTotalLength(instance: *runtime.Instance) anyerror!f32 {
@@ -279,7 +279,7 @@ pub const SVGGeometryElement = struct {
 
     pub fn call_isPointInFill(instance: *runtime.Instance, point: webidl.Opt(DOMPointInit)) anyerror!bool {
         
-        return try SVGGeometryElementImpl.call_isPointInFill(instance, point.value);
+        return try SVGGeometryElementImpl.call_isPointInFill(instance, point);
     }
 
 };

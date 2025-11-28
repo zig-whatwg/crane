@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -66,7 +67,7 @@ pub fn get_data(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Operation: initTextEvent
-pub fn call_initTextEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: bool, cancelable: bool, view: ?*runtime.Instance, data: runtime.DOMString) ImplError!void {
+pub fn call_initTextEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), view: webidl.Opt(?*runtime.Instance), data: webidl.Opt(runtime.DOMString)) ImplError!void {
     _ = instance;
     _ = @"type";
     _ = bubbles;

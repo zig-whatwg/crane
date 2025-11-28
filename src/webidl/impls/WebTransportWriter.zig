@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -66,7 +67,7 @@ pub fn call_commit(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: atomicWrite
-pub fn call_atomicWrite(instance: *runtime.Instance, chunk: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_atomicWrite(instance: *runtime.Instance, chunk: webidl.Opt(*const anyopaque)) ImplError!*const anyopaque {
     _ = instance;
     _ = chunk;
     return error.NotImplemented;

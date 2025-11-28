@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -85,14 +86,14 @@ pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) ImplError
 }
 
 /// Operation: assignedElements
-pub fn call_assignedElements(instance: *runtime.Instance, options: dictionaries.AssignedNodesOptions) ImplError!*const anyopaque {
+pub fn call_assignedElements(instance: *runtime.Instance, options: webidl.Opt(dictionaries.AssignedNodesOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: assignedNodes
-pub fn call_assignedNodes(instance: *runtime.Instance, options: dictionaries.AssignedNodesOptions) ImplError!*const anyopaque {
+pub fn call_assignedNodes(instance: *runtime.Instance, options: webidl.Opt(dictionaries.AssignedNodesOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

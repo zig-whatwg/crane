@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -60,7 +61,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getCurrentPosition
-pub fn call_getCurrentPosition(instance: *runtime.Instance, successCallback: callbacks.PositionCallback, errorCallback: ?callbacks.PositionErrorCallback, options: dictionaries.PositionOptions) ImplError!void {
+pub fn call_getCurrentPosition(instance: *runtime.Instance, successCallback: callbacks.PositionCallback, errorCallback: webidl.Opt(?callbacks.PositionErrorCallback), options: webidl.Opt(dictionaries.PositionOptions)) ImplError!void {
     _ = instance;
     _ = successCallback;
     _ = errorCallback;
@@ -76,7 +77,7 @@ pub fn call_clearWatch(instance: *runtime.Instance, watchId: i32) ImplError!void
 }
 
 /// Operation: watchPosition
-pub fn call_watchPosition(instance: *runtime.Instance, successCallback: callbacks.PositionCallback, errorCallback: ?callbacks.PositionErrorCallback, options: dictionaries.PositionOptions) ImplError!i32 {
+pub fn call_watchPosition(instance: *runtime.Instance, successCallback: callbacks.PositionCallback, errorCallback: webidl.Opt(?callbacks.PositionErrorCallback), options: webidl.Opt(dictionaries.PositionOptions)) ImplError!i32 {
     _ = instance;
     _ = successCallback;
     _ = errorCallback;

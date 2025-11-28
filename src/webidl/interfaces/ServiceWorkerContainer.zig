@@ -1,5 +1,5 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:18Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -179,14 +179,14 @@ pub const ServiceWorkerContainer = struct {
     pub fn call_getRegistration(instance: *runtime.Instance, clientURL: webidl.Opt(runtime.USVString)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
-        return try ServiceWorkerContainerImpl.call_getRegistration(instance, clientURL.value);
+        return try ServiceWorkerContainerImpl.call_getRegistration(instance, clientURL);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_register(instance: *runtime.Instance, scriptURL: DOMString, options: webidl.Opt(RegistrationOptions)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
-        return try ServiceWorkerContainerImpl.call_register(instance, scriptURL, options.value);
+        return try ServiceWorkerContainerImpl.call_register(instance, scriptURL, options);
     }
 
 };

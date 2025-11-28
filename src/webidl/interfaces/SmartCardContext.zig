@@ -1,5 +1,5 @@
 //! Generated from: web-smart-card.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -101,12 +101,12 @@ pub const SmartCardContext = struct {
 
     pub fn call_getStatusChange(instance: *runtime.Instance, readerStates: *const anyopaque, options: webidl.Opt(SmartCardGetStatusChangeOptions)) anyerror!*const anyopaque {
         
-        return try SmartCardContextImpl.call_getStatusChange(instance, readerStates, options.value);
+        return try SmartCardContextImpl.call_getStatusChange(instance, readerStates, options);
     }
 
     pub fn call_connect(instance: *runtime.Instance, readerName: DOMString, accessMode: SmartCardAccessMode, options: webidl.Opt(SmartCardConnectOptions)) anyerror!*const anyopaque {
         
-        return try SmartCardContextImpl.call_connect(instance, readerName, accessMode, options.value);
+        return try SmartCardContextImpl.call_connect(instance, readerName, accessMode, options);
     }
 
 };

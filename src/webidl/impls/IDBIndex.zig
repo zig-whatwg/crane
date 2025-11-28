@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -97,7 +98,7 @@ pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) ImplError
 }
 
 /// Operation: getAll
-pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: *const anyopaque, count: u32) ImplError!*runtime.Instance {
+pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: webidl.Opt(*const anyopaque), count: webidl.Opt(u32)) ImplError!*runtime.Instance {
     _ = instance;
     _ = queryOrOptions;
     _ = count;
@@ -105,7 +106,7 @@ pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: *const anyopaque
 }
 
 /// Operation: openKeyCursor
-pub fn call_openKeyCursor(instance: *runtime.Instance, query: *const anyopaque, direction: enums.IDBCursorDirection) ImplError!*runtime.Instance {
+pub fn call_openKeyCursor(instance: *runtime.Instance, query: webidl.Opt(*const anyopaque), direction: webidl.Opt(enums.IDBCursorDirection)) ImplError!*runtime.Instance {
     _ = instance;
     _ = query;
     _ = direction;
@@ -113,14 +114,14 @@ pub fn call_openKeyCursor(instance: *runtime.Instance, query: *const anyopaque, 
 }
 
 /// Operation: getAllRecords
-pub fn call_getAllRecords(instance: *runtime.Instance, options: dictionaries.IDBGetAllOptions) ImplError!*runtime.Instance {
+pub fn call_getAllRecords(instance: *runtime.Instance, options: webidl.Opt(dictionaries.IDBGetAllOptions)) ImplError!*runtime.Instance {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: count
-pub fn call_count(instance: *runtime.Instance, query: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_count(instance: *runtime.Instance, query: webidl.Opt(*const anyopaque)) ImplError!*runtime.Instance {
     _ = instance;
     _ = query;
     return error.NotImplemented;
@@ -141,7 +142,7 @@ pub fn call_get(instance: *runtime.Instance, query: *const anyopaque) ImplError!
 }
 
 /// Operation: getAllKeys
-pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: *const anyopaque, count: u32) ImplError!*runtime.Instance {
+pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: webidl.Opt(*const anyopaque), count: webidl.Opt(u32)) ImplError!*runtime.Instance {
     _ = instance;
     _ = queryOrOptions;
     _ = count;
@@ -149,7 +150,7 @@ pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: *const anyop
 }
 
 /// Operation: openCursor
-pub fn call_openCursor(instance: *runtime.Instance, query: *const anyopaque, direction: enums.IDBCursorDirection) ImplError!*runtime.Instance {
+pub fn call_openCursor(instance: *runtime.Instance, query: webidl.Opt(*const anyopaque), direction: webidl.Opt(enums.IDBCursorDirection)) ImplError!*runtime.Instance {
     _ = instance;
     _ = query;
     _ = direction;

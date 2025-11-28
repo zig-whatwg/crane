@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -163,14 +164,14 @@ pub fn call_getDevices(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Operation: requestDevice
-pub fn call_requestDevice(instance: *runtime.Instance, options: dictionaries.RequestDeviceOptions) ImplError!*const anyopaque {
+pub fn call_requestDevice(instance: *runtime.Instance, options: webidl.Opt(dictionaries.RequestDeviceOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: requestLEScan
-pub fn call_requestLEScan(instance: *runtime.Instance, options: dictionaries.BluetoothLEScanOptions) ImplError!*const anyopaque {
+pub fn call_requestLEScan(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BluetoothLEScanOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

@@ -1,5 +1,5 @@
 //! Generated from: intersection-observer.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:22Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -123,7 +123,7 @@ pub const IntersectionObserver = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, callback: IntersectionObserverCallback, options: webidl.Opt(IntersectionObserverInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try IntersectionObserverImpl.call_constructor(allocator, ctx, callback, options.value);
+        return try IntersectionObserverImpl.call_constructor(allocator, ctx, callback, options);
     }
 
     pub fn get_root(instance: *runtime.Instance) anyerror!?*const anyopaque {

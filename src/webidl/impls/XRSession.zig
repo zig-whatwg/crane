@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -320,7 +321,7 @@ pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) ImplE
 }
 
 /// Operation: requestLightProbe
-pub fn call_requestLightProbe(instance: *runtime.Instance, options: dictionaries.XRLightProbeInit) ImplError!*const anyopaque {
+pub fn call_requestLightProbe(instance: *runtime.Instance, options: webidl.Opt(dictionaries.XRLightProbeInit)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -360,7 +361,7 @@ pub fn call_requestHitTestSource(instance: *runtime.Instance, options: dictionar
 }
 
 /// Operation: updateRenderState
-pub fn call_updateRenderState(instance: *runtime.Instance, state: dictionaries.XRRenderStateInit) ImplError!void {
+pub fn call_updateRenderState(instance: *runtime.Instance, state: webidl.Opt(dictionaries.XRRenderStateInit)) ImplError!void {
     _ = instance;
     _ = state;
     return error.NotImplemented;

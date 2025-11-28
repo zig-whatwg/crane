@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -124,7 +125,7 @@ pub fn call_setStreams(instance: *runtime.Instance, streams: []const *runtime.In
 }
 
 /// Operation: setParameters
-pub fn call_setParameters(instance: *runtime.Instance, parameters: dictionaries.RTCRtpSendParameters, setParameterOptions: dictionaries.RTCSetParameterOptions) ImplError!*const anyopaque {
+pub fn call_setParameters(instance: *runtime.Instance, parameters: dictionaries.RTCRtpSendParameters, setParameterOptions: webidl.Opt(dictionaries.RTCSetParameterOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = parameters;
     _ = setParameterOptions;

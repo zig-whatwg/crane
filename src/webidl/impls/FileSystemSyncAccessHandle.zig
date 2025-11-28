@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -60,7 +61,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: read
-pub fn call_read(instance: *runtime.Instance, buffer: typedefs.AllowSharedBufferSource, options: dictionaries.FileSystemReadWriteOptions) ImplError!u64 {
+pub fn call_read(instance: *runtime.Instance, buffer: typedefs.AllowSharedBufferSource, options: webidl.Opt(dictionaries.FileSystemReadWriteOptions)) ImplError!u64 {
     _ = instance;
     _ = buffer;
     _ = options;
@@ -75,7 +76,7 @@ pub fn call_truncate(instance: *runtime.Instance, newSize: u64) ImplError!void {
 }
 
 /// Operation: write
-pub fn call_write(instance: *runtime.Instance, buffer: typedefs.AllowSharedBufferSource, options: dictionaries.FileSystemReadWriteOptions) ImplError!u64 {
+pub fn call_write(instance: *runtime.Instance, buffer: typedefs.AllowSharedBufferSource, options: webidl.Opt(dictionaries.FileSystemReadWriteOptions)) ImplError!u64 {
     _ = instance;
     _ = buffer;
     _ = options;

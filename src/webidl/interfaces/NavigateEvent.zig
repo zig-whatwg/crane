@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -198,7 +198,7 @@ pub const NavigateEvent = struct {
 
     pub fn call_intercept(instance: *runtime.Instance, options: webidl.Opt(NavigationInterceptOptions)) anyerror!void {
         
-        return try NavigateEventImpl.call_intercept(instance, options.value);
+        return try NavigateEventImpl.call_intercept(instance, options);
     }
 
 };

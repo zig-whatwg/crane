@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -73,7 +74,7 @@ pub fn set_ondevicechange(instance: *runtime.Instance, value: typedefs.EventHand
 }
 
 /// Operation: requestSession
-pub fn call_requestSession(instance: *runtime.Instance, mode: enums.XRSessionMode, options: dictionaries.XRSessionInit) ImplError!*const anyopaque {
+pub fn call_requestSession(instance: *runtime.Instance, mode: enums.XRSessionMode, options: webidl.Opt(dictionaries.XRSessionInit)) ImplError!*const anyopaque {
     _ = instance;
     _ = mode;
     _ = options;

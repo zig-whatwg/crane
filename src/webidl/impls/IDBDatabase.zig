@@ -10,6 +10,7 @@
 //! - Close the database connection
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -198,7 +199,7 @@ pub fn set_onversionchange(instance: *runtime.Instance, value: typedefs.EventHan
 /// Creates a new transaction on the database.
 ///
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbdatabase-transaction
-pub fn call_transaction(instance: *runtime.Instance, storeNames: *const anyopaque, mode: enums.IDBTransactionMode, options: dictionaries.IDBTransactionOptions) ImplError!*runtime.Instance {
+pub fn call_transaction(instance: *runtime.Instance, storeNames: *const anyopaque, mode: webidl.Opt(enums.IDBTransactionMode), options: webidl.Opt(dictionaries.IDBTransactionOptions)) ImplError!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -207,8 +208,9 @@ pub fn call_transaction(instance: *runtime.Instance, storeNames: *const anyopaqu
         return error.InvalidState;
     }
 
-    // Convert mode enum
-    const backend_mode = switch (mode) {
+    // Convert mode enum - unwrap Opt, default to readonly
+    const mode_value = if (mode.wasPassed()) mode.value else ._readonly_;
+    const backend_mode = switch (mode_value) {
         ._readonly_ => BackendTransactionMode.readonly,
         ._readwrite_ => BackendTransactionMode.readwrite,
         ._versionchange_ => return error.InvalidAccessError, // Can't manually create versionchange
@@ -247,7 +249,7 @@ pub fn call_transaction(instance: *runtime.Instance, storeNames: *const anyopaqu
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbdatabase-createobjectstore
 ///
 /// Note: Can only be called during a versionchange transaction.
-pub fn call_createObjectStore(instance: *runtime.Instance, name: runtime.DOMString, options: dictionaries.IDBObjectStoreParameters) ImplError!*runtime.Instance {
+pub fn call_createObjectStore(instance: *runtime.Instance, name: runtime.DOMString, options: webidl.Opt(dictionaries.IDBObjectStoreParameters)) ImplError!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -260,10 +262,10 @@ pub fn call_createObjectStore(instance: *runtime.Instance, name: runtime.DOMStri
     const name_slice = name.asSlice();
 
     // Convert options - keyPath is anyopaque, need to handle it differently
-    // TODO: Proper keyPath conversion from JS value
+    // TODO: Proper keyPath conversion from JS value - unwrap Opt
     const backend_options = storage.indexeddb.database.IDBObjectStoreParameters{
         .key_path = null, // TODO: Convert options.keyPath from anyopaque
-        .auto_increment = options.autoIncrement orelse false,
+        .auto_increment = if (options.wasPassed()) options.value.autoIncrement orelse false else false,
     };
 
     // Create object store on backend

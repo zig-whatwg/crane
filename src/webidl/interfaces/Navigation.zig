@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -213,12 +213,12 @@ pub const Navigation = struct {
 
     pub fn call_reload(instance: *runtime.Instance, options: webidl.Opt(NavigationReloadOptions)) anyerror!NavigationResult {
         
-        return try NavigationImpl.call_reload(instance, options.value);
+        return try NavigationImpl.call_reload(instance, options);
     }
 
     pub fn call_back(instance: *runtime.Instance, options: webidl.Opt(NavigationOptions)) anyerror!NavigationResult {
         
-        return try NavigationImpl.call_back(instance, options.value);
+        return try NavigationImpl.call_back(instance, options);
     }
 
     pub fn call_entries(instance: *runtime.Instance) anyerror!*const anyopaque {
@@ -227,17 +227,17 @@ pub const Navigation = struct {
 
     pub fn call_navigate(instance: *runtime.Instance, url: runtime.USVString, options: webidl.Opt(NavigationNavigateOptions)) anyerror!NavigationResult {
         
-        return try NavigationImpl.call_navigate(instance, url, options.value);
+        return try NavigationImpl.call_navigate(instance, url, options);
     }
 
     pub fn call_traverseTo(instance: *runtime.Instance, key: DOMString, options: webidl.Opt(NavigationOptions)) anyerror!NavigationResult {
         
-        return try NavigationImpl.call_traverseTo(instance, key, options.value);
+        return try NavigationImpl.call_traverseTo(instance, key, options);
     }
 
     pub fn call_forward(instance: *runtime.Instance, options: webidl.Opt(NavigationOptions)) anyerror!NavigationResult {
         
-        return try NavigationImpl.call_forward(instance, options.value);
+        return try NavigationImpl.call_forward(instance, options);
     }
 
     pub fn call_updateCurrentEntry(instance: *runtime.Instance, options: NavigationUpdateCurrentEntryOptions) anyerror!void {

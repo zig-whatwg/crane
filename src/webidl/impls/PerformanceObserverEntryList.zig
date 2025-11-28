@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -73,7 +74,7 @@ pub fn call_getEntriesByType(instance: *runtime.Instance, @"type": runtime.DOMSt
 }
 
 /// Operation: getEntriesByName
-pub fn call_getEntriesByName(instance: *runtime.Instance, name: runtime.DOMString, @"type": runtime.DOMString) ImplError!typedefs.PerformanceEntryList {
+pub fn call_getEntriesByName(instance: *runtime.Instance, name: runtime.DOMString, @"type": webidl.Opt(runtime.DOMString)) ImplError!typedefs.PerformanceEntryList {
     _ = instance;
     _ = name;
     _ = @"type";

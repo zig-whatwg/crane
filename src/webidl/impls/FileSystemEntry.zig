@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -90,7 +91,7 @@ pub fn get_filesystem(instance: *runtime.Instance) ImplError!*runtime.Instance {
 }
 
 /// Operation: getParent
-pub fn call_getParent(instance: *runtime.Instance, successCallback: callbacks.FileSystemEntryCallback, errorCallback: callbacks.ErrorCallback) ImplError!void {
+pub fn call_getParent(instance: *runtime.Instance, successCallback: webidl.Opt(callbacks.FileSystemEntryCallback), errorCallback: webidl.Opt(callbacks.ErrorCallback)) ImplError!void {
     _ = instance;
     _ = successCallback;
     _ = errorCallback;

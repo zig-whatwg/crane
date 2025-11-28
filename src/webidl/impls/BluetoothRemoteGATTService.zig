@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -137,14 +138,14 @@ pub fn call_getCharacteristic(instance: *runtime.Instance, characteristic: typed
 }
 
 /// Operation: getIncludedServices
-pub fn call_getIncludedServices(instance: *runtime.Instance, service: typedefs.BluetoothServiceUUID) ImplError!*const anyopaque {
+pub fn call_getIncludedServices(instance: *runtime.Instance, service: webidl.Opt(typedefs.BluetoothServiceUUID)) ImplError!*const anyopaque {
     _ = instance;
     _ = service;
     return error.NotImplemented;
 }
 
 /// Operation: getCharacteristics
-pub fn call_getCharacteristics(instance: *runtime.Instance, characteristic: typedefs.BluetoothCharacteristicUUID) ImplError!*const anyopaque {
+pub fn call_getCharacteristics(instance: *runtime.Instance, characteristic: webidl.Opt(typedefs.BluetoothCharacteristicUUID)) ImplError!*const anyopaque {
     _ = instance;
     _ = characteristic;
     return error.NotImplemented;

@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -97,7 +98,7 @@ pub fn get_tracks(instance: *runtime.Instance) ImplError!*runtime.Instance {
 }
 
 /// Operation: decode
-pub fn call_decode(instance: *runtime.Instance, options: dictionaries.ImageDecodeOptions) ImplError!*const anyopaque {
+pub fn call_decode(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ImageDecodeOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -79,14 +80,14 @@ pub fn call_isSameEntry(instance: *runtime.Instance, other: *runtime.Instance) I
 }
 
 /// Operation: queryPermission
-pub fn call_queryPermission(instance: *runtime.Instance, descriptor: dictionaries.FileSystemHandlePermissionDescriptor) ImplError!*const anyopaque {
+pub fn call_queryPermission(instance: *runtime.Instance, descriptor: webidl.Opt(dictionaries.FileSystemHandlePermissionDescriptor)) ImplError!*const anyopaque {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
 }
 
 /// Operation: requestPermission
-pub fn call_requestPermission(instance: *runtime.Instance, descriptor: dictionaries.FileSystemHandlePermissionDescriptor) ImplError!*const anyopaque {
+pub fn call_requestPermission(instance: *runtime.Instance, descriptor: webidl.Opt(dictionaries.FileSystemHandlePermissionDescriptor)) ImplError!*const anyopaque {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;

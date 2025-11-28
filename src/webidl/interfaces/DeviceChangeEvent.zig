@@ -1,5 +1,5 @@
 //! Generated from: mediacapture-streams.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -99,7 +99,7 @@ pub const DeviceChangeEvent = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(DeviceChangeEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try DeviceChangeEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict.value);
+        return try DeviceChangeEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
     /// Extended attributes: [SameObject]

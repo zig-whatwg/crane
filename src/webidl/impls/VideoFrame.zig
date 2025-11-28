@@ -27,6 +27,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const mixins = @import("mixins");
+const webidl = @import("webidl");
 const VideoFrame = interfaces.VideoFrame;
 
 pub const State = VideoFrame.State;
@@ -61,7 +62,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, image: typedefs.CanvasImageSource, init_data: dictionaries.VideoFrameInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, image: typedefs.CanvasImageSource, init_data: webidl.Opt(dictionaries.VideoFrameInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &VideoFrame.vtable, ctx);
     errdefer deinit(instance);
@@ -146,14 +147,14 @@ pub fn get_colorSpace(instance: *runtime.Instance) ImplError!*runtime.Instance {
 }
 
 /// Operation: allocationSize
-pub fn call_allocationSize(instance: *runtime.Instance, options: dictionaries.VideoFrameCopyToOptions) ImplError!u32 {
+pub fn call_allocationSize(instance: *runtime.Instance, options: webidl.Opt(dictionaries.VideoFrameCopyToOptions)) ImplError!u32 {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: copyTo
-pub fn call_copyTo(instance: *runtime.Instance, destination: typedefs.AllowSharedBufferSource, options: dictionaries.VideoFrameCopyToOptions) ImplError!*const anyopaque {
+pub fn call_copyTo(instance: *runtime.Instance, destination: typedefs.AllowSharedBufferSource, options: webidl.Opt(dictionaries.VideoFrameCopyToOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = destination;
     _ = options;

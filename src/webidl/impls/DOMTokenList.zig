@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -94,7 +95,7 @@ pub fn call_replace(instance: *runtime.Instance, token: runtime.DOMString, newTo
 }
 
 /// Operation: toggle
-pub fn call_toggle(instance: *runtime.Instance, token: runtime.DOMString, force: bool) ImplError!bool {
+pub fn call_toggle(instance: *runtime.Instance, token: runtime.DOMString, force: webidl.Opt(bool)) ImplError!bool {
     _ = instance;
     _ = token;
     _ = force;

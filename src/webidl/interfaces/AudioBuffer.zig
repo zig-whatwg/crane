@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -130,12 +130,12 @@ pub const AudioBuffer = struct {
 
     pub fn call_copyFromChannel(instance: *runtime.Instance, destination: *const anyopaque, channelNumber: u32, bufferOffset: webidl.Opt(u32)) anyerror!void {
         
-        return try AudioBufferImpl.call_copyFromChannel(instance, destination, channelNumber, bufferOffset.value);
+        return try AudioBufferImpl.call_copyFromChannel(instance, destination, channelNumber, bufferOffset);
     }
 
     pub fn call_copyToChannel(instance: *runtime.Instance, source: *const anyopaque, channelNumber: u32, bufferOffset: webidl.Opt(u32)) anyerror!void {
         
-        return try AudioBufferImpl.call_copyToChannel(instance, source, channelNumber, bufferOffset.value);
+        return try AudioBufferImpl.call_copyToChannel(instance, source, channelNumber, bufferOffset);
     }
 
 };

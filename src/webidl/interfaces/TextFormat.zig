@@ -1,5 +1,5 @@
 //! Generated from: edit-context.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:18Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -96,7 +96,7 @@ pub const TextFormat = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(TextFormatInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try TextFormatImpl.call_constructor(allocator, ctx, options.value);
+        return try TextFormatImpl.call_constructor(allocator, ctx, options);
     }
 
     pub fn get_rangeStart(instance: *runtime.Instance) anyerror!u32 {

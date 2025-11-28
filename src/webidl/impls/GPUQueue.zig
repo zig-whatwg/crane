@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -79,7 +80,7 @@ pub fn call_onSubmittedWorkDone(instance: *runtime.Instance) ImplError!*const an
 }
 
 /// Operation: writeBuffer
-pub fn call_writeBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, bufferOffset: typedefs.GPUSize64, data: typedefs.AllowSharedBufferSource, dataOffset: typedefs.GPUSize64, size: typedefs.GPUSize64) ImplError!void {
+pub fn call_writeBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, bufferOffset: typedefs.GPUSize64, data: typedefs.AllowSharedBufferSource, dataOffset: webidl.Opt(typedefs.GPUSize64), size: webidl.Opt(typedefs.GPUSize64)) ImplError!void {
     _ = instance;
     _ = buffer;
     _ = bufferOffset;

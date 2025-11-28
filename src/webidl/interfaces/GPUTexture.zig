@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -180,7 +180,7 @@ pub const GPUTexture = struct {
 
     pub fn call_createView(instance: *runtime.Instance, descriptor: webidl.Opt(GPUTextureViewDescriptor)) anyerror!*runtime.Instance {
         
-        return try GPUTextureImpl.call_createView(instance, descriptor.value);
+        return try GPUTextureImpl.call_createView(instance, descriptor);
     }
 
 };

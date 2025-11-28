@@ -9,6 +9,7 @@
 //! Migrated from: webidl/src/dom/ShadowRoot.zig
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -361,7 +362,7 @@ pub fn get_activeElement(instance: *runtime.Instance) ImplError!?*runtime.Instan
 // ============================================================================
 
 /// getHTML(options) - Serialize shadow tree to HTML
-pub fn call_getHTML(instance: *runtime.Instance, options: dictionaries.GetHTMLOptions) ImplError!runtime.DOMString {
+pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GetHTMLOptions)) ImplError!runtime.DOMString {
     // TODO: Implement HTML serialization with options
     _ = instance;
     _ = options;

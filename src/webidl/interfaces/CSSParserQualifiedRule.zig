@@ -1,5 +1,5 @@
 //! Generated from: css-parser-api.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:18Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -89,7 +89,7 @@ pub const CSSParserQualifiedRule = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, prelude: *const anyopaque, body: webidl.Opt(?*const anyopaque)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try CSSParserQualifiedRuleImpl.call_constructor(allocator, ctx, prelude, body.value);
+        return try CSSParserQualifiedRuleImpl.call_constructor(allocator, ctx, prelude, body);
     }
 
     pub fn get_prelude(instance: *runtime.Instance) anyerror!*const anyopaque {

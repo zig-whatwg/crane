@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -236,7 +237,7 @@ pub fn call_sendCaptureAction(instance: *runtime.Instance, action: enums.Capture
 }
 
 /// Operation: applyConstraints
-pub fn call_applyConstraints(instance: *runtime.Instance, constraints: dictionaries.MediaTrackConstraints) ImplError!*const anyopaque {
+pub fn call_applyConstraints(instance: *runtime.Instance, constraints: webidl.Opt(dictionaries.MediaTrackConstraints)) ImplError!*const anyopaque {
     _ = instance;
     _ = constraints;
     return error.NotImplemented;

@@ -1,5 +1,5 @@
 //! Generated from: accelerometer.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -94,7 +94,7 @@ pub const GravitySensor = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(AccelerometerSensorOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try GravitySensorImpl.call_constructor(allocator, ctx, options.value);
+        return try GravitySensorImpl.call_constructor(allocator, ctx, options);
     }
 
 };

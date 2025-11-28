@@ -1,5 +1,5 @@
 //! Generated from: geolocation.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:18Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -88,7 +88,7 @@ pub const Geolocation = struct {
 
     pub fn call_getCurrentPosition(instance: *runtime.Instance, successCallback: PositionCallback, errorCallback: webidl.Opt(?PositionErrorCallback), options: webidl.Opt(PositionOptions)) anyerror!void {
         
-        return try GeolocationImpl.call_getCurrentPosition(instance, successCallback, errorCallback.value, options.value);
+        return try GeolocationImpl.call_getCurrentPosition(instance, successCallback, errorCallback, options);
     }
 
     pub fn call_clearWatch(instance: *runtime.Instance, watchId: i32) anyerror!void {
@@ -98,7 +98,7 @@ pub const Geolocation = struct {
 
     pub fn call_watchPosition(instance: *runtime.Instance, successCallback: PositionCallback, errorCallback: webidl.Opt(?PositionErrorCallback), options: webidl.Opt(PositionOptions)) anyerror!i32 {
         
-        return try GeolocationImpl.call_watchPosition(instance, successCallback, errorCallback.value, options.value);
+        return try GeolocationImpl.call_watchPosition(instance, successCallback, errorCallback, options);
     }
 
 };

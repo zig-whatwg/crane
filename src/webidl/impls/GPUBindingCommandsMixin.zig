@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -60,7 +61,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: setBindGroup
-pub fn call_setBindGroup(instance: *runtime.Instance, index: typedefs.GPUIndex32, bindGroup: ?*runtime.Instance, dynamicOffsets: *const anyopaque) ImplError!void {
+pub fn call_setBindGroup(instance: *runtime.Instance, index: typedefs.GPUIndex32, bindGroup: ?*runtime.Instance, dynamicOffsets: webidl.Opt(*const anyopaque)) ImplError!void {
     _ = instance;
     _ = index;
     _ = bindGroup;

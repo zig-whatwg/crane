@@ -1,5 +1,5 @@
 //! Generated from: websockets.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:22Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -187,7 +187,7 @@ pub const WebSocket = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url: runtime.USVString, protocols: webidl.Opt(*const anyopaque)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try WebSocketImpl.call_constructor(allocator, ctx, url, protocols.value);
+        return try WebSocketImpl.call_constructor(allocator, ctx, url, protocols);
     }
 
     pub fn get_url(instance: *runtime.Instance) anyerror!runtime.USVString {
@@ -252,9 +252,9 @@ pub const WebSocket = struct {
 
     pub fn call_close(instance: *runtime.Instance, code: webidl.Opt(u16), reason: webidl.Opt(runtime.USVString)) anyerror!void {
         // [Clamp] on code
-        const clamped_code = runtime.clamp(u16, code.value);
+        const clamped_code = if (code.wasPassed()) webidl.Opt(u16).passed(runtime.clamp(u16, code.value)) else webidl.Opt(u16).notPassed();
         
-        return try WebSocketImpl.call_close(instance, clamped_code, reason.value);
+        return try WebSocketImpl.call_close(instance, clamped_code, reason);
     }
 
     pub fn call_send(instance: *runtime.Instance, data: *const anyopaque) anyerror!void {

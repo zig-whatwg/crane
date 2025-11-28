@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -123,7 +124,7 @@ pub fn call_getData(instance: *runtime.Instance, format: runtime.DOMString) Impl
 }
 
 /// Operation: clearData
-pub fn call_clearData(instance: *runtime.Instance, format: runtime.DOMString) ImplError!void {
+pub fn call_clearData(instance: *runtime.Instance, format: webidl.Opt(runtime.DOMString)) ImplError!void {
     _ = instance;
     _ = format;
     return error.NotImplemented;

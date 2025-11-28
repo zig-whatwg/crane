@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -1518,7 +1519,7 @@ pub fn call_blur(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: focus
-pub fn call_focus(instance: *runtime.Instance, options: dictionaries.FocusOptions) ImplError!void {
+pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(dictionaries.FocusOptions)) ImplError!void {
     _ = instance;
     _ = options;
     return error.NotImplemented;

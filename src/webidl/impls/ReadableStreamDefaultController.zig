@@ -24,7 +24,6 @@ const Algorithm = @import("streams_algorithm").Algorithm;
 pub const State = ReadableStreamDefaultController.State;
 
 pub const ImplError = error{
-
     TypeError,
     RangeError,
     InvalidState,
@@ -129,7 +128,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 3. If state is "errored", return null
 /// 4. If state is "closed", return 0
 /// 5. Return controller.[[strategyHWM]] - controller.[[queueTotalSize]]
-pub fn get_desiredSize(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_desiredSize(instance: *runtime.Instance) ImplError!?f64 {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -155,12 +154,14 @@ pub fn get_desiredSize(instance: *runtime.Instance) ImplError!f64 {
 ///
 /// Steps:
 /// 1. Perform ! ReadableStreamDefaultControllerError(this, e)
-pub fn call_error(instance: *runtime.Instance, e: *const anyopaque) ImplError!void {
+pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(*const anyopaque)) ImplError!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
-    // Step 1: Perform error
-    readableStreamDefaultControllerError(internal, e);
+    // Step 1: Perform error - unwrap Opt
+    var dummy_error: u8 = 0;
+    const error_ptr = if (e.wasPassed()) e.value else @as(*const anyopaque, @ptrCast(&dummy_error));
+    readableStreamDefaultControllerError(internal, error_ptr);
 }
 
 /// ReadableStreamDefaultControllerError(controller, e)
@@ -276,7 +277,7 @@ fn readableStreamDefaultControllerClearAlgorithms(internal: *InternalState) void
 /// Steps:
 /// 1. If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(this) is false, throw TypeError
 /// 2. Perform ? ReadableStreamDefaultControllerEnqueue(this, chunk)
-pub fn call_enqueue(instance: *runtime.Instance, chunk: *const anyopaque) ImplError!void {
+pub fn call_enqueue(instance: *runtime.Instance, chunk: webidl.Opt(*const anyopaque)) ImplError!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -285,8 +286,10 @@ pub fn call_enqueue(instance: *runtime.Instance, chunk: *const anyopaque) ImplEr
         return error.TypeError;
     }
 
-    // Step 2: Perform enqueue
-    try readableStreamDefaultControllerEnqueue(internal, chunk);
+    // Step 2: Perform enqueue - unwrap Opt
+    var dummy_chunk: u8 = 0;
+    const chunk_ptr = if (chunk.wasPassed()) chunk.value else @as(*const anyopaque, @ptrCast(&dummy_chunk));
+    try readableStreamDefaultControllerEnqueue(internal, chunk_ptr);
 }
 
 /// ReadableStreamDefaultControllerCanCloseOrEnqueue(controller)

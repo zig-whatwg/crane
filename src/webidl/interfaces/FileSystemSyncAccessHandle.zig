@@ -1,5 +1,5 @@
 //! Generated from: fs.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -97,7 +97,7 @@ pub const FileSystemSyncAccessHandle = struct {
 
     pub fn call_read(instance: *runtime.Instance, buffer: AllowSharedBufferSource, options: webidl.Opt(FileSystemReadWriteOptions)) anyerror!u64 {
         
-        return try FileSystemSyncAccessHandleImpl.call_read(instance, buffer, options.value);
+        return try FileSystemSyncAccessHandleImpl.call_read(instance, buffer, options);
     }
 
     pub fn call_truncate(instance: *runtime.Instance, newSize: u64) anyerror!void {
@@ -109,7 +109,7 @@ pub const FileSystemSyncAccessHandle = struct {
 
     pub fn call_write(instance: *runtime.Instance, buffer: AllowSharedBufferSource, options: webidl.Opt(FileSystemReadWriteOptions)) anyerror!u64 {
         
-        return try FileSystemSyncAccessHandleImpl.call_write(instance, buffer, options.value);
+        return try FileSystemSyncAccessHandleImpl.call_write(instance, buffer, options);
     }
 
     pub fn call_getSize(instance: *runtime.Instance) anyerror!u64 {

@@ -1,5 +1,5 @@
 //! Generated from: mediasession.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -134,7 +134,7 @@ pub const MediaSession = struct {
 
     pub fn call_setPositionState(instance: *runtime.Instance, state: webidl.Opt(MediaPositionState)) anyerror!void {
         
-        return try MediaSessionImpl.call_setPositionState(instance, state.value);
+        return try MediaSessionImpl.call_setPositionState(instance, state);
     }
 
     pub fn call_setScreenshareActive(instance: *runtime.Instance, active: bool) anyerror!*const anyopaque {

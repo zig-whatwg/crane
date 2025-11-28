@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -60,7 +61,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: evaluate
-pub fn call_evaluate(instance: *runtime.Instance, contextNode: *runtime.Instance, @"type": u16, result: ?*runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_evaluate(instance: *runtime.Instance, contextNode: *runtime.Instance, @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) ImplError!*runtime.Instance {
     _ = instance;
     _ = contextNode;
     _ = @"type";

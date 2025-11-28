@@ -27,6 +27,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const mixins = @import("mixins");
+const webidl = @import("webidl");
 const URLSearchParams = interfaces.URLSearchParams;
 
 pub const State = URLSearchParams.State;
@@ -61,7 +62,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: *const anyopaque) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: webidl.Opt(*const anyopaque)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &URLSearchParams.vtable, ctx);
     errdefer deinit(instance);
@@ -79,7 +80,7 @@ pub fn get_size(instance: *runtime.Instance) ImplError!u32 {
 }
 
 /// Operation: delete
-pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) ImplError!void {
+pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString, value: webidl.Opt(runtime.USVString)) ImplError!void {
     _ = instance;
     _ = name;
     _ = value;
@@ -102,7 +103,7 @@ pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) ImplErr
 }
 
 /// Operation: has
-pub fn call_has(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) ImplError!bool {
+pub fn call_has(instance: *runtime.Instance, name: runtime.USVString, value: webidl.Opt(runtime.USVString)) ImplError!bool {
     _ = instance;
     _ = name;
     _ = value;

@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -1148,7 +1149,7 @@ pub fn call_computedStyleMap(instance: *runtime.Instance) ImplError!*runtime.Ins
 }
 
 /// Operation: scroll
-pub fn call_scroll(instance: *runtime.Instance, options: dictionaries.ScrollToOptions) ImplError!*const anyopaque {
+pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -1161,7 +1162,7 @@ pub fn call_getClientRects(instance: *runtime.Instance) ImplError!*runtime.Insta
 }
 
 /// Operation: scrollBy
-pub fn call_scrollBy(instance: *runtime.Instance, options: dictionaries.ScrollToOptions) ImplError!*const anyopaque {
+pub fn call_scrollBy(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -1182,7 +1183,7 @@ pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const mixins.Paren
 }
 
 /// Operation: convertQuadFromNode
-pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: dictionaries.DOMQuadInit, from: typedefs.GeometryNode, options: dictionaries.ConvertCoordinateOptions) ImplError!*runtime.Instance {
+pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: dictionaries.DOMQuadInit, from: typedefs.GeometryNode, options: webidl.Opt(dictionaries.ConvertCoordinateOptions)) ImplError!*runtime.Instance {
     _ = instance;
     _ = quad;
     _ = from;
@@ -1222,7 +1223,7 @@ pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instanc
 }
 
 /// Operation: scrollTo
-pub fn call_scrollTo(instance: *runtime.Instance, options: dictionaries.ScrollToOptions) ImplError!*const anyopaque {
+pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -1250,21 +1251,21 @@ pub fn call_getRegionFlowRanges(instance: *runtime.Instance) ImplError!?*const a
 }
 
 /// Operation: getBoxQuads
-pub fn call_getBoxQuads(instance: *runtime.Instance, options: dictionaries.BoxQuadOptions) ImplError!*const anyopaque {
+pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BoxQuadOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: focusableAreas
-pub fn call_focusableAreas(instance: *runtime.Instance, option: dictionaries.FocusableAreasOption) ImplError!*const anyopaque {
+pub fn call_focusableAreas(instance: *runtime.Instance, option: webidl.Opt(dictionaries.FocusableAreasOption)) ImplError!*const anyopaque {
     _ = instance;
     _ = option;
     return error.NotImplemented;
 }
 
 /// Operation: convertPointFromNode
-pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionaries.DOMPointInit, from: typedefs.GeometryNode, options: dictionaries.ConvertCoordinateOptions) ImplError!*runtime.Instance {
+pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionaries.DOMPointInit, from: typedefs.GeometryNode, options: webidl.Opt(dictionaries.ConvertCoordinateOptions)) ImplError!*runtime.Instance {
     _ = instance;
     _ = point;
     _ = from;
@@ -1273,7 +1274,7 @@ pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionarie
 }
 
 /// Operation: getAnimations
-pub fn call_getAnimations(instance: *runtime.Instance, options: dictionaries.GetAnimationsOptions) ImplError!*const anyopaque {
+pub fn call_getAnimations(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GetAnimationsOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -1302,7 +1303,7 @@ pub fn call_webkitMatchesSelector(instance: *runtime.Instance, selectors: runtim
 }
 
 /// Operation: spatialNavigationSearch
-pub fn call_spatialNavigationSearch(instance: *runtime.Instance, dir: enums.SpatialNavigationDirection, options: dictionaries.SpatialNavigationSearchOptions) ImplError!?*runtime.Instance {
+pub fn call_spatialNavigationSearch(instance: *runtime.Instance, dir: enums.SpatialNavigationDirection, options: webidl.Opt(dictionaries.SpatialNavigationSearchOptions)) ImplError!?*runtime.Instance {
     _ = instance;
     _ = dir;
     _ = options;
@@ -1350,7 +1351,7 @@ pub fn call_removeAttribute(instance: *runtime.Instance, qualifiedName: runtime.
 }
 
 /// Operation: convertRectFromNode
-pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: typedefs.GeometryNode, options: dictionaries.ConvertCoordinateOptions) ImplError!*runtime.Instance {
+pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: typedefs.GeometryNode, options: webidl.Opt(dictionaries.ConvertCoordinateOptions)) ImplError!*runtime.Instance {
     _ = instance;
     _ = rect;
     _ = from;
@@ -1382,14 +1383,14 @@ pub fn call_insertAdjacentText(instance: *runtime.Instance, where: runtime.DOMSt
 }
 
 /// Operation: requestFullscreen
-pub fn call_requestFullscreen(instance: *runtime.Instance, options: dictionaries.FullscreenOptions) ImplError!*const anyopaque {
+pub fn call_requestFullscreen(instance: *runtime.Instance, options: webidl.Opt(dictionaries.FullscreenOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: animate
-pub fn call_animate(instance: *runtime.Instance, keyframes: ?*const anyopaque, options: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_animate(instance: *runtime.Instance, keyframes: ?*const anyopaque, options: webidl.Opt(*const anyopaque)) ImplError!*runtime.Instance {
     _ = instance;
     _ = keyframes;
     _ = options;
@@ -1412,7 +1413,7 @@ pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, chi
 }
 
 /// Operation: getHTML
-pub fn call_getHTML(instance: *runtime.Instance, options: dictionaries.GetHTMLOptions) ImplError!runtime.DOMString {
+pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GetHTMLOptions)) ImplError!runtime.DOMString {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -1426,7 +1427,7 @@ pub fn call_getAttributeNode(instance: *runtime.Instance, qualifiedName: runtime
 }
 
 /// Operation: startViewTransition
-pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: webidl.Opt(*const anyopaque)) ImplError!*runtime.Instance {
     _ = instance;
     _ = callbackOptions;
     return error.NotImplemented;
@@ -1440,7 +1441,7 @@ pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: runtime.DOMString) 
 }
 
 /// Operation: scrollIntoView
-pub fn call_scrollIntoView(instance: *runtime.Instance, arg: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_scrollIntoView(instance: *runtime.Instance, arg: webidl.Opt(*const anyopaque)) ImplError!*const anyopaque {
     _ = instance;
     _ = arg;
     return error.NotImplemented;
@@ -1460,7 +1461,7 @@ pub fn call_hasPointerCapture(instance: *runtime.Instance, pointerId: i32) ImplE
 }
 
 /// Operation: toggleAttribute
-pub fn call_toggleAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString, force: bool) ImplError!bool {
+pub fn call_toggleAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString, force: webidl.Opt(bool)) ImplError!bool {
     _ = instance;
     _ = qualifiedName;
     _ = force;
@@ -1505,7 +1506,7 @@ pub fn call_insertAdjacentHTML(instance: *runtime.Instance, position: runtime.DO
 }
 
 /// Operation: checkVisibility
-pub fn call_checkVisibility(instance: *runtime.Instance, options: dictionaries.CheckVisibilityOptions) ImplError!bool {
+pub fn call_checkVisibility(instance: *runtime.Instance, options: webidl.Opt(dictionaries.CheckVisibilityOptions)) ImplError!bool {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -1525,7 +1526,7 @@ pub fn call_attachShadow(instance: *runtime.Instance, init_data: dictionaries.Sh
 }
 
 /// Operation: requestPointerLock
-pub fn call_requestPointerLock(instance: *runtime.Instance, options: dictionaries.PointerLockOptions) ImplError!*const anyopaque {
+pub fn call_requestPointerLock(instance: *runtime.Instance, options: webidl.Opt(dictionaries.PointerLockOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

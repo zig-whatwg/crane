@@ -1,5 +1,5 @@
 //! Generated from: fetch.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -110,7 +110,7 @@ pub const Headers = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: webidl.Opt(HeadersInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try HeadersImpl.call_constructor(allocator, ctx, init_data.value);
+        return try HeadersImpl.call_constructor(allocator, ctx, init_data);
     }
 
     pub fn call_delete(instance: *runtime.Instance, name: runtime.ByteString) anyerror!void {

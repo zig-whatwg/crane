@@ -1,5 +1,5 @@
 //! Generated from: xhr.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -117,7 +117,7 @@ pub const FormData = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, form: webidl.Opt(*runtime.Instance), submitter: webidl.Opt(?*runtime.Instance)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try FormDataImpl.call_constructor(allocator, ctx, form.value, submitter.value);
+        return try FormDataImpl.call_constructor(allocator, ctx, form, submitter);
     }
 
     pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) anyerror!void {

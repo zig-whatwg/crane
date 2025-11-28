@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -90,7 +91,7 @@ pub fn call_getCTM(instance: *runtime.Instance) ImplError!?*runtime.Instance {
 }
 
 /// Operation: getBBox
-pub fn call_getBBox(instance: *runtime.Instance, options: dictionaries.SVGBoundingBoxOptions) ImplError!*runtime.Instance {
+pub fn call_getBBox(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SVGBoundingBoxOptions)) ImplError!*runtime.Instance {
     _ = instance;
     _ = options;
     return error.NotImplemented;

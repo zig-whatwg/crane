@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:22Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -94,7 +94,7 @@ pub const CanvasImageData = struct {
         // [EnforceRange] on sh
         if (!runtime.isInRange(i32, sh)) return error.TypeError;
         
-        return try CanvasImageDataImpl.call_getImageData(instance, sx, sy, sw, sh, settings.value);
+        return try CanvasImageDataImpl.call_getImageData(instance, sx, sy, sw, sh, settings);
     }
 
     pub fn call_createImageData(instance: *runtime.Instance, sw: i32, sh: i32, settings: webidl.Opt(ImageDataSettings)) anyerror!*runtime.Instance {
@@ -103,7 +103,7 @@ pub const CanvasImageData = struct {
         // [EnforceRange] on sh
         if (!runtime.isInRange(i32, sh)) return error.TypeError;
         
-        return try CanvasImageDataImpl.call_createImageData(instance, sw, sh, settings.value);
+        return try CanvasImageDataImpl.call_createImageData(instance, sw, sh, settings);
     }
 
     pub fn call_putImageData(instance: *runtime.Instance, imageData: *runtime.Instance, dx: i32, dy: i32) anyerror!void {

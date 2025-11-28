@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -79,7 +80,7 @@ pub fn get_supportedEntryTypes(instance: *runtime.Instance) ImplError!*const any
 }
 
 /// Operation: observe
-pub fn call_observe(instance: *runtime.Instance, options: dictionaries.PerformanceObserverInit) ImplError!void {
+pub fn call_observe(instance: *runtime.Instance, options: webidl.Opt(dictionaries.PerformanceObserverInit)) ImplError!void {
     _ = instance;
     _ = options;
     return error.NotImplemented;

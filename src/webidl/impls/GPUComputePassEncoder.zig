@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -73,7 +74,7 @@ pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) ImplErro
 }
 
 /// Operation: dispatchWorkgroups
-pub fn call_dispatchWorkgroups(instance: *runtime.Instance, workgroupCountX: typedefs.GPUSize32, workgroupCountY: typedefs.GPUSize32, workgroupCountZ: typedefs.GPUSize32) ImplError!void {
+pub fn call_dispatchWorkgroups(instance: *runtime.Instance, workgroupCountX: typedefs.GPUSize32, workgroupCountY: webidl.Opt(typedefs.GPUSize32), workgroupCountZ: webidl.Opt(typedefs.GPUSize32)) ImplError!void {
     _ = instance;
     _ = workgroupCountX;
     _ = workgroupCountY;
@@ -88,7 +89,7 @@ pub fn call_popDebugGroup(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: setBindGroup
-pub fn call_setBindGroup(instance: *runtime.Instance, index: typedefs.GPUIndex32, bindGroup: ?*runtime.Instance, dynamicOffsets: *const anyopaque) ImplError!void {
+pub fn call_setBindGroup(instance: *runtime.Instance, index: typedefs.GPUIndex32, bindGroup: ?*runtime.Instance, dynamicOffsets: webidl.Opt(*const anyopaque)) ImplError!void {
     _ = instance;
     _ = index;
     _ = bindGroup;

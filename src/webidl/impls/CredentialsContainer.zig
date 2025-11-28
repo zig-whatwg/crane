@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -67,7 +68,7 @@ pub fn call_store(instance: *runtime.Instance, credential: *runtime.Instance) Im
 }
 
 /// Operation: get
-pub fn call_get(instance: *runtime.Instance, options: dictionaries.CredentialRequestOptions) ImplError!*const anyopaque {
+pub fn call_get(instance: *runtime.Instance, options: webidl.Opt(dictionaries.CredentialRequestOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -80,7 +81,7 @@ pub fn call_preventSilentAccess(instance: *runtime.Instance) ImplError!*const an
 }
 
 /// Operation: create
-pub fn call_create(instance: *runtime.Instance, options: dictionaries.CredentialCreationOptions) ImplError!*const anyopaque {
+pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(dictionaries.CredentialCreationOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

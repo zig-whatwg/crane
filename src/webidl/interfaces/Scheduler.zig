@@ -1,5 +1,5 @@
 //! Generated from: scheduling-apis.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -87,7 +87,7 @@ pub const Scheduler = struct {
 
     pub fn call_postTask(instance: *runtime.Instance, callback: SchedulerPostTaskCallback, options: webidl.Opt(SchedulerPostTaskOptions)) anyerror!*const anyopaque {
         
-        return try SchedulerImpl.call_postTask(instance, callback, options.value);
+        return try SchedulerImpl.call_postTask(instance, callback, options);
     }
 
     pub fn call_yield(instance: *runtime.Instance) anyerror!*const anyopaque {

@@ -1,5 +1,5 @@
 //! Generated from: is-input-pending.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:22Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -80,7 +80,7 @@ pub const Scheduling = struct {
 
     pub fn call_isInputPending(instance: *runtime.Instance, isInputPendingOptions: webidl.Opt(IsInputPendingOptions)) anyerror!bool {
         
-        return try SchedulingImpl.call_isInputPending(instance, isInputPendingOptions.value);
+        return try SchedulingImpl.call_isInputPending(instance, isInputPendingOptions);
     }
 
 };

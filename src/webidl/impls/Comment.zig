@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const Comment = interfaces.Comment;
 
 pub const State = Comment.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, data: runtime.DOMString) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, data: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &Comment.vtable, ctx);
     errdefer deinit(instance);

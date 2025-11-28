@@ -27,6 +27,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const mixins = @import("mixins");
+const webidl = @import("webidl");
 const FontFace = interfaces.FontFace;
 
 pub const State = FontFace.State;
@@ -61,7 +62,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, family: typedefs.CSSOMString, source: *const anyopaque, descriptors: dictionaries.FontFaceDescriptors) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, family: typedefs.CSSOMString, source: *const anyopaque, descriptors: webidl.Opt(dictionaries.FontFaceDescriptors)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &FontFace.vtable, ctx);
     errdefer deinit(instance);

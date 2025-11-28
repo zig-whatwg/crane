@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -73,7 +74,7 @@ pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) ImplErro
 }
 
 /// Operation: copyBufferToBuffer
-pub fn call_copyBufferToBuffer(instance: *runtime.Instance, source: *runtime.Instance, destination: *runtime.Instance, size: typedefs.GPUSize64) ImplError!void {
+pub fn call_copyBufferToBuffer(instance: *runtime.Instance, source: *runtime.Instance, destination: *runtime.Instance, size: webidl.Opt(typedefs.GPUSize64)) ImplError!void {
     _ = instance;
     _ = source;
     _ = destination;
@@ -140,14 +141,14 @@ pub fn call_pushDebugGroup(instance: *runtime.Instance, groupLabel: runtime.USVS
 }
 
 /// Operation: finish
-pub fn call_finish(instance: *runtime.Instance, descriptor: dictionaries.GPUCommandBufferDescriptor) ImplError!*runtime.Instance {
+pub fn call_finish(instance: *runtime.Instance, descriptor: webidl.Opt(dictionaries.GPUCommandBufferDescriptor)) ImplError!*runtime.Instance {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
 }
 
 /// Operation: beginComputePass
-pub fn call_beginComputePass(instance: *runtime.Instance, descriptor: dictionaries.GPUComputePassDescriptor) ImplError!*runtime.Instance {
+pub fn call_beginComputePass(instance: *runtime.Instance, descriptor: webidl.Opt(dictionaries.GPUComputePassDescriptor)) ImplError!*runtime.Instance {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
@@ -161,7 +162,7 @@ pub fn call_beginRenderPass(instance: *runtime.Instance, descriptor: dictionarie
 }
 
 /// Operation: clearBuffer
-pub fn call_clearBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, offset: typedefs.GPUSize64, size: typedefs.GPUSize64) ImplError!void {
+pub fn call_clearBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, offset: webidl.Opt(typedefs.GPUSize64), size: webidl.Opt(typedefs.GPUSize64)) ImplError!void {
     _ = instance;
     _ = buffer;
     _ = offset;

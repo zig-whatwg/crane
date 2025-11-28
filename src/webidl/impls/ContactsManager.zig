@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -60,7 +61,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: select
-pub fn call_select(instance: *runtime.Instance, properties: *const anyopaque, options: dictionaries.ContactsSelectOptions) ImplError!*const anyopaque {
+pub fn call_select(instance: *runtime.Instance, properties: *const anyopaque, options: webidl.Opt(dictionaries.ContactsSelectOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = properties;
     _ = options;

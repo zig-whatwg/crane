@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -108,14 +109,14 @@ pub fn get_inputQuota(instance: *runtime.Instance) ImplError!f64 {
 }
 
 /// Operation: availability
-pub fn call_availability(instance: *runtime.Instance, options: dictionaries.SummarizerCreateCoreOptions) ImplError!*const anyopaque {
+pub fn call_availability(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SummarizerCreateCoreOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: summarizeStreaming
-pub fn call_summarizeStreaming(instance: *runtime.Instance, input: runtime.DOMString, options: dictionaries.SummarizerSummarizeOptions) ImplError!*runtime.Instance {
+pub fn call_summarizeStreaming(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(dictionaries.SummarizerSummarizeOptions)) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -123,7 +124,7 @@ pub fn call_summarizeStreaming(instance: *runtime.Instance, input: runtime.DOMSt
 }
 
 /// Operation: measureInputUsage
-pub fn call_measureInputUsage(instance: *runtime.Instance, input: runtime.DOMString, options: dictionaries.SummarizerSummarizeOptions) ImplError!*const anyopaque {
+pub fn call_measureInputUsage(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(dictionaries.SummarizerSummarizeOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = options;
@@ -131,7 +132,7 @@ pub fn call_measureInputUsage(instance: *runtime.Instance, input: runtime.DOMStr
 }
 
 /// Operation: summarize
-pub fn call_summarize(instance: *runtime.Instance, input: runtime.DOMString, options: dictionaries.SummarizerSummarizeOptions) ImplError!*const anyopaque {
+pub fn call_summarize(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(dictionaries.SummarizerSummarizeOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = options;
@@ -145,7 +146,7 @@ pub fn call_destroy(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: create
-pub fn call_create(instance: *runtime.Instance, options: dictionaries.SummarizerCreateOptions) ImplError!*const anyopaque {
+pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SummarizerCreateOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

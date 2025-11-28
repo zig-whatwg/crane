@@ -27,6 +27,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const mixins = @import("mixins");
+const webidl = @import("webidl");
 const USBIsochronousInTransferResult = interfaces.USBIsochronousInTransferResult;
 
 pub const State = USBIsochronousInTransferResult.State;
@@ -61,7 +62,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, packets: *const anyopaque, data: ?*const anyopaque) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, packets: *const anyopaque, data: webidl.Opt(?*const anyopaque)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &USBIsochronousInTransferResult.vtable, ctx);
     errdefer deinit(instance);

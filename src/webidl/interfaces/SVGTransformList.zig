@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -132,7 +132,7 @@ pub const SVGTransformList = struct {
 
     pub fn call_createSVGTransformFromMatrix(instance: *runtime.Instance, matrix: webidl.Opt(DOMMatrix2DInit)) anyerror!*runtime.Instance {
         
-        return try SVGTransformListImpl.call_createSVGTransformFromMatrix(instance, matrix.value);
+        return try SVGTransformListImpl.call_createSVGTransformFromMatrix(instance, matrix);
     }
 
     pub fn call_getItem(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {

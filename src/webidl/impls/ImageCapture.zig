@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -97,7 +98,7 @@ pub fn call_getPhotoSettings(instance: *runtime.Instance) ImplError!*const anyop
 }
 
 /// Operation: takePhoto
-pub fn call_takePhoto(instance: *runtime.Instance, photoSettings: dictionaries.PhotoSettings) ImplError!*const anyopaque {
+pub fn call_takePhoto(instance: *runtime.Instance, photoSettings: webidl.Opt(dictionaries.PhotoSettings)) ImplError!*const anyopaque {
     _ = instance;
     _ = photoSettings;
     return error.NotImplemented;

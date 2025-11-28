@@ -1,5 +1,5 @@
 //! Generated from: writing-assistance-apis.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:18Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -176,17 +176,17 @@ pub const Writer = struct {
 
     pub fn call_availability(instance: *runtime.Instance, options: webidl.Opt(WriterCreateCoreOptions)) anyerror!*const anyopaque {
         
-        return try WriterImpl.call_availability(instance, options.value);
+        return try WriterImpl.call_availability(instance, options);
     }
 
     pub fn call_measureInputUsage(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(WriterWriteOptions)) anyerror!*const anyopaque {
         
-        return try WriterImpl.call_measureInputUsage(instance, input, options.value);
+        return try WriterImpl.call_measureInputUsage(instance, input, options);
     }
 
     pub fn call_write(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(WriterWriteOptions)) anyerror!*const anyopaque {
         
-        return try WriterImpl.call_write(instance, input, options.value);
+        return try WriterImpl.call_write(instance, input, options);
     }
 
     pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
@@ -195,12 +195,12 @@ pub const Writer = struct {
 
     pub fn call_writeStreaming(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(WriterWriteOptions)) anyerror!*runtime.Instance {
         
-        return try WriterImpl.call_writeStreaming(instance, input, options.value);
+        return try WriterImpl.call_writeStreaming(instance, input, options);
     }
 
     pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(WriterCreateOptions)) anyerror!*const anyopaque {
         
-        return try WriterImpl.call_create(instance, options.value);
+        return try WriterImpl.call_create(instance, options);
     }
 
 };

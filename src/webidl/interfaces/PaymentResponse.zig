@@ -1,5 +1,5 @@
 //! Generated from: payment-request.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -184,7 +184,7 @@ pub const PaymentResponse = struct {
     pub fn call_complete(instance: *runtime.Instance, result: webidl.Opt(PaymentComplete), details: webidl.Opt(PaymentCompleteDetails)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
-        return try PaymentResponseImpl.call_complete(instance, result.value, details.value);
+        return try PaymentResponseImpl.call_complete(instance, result, details);
     }
 
     /// Extended attributes: [Default]
@@ -196,7 +196,7 @@ pub const PaymentResponse = struct {
     pub fn call_retry(instance: *runtime.Instance, errorFields: webidl.Opt(PaymentValidationErrors)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
-        return try PaymentResponseImpl.call_retry(instance, errorFields.value);
+        return try PaymentResponseImpl.call_retry(instance, errorFields);
     }
 
 };

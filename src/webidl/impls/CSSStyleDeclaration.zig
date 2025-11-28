@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -113,7 +114,7 @@ pub fn call_getPropertyPriority(instance: *runtime.Instance, property: typedefs.
 }
 
 /// Operation: setProperty
-pub fn call_setProperty(instance: *runtime.Instance, property: typedefs.CSSOMString, value: typedefs.CSSOMString, priority: typedefs.CSSOMString) ImplError!void {
+pub fn call_setProperty(instance: *runtime.Instance, property: typedefs.CSSOMString, value: typedefs.CSSOMString, priority: webidl.Opt(typedefs.CSSOMString)) ImplError!void {
     _ = instance;
     _ = property;
     _ = value;

@@ -27,6 +27,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const mixins = @import("mixins");
+const webidl = @import("webidl");
 const DOMRectReadOnly = interfaces.DOMRectReadOnly;
 
 pub const State = DOMRectReadOnly.State;
@@ -61,7 +62,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: f64, y: f64, width: f64, height: f64) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: webidl.Opt(f64), y: webidl.Opt(f64), width: webidl.Opt(f64), height: webidl.Opt(f64)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &DOMRectReadOnly.vtable, ctx);
     errdefer deinit(instance);
@@ -124,7 +125,7 @@ pub fn get_left(instance: *runtime.Instance) ImplError!f64 {
 }
 
 /// Operation: fromRect
-pub fn call_fromRect(instance: *runtime.Instance, other: dictionaries.DOMRectInit) ImplError!*runtime.Instance {
+pub fn call_fromRect(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMRectInit)) ImplError!*runtime.Instance {
     _ = instance;
     _ = other;
     return error.NotImplemented;

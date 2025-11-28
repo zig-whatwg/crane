@@ -1,5 +1,5 @@
 //! Generated from: storage-buckets.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -101,7 +101,7 @@ pub const StorageBucketManager = struct {
 
     pub fn call_open(instance: *runtime.Instance, name: DOMString, options: webidl.Opt(StorageBucketOptions)) anyerror!*const anyopaque {
         
-        return try StorageBucketManagerImpl.call_open(instance, name, options.value);
+        return try StorageBucketManagerImpl.call_open(instance, name, options);
     }
 
 };

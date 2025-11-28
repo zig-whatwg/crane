@@ -1,5 +1,5 @@
 //! Generated from: webnn.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -88,7 +88,7 @@ pub const ML = struct {
 
     pub fn call_createContext(instance: *runtime.Instance, options: webidl.Opt(MLContextOptions)) anyerror!*const anyopaque {
         
-        return try MLImpl.call_createContext(instance, options.value);
+        return try MLImpl.call_createContext(instance, options);
     }
 
 };

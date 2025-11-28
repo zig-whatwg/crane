@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -78,7 +79,7 @@ pub fn get_info(instance: *runtime.Instance) ImplError!*runtime.Instance {
 }
 
 /// Operation: requestDevice
-pub fn call_requestDevice(instance: *runtime.Instance, descriptor: dictionaries.GPUDeviceDescriptor) ImplError!*const anyopaque {
+pub fn call_requestDevice(instance: *runtime.Instance, descriptor: webidl.Opt(dictionaries.GPUDeviceDescriptor)) ImplError!*const anyopaque {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;

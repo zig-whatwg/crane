@@ -8,6 +8,7 @@
 //! a range of records from an object store or index.
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -178,7 +179,7 @@ pub fn call_includes(instance: *runtime.Instance, key: *const anyopaque) ImplErr
 /// Creates a key range with both lower and upper bounds.
 ///
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbkeyrange-bound
-pub fn call_bound(instance: *runtime.Instance, lower: *const anyopaque, upper: *const anyopaque, lowerOpen: bool, upperOpen: bool) ImplError!*runtime.Instance {
+pub fn call_bound(instance: *runtime.Instance, lower: *const anyopaque, upper: *const anyopaque, lowerOpen: webidl.Opt(bool), upperOpen: webidl.Opt(bool)) ImplError!*runtime.Instance {
     // Static method - use context directly, not instance state
     const allocator = instance.ctx.allocator;
 
@@ -186,8 +187,10 @@ pub fn call_bound(instance: *runtime.Instance, lower: *const anyopaque, upper: *
     const lower_key = convertToKey(lower) catch return error.DataError;
     const upper_key = convertToKey(upper) catch return error.DataError;
 
-    // Create the range
-    const range = BackendKeyRange.bound(lower_key, upper_key, lowerOpen, upperOpen) catch {
+    // Create the range - unwrap Opt bools (default false)
+    const lower_open = if (lowerOpen.wasPassed()) lowerOpen.value else false;
+    const upper_open = if (upperOpen.wasPassed()) upperOpen.value else false;
+    const range = BackendKeyRange.bound(lower_key, upper_key, lower_open, upper_open) catch {
         return error.DataError;
     };
 
@@ -210,7 +213,7 @@ pub fn call_bound(instance: *runtime.Instance, lower: *const anyopaque, upper: *
 /// Creates a key range with only an upper bound.
 ///
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbkeyrange-upperbound
-pub fn call_upperBound(instance: *runtime.Instance, upper: *const anyopaque, open: bool) ImplError!*runtime.Instance {
+pub fn call_upperBound(instance: *runtime.Instance, upper: *const anyopaque, open: webidl.Opt(bool)) ImplError!*runtime.Instance {
     // Static method - use context directly, not instance state
     const allocator = instance.ctx.allocator;
 
@@ -222,10 +225,11 @@ pub fn call_upperBound(instance: *runtime.Instance, upper: *const anyopaque, ope
         return error.OutOfMemory;
     };
 
-    // Set the range
+    // Set the range - unwrap Opt (default false)
+    const open_val = if (open.wasPassed()) open.value else false;
     const new_state = new_instance.getState(State);
     if (new_state.own._internal) |new_internal| {
-        new_internal.range = BackendKeyRange.upperBound(upper_key, open);
+        new_internal.range = BackendKeyRange.upperBound(upper_key, open_val);
     }
 
     return new_instance;
@@ -236,7 +240,7 @@ pub fn call_upperBound(instance: *runtime.Instance, upper: *const anyopaque, ope
 /// Creates a key range with only a lower bound.
 ///
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbkeyrange-lowerbound
-pub fn call_lowerBound(instance: *runtime.Instance, lower: *const anyopaque, open: bool) ImplError!*runtime.Instance {
+pub fn call_lowerBound(instance: *runtime.Instance, lower: *const anyopaque, open: webidl.Opt(bool)) ImplError!*runtime.Instance {
     // Static method - use context directly, not instance state
     const allocator = instance.ctx.allocator;
 
@@ -248,10 +252,11 @@ pub fn call_lowerBound(instance: *runtime.Instance, lower: *const anyopaque, ope
         return error.OutOfMemory;
     };
 
-    // Set the range
+    // Set the range - unwrap Opt (default false)
+    const open_val = if (open.wasPassed()) open.value else false;
     const new_state = new_instance.getState(State);
     if (new_state.own._internal) |new_internal| {
-        new_internal.range = BackendKeyRange.lowerBound(lower_key, open);
+        new_internal.range = BackendKeyRange.lowerBound(lower_key, open_val);
     }
 
     return new_instance;

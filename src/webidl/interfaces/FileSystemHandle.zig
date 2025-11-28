@@ -1,5 +1,5 @@
 //! Generated from: fs.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:22Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -116,12 +116,12 @@ pub const FileSystemHandle = struct {
 
     pub fn call_queryPermission(instance: *runtime.Instance, descriptor: webidl.Opt(FileSystemHandlePermissionDescriptor)) anyerror!*const anyopaque {
         
-        return try FileSystemHandleImpl.call_queryPermission(instance, descriptor.value);
+        return try FileSystemHandleImpl.call_queryPermission(instance, descriptor);
     }
 
     pub fn call_requestPermission(instance: *runtime.Instance, descriptor: webidl.Opt(FileSystemHandlePermissionDescriptor)) anyerror!*const anyopaque {
         
-        return try FileSystemHandleImpl.call_requestPermission(instance, descriptor.value);
+        return try FileSystemHandleImpl.call_requestPermission(instance, descriptor);
     }
 
 };

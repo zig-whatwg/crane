@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -462,7 +463,7 @@ pub fn call_createSVGAngle(instance: *runtime.Instance) ImplError!*runtime.Insta
 }
 
 /// Operation: createSVGTransformFromMatrix
-pub fn call_createSVGTransformFromMatrix(instance: *runtime.Instance, matrix: dictionaries.DOMMatrix2DInit) ImplError!*runtime.Instance {
+pub fn call_createSVGTransformFromMatrix(instance: *runtime.Instance, matrix: webidl.Opt(dictionaries.DOMMatrix2DInit)) ImplError!*runtime.Instance {
     _ = instance;
     _ = matrix;
     return error.NotImplemented;

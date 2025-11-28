@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -116,7 +117,7 @@ pub fn call_createObjectURL(instance: *runtime.Instance, obj: *const anyopaque) 
 }
 
 /// Operation: SharedWorker
-pub fn call_SharedWorker(instance: *runtime.Instance, scriptURL: runtime.USVString, options: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_SharedWorker(instance: *runtime.Instance, scriptURL: runtime.USVString, options: webidl.Opt(*const anyopaque)) ImplError!*runtime.Instance {
     _ = instance;
     _ = scriptURL;
     _ = options;

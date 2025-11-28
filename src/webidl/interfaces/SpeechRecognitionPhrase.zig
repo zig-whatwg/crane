@@ -1,5 +1,5 @@
 //! Generated from: speech-api.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -87,7 +87,7 @@ pub const SpeechRecognitionPhrase = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, phrase: DOMString, boost: webidl.Opt(f32)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try SpeechRecognitionPhraseImpl.call_constructor(allocator, ctx, phrase, boost.value);
+        return try SpeechRecognitionPhraseImpl.call_constructor(allocator, ctx, phrase, boost);
     }
 
     pub fn get_phrase(instance: *runtime.Instance) anyerror!DOMString {

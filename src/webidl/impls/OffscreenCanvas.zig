@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -126,7 +127,7 @@ pub fn set_oncontextrestored(instance: *runtime.Instance, value: typedefs.EventH
 }
 
 /// Operation: getContext
-pub fn call_getContext(instance: *runtime.Instance, contextId: enums.OffscreenRenderingContextId, options: *const anyopaque) ImplError!?typedefs.OffscreenRenderingContext {
+pub fn call_getContext(instance: *runtime.Instance, contextId: enums.OffscreenRenderingContextId, options: webidl.Opt(*const anyopaque)) ImplError!?typedefs.OffscreenRenderingContext {
     _ = instance;
     _ = contextId;
     _ = options;
@@ -134,7 +135,7 @@ pub fn call_getContext(instance: *runtime.Instance, contextId: enums.OffscreenRe
 }
 
 /// Operation: convertToBlob
-pub fn call_convertToBlob(instance: *runtime.Instance, options: dictionaries.ImageEncodeOptions) ImplError!*const anyopaque {
+pub fn call_convertToBlob(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ImageEncodeOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

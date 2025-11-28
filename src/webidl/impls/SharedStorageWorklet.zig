@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -60,7 +61,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: run
-pub fn call_run(instance: *runtime.Instance, name: runtime.DOMString, options: dictionaries.SharedStorageRunOperationMethodOptions) ImplError!*const anyopaque {
+pub fn call_run(instance: *runtime.Instance, name: runtime.DOMString, options: webidl.Opt(dictionaries.SharedStorageRunOperationMethodOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = name;
     _ = options;
@@ -68,7 +69,7 @@ pub fn call_run(instance: *runtime.Instance, name: runtime.DOMString, options: d
 }
 
 /// Operation: selectURL
-pub fn call_selectURL(instance: *runtime.Instance, name: runtime.DOMString, urls: *const anyopaque, options: dictionaries.SharedStorageRunOperationMethodOptions) ImplError!*const anyopaque {
+pub fn call_selectURL(instance: *runtime.Instance, name: runtime.DOMString, urls: *const anyopaque, options: webidl.Opt(dictionaries.SharedStorageRunOperationMethodOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = name;
     _ = urls;

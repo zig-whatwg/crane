@@ -1,5 +1,5 @@
 //! Generated from: screen-wake-lock.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -84,7 +84,7 @@ pub const WakeLock = struct {
 
     pub fn call_request(instance: *runtime.Instance, @"type": webidl.Opt(WakeLockType)) anyerror!*const anyopaque {
         
-        return try WakeLockImpl.call_request(instance, @"type".value);
+        return try WakeLockImpl.call_request(instance, @"type");
     }
 
 };

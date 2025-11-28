@@ -1,5 +1,5 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -110,7 +110,7 @@ pub const CSSGroupingRule = struct {
 
     pub fn call_insertRule(instance: *runtime.Instance, rule: CSSOMString, index: webidl.Opt(u32)) anyerror!u32 {
         
-        return try CSSGroupingRuleImpl.call_insertRule(instance, rule, index.value);
+        return try CSSGroupingRuleImpl.call_insertRule(instance, rule, index);
     }
 
 };

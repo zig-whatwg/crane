@@ -6,6 +6,7 @@
 //! When abort() is called, the controller's signal is aborted.
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -97,13 +98,15 @@ pub fn get_signal(instance: *runtime.Instance) ImplError!*runtime.Instance {
 /// Operation: abort
 ///
 /// Spec: § 3.2.3 "The abort(reason) method steps are to signal abort on this's signal with reason"
-pub fn call_abort(instance: *runtime.Instance, reason: *const anyopaque) ImplError!void {
+pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) ImplError!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
     // Signal abort on the associated signal
+    // Unwrap Opt - signalAbort expects ?*const anyopaque
+    const reason_raw: ?*const anyopaque = if (reason.wasPassed()) reason.value else null;
     const AbortSignalImpl = @import("AbortSignal.zig");
-    AbortSignalImpl.signalAbort(internal.signal, @constCast(reason)) catch |err| {
+    AbortSignalImpl.signalAbort(internal.signal, @constCast(reason_raw)) catch |err| {
         return switch (err) {
             error.InvalidState => error.InvalidState,
             else => error.InvalidState,

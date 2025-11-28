@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -92,7 +93,7 @@ pub fn call_getPorts(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Operation: requestPort
-pub fn call_requestPort(instance: *runtime.Instance, options: dictionaries.SerialPortRequestOptions) ImplError!*const anyopaque {
+pub fn call_requestPort(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SerialPortRequestOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

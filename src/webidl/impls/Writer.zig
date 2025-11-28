@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -108,14 +109,14 @@ pub fn get_inputQuota(instance: *runtime.Instance) ImplError!f64 {
 }
 
 /// Operation: availability
-pub fn call_availability(instance: *runtime.Instance, options: dictionaries.WriterCreateCoreOptions) ImplError!*const anyopaque {
+pub fn call_availability(instance: *runtime.Instance, options: webidl.Opt(dictionaries.WriterCreateCoreOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: measureInputUsage
-pub fn call_measureInputUsage(instance: *runtime.Instance, input: runtime.DOMString, options: dictionaries.WriterWriteOptions) ImplError!*const anyopaque {
+pub fn call_measureInputUsage(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(dictionaries.WriterWriteOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = options;
@@ -123,7 +124,7 @@ pub fn call_measureInputUsage(instance: *runtime.Instance, input: runtime.DOMStr
 }
 
 /// Operation: write
-pub fn call_write(instance: *runtime.Instance, input: runtime.DOMString, options: dictionaries.WriterWriteOptions) ImplError!*const anyopaque {
+pub fn call_write(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(dictionaries.WriterWriteOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = options;
@@ -137,7 +138,7 @@ pub fn call_destroy(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: writeStreaming
-pub fn call_writeStreaming(instance: *runtime.Instance, input: runtime.DOMString, options: dictionaries.WriterWriteOptions) ImplError!*runtime.Instance {
+pub fn call_writeStreaming(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(dictionaries.WriterWriteOptions)) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -145,7 +146,7 @@ pub fn call_writeStreaming(instance: *runtime.Instance, input: runtime.DOMString
 }
 
 /// Operation: create
-pub fn call_create(instance: *runtime.Instance, options: dictionaries.WriterCreateOptions) ImplError!*const anyopaque {
+pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(dictionaries.WriterCreateOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -86,7 +87,7 @@ pub fn call_getPointAtLength(instance: *runtime.Instance, distance: f32) ImplErr
 }
 
 /// Operation: getPathData
-pub fn call_getPathData(instance: *runtime.Instance, settings: dictionaries.SVGPathDataSettings) ImplError!*const anyopaque {
+pub fn call_getPathData(instance: *runtime.Instance, settings: webidl.Opt(dictionaries.SVGPathDataSettings)) ImplError!*const anyopaque {
     _ = instance;
     _ = settings;
     return error.NotImplemented;

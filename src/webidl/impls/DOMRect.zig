@@ -14,6 +14,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const DOMRect = interfaces.DOMRect;
 const DOMRectReadOnlyImpl = @import("DOMRectReadOnly.zig");
+const webidl = @import("webidl");
 
 pub const State = DOMRect.State;
 
@@ -70,8 +71,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// Spec: https://drafts.csswg.org/geometry-1/#dom-domrect-domrect
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: f64, y: f64, width: f64, height: f64) !*runtime.Instance {
-    return initWithDimensions(allocator, ctx, x, y, width, height);
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: webidl.Opt(f64), y: webidl.Opt(f64), width: webidl.Opt(f64), height: webidl.Opt(f64)) !*runtime.Instance {
+    // Extract values from Opt, using 0 as default per spec
+    const x_val = if (x.wasPassed()) x.value else 0;
+    const y_val = if (y.wasPassed()) y.value else 0;
+    const width_val = if (width.wasPassed()) width.value else 0;
+    const height_val = if (height.wasPassed()) height.value else 0;
+    return initWithDimensions(allocator, ctx, x_val, y_val, width_val, height_val);
 }
 
 /// Getter for x
@@ -129,14 +135,14 @@ pub fn set_height(instance: *runtime.Instance, value: f64) ImplError!void {
 /// Operation: fromRect (static)
 /// Spec: https://drafts.csswg.org/geometry-1/#dom-domrect-fromrect
 /// Creates a new DOMRect from a DOMRectInit dictionary
-pub fn call_fromRect(instance: *runtime.Instance, other: dictionaries.DOMRectInit) ImplError!*runtime.Instance {
+pub fn call_fromRect(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMRectInit)) ImplError!*runtime.Instance {
     const ctx = instance.ctx;
 
-    // Extract values from dictionary with defaults
-    const x = other.x orelse 0;
-    const y = other.y orelse 0;
-    const width = other.width orelse 0;
-    const height = other.height orelse 0;
+    // Extract values from dictionary with defaults (unwrap Opt)
+    const x = if (other.wasPassed()) other.value.x orelse 0 else 0;
+    const y = if (other.wasPassed()) other.value.y orelse 0 else 0;
+    const width = if (other.wasPassed()) other.value.width orelse 0 else 0;
+    const height = if (other.wasPassed()) other.value.height orelse 0 else 0;
 
     return initWithDimensions(std.heap.page_allocator, ctx, x, y, width, height) catch return error.OutOfMemory;
 }

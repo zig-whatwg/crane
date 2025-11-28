@@ -1,5 +1,5 @@
 //! Generated from: input-device-capabilities.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:22Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -86,7 +86,7 @@ pub const InputDeviceCapabilities = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, deviceInitDict: webidl.Opt(InputDeviceCapabilitiesInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try InputDeviceCapabilitiesImpl.call_constructor(allocator, ctx, deviceInitDict.value);
+        return try InputDeviceCapabilitiesImpl.call_constructor(allocator, ctx, deviceInitDict);
     }
 
     pub fn get_firesTouchEvents(instance: *runtime.Instance) anyerror!bool {

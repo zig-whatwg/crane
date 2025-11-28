@@ -27,6 +27,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const mixins = @import("mixins");
+const webidl = @import("webidl");
 const CSSScale = interfaces.CSSScale;
 
 pub const State = CSSScale.State;
@@ -61,7 +62,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: typedefs.CSSNumberish, y: typedefs.CSSNumberish, z: typedefs.CSSNumberish) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: typedefs.CSSNumberish, y: typedefs.CSSNumberish, z: webidl.Opt(typedefs.CSSNumberish)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &CSSScale.vtable, ctx);
     errdefer deinit(instance);

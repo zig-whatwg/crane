@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -123,12 +123,12 @@ pub const AudioScheduledSourceNode = struct {
 
     pub fn call_stop(instance: *runtime.Instance, when: webidl.Opt(f64)) anyerror!void {
         
-        return try AudioScheduledSourceNodeImpl.call_stop(instance, when.value);
+        return try AudioScheduledSourceNodeImpl.call_stop(instance, when);
     }
 
     pub fn call_start(instance: *runtime.Instance, when: webidl.Opt(f64)) anyerror!void {
         
-        return try AudioScheduledSourceNodeImpl.call_start(instance, when.value);
+        return try AudioScheduledSourceNodeImpl.call_start(instance, when);
     }
 
 };

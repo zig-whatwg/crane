@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -200,7 +201,7 @@ pub fn call_abort(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: send
-pub fn call_send(instance: *runtime.Instance, body: ?*const anyopaque) ImplError!void {
+pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?*const anyopaque)) ImplError!void {
     _ = instance;
     _ = body;
     return error.NotImplemented;

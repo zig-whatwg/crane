@@ -27,6 +27,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const mixins = @import("mixins");
+const webidl = @import("webidl");
 const DOMPoint = interfaces.DOMPoint;
 
 pub const State = DOMPoint.State;
@@ -61,7 +62,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: f64, y: f64, z: f64, w: f64) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: webidl.Opt(f64), y: webidl.Opt(f64), z: webidl.Opt(f64), w: webidl.Opt(f64)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &DOMPoint.vtable, ctx);
     errdefer deinit(instance);
@@ -100,7 +101,7 @@ pub fn get_w(instance: *runtime.Instance) ImplError!f64 {
 }
 
 /// Operation: fromPoint
-pub fn call_fromPoint(instance: *runtime.Instance, other: dictionaries.DOMPointInit) ImplError!*runtime.Instance {
+pub fn call_fromPoint(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMPointInit)) ImplError!*runtime.Instance {
     _ = instance;
     _ = other;
     return error.NotImplemented;

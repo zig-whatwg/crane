@@ -76,26 +76,28 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 2. Process blobParts using "process blob parts" algorithm
 /// 3. Normalize type from options
 /// 4. Return new Blob
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, blobParts: *const anyopaque, options: dictionaries.BlobPropertyBag) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, blobParts: webidl.Opt(*const anyopaque), options: webidl.Opt(dictionaries.BlobPropertyBag)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &Blob.vtable, ctx);
     errdefer deinit(instance);
 
     // Determine if we have blob parts and what endings mode to use
     const endings_mode: file.algorithms.Endings = blk: {
-        if (options.endings) |endings_ptr| {
-            // endings is a pointer to the endings string value
-            // For now, check if it's "native"
-            const endings_str: *const []const u8 = @ptrCast(@alignCast(endings_ptr));
-            if (std.mem.eql(u8, endings_str.*, "native")) {
-                break :blk .native;
+        if (options.wasPassed()) {
+            if (options.value.endings) |endings_ptr| {
+                // endings is a pointer to the endings string value
+                // For now, check if it's "native"
+                const endings_str: *const []const u8 = @ptrCast(@alignCast(endings_ptr));
+                if (std.mem.eql(u8, endings_str.*, "native")) {
+                    break :blk .native;
+                }
             }
         }
         break :blk .transparent;
     };
 
     // Get MIME type from options
-    const mime_type: []const u8 = if (options.type) |t| t.asSlice() else "";
+    const mime_type: []const u8 = if (options.wasPassed() and options.value.type != null) options.value.type.?.asSlice() else "";
 
     // Process blob parts if provided
     // The blobParts parameter comes as an opaque pointer to a sequence
@@ -216,26 +218,30 @@ pub fn get_type(instance: *runtime.Instance) ImplError!runtime.DOMString {
 ///
 /// Spec: https://www.w3.org/TR/FileAPI/#slice-method-algo
 /// Returns a new Blob object with bytes from start to end and optional contentType.
-pub fn call_slice(instance: *runtime.Instance, start: i64, end: i64, contentType: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_slice(instance: *runtime.Instance, start: webidl.Opt(i64), end: webidl.Opt(i64), contentType: webidl.Opt(runtime.DOMString)) ImplError!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidState;
     const allocator = internal.allocator;
     const ctx = instance.ctx;
 
-    // Get contentType as optional slice
+    // Get contentType as optional slice (unwrap Opt)
     const ct: ?[]const u8 = blk: {
-        const slice = contentType.asSlice();
-        if (slice.len > 0) {
-            break :blk slice;
+        if (contentType.wasPassed()) {
+            const slice = contentType.value.asSlice();
+            if (slice.len > 0) {
+                break :blk slice;
+            }
         }
         break :blk null;
     };
 
-    // Run slice blob algorithm
+    // Run slice blob algorithm - unwrap Opt for start/end
+    const start_val: ?i64 = if (start.wasPassed()) start.value else null;
+    const end_val: ?i64 = if (end.wasPassed()) end.value else null;
     const sliced_data = file.algorithms.sliceBlob(
         allocator,
         internal.blob_data,
-        start,
-        end,
+        start_val,
+        end_val,
         ct,
     ) catch {
         return error.OutOfMemory;

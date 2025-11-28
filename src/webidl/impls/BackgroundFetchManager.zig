@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -67,7 +68,7 @@ pub fn call_get(instance: *runtime.Instance, id: runtime.DOMString) ImplError!*c
 }
 
 /// Operation: fetch
-pub fn call_fetch(instance: *runtime.Instance, id: runtime.DOMString, requests: *const anyopaque, options: dictionaries.BackgroundFetchOptions) ImplError!*const anyopaque {
+pub fn call_fetch(instance: *runtime.Instance, id: runtime.DOMString, requests: *const anyopaque, options: webidl.Opt(dictionaries.BackgroundFetchOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = id;
     _ = requests;

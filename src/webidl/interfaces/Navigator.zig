@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -1080,7 +1080,7 @@ pub const Navigator = struct {
     /// Extended attributes: [SecureContext]
     pub fn call_requestMIDIAccess(instance: *runtime.Instance, options: webidl.Opt(MIDIOptions)) anyerror!*const anyopaque {
         
-        return try NavigatorImpl.call_requestMIDIAccess(instance, options.value);
+        return try NavigatorImpl.call_requestMIDIAccess(instance, options);
     }
 
     pub fn call_adAuctionComponents(instance: *runtime.Instance, numAdComponents: u16) anyerror!*const anyopaque {
@@ -1105,7 +1105,7 @@ pub const Navigator = struct {
 
     pub fn call_leaveAdInterestGroup(instance: *runtime.Instance, group: webidl.Opt(AuctionAdInterestGroupKey)) anyerror!*const anyopaque {
         
-        return try NavigatorImpl.call_leaveAdInterestGroup(instance, group.value);
+        return try NavigatorImpl.call_leaveAdInterestGroup(instance, group);
     }
 
     pub fn call_getGamepads(instance: *runtime.Instance) anyerror!*const anyopaque {
@@ -1129,7 +1129,7 @@ pub const Navigator = struct {
         // [EnforceRange] on contents
         if (!runtime.isInRange(u64, contents)) return error.TypeError;
         
-        return try NavigatorImpl.call_setAppBadge(instance, contents.value);
+        return try NavigatorImpl.call_setAppBadge(instance, contents);
     }
 
     pub fn call_canLoadAdAuctionFencedFrame(instance: *runtime.Instance) anyerror!bool {
@@ -1142,7 +1142,7 @@ pub const Navigator = struct {
 
     pub fn call_sendBeacon(instance: *runtime.Instance, url: runtime.USVString, data: webidl.Opt(?BodyInit)) anyerror!bool {
         
-        return try NavigatorImpl.call_sendBeacon(instance, url, data.value);
+        return try NavigatorImpl.call_sendBeacon(instance, url, data);
     }
 
     /// Extended attributes: [SecureContext]
@@ -1163,7 +1163,7 @@ pub const Navigator = struct {
     /// Extended attributes: [SecureContext]
     pub fn call_share(instance: *runtime.Instance, data: webidl.Opt(ShareData)) anyerror!*const anyopaque {
         
-        return try NavigatorImpl.call_share(instance, data.value);
+        return try NavigatorImpl.call_share(instance, data);
     }
 
     pub fn call_runAdAuction(instance: *runtime.Instance, config: AuctionAdConfig) anyerror!*const anyopaque {
@@ -1193,17 +1193,17 @@ pub const Navigator = struct {
     /// Extended attributes: [SecureContext]
     pub fn call_canShare(instance: *runtime.Instance, data: webidl.Opt(ShareData)) anyerror!bool {
         
-        return try NavigatorImpl.call_canShare(instance, data.value);
+        return try NavigatorImpl.call_canShare(instance, data);
     }
 
     pub fn call_clearOriginJoinedAdInterestGroups(instance: *runtime.Instance, owner: runtime.USVString, interestGroupsToKeep: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
         
-        return try NavigatorImpl.call_clearOriginJoinedAdInterestGroups(instance, owner, interestGroupsToKeep.value);
+        return try NavigatorImpl.call_clearOriginJoinedAdInterestGroups(instance, owner, interestGroupsToKeep);
     }
 
     pub fn call_getInterestGroupAdAuctionData(instance: *runtime.Instance, config: webidl.Opt(AdAuctionDataConfig)) anyerror!*const anyopaque {
         
-        return try NavigatorImpl.call_getInterestGroupAdAuctionData(instance, config.value);
+        return try NavigatorImpl.call_getInterestGroupAdAuctionData(instance, config);
     }
 
     /// Extended attributes: [SecureContext]
@@ -1214,7 +1214,7 @@ pub const Navigator = struct {
 
     pub fn call_deprecatedURNtoURL(instance: *runtime.Instance, urnOrConfig: UrnOrConfig, send_reports: webidl.Opt(bool)) anyerror!*const anyopaque {
         
-        return try NavigatorImpl.call_deprecatedURNtoURL(instance, urnOrConfig, send_reports.value);
+        return try NavigatorImpl.call_deprecatedURNtoURL(instance, urnOrConfig, send_reports);
     }
 
     /// Extended attributes: [SecureContext]

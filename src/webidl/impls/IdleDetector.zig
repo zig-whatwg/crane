@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -97,7 +98,7 @@ pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) I
 }
 
 /// Operation: start
-pub fn call_start(instance: *runtime.Instance, options: dictionaries.IdleOptions) ImplError!*const anyopaque {
+pub fn call_start(instance: *runtime.Instance, options: webidl.Opt(dictionaries.IdleOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

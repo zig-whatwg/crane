@@ -17,6 +17,7 @@
 //! Abort: loadstart -> progress* -> abort -> loadend
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -328,13 +329,15 @@ pub fn call_readAsDataURL(instance: *runtime.Instance, blob: *runtime.Instance) 
 ///
 /// Starts reading the Blob as text with the specified encoding (defaults
 /// to UTF-8). When complete, the result attribute contains a string.
-pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: runtime.DOMString) ImplError!void {
+pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: webidl.Opt(runtime.DOMString)) ImplError!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const blob_internal = BlobImpl.getInternal(blob) orelse return error.InvalidStateError;
 
-    // Get encoding (default to UTF-8)
-    const enc_slice = encoding.asSlice();
-    const enc: ?[]const u8 = if (enc_slice.len > 0) enc_slice else null;
+    // Get encoding (default to UTF-8) - unwrap Opt
+    const enc: ?[]const u8 = if (encoding.wasPassed()) blk: {
+        const enc_slice = encoding.value.asSlice();
+        break :blk if (enc_slice.len > 0) enc_slice else null;
+    } else null;
 
     file.algorithms.startReadOperation(
         internal.reader_data,

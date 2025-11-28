@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -68,7 +69,7 @@ pub fn call_drawIndexedIndirect(instance: *runtime.Instance, indirectBuffer: *ru
 }
 
 /// Operation: draw
-pub fn call_draw(instance: *runtime.Instance, vertexCount: typedefs.GPUSize32, instanceCount: typedefs.GPUSize32, firstVertex: typedefs.GPUSize32, firstInstance: typedefs.GPUSize32) ImplError!void {
+pub fn call_draw(instance: *runtime.Instance, vertexCount: typedefs.GPUSize32, instanceCount: webidl.Opt(typedefs.GPUSize32), firstVertex: webidl.Opt(typedefs.GPUSize32), firstInstance: webidl.Opt(typedefs.GPUSize32)) ImplError!void {
     _ = instance;
     _ = vertexCount;
     _ = instanceCount;
@@ -78,7 +79,7 @@ pub fn call_draw(instance: *runtime.Instance, vertexCount: typedefs.GPUSize32, i
 }
 
 /// Operation: setVertexBuffer
-pub fn call_setVertexBuffer(instance: *runtime.Instance, slot: typedefs.GPUIndex32, buffer: ?*runtime.Instance, offset: typedefs.GPUSize64, size: typedefs.GPUSize64) ImplError!void {
+pub fn call_setVertexBuffer(instance: *runtime.Instance, slot: typedefs.GPUIndex32, buffer: ?*runtime.Instance, offset: webidl.Opt(typedefs.GPUSize64), size: webidl.Opt(typedefs.GPUSize64)) ImplError!void {
     _ = instance;
     _ = slot;
     _ = buffer;
@@ -88,7 +89,7 @@ pub fn call_setVertexBuffer(instance: *runtime.Instance, slot: typedefs.GPUIndex
 }
 
 /// Operation: setIndexBuffer
-pub fn call_setIndexBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, indexFormat: enums.GPUIndexFormat, offset: typedefs.GPUSize64, size: typedefs.GPUSize64) ImplError!void {
+pub fn call_setIndexBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, indexFormat: enums.GPUIndexFormat, offset: webidl.Opt(typedefs.GPUSize64), size: webidl.Opt(typedefs.GPUSize64)) ImplError!void {
     _ = instance;
     _ = buffer;
     _ = indexFormat;
@@ -106,7 +107,7 @@ pub fn call_drawIndirect(instance: *runtime.Instance, indirectBuffer: *runtime.I
 }
 
 /// Operation: drawIndexed
-pub fn call_drawIndexed(instance: *runtime.Instance, indexCount: typedefs.GPUSize32, instanceCount: typedefs.GPUSize32, firstIndex: typedefs.GPUSize32, baseVertex: typedefs.GPUSignedOffset32, firstInstance: typedefs.GPUSize32) ImplError!void {
+pub fn call_drawIndexed(instance: *runtime.Instance, indexCount: typedefs.GPUSize32, instanceCount: webidl.Opt(typedefs.GPUSize32), firstIndex: webidl.Opt(typedefs.GPUSize32), baseVertex: webidl.Opt(typedefs.GPUSignedOffset32), firstInstance: webidl.Opt(typedefs.GPUSize32)) ImplError!void {
     _ = instance;
     _ = indexCount;
     _ = instanceCount;

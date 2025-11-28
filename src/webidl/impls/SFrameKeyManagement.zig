@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -73,7 +74,7 @@ pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) Im
 }
 
 /// Operation: setEncryptionKey
-pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyID: typedefs.CryptoKeyID) ImplError!*const anyopaque {
+pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyID: webidl.Opt(typedefs.CryptoKeyID)) ImplError!*const anyopaque {
     _ = instance;
     _ = key;
     _ = keyID;

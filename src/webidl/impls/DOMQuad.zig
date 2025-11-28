@@ -27,6 +27,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const mixins = @import("mixins");
+const webidl = @import("webidl");
 const DOMQuad = interfaces.DOMQuad;
 
 pub const State = DOMQuad.State;
@@ -61,7 +62,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, p1: dictionaries.DOMPointInit, p2: dictionaries.DOMPointInit, p3: dictionaries.DOMPointInit, p4: dictionaries.DOMPointInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, p1: webidl.Opt(dictionaries.DOMPointInit), p2: webidl.Opt(dictionaries.DOMPointInit), p3: webidl.Opt(dictionaries.DOMPointInit), p4: webidl.Opt(dictionaries.DOMPointInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &DOMQuad.vtable, ctx);
     errdefer deinit(instance);
@@ -106,14 +107,14 @@ pub fn call_getBounds(instance: *runtime.Instance) ImplError!*runtime.Instance {
 }
 
 /// Operation: fromQuad
-pub fn call_fromQuad(instance: *runtime.Instance, other: dictionaries.DOMQuadInit) ImplError!*runtime.Instance {
+pub fn call_fromQuad(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMQuadInit)) ImplError!*runtime.Instance {
     _ = instance;
     _ = other;
     return error.NotImplemented;
 }
 
 /// Operation: fromRect
-pub fn call_fromRect(instance: *runtime.Instance, other: dictionaries.DOMRectInit) ImplError!*runtime.Instance {
+pub fn call_fromRect(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMRectInit)) ImplError!*runtime.Instance {
     _ = instance;
     _ = other;
     return error.NotImplemented;

@@ -1,5 +1,5 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -125,7 +125,7 @@ pub const DOMRectReadOnly = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: webidl.Opt(f64), y: webidl.Opt(f64), width: webidl.Opt(f64), height: webidl.Opt(f64)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try DOMRectReadOnlyImpl.call_constructor(allocator, ctx, x.value, y.value, width.value, height.value);
+        return try DOMRectReadOnlyImpl.call_constructor(allocator, ctx, x, y, width, height);
     }
 
     pub fn get_x(instance: *runtime.Instance) anyerror!f64 {
@@ -164,7 +164,7 @@ pub const DOMRectReadOnly = struct {
     pub fn call_fromRect(instance: *runtime.Instance, other: webidl.Opt(DOMRectInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try DOMRectReadOnlyImpl.call_fromRect(instance, other.value);
+        return try DOMRectReadOnlyImpl.call_fromRect(instance, other);
     }
 
     /// Extended attributes: [Default]

@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -60,7 +61,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getImageData
-pub fn call_getImageData(instance: *runtime.Instance, sx: i32, sy: i32, sw: i32, sh: i32, settings: dictionaries.ImageDataSettings) ImplError!*runtime.Instance {
+pub fn call_getImageData(instance: *runtime.Instance, sx: i32, sy: i32, sw: i32, sh: i32, settings: webidl.Opt(dictionaries.ImageDataSettings)) ImplError!*runtime.Instance {
     _ = instance;
     _ = sx;
     _ = sy;
@@ -71,7 +72,7 @@ pub fn call_getImageData(instance: *runtime.Instance, sx: i32, sy: i32, sw: i32,
 }
 
 /// Operation: createImageData
-pub fn call_createImageData(instance: *runtime.Instance, sw: i32, sh: i32, settings: dictionaries.ImageDataSettings) ImplError!*runtime.Instance {
+pub fn call_createImageData(instance: *runtime.Instance, sw: i32, sh: i32, settings: webidl.Opt(dictionaries.ImageDataSettings)) ImplError!*runtime.Instance {
     _ = instance;
     _ = sw;
     _ = sh;

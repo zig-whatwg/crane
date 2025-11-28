@@ -23,6 +23,7 @@ const BlobData = file.BlobData;
 
 // Import Blob WebIDL wrapper
 const BlobImpl = @import("Blob.zig");
+const webidl = @import("webidl");
 
 // WORKAROUND: RequestInit codegen is incomplete (only has privateToken field)
 // This temporary struct has all the fields from the Fetch spec
@@ -162,12 +163,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor - implements full Request(input, init) constructor algorithm
 /// Spec: https://fetch.spec.whatwg.org/#dom-request
-pub fn call_constructor(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    input: typedefs.RequestInfo,
-    init_data: dictionaries.RequestInit,
-) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) !*runtime.Instance {
     // WORKAROUND: Cast init_data to our full struct
     // This is a temporary hack until codegen properly handles partial dictionaries
     const init_opts = @as(*const RequestInitFull, @ptrCast(&init_data));
@@ -337,14 +333,14 @@ pub fn call_constructor(
 // === Property Getters ===
 
 /// Get method
-pub fn get_method(instance: *runtime.Instance) ImplError![]const u8 {
+pub fn get_method(instance: *runtime.Instance) ImplError!runtime.ByteString {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
     return internal.request.method;
 }
 
 /// Get URL
-pub fn get_url(instance: *runtime.Instance) ImplError![]const u8 {
+pub fn get_url(instance: *runtime.Instance) ImplError!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
     // Use accessor method - returns first URL in url_list
@@ -410,7 +406,7 @@ pub fn get_destination(instance: *runtime.Instance) ImplError!enums.RequestDesti
 }
 
 /// Get referrer
-pub fn get_referrer(instance: *runtime.Instance) ImplError![]const u8 {
+pub fn get_referrer(instance: *runtime.Instance) ImplError!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -661,7 +657,7 @@ pub fn call_arrayBuffer(instance: *runtime.Instance) ImplError!*const anyopaque 
 
 /// blob() - Returns promise fulfilled with body as Blob
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-blob
-pub fn call_blob(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_blob(instance: *runtime.Instance) ImplError!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -827,7 +823,7 @@ pub fn call_bytes(instance: *runtime.Instance) ImplError!*const anyopaque {
 
 /// formData() - Returns promise fulfilled with body as FormData
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-formdata
-pub fn call_formData(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_formData(instance: *runtime.Instance) ImplError!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 

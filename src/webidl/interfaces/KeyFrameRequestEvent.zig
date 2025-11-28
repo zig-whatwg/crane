@@ -1,5 +1,5 @@
 //! Generated from: webrtc-encoded-transform.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:18Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -91,7 +91,7 @@ pub const KeyFrameRequestEvent = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, rid: webidl.Opt(DOMString)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try KeyFrameRequestEventImpl.call_constructor(allocator, ctx, @"type", rid.value);
+        return try KeyFrameRequestEventImpl.call_constructor(allocator, ctx, @"type", rid);
     }
 
     pub fn get_rid(instance: *runtime.Instance) anyerror!?DOMString {

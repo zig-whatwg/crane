@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -78,7 +79,7 @@ pub fn get_nextSibling(instance: *runtime.Instance) ImplError!?*runtime.Instance
 }
 
 /// Operation: updateTiming
-pub fn call_updateTiming(instance: *runtime.Instance, timing: dictionaries.OptionalEffectTiming) ImplError!void {
+pub fn call_updateTiming(instance: *runtime.Instance, timing: webidl.Opt(dictionaries.OptionalEffectTiming)) ImplError!void {
     _ = instance;
     _ = timing;
     return error.NotImplemented;

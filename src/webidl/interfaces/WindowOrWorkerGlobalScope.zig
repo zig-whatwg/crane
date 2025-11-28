@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -232,7 +232,7 @@ pub const WindowOrWorkerGlobalScope = struct {
 
     pub fn call_setInterval(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const *const anyopaque) anyerror!i32 {
         
-        return try WindowOrWorkerGlobalScopeImpl.call_setInterval(instance, handler, timeout.value, arguments);
+        return try WindowOrWorkerGlobalScopeImpl.call_setInterval(instance, handler, timeout, arguments);
     }
 
     pub fn call_atob(instance: *runtime.Instance, data: DOMString) anyerror!runtime.ByteString {
@@ -247,12 +247,12 @@ pub const WindowOrWorkerGlobalScope = struct {
 
     pub fn call_createImageBitmap(instance: *runtime.Instance, image: ImageBitmapSource, options: webidl.Opt(ImageBitmapOptions)) anyerror!*const anyopaque {
         
-        return try WindowOrWorkerGlobalScopeImpl.call_createImageBitmap(instance, image, options.value);
+        return try WindowOrWorkerGlobalScopeImpl.call_createImageBitmap(instance, image, options);
     }
 
     pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
         
-        return try WindowOrWorkerGlobalScopeImpl.call_clearInterval(instance, id.value);
+        return try WindowOrWorkerGlobalScopeImpl.call_clearInterval(instance, id);
     }
 
     pub fn call_queueMicrotask(instance: *runtime.Instance, callback: VoidFunction) anyerror!void {
@@ -262,24 +262,24 @@ pub const WindowOrWorkerGlobalScope = struct {
 
     pub fn call_structuredClone(instance: *runtime.Instance, value: *const anyopaque, options: webidl.Opt(StructuredSerializeOptions)) anyerror!*const anyopaque {
         
-        return try WindowOrWorkerGlobalScopeImpl.call_structuredClone(instance, value, options.value);
+        return try WindowOrWorkerGlobalScopeImpl.call_structuredClone(instance, value, options);
     }
 
     pub fn call_setTimeout(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const *const anyopaque) anyerror!i32 {
         
-        return try WindowOrWorkerGlobalScopeImpl.call_setTimeout(instance, handler, timeout.value, arguments);
+        return try WindowOrWorkerGlobalScopeImpl.call_setTimeout(instance, handler, timeout, arguments);
     }
 
     pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
         
-        return try WindowOrWorkerGlobalScopeImpl.call_clearTimeout(instance, id.value);
+        return try WindowOrWorkerGlobalScopeImpl.call_clearTimeout(instance, id);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_fetch(instance: *runtime.Instance, input: RequestInfo, init_data: webidl.Opt(RequestInit)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
-        return try WindowOrWorkerGlobalScopeImpl.call_fetch(instance, input, init_data.value);
+        return try WindowOrWorkerGlobalScopeImpl.call_fetch(instance, input, init_data);
     }
 
 };

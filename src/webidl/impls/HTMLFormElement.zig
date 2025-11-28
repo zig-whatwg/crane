@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -220,7 +221,7 @@ pub fn set_rel(instance: *runtime.Instance, value: runtime.DOMString) ImplError!
 }
 
 /// Operation: requestSubmit
-pub fn call_requestSubmit(instance: *runtime.Instance, submitter: ?*runtime.Instance) ImplError!void {
+pub fn call_requestSubmit(instance: *runtime.Instance, submitter: webidl.Opt(?*runtime.Instance)) ImplError!void {
     _ = instance;
     _ = submitter;
     return error.NotImplemented;

@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:18Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -2703,17 +2703,17 @@ pub const Window = struct {
 
     pub fn call_confirm(instance: *runtime.Instance, message: webidl.Opt(DOMString)) anyerror!bool {
         
-        return try WindowImpl.call_confirm(instance, message.value);
+        return try WindowImpl.call_confirm(instance, message);
     }
 
     pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, targetOrigin: runtime.USVString, transfer: webidl.Opt(*const anyopaque)) anyerror!void {
         
-        return try WindowImpl.call_postMessage(instance, message, targetOrigin, transfer.value);
+        return try WindowImpl.call_postMessage(instance, message, targetOrigin, transfer);
     }
 
     pub fn call_showDirectoryPicker(instance: *runtime.Instance, options: webidl.Opt(DirectoryPickerOptions)) anyerror!*const anyopaque {
         
-        return try WindowImpl.call_showDirectoryPicker(instance, options.value);
+        return try WindowImpl.call_showDirectoryPicker(instance, options);
     }
 
     /// Extended attributes: [NewObject]
@@ -2725,7 +2725,7 @@ pub const Window = struct {
 
     pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!*const anyopaque {
         
-        return try WindowImpl.call_scroll(instance, options.value);
+        return try WindowImpl.call_scroll(instance, options);
     }
 
     pub fn call_resizeTo(instance: *runtime.Instance, width: i32, height: i32) anyerror!void {
@@ -2735,24 +2735,24 @@ pub const Window = struct {
 
     pub fn call_showSaveFilePicker(instance: *runtime.Instance, options: webidl.Opt(SaveFilePickerOptions)) anyerror!*const anyopaque {
         
-        return try WindowImpl.call_showSaveFilePicker(instance, options.value);
+        return try WindowImpl.call_showSaveFilePicker(instance, options);
     }
 
     pub fn call_setTimeout(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const *const anyopaque) anyerror!i32 {
         
-        return try WindowImpl.call_setTimeout(instance, handler, timeout.value, arguments);
+        return try WindowImpl.call_setTimeout(instance, handler, timeout, arguments);
     }
 
     pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
         
-        return try WindowImpl.call_clearInterval(instance, id.value);
+        return try WindowImpl.call_clearInterval(instance, id);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_fetch(instance: *runtime.Instance, input: RequestInfo, init_data: webidl.Opt(RequestInit)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
-        return try WindowImpl.call_fetch(instance, input, init_data.value);
+        return try WindowImpl.call_fetch(instance, input, init_data);
     }
 
     pub fn call_blur(instance: *runtime.Instance) anyerror!void {
@@ -2761,12 +2761,12 @@ pub const Window = struct {
 
     pub fn call_showOpenFilePicker(instance: *runtime.Instance, options: webidl.Opt(OpenFilePickerOptions)) anyerror!*const anyopaque {
         
-        return try WindowImpl.call_showOpenFilePicker(instance, options.value);
+        return try WindowImpl.call_showOpenFilePicker(instance, options);
     }
 
     pub fn call_scrollBy(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!*const anyopaque {
         
-        return try WindowImpl.call_scrollBy(instance, options.value);
+        return try WindowImpl.call_scrollBy(instance, options);
     }
 
     pub fn call_releaseEvents(instance: *runtime.Instance) anyerror!void {
@@ -2793,7 +2793,7 @@ pub const Window = struct {
 
     pub fn call_requestIdleCallback(instance: *runtime.Instance, callback: IdleRequestCallback, options: webidl.Opt(IdleRequestOptions)) anyerror!u32 {
         
-        return try WindowImpl.call_requestIdleCallback(instance, callback, options.value);
+        return try WindowImpl.call_requestIdleCallback(instance, callback, options);
     }
 
     pub fn call_queueMicrotask(instance: *runtime.Instance, callback: VoidFunction) anyerror!void {
@@ -2803,7 +2803,7 @@ pub const Window = struct {
 
     pub fn call_structuredClone(instance: *runtime.Instance, value: *const anyopaque, options: webidl.Opt(StructuredSerializeOptions)) anyerror!*const anyopaque {
         
-        return try WindowImpl.call_structuredClone(instance, value, options.value);
+        return try WindowImpl.call_structuredClone(instance, value, options);
     }
 
     pub fn call_close(instance: *runtime.Instance) anyerror!void {
@@ -2836,7 +2836,7 @@ pub const Window = struct {
 
     pub fn call_open(instance: *runtime.Instance, url: webidl.Opt(runtime.USVString), target: webidl.Opt(DOMString), features: webidl.Opt(DOMString)) anyerror!?WindowProxy {
         
-        return try WindowImpl.call_open(instance, url.value, target.value, features.value);
+        return try WindowImpl.call_open(instance, url, target, features);
     }
 
     pub fn call_moveTo(instance: *runtime.Instance, x: i32, y: i32) anyerror!void {
@@ -2846,12 +2846,12 @@ pub const Window = struct {
 
     pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!*const anyopaque {
         
-        return try WindowImpl.call_scrollTo(instance, options.value);
+        return try WindowImpl.call_scrollTo(instance, options);
     }
 
     pub fn call_prompt(instance: *runtime.Instance, message: webidl.Opt(DOMString), default: webidl.Opt(DOMString)) anyerror!?DOMString {
         
-        return try WindowImpl.call_prompt(instance, message.value, default.value);
+        return try WindowImpl.call_prompt(instance, message, default);
     }
 
     pub fn call_reportError(instance: *runtime.Instance, e: *const anyopaque) anyerror!void {
@@ -2861,19 +2861,19 @@ pub const Window = struct {
 
     pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
         
-        return try WindowImpl.call_clearTimeout(instance, id.value);
+        return try WindowImpl.call_clearTimeout(instance, id);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_getComputedStyle(instance: *runtime.Instance, elt: *runtime.Instance, pseudoElt: webidl.Opt(?CSSOMString)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try WindowImpl.call_getComputedStyle(instance, elt, pseudoElt.value);
+        return try WindowImpl.call_getComputedStyle(instance, elt, pseudoElt);
     }
 
     pub fn call_setInterval(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const *const anyopaque) anyerror!i32 {
         
-        return try WindowImpl.call_setInterval(instance, handler, timeout.value, arguments);
+        return try WindowImpl.call_setInterval(instance, handler, timeout, arguments);
     }
 
     pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) anyerror!void {
@@ -2885,7 +2885,7 @@ pub const Window = struct {
     pub fn call_fetchLater(instance: *runtime.Instance, input: RequestInfo, init_data: webidl.Opt(DeferredRequestInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try WindowImpl.call_fetchLater(instance, input, init_data.value);
+        return try WindowImpl.call_fetchLater(instance, input, init_data);
     }
 
     pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: FrameRequestCallback) anyerror!u32 {
@@ -2895,7 +2895,7 @@ pub const Window = struct {
 
     pub fn call_createImageBitmap(instance: *runtime.Instance, image: ImageBitmapSource, options: webidl.Opt(ImageBitmapOptions)) anyerror!*const anyopaque {
         
-        return try WindowImpl.call_createImageBitmap(instance, image, options.value);
+        return try WindowImpl.call_createImageBitmap(instance, image, options);
     }
 
     pub fn call_cancelIdleCallback(instance: *runtime.Instance, handle: u32) anyerror!void {
@@ -2909,7 +2909,7 @@ pub const Window = struct {
 
     pub fn call_queryLocalFonts(instance: *runtime.Instance, options: webidl.Opt(QueryOptions)) anyerror!*const anyopaque {
         
-        return try WindowImpl.call_queryLocalFonts(instance, options.value);
+        return try WindowImpl.call_queryLocalFonts(instance, options);
     }
 
     pub fn call_navigate(instance: *runtime.Instance, dir: SpatialNavigationDirection) anyerror!void {

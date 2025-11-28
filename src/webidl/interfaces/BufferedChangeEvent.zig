@@ -1,5 +1,5 @@
 //! Generated from: media-source.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -102,7 +102,7 @@ pub const BufferedChangeEvent = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(BufferedChangeEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try BufferedChangeEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict.value);
+        return try BufferedChangeEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
     /// Extended attributes: [SameObject]

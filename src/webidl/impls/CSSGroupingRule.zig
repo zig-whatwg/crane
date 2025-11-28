@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -73,7 +74,7 @@ pub fn call_deleteRule(instance: *runtime.Instance, index: u32) ImplError!void {
 }
 
 /// Operation: insertRule
-pub fn call_insertRule(instance: *runtime.Instance, rule: typedefs.CSSOMString, index: u32) ImplError!u32 {
+pub fn call_insertRule(instance: *runtime.Instance, rule: typedefs.CSSOMString, index: webidl.Opt(u32)) ImplError!u32 {
     _ = instance;
     _ = rule;
     _ = index;

@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -162,7 +163,7 @@ pub fn set_onserviceremoved(instance: *runtime.Instance, value: typedefs.EventHa
 }
 
 /// Operation: watchAdvertisements
-pub fn call_watchAdvertisements(instance: *runtime.Instance, options: dictionaries.WatchAdvertisementsOptions) ImplError!*const anyopaque {
+pub fn call_watchAdvertisements(instance: *runtime.Instance, options: webidl.Opt(dictionaries.WatchAdvertisementsOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

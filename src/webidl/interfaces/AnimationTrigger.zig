@@ -1,5 +1,5 @@
 //! Generated from: web-animations-2.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:22Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -111,7 +111,7 @@ pub const AnimationTrigger = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(AnimationTriggerOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try AnimationTriggerImpl.call_constructor(allocator, ctx, options.value);
+        return try AnimationTriggerImpl.call_constructor(allocator, ctx, options);
     }
 
     pub fn get_timeline(instance: *runtime.Instance) anyerror!*runtime.Instance {

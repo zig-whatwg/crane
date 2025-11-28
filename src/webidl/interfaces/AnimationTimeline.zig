@@ -1,5 +1,5 @@
 //! Generated from: web-animations.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:22Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -101,7 +101,7 @@ pub const AnimationTimeline = struct {
 
     pub fn call_play(instance: *runtime.Instance, effect: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
         
-        return try AnimationTimelineImpl.call_play(instance, effect.value);
+        return try AnimationTimelineImpl.call_play(instance, effect);
     }
 
 };

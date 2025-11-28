@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -154,7 +154,7 @@ pub const HTMLOrSVGElement = struct {
 
     pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(FocusOptions)) anyerror!void {
         
-        return try HTMLOrSVGElementImpl.call_focus(instance, options.value);
+        return try HTMLOrSVGElementImpl.call_focus(instance, options);
     }
 
 };

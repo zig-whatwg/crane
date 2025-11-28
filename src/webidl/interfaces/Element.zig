@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -1787,7 +1787,7 @@ pub const Element = struct {
 
     pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!*const anyopaque {
         
-        return try ElementImpl.call_scroll(instance, options.value);
+        return try ElementImpl.call_scroll(instance, options);
     }
 
     pub fn call_getClientRects(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -1796,7 +1796,7 @@ pub const Element = struct {
 
     pub fn call_scrollBy(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!*const anyopaque {
         
-        return try ElementImpl.call_scrollBy(instance, options.value);
+        return try ElementImpl.call_scrollBy(instance, options);
     }
 
     /// Extended attributes: [CEReactions], [Unscopable]
@@ -1821,7 +1821,7 @@ pub const Element = struct {
 
     pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
         
-        return try ElementImpl.call_convertQuadFromNode(instance, quad, from, options.value);
+        return try ElementImpl.call_convertQuadFromNode(instance, quad, from, options);
     }
 
     /// Extended attributes: [CEReactions]
@@ -1861,7 +1861,7 @@ pub const Element = struct {
 
     pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!*const anyopaque {
         
-        return try ElementImpl.call_scrollTo(instance, options.value);
+        return try ElementImpl.call_scrollTo(instance, options);
     }
 
     pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!*runtime.Instance {
@@ -1885,22 +1885,22 @@ pub const Element = struct {
 
     pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!*const anyopaque {
         
-        return try ElementImpl.call_getBoxQuads(instance, options.value);
+        return try ElementImpl.call_getBoxQuads(instance, options);
     }
 
     pub fn call_focusableAreas(instance: *runtime.Instance, option: webidl.Opt(FocusableAreasOption)) anyerror!*const anyopaque {
         
-        return try ElementImpl.call_focusableAreas(instance, option.value);
+        return try ElementImpl.call_focusableAreas(instance, option);
     }
 
     pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
         
-        return try ElementImpl.call_convertPointFromNode(instance, point, from, options.value);
+        return try ElementImpl.call_convertPointFromNode(instance, point, from, options);
     }
 
     pub fn call_getAnimations(instance: *runtime.Instance, options: webidl.Opt(GetAnimationsOptions)) anyerror!*const anyopaque {
         
-        return try ElementImpl.call_getAnimations(instance, options.value);
+        return try ElementImpl.call_getAnimations(instance, options);
     }
 
     pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: DOMString) anyerror!*runtime.Instance {
@@ -1925,7 +1925,7 @@ pub const Element = struct {
 
     pub fn call_spatialNavigationSearch(instance: *runtime.Instance, dir: SpatialNavigationDirection, options: webidl.Opt(SpatialNavigationSearchOptions)) anyerror!?*runtime.Instance {
         
-        return try ElementImpl.call_spatialNavigationSearch(instance, dir, options.value);
+        return try ElementImpl.call_spatialNavigationSearch(instance, dir, options);
     }
 
     pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!*runtime.Instance {
@@ -1968,7 +1968,7 @@ pub const Element = struct {
 
     pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
         
-        return try ElementImpl.call_convertRectFromNode(instance, rect, from, options.value);
+        return try ElementImpl.call_convertRectFromNode(instance, rect, from, options);
     }
 
     /// Extended attributes: [CEReactions]
@@ -1998,12 +1998,12 @@ pub const Element = struct {
 
     pub fn call_requestFullscreen(instance: *runtime.Instance, options: webidl.Opt(FullscreenOptions)) anyerror!*const anyopaque {
         
-        return try ElementImpl.call_requestFullscreen(instance, options.value);
+        return try ElementImpl.call_requestFullscreen(instance, options);
     }
 
     pub fn call_animate(instance: *runtime.Instance, keyframes: ?*const anyopaque, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
         
-        return try ElementImpl.call_animate(instance, keyframes, options.value);
+        return try ElementImpl.call_animate(instance, keyframes, options);
     }
 
     /// Extended attributes: [CEReactions], [Unscopable]
@@ -2028,7 +2028,7 @@ pub const Element = struct {
 
     pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(GetHTMLOptions)) anyerror!DOMString {
         
-        return try ElementImpl.call_getHTML(instance, options.value);
+        return try ElementImpl.call_getHTML(instance, options);
     }
 
     pub fn call_getAttributeNode(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!?*runtime.Instance {
@@ -2038,7 +2038,7 @@ pub const Element = struct {
 
     pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
         
-        return try ElementImpl.call_startViewTransition(instance, callbackOptions.value);
+        return try ElementImpl.call_startViewTransition(instance, callbackOptions);
     }
 
     /// Extended attributes: [CEReactions]
@@ -2053,7 +2053,7 @@ pub const Element = struct {
 
     pub fn call_scrollIntoView(instance: *runtime.Instance, arg: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
         
-        return try ElementImpl.call_scrollIntoView(instance, arg.value);
+        return try ElementImpl.call_scrollIntoView(instance, arg);
     }
 
     pub fn call_hasAttributes(instance: *runtime.Instance) anyerror!bool {
@@ -2072,7 +2072,7 @@ pub const Element = struct {
         defer runtime.CEReactions.end();
         
         
-        return try ElementImpl.call_toggleAttribute(instance, qualifiedName, force.value);
+        return try ElementImpl.call_toggleAttribute(instance, qualifiedName, force);
     }
 
     pub fn call_pseudo(instance: *runtime.Instance, @"type": CSSOMString) anyerror!?*runtime.Instance {
@@ -2122,7 +2122,7 @@ pub const Element = struct {
 
     pub fn call_checkVisibility(instance: *runtime.Instance, options: webidl.Opt(CheckVisibilityOptions)) anyerror!bool {
         
-        return try ElementImpl.call_checkVisibility(instance, options.value);
+        return try ElementImpl.call_checkVisibility(instance, options);
     }
 
     pub fn call_getAttributeNames(instance: *runtime.Instance) anyerror!*const anyopaque {
@@ -2136,7 +2136,7 @@ pub const Element = struct {
 
     pub fn call_requestPointerLock(instance: *runtime.Instance, options: webidl.Opt(PointerLockOptions)) anyerror!*const anyopaque {
         
-        return try ElementImpl.call_requestPointerLock(instance, options.value);
+        return try ElementImpl.call_requestPointerLock(instance, options);
     }
 
     pub fn call_hasAttributeNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!bool {

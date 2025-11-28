@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -112,7 +113,7 @@ pub fn call_watchAvailability(instance: *runtime.Instance, callback: callbacks.R
 }
 
 /// Operation: cancelWatchAvailability
-pub fn call_cancelWatchAvailability(instance: *runtime.Instance, id: i32) ImplError!*const anyopaque {
+pub fn call_cancelWatchAvailability(instance: *runtime.Instance, id: webidl.Opt(i32)) ImplError!*const anyopaque {
     _ = instance;
     _ = id;
     return error.NotImplemented;

@@ -27,6 +27,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const mixins = @import("mixins");
+const webidl = @import("webidl");
 const UIEvent = interfaces.UIEvent;
 
 pub const State = UIEvent.State;
@@ -61,7 +62,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.UIEventInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.UIEventInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &UIEvent.vtable, ctx);
     errdefer deinit(instance);
@@ -98,7 +99,7 @@ pub fn get_sourceCapabilities(instance: *runtime.Instance) ImplError!?*runtime.I
 }
 
 /// Operation: initUIEvent
-pub fn call_initUIEvent(instance: *runtime.Instance, typeArg: runtime.DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: ?*runtime.Instance, detailArg: i32) ImplError!void {
+pub fn call_initUIEvent(instance: *runtime.Instance, typeArg: runtime.DOMString, bubblesArg: webidl.Opt(bool), cancelableArg: webidl.Opt(bool), viewArg: webidl.Opt(?*runtime.Instance), detailArg: webidl.Opt(i32)) ImplError!void {
     _ = instance;
     _ = typeArg;
     _ = bubblesArg;

@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -73,7 +74,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, call
 }
 
 /// Operation: observe
-pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, options: dictionaries.ResizeObserverOptions) ImplError!void {
+pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, options: webidl.Opt(dictionaries.ResizeObserverOptions)) ImplError!void {
     _ = instance;
     _ = target;
     _ = options;

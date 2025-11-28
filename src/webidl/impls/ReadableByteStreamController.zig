@@ -42,7 +42,6 @@ const ViewType = ArrayBufferViewModule.ViewType;
 pub const State = ReadableByteStreamController.State;
 
 pub const ImplError = error{
-
     TypeError,
     OutOfMemory,
     InvalidState,
@@ -50,6 +49,8 @@ pub const ImplError = error{
     NullValue, // Workaround: interface generator doesn't handle nullable return types yet
     BufferDetached, // From ArrayBuffer.transfer()
     NoEventLoop,
+    IndexOutOfBounds,
+    EmptyQueue,
 };
 
 /// Byte stream queue entry per WHATWG Streams Standard § 4.7.2
@@ -250,7 +251,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// Spec: https://streams.spec.whatwg.org/#rbs-controller-byob-request
 /// NOTE: Interface generator bug - should return ?*runtime.Instance per IDL
-pub fn get_byobRequest(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_byobRequest(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     // Note: Returns NullValue error when byobRequest is null because interface generator
@@ -262,7 +263,7 @@ pub fn get_byobRequest(instance: *runtime.Instance) ImplError!*runtime.Instance 
 ///
 /// Spec: https://streams.spec.whatwg.org/#rbs-controller-desired-size
 /// NOTE: Interface generator bug - should return ?f64 per IDL
-pub fn get_desiredSize(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_desiredSize(instance: *runtime.Instance) ImplError!?f64 {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -335,7 +336,7 @@ pub fn call_enqueue(instance: *runtime.Instance, chunk: typedefs.ArrayBufferView
 /// Operation: error
 ///
 /// Spec: § 4.7.3 "The error(e) method steps are:"
-pub fn call_error(instance: *runtime.Instance, e: *const anyopaque) ImplError!void {
+pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(*const anyopaque)) ImplError!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

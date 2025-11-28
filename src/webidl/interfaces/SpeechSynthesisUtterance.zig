@@ -1,5 +1,5 @@
 //! Generated from: speech-api.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:22Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -157,7 +157,7 @@ pub const SpeechSynthesisUtterance = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, text: webidl.Opt(DOMString)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try SpeechSynthesisUtteranceImpl.call_constructor(allocator, ctx, text.value);
+        return try SpeechSynthesisUtteranceImpl.call_constructor(allocator, ctx, text);
     }
 
     pub fn get_text(instance: *runtime.Instance) anyerror!DOMString {

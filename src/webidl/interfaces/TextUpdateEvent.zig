@@ -1,5 +1,5 @@
 //! Generated from: edit-context.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -108,7 +108,7 @@ pub const TextUpdateEvent = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, options: webidl.Opt(TextUpdateEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try TextUpdateEventImpl.call_constructor(allocator, ctx, @"type", options.value);
+        return try TextUpdateEventImpl.call_constructor(allocator, ctx, @"type", options);
     }
 
     pub fn get_updateRangeStart(instance: *runtime.Instance) anyerror!u32 {

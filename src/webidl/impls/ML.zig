@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -60,7 +61,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: createContext
-pub fn call_createContext(instance: *runtime.Instance, options: dictionaries.MLContextOptions) ImplError!*const anyopaque {
+pub fn call_createContext(instance: *runtime.Instance, options: webidl.Opt(dictionaries.MLContextOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

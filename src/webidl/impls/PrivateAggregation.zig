@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -75,7 +76,7 @@ pub fn call_contributeToHistogramOnEvent(instance: *runtime.Instance, event: run
 }
 
 /// Operation: enableDebugMode
-pub fn call_enableDebugMode(instance: *runtime.Instance, options: dictionaries.PADebugModeOptions) ImplError!void {
+pub fn call_enableDebugMode(instance: *runtime.Instance, options: webidl.Opt(dictionaries.PADebugModeOptions)) ImplError!void {
     _ = instance;
     _ = options;
     return error.NotImplemented;

@@ -1,5 +1,5 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:22Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -94,7 +94,7 @@ pub const TransformStreamDefaultController = struct {
 
     pub fn call_error(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) anyerror!void {
         
-        return try TransformStreamDefaultControllerImpl.call_error(instance, reason.value);
+        return try TransformStreamDefaultControllerImpl.call_error(instance, reason);
     }
 
     pub fn call_terminate(instance: *runtime.Instance) anyerror!void {
@@ -103,7 +103,7 @@ pub const TransformStreamDefaultController = struct {
 
     pub fn call_enqueue(instance: *runtime.Instance, chunk: webidl.Opt(*const anyopaque)) anyerror!void {
         
-        return try TransformStreamDefaultControllerImpl.call_enqueue(instance, chunk.value);
+        return try TransformStreamDefaultControllerImpl.call_enqueue(instance, chunk);
     }
 
 };

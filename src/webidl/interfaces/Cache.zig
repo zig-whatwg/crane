@@ -1,5 +1,5 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -106,28 +106,28 @@ pub const Cache = struct {
     pub fn call_delete(instance: *runtime.Instance, request: RequestInfo, options: webidl.Opt(CacheQueryOptions)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
-        return try CacheImpl.call_delete(instance, request, options.value);
+        return try CacheImpl.call_delete(instance, request, options);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_match(instance: *runtime.Instance, request: RequestInfo, options: webidl.Opt(CacheQueryOptions)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
-        return try CacheImpl.call_match(instance, request, options.value);
+        return try CacheImpl.call_match(instance, request, options);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_keys(instance: *runtime.Instance, request: webidl.Opt(RequestInfo), options: webidl.Opt(CacheQueryOptions)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
-        return try CacheImpl.call_keys(instance, request.value, options.value);
+        return try CacheImpl.call_keys(instance, request, options);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_matchAll(instance: *runtime.Instance, request: webidl.Opt(RequestInfo), options: webidl.Opt(CacheQueryOptions)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
-        return try CacheImpl.call_matchAll(instance, request.value, options.value);
+        return try CacheImpl.call_matchAll(instance, request, options);
     }
 
     /// Extended attributes: [NewObject]

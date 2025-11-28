@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -129,12 +129,12 @@ pub const History = struct {
 
     pub fn call_pushState(instance: *runtime.Instance, data: *const anyopaque, unused: DOMString, url: webidl.Opt(?runtime.USVString)) anyerror!void {
         
-        return try HistoryImpl.call_pushState(instance, data, unused, url.value);
+        return try HistoryImpl.call_pushState(instance, data, unused, url);
     }
 
     pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) anyerror!void {
         
-        return try HistoryImpl.call_go(instance, delta.value);
+        return try HistoryImpl.call_go(instance, delta);
     }
 
     pub fn call_back(instance: *runtime.Instance) anyerror!void {
@@ -143,7 +143,7 @@ pub const History = struct {
 
     pub fn call_replaceState(instance: *runtime.Instance, data: *const anyopaque, unused: DOMString, url: webidl.Opt(?runtime.USVString)) anyerror!void {
         
-        return try HistoryImpl.call_replaceState(instance, data, unused, url.value);
+        return try HistoryImpl.call_replaceState(instance, data, unused, url);
     }
 
 };

@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -297,22 +297,22 @@ pub const HTMLCanvasElement = struct {
 
     pub fn call_captureStream(instance: *runtime.Instance, frameRequestRate: webidl.Opt(f64)) anyerror!*runtime.Instance {
         
-        return try HTMLCanvasElementImpl.call_captureStream(instance, frameRequestRate.value);
+        return try HTMLCanvasElementImpl.call_captureStream(instance, frameRequestRate);
     }
 
     pub fn call_getContext(instance: *runtime.Instance, contextId: DOMString, options: webidl.Opt(*const anyopaque)) anyerror!?RenderingContext {
         
-        return try HTMLCanvasElementImpl.call_getContext(instance, contextId, options.value);
+        return try HTMLCanvasElementImpl.call_getContext(instance, contextId, options);
     }
 
     pub fn call_toDataURL(instance: *runtime.Instance, @"type": webidl.Opt(DOMString), quality: webidl.Opt(*const anyopaque)) anyerror!runtime.USVString {
         
-        return try HTMLCanvasElementImpl.call_toDataURL(instance, @"type".value, quality.value);
+        return try HTMLCanvasElementImpl.call_toDataURL(instance, @"type", quality);
     }
 
     pub fn call_toBlob(instance: *runtime.Instance, _callback: BlobCallback, @"type": webidl.Opt(DOMString), quality: webidl.Opt(*const anyopaque)) anyerror!void {
         
-        return try HTMLCanvasElementImpl.call_toBlob(instance, _callback, @"type".value, quality.value);
+        return try HTMLCanvasElementImpl.call_toBlob(instance, _callback, @"type", quality);
     }
 
     pub fn call_transferControlToOffscreen(instance: *runtime.Instance) anyerror!*runtime.Instance {

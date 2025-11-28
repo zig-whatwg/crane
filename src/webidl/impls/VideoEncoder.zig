@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -105,7 +106,7 @@ pub fn call_isConfigSupported(instance: *runtime.Instance, config: dictionaries.
 }
 
 /// Operation: encode
-pub fn call_encode(instance: *runtime.Instance, frame: *runtime.Instance, options: dictionaries.VideoEncoderEncodeOptions) ImplError!void {
+pub fn call_encode(instance: *runtime.Instance, frame: *runtime.Instance, options: webidl.Opt(dictionaries.VideoEncoderEncodeOptions)) ImplError!void {
     _ = instance;
     _ = frame;
     _ = options;

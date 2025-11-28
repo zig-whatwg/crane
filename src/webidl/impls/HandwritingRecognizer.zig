@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -66,7 +67,7 @@ pub fn call_finish(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: startDrawing
-pub fn call_startDrawing(instance: *runtime.Instance, hints: dictionaries.HandwritingHints) ImplError!*runtime.Instance {
+pub fn call_startDrawing(instance: *runtime.Instance, hints: webidl.Opt(dictionaries.HandwritingHints)) ImplError!*runtime.Instance {
     _ = instance;
     _ = hints;
     return error.NotImplemented;

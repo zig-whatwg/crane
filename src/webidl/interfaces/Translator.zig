@@ -1,5 +1,5 @@
 //! Generated from: translation-api.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -138,12 +138,12 @@ pub const Translator = struct {
 
     pub fn call_translate(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(TranslatorTranslateOptions)) anyerror!*const anyopaque {
         
-        return try TranslatorImpl.call_translate(instance, input, options.value);
+        return try TranslatorImpl.call_translate(instance, input, options);
     }
 
     pub fn call_measureInputUsage(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(TranslatorTranslateOptions)) anyerror!*const anyopaque {
         
-        return try TranslatorImpl.call_measureInputUsage(instance, input, options.value);
+        return try TranslatorImpl.call_measureInputUsage(instance, input, options);
     }
 
     pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
@@ -152,7 +152,7 @@ pub const Translator = struct {
 
     pub fn call_translateStreaming(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(TranslatorTranslateOptions)) anyerror!*runtime.Instance {
         
-        return try TranslatorImpl.call_translateStreaming(instance, input, options.value);
+        return try TranslatorImpl.call_translateStreaming(instance, input, options);
     }
 
     pub fn call_create(instance: *runtime.Instance, options: TranslatorCreateOptions) anyerror!*const anyopaque {

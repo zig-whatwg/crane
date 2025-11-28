@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -154,7 +155,7 @@ pub fn set_onsourceclose(instance: *runtime.Instance, value: typedefs.EventHandl
 }
 
 /// Operation: endOfStream
-pub fn call_endOfStream(instance: *runtime.Instance, @"error": enums.EndOfStreamError) ImplError!void {
+pub fn call_endOfStream(instance: *runtime.Instance, @"error": webidl.Opt(enums.EndOfStreamError)) ImplError!void {
     _ = instance;
     _ = @"error";
     return error.NotImplemented;

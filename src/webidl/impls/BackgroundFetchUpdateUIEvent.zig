@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -74,7 +75,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Operation: updateUI
-pub fn call_updateUI(instance: *runtime.Instance, options: dictionaries.BackgroundFetchUIOptions) ImplError!*const anyopaque {
+pub fn call_updateUI(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BackgroundFetchUIOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

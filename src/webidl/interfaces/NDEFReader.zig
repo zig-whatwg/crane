@@ -1,5 +1,5 @@
 //! Generated from: web-nfc.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -137,17 +137,17 @@ pub const NDEFReader = struct {
 
     pub fn call_scan(instance: *runtime.Instance, options: webidl.Opt(NDEFScanOptions)) anyerror!*const anyopaque {
         
-        return try NDEFReaderImpl.call_scan(instance, options.value);
+        return try NDEFReaderImpl.call_scan(instance, options);
     }
 
     pub fn call_write(instance: *runtime.Instance, message: NDEFMessageSource, options: webidl.Opt(NDEFWriteOptions)) anyerror!*const anyopaque {
         
-        return try NDEFReaderImpl.call_write(instance, message, options.value);
+        return try NDEFReaderImpl.call_write(instance, message, options);
     }
 
     pub fn call_makeReadOnly(instance: *runtime.Instance, options: webidl.Opt(NDEFMakeReadOnlyOptions)) anyerror!*const anyopaque {
         
-        return try NDEFReaderImpl.call_makeReadOnly(instance, options.value);
+        return try NDEFReaderImpl.call_makeReadOnly(instance, options);
     }
 
 };

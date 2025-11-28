@@ -1,5 +1,5 @@
 //! Generated from: FileAPI.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -114,7 +114,7 @@ pub const FileReaderSync = struct {
 
     pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: webidl.Opt(DOMString)) anyerror!DOMString {
         
-        return try FileReaderSyncImpl.call_readAsText(instance, blob, encoding.value);
+        return try FileReaderSyncImpl.call_readAsText(instance, blob, encoding);
     }
 
 };

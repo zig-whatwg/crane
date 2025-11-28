@@ -1,5 +1,5 @@
 //! Generated from: compute-pressure.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:18Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -119,7 +119,7 @@ pub const PressureObserver = struct {
 
     pub fn call_observe(instance: *runtime.Instance, source: PressureSource, options: webidl.Opt(PressureObserverOptions)) anyerror!*const anyopaque {
         
-        return try PressureObserverImpl.call_observe(instance, source, options.value);
+        return try PressureObserverImpl.call_observe(instance, source, options);
     }
 
     pub fn call_unobserve(instance: *runtime.Instance, source: PressureSource) anyerror!void {

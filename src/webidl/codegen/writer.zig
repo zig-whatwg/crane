@@ -1851,15 +1851,11 @@ pub fn writeConstructor(
     try writer.print("        return try {s}.call_constructor(allocator, ctx", .{impl_name});
 
     // Pass arguments to impl constructor
+    // Note: webidl.Opt() parameters are passed directly (not unwrapped)
+    // The impl is responsible for checking .wasPassed() and handling defaults
     for (constructor.arguments) |arg| {
         try writer.writeAll(", ");
-        // Unwrap optional parameters (webidl.Opt(T) -> T.value)
-        if (arg.optional) {
-            try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
-            try writer.writeAll(".value");
-        } else {
-            try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
-        }
+        try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
     }
 
     try writer.writeAll(");\n");
@@ -2233,15 +2229,26 @@ fn writeSingleOperation(
         } else if (has_clamp) {
             try writer.writeAll("        // [Clamp] on ");
             try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
-            try writer.print("\n        const clamped_{s} = runtime.clamp(", .{arg.name});
-            try writeZigType(writer, arg.idlType.type);
-            try writer.writeAll(", ");
-            try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
-            // Unwrap optional parameters for clamp
             if (arg.optional) {
-                try writer.writeAll(".value");
+                // For optional params with [Clamp]: clamp if passed, otherwise pass notPassed()
+                try writer.print("\n        const clamped_{s} = if (", .{arg.name});
+                try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
+                try writer.writeAll(".wasPassed()) webidl.Opt(");
+                try writeZigType(writer, arg.idlType.type);
+                try writer.writeAll(").passed(runtime.clamp(");
+                try writeZigType(writer, arg.idlType.type);
+                try writer.writeAll(", ");
+                try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
+                try writer.writeAll(".value)) else webidl.Opt(");
+                try writeZigType(writer, arg.idlType.type);
+                try writer.writeAll(").notPassed();\n");
+            } else {
+                try writer.print("\n        const clamped_{s} = runtime.clamp(", .{arg.name});
+                try writeZigType(writer, arg.idlType.type);
+                try writer.writeAll(", ");
+                try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
+                try writer.writeAll(");\n");
             }
-            try writer.writeAll(");\n");
         }
     }
 
@@ -2252,6 +2259,8 @@ fn writeSingleOperation(
     try writer.print("        return try {s}.call_{s}(instance", .{ impl_name, name });
 
     // Pass arguments
+    // Note: webidl.Opt() parameters are passed directly (not unwrapped)
+    // The impl is responsible for checking .wasPassed() and handling defaults
     for (op.arguments) |arg| {
         const has_clamp = hasExtendedAttribute(arg.extAttrs, "Clamp");
 
@@ -2259,13 +2268,7 @@ fn writeSingleOperation(
             try writer.print(", clamped_{s}", .{arg.name});
         } else {
             try writer.writeAll(", ");
-            // Unwrap optional parameters (webidl.Opt(T) -> T.value)
-            if (arg.optional) {
-                try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
-                try writer.writeAll(".value");
-            } else {
-                try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
-            }
+            try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
         }
     }
 

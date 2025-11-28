@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:18Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -300,7 +300,7 @@ pub const RTCPeerConnection = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, configuration: webidl.Opt(RTCConfiguration)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try RTCPeerConnectionImpl.call_constructor(allocator, ctx, configuration.value);
+        return try RTCPeerConnectionImpl.call_constructor(allocator, ctx, configuration);
     }
 
     pub fn get_localDescription(instance: *runtime.Instance) anyerror!?*runtime.Instance {
@@ -437,17 +437,17 @@ pub const RTCPeerConnection = struct {
 
     pub fn call_addTransceiver(instance: *runtime.Instance, trackOrKind: *const anyopaque, init_data: webidl.Opt(RTCRtpTransceiverInit)) anyerror!*runtime.Instance {
         
-        return try RTCPeerConnectionImpl.call_addTransceiver(instance, trackOrKind, init_data.value);
+        return try RTCPeerConnectionImpl.call_addTransceiver(instance, trackOrKind, init_data);
     }
 
     pub fn call_setIdentityProvider(instance: *runtime.Instance, provider: DOMString, options: webidl.Opt(RTCIdentityProviderOptions)) anyerror!void {
         
-        return try RTCPeerConnectionImpl.call_setIdentityProvider(instance, provider, options.value);
+        return try RTCPeerConnectionImpl.call_setIdentityProvider(instance, provider, options);
     }
 
     pub fn call_setConfiguration(instance: *runtime.Instance, configuration: webidl.Opt(RTCConfiguration)) anyerror!void {
         
-        return try RTCPeerConnectionImpl.call_setConfiguration(instance, configuration.value);
+        return try RTCPeerConnectionImpl.call_setConfiguration(instance, configuration);
     }
 
     pub fn call_getSenders(instance: *runtime.Instance) anyerror!*const anyopaque {
@@ -461,12 +461,12 @@ pub const RTCPeerConnection = struct {
 
     pub fn call_addIceCandidate(instance: *runtime.Instance, candidate: webidl.Opt(RTCIceCandidateInit)) anyerror!*const anyopaque {
         
-        return try RTCPeerConnectionImpl.call_addIceCandidate(instance, candidate.value);
+        return try RTCPeerConnectionImpl.call_addIceCandidate(instance, candidate);
     }
 
     pub fn call_setLocalDescription(instance: *runtime.Instance, description: webidl.Opt(RTCLocalSessionDescriptionInit)) anyerror!*const anyopaque {
         
-        return try RTCPeerConnectionImpl.call_setLocalDescription(instance, description.value);
+        return try RTCPeerConnectionImpl.call_setLocalDescription(instance, description);
     }
 
     pub fn call_addTrack(instance: *runtime.Instance, track: *runtime.Instance, streams: []const *runtime.Instance) anyerror!*runtime.Instance {
@@ -498,12 +498,12 @@ pub const RTCPeerConnection = struct {
 
     pub fn call_createDataChannel(instance: *runtime.Instance, label: runtime.USVString, dataChannelDict: webidl.Opt(RTCDataChannelInit)) anyerror!*runtime.Instance {
         
-        return try RTCPeerConnectionImpl.call_createDataChannel(instance, label, dataChannelDict.value);
+        return try RTCPeerConnectionImpl.call_createDataChannel(instance, label, dataChannelDict);
     }
 
     pub fn call_getStats(instance: *runtime.Instance, selector: webidl.Opt(?*runtime.Instance)) anyerror!*const anyopaque {
         
-        return try RTCPeerConnectionImpl.call_getStats(instance, selector.value);
+        return try RTCPeerConnectionImpl.call_getStats(instance, selector);
     }
 
     pub fn call_getConfiguration(instance: *runtime.Instance) anyerror!RTCConfiguration {
@@ -512,12 +512,12 @@ pub const RTCPeerConnection = struct {
 
     pub fn call_createOffer(instance: *runtime.Instance, options: webidl.Opt(RTCOfferOptions)) anyerror!*const anyopaque {
         
-        return try RTCPeerConnectionImpl.call_createOffer(instance, options.value);
+        return try RTCPeerConnectionImpl.call_createOffer(instance, options);
     }
 
     pub fn call_createAnswer(instance: *runtime.Instance, options: webidl.Opt(RTCAnswerOptions)) anyerror!*const anyopaque {
         
-        return try RTCPeerConnectionImpl.call_createAnswer(instance, options.value);
+        return try RTCPeerConnectionImpl.call_createAnswer(instance, options);
     }
 
     pub fn call_close(instance: *runtime.Instance) anyerror!void {

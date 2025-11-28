@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -66,7 +67,7 @@ pub fn get_pathLength(instance: *runtime.Instance) ImplError!*runtime.Instance {
 }
 
 /// Operation: isPointInStroke
-pub fn call_isPointInStroke(instance: *runtime.Instance, point: dictionaries.DOMPointInit) ImplError!bool {
+pub fn call_isPointInStroke(instance: *runtime.Instance, point: webidl.Opt(dictionaries.DOMPointInit)) ImplError!bool {
     _ = instance;
     _ = point;
     return error.NotImplemented;
@@ -86,7 +87,7 @@ pub fn call_getPointAtLength(instance: *runtime.Instance, distance: f32) ImplErr
 }
 
 /// Operation: isPointInFill
-pub fn call_isPointInFill(instance: *runtime.Instance, point: dictionaries.DOMPointInit) ImplError!bool {
+pub fn call_isPointInFill(instance: *runtime.Instance, point: webidl.Opt(dictionaries.DOMPointInit)) ImplError!bool {
     _ = instance;
     _ = point;
     return error.NotImplemented;

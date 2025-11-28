@@ -1,5 +1,5 @@
 //! Generated from: encoding.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -105,7 +105,7 @@ pub const TextEncoder = struct {
     pub fn call_encode(instance: *runtime.Instance, input: webidl.Opt(runtime.USVString)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
-        return try TextEncoderImpl.call_encode(instance, input.value);
+        return try TextEncoderImpl.call_encode(instance, input);
     }
 
     pub fn call_encodeInto(instance: *runtime.Instance, source: runtime.USVString, destination: *const anyopaque) anyerror!TextEncoderEncodeIntoResult {

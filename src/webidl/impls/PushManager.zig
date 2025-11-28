@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -66,14 +67,14 @@ pub fn get_supportedContentEncodings(instance: *runtime.Instance) ImplError!*con
 }
 
 /// Operation: permissionState
-pub fn call_permissionState(instance: *runtime.Instance, options: dictionaries.PushSubscriptionOptionsInit) ImplError!*const anyopaque {
+pub fn call_permissionState(instance: *runtime.Instance, options: webidl.Opt(dictionaries.PushSubscriptionOptionsInit)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: subscribe
-pub fn call_subscribe(instance: *runtime.Instance, options: dictionaries.PushSubscriptionOptionsInit) ImplError!*const anyopaque {
+pub fn call_subscribe(instance: *runtime.Instance, options: webidl.Opt(dictionaries.PushSubscriptionOptionsInit)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

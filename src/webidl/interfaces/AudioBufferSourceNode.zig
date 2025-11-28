@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -140,7 +140,7 @@ pub const AudioBufferSourceNode = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: webidl.Opt(AudioBufferSourceOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try AudioBufferSourceNodeImpl.call_constructor(allocator, ctx, context, options.value);
+        return try AudioBufferSourceNodeImpl.call_constructor(allocator, ctx, context, options);
     }
 
     pub fn get_buffer(instance: *runtime.Instance) anyerror!?*runtime.Instance {
@@ -185,7 +185,7 @@ pub const AudioBufferSourceNode = struct {
 
     pub fn call_start(instance: *runtime.Instance, when: webidl.Opt(f64), offset: webidl.Opt(f64), duration: webidl.Opt(f64)) anyerror!void {
         
-        return try AudioBufferSourceNodeImpl.call_start(instance, when.value, offset.value, duration.value);
+        return try AudioBufferSourceNodeImpl.call_start(instance, when, offset, duration);
     }
 
 };

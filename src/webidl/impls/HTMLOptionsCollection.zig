@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -86,7 +87,7 @@ pub fn set_selectedIndex(instance: *runtime.Instance, value: i32) ImplError!void
 }
 
 /// Operation: add
-pub fn call_add(instance: *runtime.Instance, element: *const anyopaque, before: ?*const anyopaque) ImplError!void {
+pub fn call_add(instance: *runtime.Instance, element: *const anyopaque, before: webidl.Opt(?*const anyopaque)) ImplError!void {
     _ = instance;
     _ = element;
     _ = before;

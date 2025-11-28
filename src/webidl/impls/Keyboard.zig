@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -79,7 +80,7 @@ pub fn call_unlock(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: lock
-pub fn call_lock(instance: *runtime.Instance, keyCodes: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_lock(instance: *runtime.Instance, keyCodes: webidl.Opt(*const anyopaque)) ImplError!*const anyopaque {
     _ = instance;
     _ = keyCodes;
     return error.NotImplemented;

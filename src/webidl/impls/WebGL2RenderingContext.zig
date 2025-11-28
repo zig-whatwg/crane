@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -248,7 +249,7 @@ pub fn call_clientWaitSync(instance: *runtime.Instance, sync: *runtime.Instance,
 }
 
 /// Operation: uniform3fv
-pub fn call_uniform3fv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniform3fv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(typedefs.GLuint)) ImplError!void {
     _ = instance;
     _ = location;
     _ = data;
@@ -264,7 +265,7 @@ pub fn call_getContextAttributes(instance: *runtime.Instance) ImplError!?diction
 }
 
 /// Operation: uniformMatrix2x3fv
-pub fn call_uniformMatrix2x3fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniformMatrix2x3fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(typedefs.GLuint)) ImplError!void {
     _ = instance;
     _ = location;
     _ = transpose;
@@ -282,7 +283,7 @@ pub fn call_isRenderbuffer(instance: *runtime.Instance, renderbuffer: ?*runtime.
 }
 
 /// Operation: uniformMatrix2fv
-pub fn call_uniformMatrix2fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniformMatrix2fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(typedefs.GLuint)) ImplError!void {
     _ = instance;
     _ = location;
     _ = transpose;
@@ -293,7 +294,7 @@ pub fn call_uniformMatrix2fv(instance: *runtime.Instance, location: ?*runtime.In
 }
 
 /// Operation: uniform4fv
-pub fn call_uniform4fv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniform4fv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(typedefs.GLuint)) ImplError!void {
     _ = instance;
     _ = location;
     _ = data;
@@ -317,7 +318,7 @@ pub fn call_getShaderSource(instance: *runtime.Instance, shader: *runtime.Instan
 }
 
 /// Operation: clearBufferiv
-pub fn call_clearBufferiv(instance: *runtime.Instance, buffer: typedefs.GLenum, drawbuffer: typedefs.GLint, values: typedefs.Int32List, srcOffset: u64) ImplError!void {
+pub fn call_clearBufferiv(instance: *runtime.Instance, buffer: typedefs.GLenum, drawbuffer: typedefs.GLint, values: typedefs.Int32List, srcOffset: webidl.Opt(u64)) ImplError!void {
     _ = instance;
     _ = buffer;
     _ = drawbuffer;
@@ -392,7 +393,7 @@ pub fn call_getParameter(instance: *runtime.Instance, pname: typedefs.GLenum) Im
 }
 
 /// Operation: getBufferSubData
-pub fn call_getBufferSubData(instance: *runtime.Instance, target: typedefs.GLenum, srcByteOffset: typedefs.GLintptr, dstBuffer: typedefs.ArrayBufferView, dstOffset: u64, length: typedefs.GLuint) ImplError!void {
+pub fn call_getBufferSubData(instance: *runtime.Instance, target: typedefs.GLenum, srcByteOffset: typedefs.GLintptr, dstBuffer: typedefs.ArrayBufferView, dstOffset: webidl.Opt(u64), length: webidl.Opt(typedefs.GLuint)) ImplError!void {
     _ = instance;
     _ = target;
     _ = srcByteOffset;
@@ -412,7 +413,7 @@ pub fn call_drawingBufferStorage(instance: *runtime.Instance, sizedFormat: typed
 }
 
 /// Operation: uniform3iv
-pub fn call_uniform3iv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Int32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniform3iv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Int32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(typedefs.GLuint)) ImplError!void {
     _ = instance;
     _ = location;
     _ = data;
@@ -526,7 +527,7 @@ pub fn call_createProgram(instance: *runtime.Instance) ImplError!*runtime.Instan
 }
 
 /// Operation: uniform2uiv
-pub fn call_uniform2uiv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Uint32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniform2uiv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Uint32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(typedefs.GLuint)) ImplError!void {
     _ = instance;
     _ = location;
     _ = data;
@@ -543,7 +544,7 @@ pub fn call_getProgramInfoLog(instance: *runtime.Instance, program: *runtime.Ins
 }
 
 /// Operation: uniform1fv
-pub fn call_uniform1fv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniform1fv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(typedefs.GLuint)) ImplError!void {
     _ = instance;
     _ = location;
     _ = data;
@@ -560,7 +561,7 @@ pub fn call_deleteProgram(instance: *runtime.Instance, program: ?*runtime.Instan
 }
 
 /// Operation: uniform1uiv
-pub fn call_uniform1uiv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Uint32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniform1uiv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Uint32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(typedefs.GLuint)) ImplError!void {
     _ = instance;
     _ = location;
     _ = data;
@@ -736,7 +737,7 @@ pub fn call_uniform2ui(instance: *runtime.Instance, location: ?*runtime.Instance
 }
 
 /// Operation: uniformMatrix4x3fv
-pub fn call_uniformMatrix4x3fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniformMatrix4x3fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(typedefs.GLuint)) ImplError!void {
     _ = instance;
     _ = location;
     _ = transpose;
@@ -787,7 +788,7 @@ pub fn call_getUniformLocation(instance: *runtime.Instance, program: *runtime.In
 }
 
 /// Operation: uniform4iv
-pub fn call_uniform4iv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Int32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniform4iv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Int32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(typedefs.GLuint)) ImplError!void {
     _ = instance;
     _ = location;
     _ = data;
@@ -852,7 +853,7 @@ pub fn call_disableVertexAttribArray(instance: *runtime.Instance, index: typedef
 }
 
 /// Operation: uniformMatrix4x2fv
-pub fn call_uniformMatrix4x2fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniformMatrix4x2fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(typedefs.GLuint)) ImplError!void {
     _ = instance;
     _ = location;
     _ = transpose;
@@ -950,7 +951,7 @@ pub fn call_isProgram(instance: *runtime.Instance, program: ?*runtime.Instance) 
 }
 
 /// Operation: uniformMatrix3x4fv
-pub fn call_uniformMatrix3x4fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniformMatrix3x4fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(typedefs.GLuint)) ImplError!void {
     _ = instance;
     _ = location;
     _ = transpose;
@@ -1029,7 +1030,7 @@ pub fn call_sampleCoverage(instance: *runtime.Instance, value: typedefs.GLclampf
 }
 
 /// Operation: uniform1iv
-pub fn call_uniform1iv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Int32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniform1iv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Int32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(typedefs.GLuint)) ImplError!void {
     _ = instance;
     _ = location;
     _ = data;
@@ -1039,7 +1040,7 @@ pub fn call_uniform1iv(instance: *runtime.Instance, location: ?*runtime.Instance
 }
 
 /// Operation: uniformMatrix4fv
-pub fn call_uniformMatrix4fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniformMatrix4fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(typedefs.GLuint)) ImplError!void {
     _ = instance;
     _ = location;
     _ = transpose;
@@ -1232,7 +1233,7 @@ pub fn call_texSubImage3D(instance: *runtime.Instance, target: typedefs.GLenum, 
 }
 
 /// Operation: uniform2fv
-pub fn call_uniform2fv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniform2fv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(typedefs.GLuint)) ImplError!void {
     _ = instance;
     _ = location;
     _ = data;
@@ -1372,7 +1373,7 @@ pub fn call_getQueryParameter(instance: *runtime.Instance, query: *runtime.Insta
 }
 
 /// Operation: uniformMatrix3x2fv
-pub fn call_uniformMatrix3x2fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniformMatrix3x2fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(typedefs.GLuint)) ImplError!void {
     _ = instance;
     _ = location;
     _ = transpose;
@@ -1587,7 +1588,7 @@ pub fn call_readBuffer(instance: *runtime.Instance, src: typedefs.GLenum) ImplEr
 }
 
 /// Operation: clearBufferuiv
-pub fn call_clearBufferuiv(instance: *runtime.Instance, buffer: typedefs.GLenum, drawbuffer: typedefs.GLint, values: typedefs.Uint32List, srcOffset: u64) ImplError!void {
+pub fn call_clearBufferuiv(instance: *runtime.Instance, buffer: typedefs.GLenum, drawbuffer: typedefs.GLint, values: typedefs.Uint32List, srcOffset: webidl.Opt(u64)) ImplError!void {
     _ = instance;
     _ = buffer;
     _ = drawbuffer;
@@ -1626,7 +1627,7 @@ pub fn call_stencilFuncSeparate(instance: *runtime.Instance, face: typedefs.GLen
 }
 
 /// Operation: clearBufferfv
-pub fn call_clearBufferfv(instance: *runtime.Instance, buffer: typedefs.GLenum, drawbuffer: typedefs.GLint, values: typedefs.Float32List, srcOffset: u64) ImplError!void {
+pub fn call_clearBufferfv(instance: *runtime.Instance, buffer: typedefs.GLenum, drawbuffer: typedefs.GLint, values: typedefs.Float32List, srcOffset: webidl.Opt(u64)) ImplError!void {
     _ = instance;
     _ = buffer;
     _ = drawbuffer;
@@ -1791,7 +1792,7 @@ pub fn call_bindVertexArray(instance: *runtime.Instance, array: ?*runtime.Instan
 }
 
 /// Operation: uniformMatrix3fv
-pub fn call_uniformMatrix3fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniformMatrix3fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(typedefs.GLuint)) ImplError!void {
     _ = instance;
     _ = location;
     _ = transpose;
@@ -1815,7 +1816,7 @@ pub fn call_isQuery(instance: *runtime.Instance, query: ?*runtime.Instance) Impl
 }
 
 /// Operation: uniform3uiv
-pub fn call_uniform3uiv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Uint32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniform3uiv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Uint32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(typedefs.GLuint)) ImplError!void {
     _ = instance;
     _ = location;
     _ = data;
@@ -1856,7 +1857,7 @@ pub fn call_getInternalformatParameter(instance: *runtime.Instance, target: type
 }
 
 /// Operation: uniform4uiv
-pub fn call_uniform4uiv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Uint32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniform4uiv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Uint32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(typedefs.GLuint)) ImplError!void {
     _ = instance;
     _ = location;
     _ = data;
@@ -2041,7 +2042,7 @@ pub fn call_stencilMaskSeparate(instance: *runtime.Instance, face: typedefs.GLen
 }
 
 /// Operation: uniformMatrix2x4fv
-pub fn call_uniformMatrix2x4fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniformMatrix2x4fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: typedefs.GLboolean, data: typedefs.Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(typedefs.GLuint)) ImplError!void {
     _ = instance;
     _ = location;
     _ = transpose;
@@ -2066,7 +2067,7 @@ pub fn call_copyTexImage2D(instance: *runtime.Instance, target: typedefs.GLenum,
 }
 
 /// Operation: uniform2iv
-pub fn call_uniform2iv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Int32List, srcOffset: u64, srcLength: typedefs.GLuint) ImplError!void {
+pub fn call_uniform2iv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Int32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(typedefs.GLuint)) ImplError!void {
     _ = instance;
     _ = location;
     _ = data;

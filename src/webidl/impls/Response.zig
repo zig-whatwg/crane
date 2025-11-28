@@ -19,6 +19,7 @@ const InternalResponse = fetch.internal.InternalResponse;
 
 // Import Blob WebIDL wrapper
 const BlobImpl = @import("Blob.zig");
+const webidl = @import("webidl");
 
 const Response = interfaces.Response;
 
@@ -83,12 +84,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Constructor - STUB: Does not parse body/init properly (Option A)
-pub fn call_constructor(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    body: ?typedefs.BodyInit,
-    init_data: dictionaries.ResponseInit,
-) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, body: webidl.Opt(?typedefs.BodyInit), init_data: webidl.Opt(dictionaries.ResponseInit)) !*runtime.Instance {
     const instance = try init(allocator, State, &Response.vtable, ctx);
     errdefer deinit(instance);
 
@@ -97,24 +93,25 @@ pub fn call_constructor(
 
     _ = body; // TODO: Handle body parameter
 
-    if (init_data.status) |status| {
-        if (status < 200 or status > 599) {
-            return error.RangeError;
+    if (init_data.wasPassed()) {
+        if (init_data.value.status) |status| {
+            if (status < 200 or status > 599) {
+                return error.RangeError;
+            }
+            internal.response.status = status;
         }
-        internal.response.status = status;
+
+        if (init_data.value.statusText) |status_text| {
+            internal.response.status_message = status_text;
+        }
     }
 
-    if (init_data.statusText) |status_text| {
-        internal.response.status_message = status_text;
-    }
-
-    _ = body;
     return instance;
 }
 
 // === Static Methods ===
 
-pub fn call_error(instance: *runtime.Instance) !*runtime.Instance {
+pub fn call_error(instance: *runtime.Instance) ImplError!*runtime.Instance {
     // Static method - use context directly, not instance state
     // (instance is just a template for context/allocator access)
     const allocator = instance.ctx.allocator;
@@ -130,8 +127,10 @@ pub fn call_error(instance: *runtime.Instance) !*runtime.Instance {
     return error_instance;
 }
 
-pub fn call_redirect(instance: *runtime.Instance, url: []const u8, status: u16) !*runtime.Instance {
-    if (status != 301 and status != 302 and status != 303 and status != 307 and status != 308) {
+pub fn call_redirect(instance: *runtime.Instance, url: runtime.USVString, status: webidl.Opt(u16)) ImplError!*runtime.Instance {
+    // Unwrap Opt for status (default to 302 per spec)
+    const status_val = if (status.wasPassed()) status.value else 302;
+    if (status_val != 301 and status_val != 302 and status_val != 303 and status_val != 307 and status_val != 308) {
         return error.RangeError;
     }
 
@@ -143,13 +142,13 @@ pub fn call_redirect(instance: *runtime.Instance, url: []const u8, status: u16) 
     const redirect_state = redirect_instance.getState(State);
     const internal = redirect_state.own._internal.?;
 
-    internal.response.status = status;
+    internal.response.status = status_val;
     try internal.response.header_list.append("Location", url);
 
     return redirect_instance;
 }
 
-pub fn call_json(instance: *runtime.Instance, data: *const anyopaque, init_data: dictionaries.ResponseInit) !*runtime.Instance {
+pub fn call_json(instance: *runtime.Instance, data: *const anyopaque, init_data: webidl.Opt(dictionaries.ResponseInit)) ImplError!*runtime.Instance {
     _ = data;
 
     // Static method - use context directly, not instance state
@@ -158,7 +157,9 @@ pub fn call_json(instance: *runtime.Instance, data: *const anyopaque, init_data:
 
     const dummy: u8 = 0;
     const empty_body = typedefs.BodyInit{ .variant_0 = @as(*const anyopaque, @ptrCast(&dummy)) };
-    const json_instance = try call_constructor(allocator, ctx, empty_body, init_data);
+    // Wrap body in Opt for call_constructor which expects Opt(?BodyInit)
+    const body_opt = webidl.Opt(?typedefs.BodyInit).passed(empty_body);
+    const json_instance = try call_constructor(allocator, ctx, body_opt, init_data);
     const json_state = json_instance.getState(State);
     const internal = json_state.own._internal.?;
 
@@ -183,7 +184,7 @@ pub fn get_type(instance: *runtime.Instance) ImplError!enums.ResponseType {
     };
 }
 
-pub fn get_url(instance: *runtime.Instance) ImplError![]const u8 {
+pub fn get_url(instance: *runtime.Instance) ImplError!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -213,7 +214,7 @@ pub fn get_ok(instance: *runtime.Instance) ImplError!bool {
     return internal.response.status >= 200 and internal.response.status <= 299;
 }
 
-pub fn get_statusText(instance: *runtime.Instance) ImplError![]const u8 {
+pub fn get_statusText(instance: *runtime.Instance) ImplError!runtime.ByteString {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
     return internal.response.status_message;
@@ -332,7 +333,7 @@ pub fn call_arrayBuffer(instance: *runtime.Instance) ImplError!*const anyopaque 
 
 /// blob() - Returns promise fulfilled with body as Blob
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-blob
-pub fn call_blob(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_blob(instance: *runtime.Instance) ImplError!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -457,7 +458,7 @@ pub fn call_bytes(instance: *runtime.Instance) ImplError!*const anyopaque {
 
 /// formData() - Returns promise fulfilled with body as FormData
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-formdata
-pub fn call_formData(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_formData(instance: *runtime.Instance) ImplError!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 

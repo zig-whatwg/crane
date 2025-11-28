@@ -27,6 +27,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const mixins = @import("mixins");
+const webidl = @import("webidl");
 const CompositionEvent = interfaces.CompositionEvent;
 
 pub const State = CompositionEvent.State;
@@ -61,7 +62,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.CompositionEventInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.CompositionEventInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &CompositionEvent.vtable, ctx);
     errdefer deinit(instance);
@@ -80,7 +81,7 @@ pub fn get_data(instance: *runtime.Instance) ImplError!runtime.USVString {
 }
 
 /// Operation: initCompositionEvent
-pub fn call_initCompositionEvent(instance: *runtime.Instance, typeArg: runtime.DOMString, bubblesArg: bool, cancelableArg: bool, viewArg: ?typedefs.WindowProxy, dataArg: runtime.DOMString) ImplError!void {
+pub fn call_initCompositionEvent(instance: *runtime.Instance, typeArg: runtime.DOMString, bubblesArg: webidl.Opt(bool), cancelableArg: webidl.Opt(bool), viewArg: webidl.Opt(?typedefs.WindowProxy), dataArg: webidl.Opt(runtime.DOMString)) ImplError!void {
     _ = instance;
     _ = typeArg;
     _ = bubblesArg;

@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -79,7 +80,7 @@ pub fn set_onprioritychange(instance: *runtime.Instance, value: typedefs.EventHa
 }
 
 /// Operation: _any
-pub fn call__any(instance: *runtime.Instance, signals: *const anyopaque, init_data: dictionaries.TaskSignalAnyInit) ImplError!*runtime.Instance {
+pub fn call__any(instance: *runtime.Instance, signals: *const anyopaque, init_data: webidl.Opt(dictionaries.TaskSignalAnyInit)) ImplError!*runtime.Instance {
     _ = instance;
     _ = signals;
     _ = init_data;

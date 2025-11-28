@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -60,7 +61,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: reportEvent
-pub fn call_reportEvent(instance: *runtime.Instance, event: typedefs.ReportEventType) ImplError!void {
+pub fn call_reportEvent(instance: *runtime.Instance, event: webidl.Opt(typedefs.ReportEventType)) ImplError!void {
     _ = instance;
     _ = event;
     return error.NotImplemented;
@@ -73,7 +74,7 @@ pub fn call_getNestedConfigs(instance: *runtime.Instance) ImplError!*const anyop
 }
 
 /// Operation: setReportEventDataForAutomaticBeacons
-pub fn call_setReportEventDataForAutomaticBeacons(instance: *runtime.Instance, event: dictionaries.FenceEvent) ImplError!void {
+pub fn call_setReportEventDataForAutomaticBeacons(instance: *runtime.Instance, event: webidl.Opt(dictionaries.FenceEvent)) ImplError!void {
     _ = instance;
     _ = event;
     return error.NotImplemented;

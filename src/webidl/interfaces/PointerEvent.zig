@@ -1,5 +1,5 @@
 //! Generated from: pointerevents.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -154,7 +154,7 @@ pub const PointerEvent = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(PointerEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try PointerEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict.value);
+        return try PointerEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
     pub fn get_pointerId(instance: *runtime.Instance) anyerror!i32 {

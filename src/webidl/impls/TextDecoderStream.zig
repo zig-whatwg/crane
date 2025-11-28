@@ -141,20 +141,15 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 10. Set up transformStream with transformAlgorithm set to transformAlgorithm
 ///     and flushAlgorithm set to flushAlgorithm.
 /// 11. Set this's transform to transformStream.
-pub fn call_constructor(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    label: runtime.DOMString,
-    options: dictionaries.TextDecoderOptions,
-) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, label: webidl.Opt(runtime.DOMString), options: webidl.Opt(dictionaries.TextDecoderOptions)) !*runtime.Instance {
     const instance = try init(allocator, State, &TextDecoderStream.vtable, ctx);
     errdefer deinit(instance);
 
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
-    // Step 1: Get encoding from label
-    const label_str = label.asSlice();
+    // Step 1: Get encoding from label (default to "utf-8" per spec if not passed)
+    const label_str = if (label.wasPassed()) label.value.asSlice() else "utf-8";
     const enc = encoding_mod.getEncoding(label_str) orelse {
         // Step 2: If encoding is failure, throw RangeError
         return error.RangeError;
@@ -168,11 +163,11 @@ pub fn call_constructor(
     // Step 3: Set this's encoding to encoding
     internal.enc = enc;
 
-    // Step 4: If options["fatal"] is true, set error mode to "fatal"
-    internal.fatal = options.fatal orelse false;
+    // Step 4: If options["fatal"] is true, set error mode to "fatal" - unwrap Opt
+    internal.fatal = if (options.wasPassed()) options.value.fatal orelse false else false;
 
-    // Step 5: Set this's ignore BOM to options["ignoreBOM"]
-    internal.ignore_bom = options.ignoreBOM orelse false;
+    // Step 5: Set this's ignore BOM to options["ignoreBOM"] - unwrap Opt
+    internal.ignore_bom = if (options.wasPassed()) options.value.ignoreBOM orelse false else false;
 
     // Step 6: Set this's decoder to a new instance of encoding's decoder
     internal.decoder = enc.newDecoder();

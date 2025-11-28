@@ -1,5 +1,5 @@
 //! Generated from: web-smart-card.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:18Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -109,7 +109,7 @@ pub const SmartCardConnection = struct {
 
     pub fn call_startTransaction(instance: *runtime.Instance, transaction: SmartCardTransactionCallback, options: webidl.Opt(SmartCardTransactionOptions)) anyerror!*const anyopaque {
         
-        return try SmartCardConnectionImpl.call_startTransaction(instance, transaction, options.value);
+        return try SmartCardConnectionImpl.call_startTransaction(instance, transaction, options);
     }
 
     pub fn call_getAttribute(instance: *runtime.Instance, tag: u32) anyerror!*const anyopaque {
@@ -121,7 +121,7 @@ pub const SmartCardConnection = struct {
 
     pub fn call_transmit(instance: *runtime.Instance, sendBuffer: BufferSource, options: webidl.Opt(SmartCardTransmitOptions)) anyerror!*const anyopaque {
         
-        return try SmartCardConnectionImpl.call_transmit(instance, sendBuffer, options.value);
+        return try SmartCardConnectionImpl.call_transmit(instance, sendBuffer, options);
     }
 
     pub fn call_status(instance: *runtime.Instance) anyerror!*const anyopaque {
@@ -130,7 +130,7 @@ pub const SmartCardConnection = struct {
 
     pub fn call_disconnect(instance: *runtime.Instance, disposition: webidl.Opt(SmartCardDisposition)) anyerror!*const anyopaque {
         
-        return try SmartCardConnectionImpl.call_disconnect(instance, disposition.value);
+        return try SmartCardConnectionImpl.call_disconnect(instance, disposition);
     }
 
     pub fn call_setAttribute(instance: *runtime.Instance, tag: u32, value: BufferSource) anyerror!*const anyopaque {

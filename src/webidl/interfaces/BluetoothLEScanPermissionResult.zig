@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth-scanning.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:18Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 

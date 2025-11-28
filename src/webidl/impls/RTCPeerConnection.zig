@@ -27,6 +27,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const mixins = @import("mixins");
+const webidl = @import("webidl");
 const RTCPeerConnection = interfaces.RTCPeerConnection;
 
 pub const State = RTCPeerConnection.State;
@@ -61,7 +62,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, configuration: dictionaries.RTCConfiguration) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, configuration: webidl.Opt(dictionaries.RTCConfiguration)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &RTCPeerConnection.vtable, ctx);
     errdefer deinit(instance);
@@ -280,7 +281,7 @@ pub fn set_ondatachannel(instance: *runtime.Instance, value: typedefs.EventHandl
 }
 
 /// Operation: addTransceiver
-pub fn call_addTransceiver(instance: *runtime.Instance, trackOrKind: *const anyopaque, init_data: dictionaries.RTCRtpTransceiverInit) ImplError!*runtime.Instance {
+pub fn call_addTransceiver(instance: *runtime.Instance, trackOrKind: *const anyopaque, init_data: webidl.Opt(dictionaries.RTCRtpTransceiverInit)) ImplError!*runtime.Instance {
     _ = instance;
     _ = trackOrKind;
     _ = init_data;
@@ -288,7 +289,7 @@ pub fn call_addTransceiver(instance: *runtime.Instance, trackOrKind: *const anyo
 }
 
 /// Operation: setIdentityProvider
-pub fn call_setIdentityProvider(instance: *runtime.Instance, provider: runtime.DOMString, options: dictionaries.RTCIdentityProviderOptions) ImplError!void {
+pub fn call_setIdentityProvider(instance: *runtime.Instance, provider: runtime.DOMString, options: webidl.Opt(dictionaries.RTCIdentityProviderOptions)) ImplError!void {
     _ = instance;
     _ = provider;
     _ = options;
@@ -296,7 +297,7 @@ pub fn call_setIdentityProvider(instance: *runtime.Instance, provider: runtime.D
 }
 
 /// Operation: setConfiguration
-pub fn call_setConfiguration(instance: *runtime.Instance, configuration: dictionaries.RTCConfiguration) ImplError!void {
+pub fn call_setConfiguration(instance: *runtime.Instance, configuration: webidl.Opt(dictionaries.RTCConfiguration)) ImplError!void {
     _ = instance;
     _ = configuration;
     return error.NotImplemented;
@@ -316,14 +317,14 @@ pub fn call_setRemoteDescription(instance: *runtime.Instance, description: dicti
 }
 
 /// Operation: addIceCandidate
-pub fn call_addIceCandidate(instance: *runtime.Instance, candidate: dictionaries.RTCIceCandidateInit) ImplError!*const anyopaque {
+pub fn call_addIceCandidate(instance: *runtime.Instance, candidate: webidl.Opt(dictionaries.RTCIceCandidateInit)) ImplError!*const anyopaque {
     _ = instance;
     _ = candidate;
     return error.NotImplemented;
 }
 
 /// Operation: setLocalDescription
-pub fn call_setLocalDescription(instance: *runtime.Instance, description: dictionaries.RTCLocalSessionDescriptionInit) ImplError!*const anyopaque {
+pub fn call_setLocalDescription(instance: *runtime.Instance, description: webidl.Opt(dictionaries.RTCLocalSessionDescriptionInit)) ImplError!*const anyopaque {
     _ = instance;
     _ = description;
     return error.NotImplemented;
@@ -370,7 +371,7 @@ pub fn call_generateCertificate(instance: *runtime.Instance, keygenAlgorithm: ty
 }
 
 /// Operation: createDataChannel
-pub fn call_createDataChannel(instance: *runtime.Instance, label: runtime.USVString, dataChannelDict: dictionaries.RTCDataChannelInit) ImplError!*runtime.Instance {
+pub fn call_createDataChannel(instance: *runtime.Instance, label: runtime.USVString, dataChannelDict: webidl.Opt(dictionaries.RTCDataChannelInit)) ImplError!*runtime.Instance {
     _ = instance;
     _ = label;
     _ = dataChannelDict;
@@ -378,7 +379,7 @@ pub fn call_createDataChannel(instance: *runtime.Instance, label: runtime.USVStr
 }
 
 /// Operation: getStats
-pub fn call_getStats(instance: *runtime.Instance, selector: ?*runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getStats(instance: *runtime.Instance, selector: webidl.Opt(?*runtime.Instance)) ImplError!*const anyopaque {
     _ = instance;
     _ = selector;
     return error.NotImplemented;
@@ -391,14 +392,14 @@ pub fn call_getConfiguration(instance: *runtime.Instance) ImplError!dictionaries
 }
 
 /// Operation: createOffer
-pub fn call_createOffer(instance: *runtime.Instance, options: dictionaries.RTCOfferOptions) ImplError!*const anyopaque {
+pub fn call_createOffer(instance: *runtime.Instance, options: webidl.Opt(dictionaries.RTCOfferOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: createAnswer
-pub fn call_createAnswer(instance: *runtime.Instance, options: dictionaries.RTCAnswerOptions) ImplError!*const anyopaque {
+pub fn call_createAnswer(instance: *runtime.Instance, options: webidl.Opt(dictionaries.RTCAnswerOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

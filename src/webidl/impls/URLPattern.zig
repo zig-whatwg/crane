@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -128,7 +129,7 @@ pub fn get_hasRegExpGroups(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Operation: test
-pub fn call_test(instance: *runtime.Instance, input: typedefs.URLPatternInput, baseURL: runtime.USVString) ImplError!bool {
+pub fn call_test(instance: *runtime.Instance, input: webidl.Opt(typedefs.URLPatternInput), baseURL: webidl.Opt(runtime.USVString)) ImplError!bool {
     _ = instance;
     _ = input;
     _ = baseURL;
@@ -136,7 +137,7 @@ pub fn call_test(instance: *runtime.Instance, input: typedefs.URLPatternInput, b
 }
 
 /// Operation: exec
-pub fn call_exec(instance: *runtime.Instance, input: typedefs.URLPatternInput, baseURL: runtime.USVString) ImplError!?dictionaries.URLPatternResult {
+pub fn call_exec(instance: *runtime.Instance, input: webidl.Opt(typedefs.URLPatternInput), baseURL: webidl.Opt(runtime.USVString)) ImplError!?dictionaries.URLPatternResult {
     _ = instance;
     _ = input;
     _ = baseURL;

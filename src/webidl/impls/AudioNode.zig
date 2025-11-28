@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -123,7 +124,7 @@ pub fn call_disconnect(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: connect
-pub fn call_connect(instance: *runtime.Instance, destinationNode: *runtime.Instance, output: u32, input: u32) ImplError!*runtime.Instance {
+pub fn call_connect(instance: *runtime.Instance, destinationNode: *runtime.Instance, output: webidl.Opt(u32), input: webidl.Opt(u32)) ImplError!*runtime.Instance {
     _ = instance;
     _ = destinationNode;
     _ = output;

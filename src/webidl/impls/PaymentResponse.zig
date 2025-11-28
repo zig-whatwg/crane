@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -121,7 +122,7 @@ pub fn set_onpayerdetailchange(instance: *runtime.Instance, value: typedefs.Even
 }
 
 /// Operation: complete
-pub fn call_complete(instance: *runtime.Instance, result: enums.PaymentComplete, details: dictionaries.PaymentCompleteDetails) ImplError!*const anyopaque {
+pub fn call_complete(instance: *runtime.Instance, result: webidl.Opt(enums.PaymentComplete), details: webidl.Opt(dictionaries.PaymentCompleteDetails)) ImplError!*const anyopaque {
     _ = instance;
     _ = result;
     _ = details;
@@ -135,7 +136,7 @@ pub fn call_toJSON(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Operation: retry
-pub fn call_retry(instance: *runtime.Instance, errorFields: dictionaries.PaymentValidationErrors) ImplError!*const anyopaque {
+pub fn call_retry(instance: *runtime.Instance, errorFields: webidl.Opt(dictionaries.PaymentValidationErrors)) ImplError!*const anyopaque {
     _ = instance;
     _ = errorFields;
     return error.NotImplemented;

@@ -7,6 +7,7 @@
 //! IDBObjectStore represents an object store in a database. It provides CRUD operations.
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -144,7 +145,7 @@ pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) ImplError
 }
 
 /// Operation: put
-pub fn call_put(instance: *runtime.Instance, value: *const anyopaque, key: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_put(instance: *runtime.Instance, value: *const anyopaque, key: webidl.Opt(*const anyopaque)) ImplError!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
@@ -174,7 +175,7 @@ pub fn call_put(instance: *runtime.Instance, value: *const anyopaque, key: *cons
 }
 
 /// Operation: add
-pub fn call_add(instance: *runtime.Instance, value: *const anyopaque, key: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_add(instance: *runtime.Instance, value: *const anyopaque, key: webidl.Opt(*const anyopaque)) ImplError!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
@@ -293,7 +294,7 @@ pub fn call_getKey(instance: *runtime.Instance, query: *const anyopaque) ImplErr
 }
 
 /// Operation: getAll
-pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: *const anyopaque, count: u32) ImplError!*runtime.Instance {
+pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: webidl.Opt(*const anyopaque), count: webidl.Opt(u32)) ImplError!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     _ = internal.store orelse return error.InvalidState;
@@ -310,7 +311,7 @@ pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: *const anyopaque
 }
 
 /// Operation: getAllKeys
-pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: *const anyopaque, count: u32) ImplError!*runtime.Instance {
+pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: webidl.Opt(*const anyopaque), count: webidl.Opt(u32)) ImplError!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     _ = internal.store orelse return error.InvalidState;
@@ -326,7 +327,7 @@ pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: *const anyop
 }
 
 /// Operation: getAllRecords
-pub fn call_getAllRecords(instance: *runtime.Instance, options: dictionaries.IDBGetAllOptions) ImplError!*runtime.Instance {
+pub fn call_getAllRecords(instance: *runtime.Instance, options: webidl.Opt(dictionaries.IDBGetAllOptions)) ImplError!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     _ = internal.store orelse return error.InvalidState;
@@ -341,7 +342,7 @@ pub fn call_getAllRecords(instance: *runtime.Instance, options: dictionaries.IDB
 }
 
 /// Operation: count
-pub fn call_count(instance: *runtime.Instance, query: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_count(instance: *runtime.Instance, query: webidl.Opt(*const anyopaque)) ImplError!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
@@ -364,14 +365,16 @@ pub fn call_count(instance: *runtime.Instance, query: *const anyopaque) ImplErro
 }
 
 /// Operation: openCursor
-pub fn call_openCursor(instance: *runtime.Instance, query: *const anyopaque, direction: enums.IDBCursorDirection) ImplError!*runtime.Instance {
+pub fn call_openCursor(instance: *runtime.Instance, query: webidl.Opt(*const anyopaque), direction: webidl.Opt(enums.IDBCursorDirection)) ImplError!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
 
     _ = query;
 
-    const backend_direction = switch (direction) {
+    // Unwrap Opt for direction (default to "next")
+    const direction_val = if (direction.wasPassed()) direction.value else ._next_;
+    const backend_direction = switch (direction_val) {
         ._next_ => BackendCursorDirection.next,
         ._nextunique_ => BackendCursorDirection.nextunique,
         ._prev_ => BackendCursorDirection.prev,
@@ -394,7 +397,7 @@ pub fn call_openCursor(instance: *runtime.Instance, query: *const anyopaque, dir
 }
 
 /// Operation: openKeyCursor
-pub fn call_openKeyCursor(instance: *runtime.Instance, query: *const anyopaque, direction: enums.IDBCursorDirection) ImplError!*runtime.Instance {
+pub fn call_openKeyCursor(instance: *runtime.Instance, query: webidl.Opt(*const anyopaque), direction: webidl.Opt(enums.IDBCursorDirection)) ImplError!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     _ = internal.store orelse return error.InvalidState;
@@ -435,7 +438,7 @@ pub fn call_index(instance: *runtime.Instance, name: runtime.DOMString) ImplErro
 }
 
 /// Operation: createIndex
-pub fn call_createIndex(instance: *runtime.Instance, name: runtime.DOMString, keyPath: *const anyopaque, options: dictionaries.IDBIndexParameters) ImplError!*runtime.Instance {
+pub fn call_createIndex(instance: *runtime.Instance, name: runtime.DOMString, keyPath: *const anyopaque, options: webidl.Opt(dictionaries.IDBIndexParameters)) ImplError!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
@@ -443,9 +446,10 @@ pub fn call_createIndex(instance: *runtime.Instance, name: runtime.DOMString, ke
     const name_slice = name.asSlice();
     _ = keyPath;
 
+    // Unwrap Opt for options
     const backend_options = storage.indexeddb.object_store.IDBIndexParameters{
-        .unique = options.unique orelse false,
-        .multi_entry = options.multiEntry orelse false,
+        .unique = if (options.wasPassed()) options.value.unique orelse false else false,
+        .multi_entry = if (options.wasPassed()) options.value.multiEntry orelse false else false,
     };
 
     const index = store.createIndex(name_slice, "", backend_options) catch |err| {

@@ -27,6 +27,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const mixins = @import("mixins");
+const webidl = @import("webidl");
 const OscillatorNode = interfaces.OscillatorNode;
 
 pub const State = OscillatorNode.State;
@@ -61,7 +62,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: dictionaries.OscillatorOptions) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: webidl.Opt(dictionaries.OscillatorOptions)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &OscillatorNode.vtable, ctx);
     errdefer deinit(instance);

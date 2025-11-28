@@ -27,6 +27,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const mixins = @import("mixins");
+const webidl = @import("webidl");
 const AudioBufferSourceNode = interfaces.AudioBufferSourceNode;
 
 pub const State = AudioBufferSourceNode.State;
@@ -61,7 +62,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: dictionaries.AudioBufferSourceOptions) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: webidl.Opt(dictionaries.AudioBufferSourceOptions)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &AudioBufferSourceNode.vtable, ctx);
     errdefer deinit(instance);
@@ -138,7 +139,7 @@ pub fn set_loopEnd(instance: *runtime.Instance, value: f64) ImplError!void {
 }
 
 /// Operation: start
-pub fn call_start(instance: *runtime.Instance, when: f64, offset: f64, duration: f64) ImplError!void {
+pub fn call_start(instance: *runtime.Instance, when: webidl.Opt(f64), offset: webidl.Opt(f64), duration: webidl.Opt(f64)) ImplError!void {
     _ = instance;
     _ = when;
     _ = offset;

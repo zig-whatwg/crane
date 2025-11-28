@@ -1,5 +1,5 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:18Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -114,7 +114,7 @@ pub const DOMPointReadOnly = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: webidl.Opt(f64), y: webidl.Opt(f64), z: webidl.Opt(f64), w: webidl.Opt(f64)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try DOMPointReadOnlyImpl.call_constructor(allocator, ctx, x.value, y.value, z.value, w.value);
+        return try DOMPointReadOnlyImpl.call_constructor(allocator, ctx, x, y, z, w);
     }
 
     pub fn get_x(instance: *runtime.Instance) anyerror!f64 {
@@ -142,14 +142,14 @@ pub const DOMPointReadOnly = struct {
     pub fn call_matrixTransform(instance: *runtime.Instance, matrix: webidl.Opt(DOMMatrixInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try DOMPointReadOnlyImpl.call_matrixTransform(instance, matrix.value);
+        return try DOMPointReadOnlyImpl.call_matrixTransform(instance, matrix);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_fromPoint(instance: *runtime.Instance, other: webidl.Opt(DOMPointInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try DOMPointReadOnlyImpl.call_fromPoint(instance, other.value);
+        return try DOMPointReadOnlyImpl.call_fromPoint(instance, other);
     }
 
 };

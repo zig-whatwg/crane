@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -169,7 +170,7 @@ pub fn call_createContextualFragment(instance: *runtime.Instance, string: runtim
 }
 
 /// Operation: collapse
-pub fn call_collapse(instance: *runtime.Instance, toStart: bool) ImplError!void {
+pub fn call_collapse(instance: *runtime.Instance, toStart: webidl.Opt(bool)) ImplError!void {
     _ = instance;
     _ = toStart;
     return error.NotImplemented;

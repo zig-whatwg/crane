@@ -10,6 +10,7 @@ const typedefs = @import("typedefs");
 
 // Import Fetch internal structures
 const fetch = @import("fetch");
+const webidl = @import("webidl");
 const HeaderList = fetch.internal.HeaderList;
 const HeaderGuard = fetch.internal.HeaderGuard;
 const validation = fetch.internal.validation;
@@ -97,11 +98,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Constructor
-pub fn call_constructor(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    init_data: typedefs.HeadersInit,
-) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: webidl.Opt(typedefs.HeadersInit)) !*runtime.Instance {
     const instance = try init(allocator, State, &Headers.vtable, ctx);
     errdefer deinit(instance);
 
@@ -115,11 +112,7 @@ pub fn call_constructor(
 }
 
 /// append(name, value)
-pub fn call_append(
-    instance: *runtime.Instance,
-    name: runtime.ByteString,
-    value: runtime.ByteString,
-) ImplError!void {
+pub fn call_append(instance: *runtime.Instance, name: runtime.ByteString, value: runtime.ByteString) ImplError!void {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -141,10 +134,7 @@ pub fn call_append(
 }
 
 /// delete(name)
-pub fn call_delete(
-    instance: *runtime.Instance,
-    name: runtime.ByteString,
-) ImplError!void {
+pub fn call_delete(instance: *runtime.Instance, name: runtime.ByteString) ImplError!void {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -163,10 +153,7 @@ pub fn call_delete(
 }
 
 /// get(name) -> ByteString?
-pub fn call_get(
-    instance: *runtime.Instance,
-    name: runtime.ByteString,
-) ImplError!?runtime.ByteString {
+pub fn call_get(instance: *runtime.Instance, name: runtime.ByteString) ImplError!?runtime.ByteString {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -200,10 +187,7 @@ pub fn call_getSetCookie(instance: *runtime.Instance) ImplError!*const anyopaque
 }
 
 /// has(name) -> boolean
-pub fn call_has(
-    instance: *runtime.Instance,
-    name: runtime.ByteString,
-) ImplError!bool {
+pub fn call_has(instance: *runtime.Instance, name: runtime.ByteString) ImplError!bool {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -216,11 +200,7 @@ pub fn call_has(
 }
 
 /// set(name, value)
-pub fn call_set(
-    instance: *runtime.Instance,
-    name: runtime.ByteString,
-    value: runtime.ByteString,
-) ImplError!void {
+pub fn call_set(instance: *runtime.Instance, name: runtime.ByteString, value: runtime.ByteString) ImplError!void {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -243,10 +223,7 @@ pub fn call_set(
 
 /// forEach(callback)
 /// Iterator support - called by V8 for Symbol.iterator
-pub fn call_forEach(
-    instance: *runtime.Instance,
-    callback: *const anyopaque,
-) ImplError!void {
+pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) ImplError!void {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 

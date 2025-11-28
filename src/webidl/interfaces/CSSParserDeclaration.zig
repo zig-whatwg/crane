@@ -1,5 +1,5 @@
 //! Generated from: css-parser-api.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -88,7 +88,7 @@ pub const CSSParserDeclaration = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, name: DOMString, body: webidl.Opt(*const anyopaque)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try CSSParserDeclarationImpl.call_constructor(allocator, ctx, name, body.value);
+        return try CSSParserDeclarationImpl.call_constructor(allocator, ctx, name, body);
     }
 
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {

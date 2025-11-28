@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -427,7 +428,7 @@ pub fn call_rect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) Im
 }
 
 /// Operation: isPointInPath
-pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule: enums.CanvasFillRule) ImplError!bool {
+pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule: webidl.Opt(enums.CanvasFillRule)) ImplError!bool {
     _ = instance;
     _ = x;
     _ = y;
@@ -442,7 +443,7 @@ pub fn call_getLineDash(instance: *runtime.Instance) ImplError!*const anyopaque 
 }
 
 /// Operation: ellipse
-pub fn call_ellipse(instance: *runtime.Instance, x: f64, y: f64, radiusX: f64, radiusY: f64, rotation: f64, startAngle: f64, endAngle: f64, counterclockwise: bool) ImplError!void {
+pub fn call_ellipse(instance: *runtime.Instance, x: f64, y: f64, radiusX: f64, radiusY: f64, rotation: f64, startAngle: f64, endAngle: f64, counterclockwise: webidl.Opt(bool)) ImplError!void {
     _ = instance;
     _ = x;
     _ = y;
@@ -493,7 +494,7 @@ pub fn call_restore(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: clip
-pub fn call_clip(instance: *runtime.Instance, fillRule: enums.CanvasFillRule) ImplError!void {
+pub fn call_clip(instance: *runtime.Instance, fillRule: webidl.Opt(enums.CanvasFillRule)) ImplError!void {
     _ = instance;
     _ = fillRule;
     return error.NotImplemented;
@@ -506,7 +507,7 @@ pub fn call_reset(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: strokeText
-pub fn call_strokeText(instance: *runtime.Instance, text: runtime.DOMString, x: f64, y: f64, maxWidth: f64) ImplError!void {
+pub fn call_strokeText(instance: *runtime.Instance, text: runtime.DOMString, x: f64, y: f64, maxWidth: webidl.Opt(f64)) ImplError!void {
     _ = instance;
     _ = text;
     _ = x;
@@ -531,7 +532,7 @@ pub fn call_drawImage(instance: *runtime.Instance, image: typedefs.CanvasImageSo
 }
 
 /// Operation: getImageData
-pub fn call_getImageData(instance: *runtime.Instance, sx: i32, sy: i32, sw: i32, sh: i32, settings: dictionaries.ImageDataSettings) ImplError!*runtime.Instance {
+pub fn call_getImageData(instance: *runtime.Instance, sx: i32, sy: i32, sw: i32, sh: i32, settings: webidl.Opt(dictionaries.ImageDataSettings)) ImplError!*runtime.Instance {
     _ = instance;
     _ = sx;
     _ = sy;
@@ -542,7 +543,7 @@ pub fn call_getImageData(instance: *runtime.Instance, sx: i32, sy: i32, sw: i32,
 }
 
 /// Operation: arc
-pub fn call_arc(instance: *runtime.Instance, x: f64, y: f64, radius: f64, startAngle: f64, endAngle: f64, counterclockwise: bool) ImplError!void {
+pub fn call_arc(instance: *runtime.Instance, x: f64, y: f64, radius: f64, startAngle: f64, endAngle: f64, counterclockwise: webidl.Opt(bool)) ImplError!void {
     _ = instance;
     _ = x;
     _ = y;
@@ -585,7 +586,7 @@ pub fn call_closePath(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: roundRect
-pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64, radii: *const anyopaque) ImplError!void {
+pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64, radii: webidl.Opt(*const anyopaque)) ImplError!void {
     _ = instance;
     _ = x;
     _ = y;
@@ -699,7 +700,7 @@ pub fn call_rotate(instance: *runtime.Instance, angle: f64) ImplError!void {
 }
 
 /// Operation: createImageData
-pub fn call_createImageData(instance: *runtime.Instance, sw: i32, sh: i32, settings: dictionaries.ImageDataSettings) ImplError!*runtime.Instance {
+pub fn call_createImageData(instance: *runtime.Instance, sw: i32, sh: i32, settings: webidl.Opt(dictionaries.ImageDataSettings)) ImplError!*runtime.Instance {
     _ = instance;
     _ = sw;
     _ = sh;
@@ -772,7 +773,7 @@ pub fn call_beginPath(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: fillText
-pub fn call_fillText(instance: *runtime.Instance, text: runtime.DOMString, x: f64, y: f64, maxWidth: f64) ImplError!void {
+pub fn call_fillText(instance: *runtime.Instance, text: runtime.DOMString, x: f64, y: f64, maxWidth: webidl.Opt(f64)) ImplError!void {
     _ = instance;
     _ = text;
     _ = x;
@@ -789,7 +790,7 @@ pub fn call_measureText(instance: *runtime.Instance, text: runtime.DOMString) Im
 }
 
 /// Operation: fill
-pub fn call_fill(instance: *runtime.Instance, fillRule: enums.CanvasFillRule) ImplError!void {
+pub fn call_fill(instance: *runtime.Instance, fillRule: webidl.Opt(enums.CanvasFillRule)) ImplError!void {
     _ = instance;
     _ = fillRule;
     return error.NotImplemented;

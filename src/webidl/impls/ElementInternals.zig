@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -778,7 +779,7 @@ pub fn set_ariaValueText(instance: *runtime.Instance, value: runtime.DOMString) 
 }
 
 /// Operation: setValidity
-pub fn call_setValidity(instance: *runtime.Instance, flags: dictionaries.ValidityStateFlags, message: runtime.DOMString, anchor: *runtime.Instance) ImplError!void {
+pub fn call_setValidity(instance: *runtime.Instance, flags: webidl.Opt(dictionaries.ValidityStateFlags), message: webidl.Opt(runtime.DOMString), anchor: webidl.Opt(*runtime.Instance)) ImplError!void {
     _ = instance;
     _ = flags;
     _ = message;
@@ -799,7 +800,7 @@ pub fn call_reportValidity(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Operation: setFormValue
-pub fn call_setFormValue(instance: *runtime.Instance, value: ?*const anyopaque, state: ?*const anyopaque) ImplError!void {
+pub fn call_setFormValue(instance: *runtime.Instance, value: ?*const anyopaque, state: webidl.Opt(?*const anyopaque)) ImplError!void {
     _ = instance;
     _ = value;
     _ = state;

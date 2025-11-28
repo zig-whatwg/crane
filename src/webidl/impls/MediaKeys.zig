@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -67,14 +68,14 @@ pub fn call_setServerCertificate(instance: *runtime.Instance, serverCertificate:
 }
 
 /// Operation: createSession
-pub fn call_createSession(instance: *runtime.Instance, sessionType: enums.MediaKeySessionType) ImplError!*runtime.Instance {
+pub fn call_createSession(instance: *runtime.Instance, sessionType: webidl.Opt(enums.MediaKeySessionType)) ImplError!*runtime.Instance {
     _ = instance;
     _ = sessionType;
     return error.NotImplemented;
 }
 
 /// Operation: getStatusForPolicy
-pub fn call_getStatusForPolicy(instance: *runtime.Instance, policy: dictionaries.MediaKeysPolicy) ImplError!*const anyopaque {
+pub fn call_getStatusForPolicy(instance: *runtime.Instance, policy: webidl.Opt(dictionaries.MediaKeysPolicy)) ImplError!*const anyopaque {
     _ = instance;
     _ = policy;
     return error.NotImplemented;

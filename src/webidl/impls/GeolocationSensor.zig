@@ -27,6 +27,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const mixins = @import("mixins");
+const webidl = @import("webidl");
 const GeolocationSensor = interfaces.GeolocationSensor;
 
 pub const State = GeolocationSensor.State;
@@ -61,7 +62,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: dictionaries.GeolocationSensorOptions) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(dictionaries.GeolocationSensorOptions)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &GeolocationSensor.vtable, ctx);
     errdefer deinit(instance);
@@ -115,7 +116,7 @@ pub fn get_speed(instance: *runtime.Instance) ImplError!?f64 {
 }
 
 /// Operation: read
-pub fn call_read(instance: *runtime.Instance, readOptions: dictionaries.ReadOptions) ImplError!*const anyopaque {
+pub fn call_read(instance: *runtime.Instance, readOptions: webidl.Opt(dictionaries.ReadOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = readOptions;
     return error.NotImplemented;

@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -182,7 +183,7 @@ pub fn call_selectConfiguration(instance: *runtime.Instance, configurationValue:
 }
 
 /// Operation: controlTransferOut
-pub fn call_controlTransferOut(instance: *runtime.Instance, setup: dictionaries.USBControlTransferParameters, data: typedefs.BufferSource) ImplError!*const anyopaque {
+pub fn call_controlTransferOut(instance: *runtime.Instance, setup: dictionaries.USBControlTransferParameters, data: webidl.Opt(typedefs.BufferSource)) ImplError!*const anyopaque {
     _ = instance;
     _ = setup;
     _ = data;

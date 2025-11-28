@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -60,7 +61,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: startTransaction
-pub fn call_startTransaction(instance: *runtime.Instance, transaction: callbacks.SmartCardTransactionCallback, options: dictionaries.SmartCardTransactionOptions) ImplError!*const anyopaque {
+pub fn call_startTransaction(instance: *runtime.Instance, transaction: callbacks.SmartCardTransactionCallback, options: webidl.Opt(dictionaries.SmartCardTransactionOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = transaction;
     _ = options;
@@ -75,7 +76,7 @@ pub fn call_getAttribute(instance: *runtime.Instance, tag: u32) ImplError!*const
 }
 
 /// Operation: transmit
-pub fn call_transmit(instance: *runtime.Instance, sendBuffer: typedefs.BufferSource, options: dictionaries.SmartCardTransmitOptions) ImplError!*const anyopaque {
+pub fn call_transmit(instance: *runtime.Instance, sendBuffer: typedefs.BufferSource, options: webidl.Opt(dictionaries.SmartCardTransmitOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = sendBuffer;
     _ = options;
@@ -89,7 +90,7 @@ pub fn call_status(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Operation: disconnect
-pub fn call_disconnect(instance: *runtime.Instance, disposition: enums.SmartCardDisposition) ImplError!*const anyopaque {
+pub fn call_disconnect(instance: *runtime.Instance, disposition: webidl.Opt(enums.SmartCardDisposition)) ImplError!*const anyopaque {
     _ = instance;
     _ = disposition;
     return error.NotImplemented;

@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:18Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -101,12 +101,12 @@ pub const CanvasDrawPath = struct {
 
     pub fn call_clip(instance: *runtime.Instance, fillRule: webidl.Opt(CanvasFillRule)) anyerror!void {
         
-        return try CanvasDrawPathImpl.call_clip(instance, fillRule.value);
+        return try CanvasDrawPathImpl.call_clip(instance, fillRule);
     }
 
     pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule: webidl.Opt(CanvasFillRule)) anyerror!bool {
         
-        return try CanvasDrawPathImpl.call_isPointInPath(instance, x, y, fillRule.value);
+        return try CanvasDrawPathImpl.call_isPointInPath(instance, x, y, fillRule);
     }
 
     pub fn call_isPointInStroke(instance: *runtime.Instance, x: f64, y: f64) anyerror!bool {
@@ -120,7 +120,7 @@ pub const CanvasDrawPath = struct {
 
     pub fn call_fill(instance: *runtime.Instance, fillRule: webidl.Opt(CanvasFillRule)) anyerror!void {
         
-        return try CanvasDrawPathImpl.call_fill(instance, fillRule.value);
+        return try CanvasDrawPathImpl.call_fill(instance, fillRule);
     }
 
     pub fn call_stroke(instance: *runtime.Instance) anyerror!void {

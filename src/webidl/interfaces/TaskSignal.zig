@@ -1,5 +1,5 @@
 //! Generated from: scheduling-apis.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -129,7 +129,7 @@ pub const TaskSignal = struct {
     pub fn call__any(instance: *runtime.Instance, signals: *const anyopaque, init_data: webidl.Opt(TaskSignalAnyInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try TaskSignalImpl.call__any(instance, signals, init_data.value);
+        return try TaskSignalImpl.call__any(instance, signals, init_data);
     }
 
 };

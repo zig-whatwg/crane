@@ -1,5 +1,5 @@
 //! Generated from: contact-picker.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:18Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -85,7 +85,7 @@ pub const ContactsManager = struct {
 
     pub fn call_select(instance: *runtime.Instance, properties: *const anyopaque, options: webidl.Opt(ContactsSelectOptions)) anyerror!*const anyopaque {
         
-        return try ContactsManagerImpl.call_select(instance, properties, options.value);
+        return try ContactsManagerImpl.call_select(instance, properties, options);
     }
 
     pub fn call_getProperties(instance: *runtime.Instance) anyerror!*const anyopaque {

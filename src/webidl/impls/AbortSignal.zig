@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -122,7 +123,7 @@ pub fn call__any(instance: *runtime.Instance, signals: *const anyopaque) ImplErr
 }
 
 /// Operation: abort
-pub fn call_abort(instance: *runtime.Instance, reason: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) ImplError!*runtime.Instance {
     _ = instance;
     _ = reason;
     return error.NotImplemented;

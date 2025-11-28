@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -60,7 +61,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: isInputPending
-pub fn call_isInputPending(instance: *runtime.Instance, isInputPendingOptions: dictionaries.IsInputPendingOptions) ImplError!bool {
+pub fn call_isInputPending(instance: *runtime.Instance, isInputPendingOptions: webidl.Opt(dictionaries.IsInputPendingOptions)) ImplError!bool {
     _ = instance;
     _ = isInputPendingOptions;
     return error.NotImplemented;

@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -441,7 +442,7 @@ pub fn call_getStartDate(instance: *runtime.Instance) ImplError!*const anyopaque
 }
 
 /// Operation: addTextTrack
-pub fn call_addTextTrack(instance: *runtime.Instance, kind: enums.TextTrackKind, label: runtime.DOMString, language: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_addTextTrack(instance: *runtime.Instance, kind: enums.TextTrackKind, label: webidl.Opt(runtime.DOMString), language: webidl.Opt(runtime.DOMString)) ImplError!*runtime.Instance {
     _ = instance;
     _ = kind;
     _ = label;

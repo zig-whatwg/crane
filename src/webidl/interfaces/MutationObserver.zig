@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -95,7 +95,7 @@ pub const MutationObserver = struct {
 
     pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, options: webidl.Opt(MutationObserverInit)) anyerror!void {
         
-        return try MutationObserverImpl.call_observe(instance, target, options.value);
+        return try MutationObserverImpl.call_observe(instance, target, options);
     }
 
     pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {

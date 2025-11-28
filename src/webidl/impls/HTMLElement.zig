@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -1828,7 +1829,7 @@ pub fn set_tabIndex(instance: *runtime.Instance, value: i32) ImplError!void {
 }
 
 /// Operation: togglePopover
-pub fn call_togglePopover(instance: *runtime.Instance, options: *const anyopaque) ImplError!bool {
+pub fn call_togglePopover(instance: *runtime.Instance, options: webidl.Opt(*const anyopaque)) ImplError!bool {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -1847,7 +1848,7 @@ pub fn call_click(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: showPopover
-pub fn call_showPopover(instance: *runtime.Instance, options: dictionaries.ShowPopoverOptions) ImplError!void {
+pub fn call_showPopover(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ShowPopoverOptions)) ImplError!void {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -1860,7 +1861,7 @@ pub fn call_hidePopover(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: focus
-pub fn call_focus(instance: *runtime.Instance, options: dictionaries.FocusOptions) ImplError!void {
+pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(dictionaries.FocusOptions)) ImplError!void {
     _ = instance;
     _ = options;
     return error.NotImplemented;

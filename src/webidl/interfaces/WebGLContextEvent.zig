@@ -1,5 +1,5 @@
 //! Generated from: webgl1.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -95,7 +95,7 @@ pub const WebGLContextEvent = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInit: webidl.Opt(WebGLContextEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try WebGLContextEventImpl.call_constructor(allocator, ctx, @"type", eventInit.value);
+        return try WebGLContextEventImpl.call_constructor(allocator, ctx, @"type", eventInit);
     }
 
     pub fn get_statusMessage(instance: *runtime.Instance) anyerror!DOMString {

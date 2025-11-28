@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -87,7 +88,7 @@ pub fn call_open(instance: *runtime.Instance, cacheName: runtime.DOMString) Impl
 }
 
 /// Operation: match
-pub fn call_match(instance: *runtime.Instance, request: typedefs.RequestInfo, options: dictionaries.MultiCacheQueryOptions) ImplError!*const anyopaque {
+pub fn call_match(instance: *runtime.Instance, request: typedefs.RequestInfo, options: webidl.Opt(dictionaries.MultiCacheQueryOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = request;
     _ = options;

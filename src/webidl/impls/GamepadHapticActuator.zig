@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -80,7 +81,7 @@ pub fn call_pulse(instance: *runtime.Instance, value: f64, duration: f64) ImplEr
 }
 
 /// Operation: playEffect
-pub fn call_playEffect(instance: *runtime.Instance, @"type": enums.GamepadHapticEffectType, params: dictionaries.GamepadEffectParameters) ImplError!*const anyopaque {
+pub fn call_playEffect(instance: *runtime.Instance, @"type": enums.GamepadHapticEffectType, params: webidl.Opt(dictionaries.GamepadEffectParameters)) ImplError!*const anyopaque {
     _ = instance;
     _ = @"type";
     _ = params;

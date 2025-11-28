@@ -27,6 +27,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const mixins = @import("mixins");
+const webidl = @import("webidl");
 const TransitionEvent = interfaces.TransitionEvent;
 
 pub const State = TransitionEvent.State;
@@ -61,7 +62,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": typedefs.CSSOMString, transitionEventInitDict: dictionaries.TransitionEventInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": typedefs.CSSOMString, transitionEventInitDict: webidl.Opt(dictionaries.TransitionEventInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &TransitionEvent.vtable, ctx);
     errdefer deinit(instance);

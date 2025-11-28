@@ -1,5 +1,5 @@
 //! Generated from: uievents.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:22Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -110,7 +110,7 @@ pub const UIEvent = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(UIEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try UIEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict.value);
+        return try UIEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
     pub fn get_view(instance: *runtime.Instance) anyerror!?*runtime.Instance {
@@ -131,7 +131,7 @@ pub const UIEvent = struct {
 
     pub fn call_initUIEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: webidl.Opt(bool), cancelableArg: webidl.Opt(bool), viewArg: webidl.Opt(?*runtime.Instance), detailArg: webidl.Opt(i32)) anyerror!void {
         
-        return try UIEventImpl.call_initUIEvent(instance, typeArg, bubblesArg.value, cancelableArg.value, viewArg.value, detailArg.value);
+        return try UIEventImpl.call_initUIEvent(instance, typeArg, bubblesArg, cancelableArg, viewArg, detailArg);
     }
 
 };

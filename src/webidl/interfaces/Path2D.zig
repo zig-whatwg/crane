@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -120,7 +120,7 @@ pub const Path2D = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, path: webidl.Opt(*const anyopaque)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try Path2DImpl.call_constructor(allocator, ctx, path.value);
+        return try Path2DImpl.call_constructor(allocator, ctx, path);
     }
 
     pub fn call_lineTo(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
@@ -135,7 +135,7 @@ pub const Path2D = struct {
 
     pub fn call_arc(instance: *runtime.Instance, x: f64, y: f64, radius: f64, startAngle: f64, endAngle: f64, counterclockwise: webidl.Opt(bool)) anyerror!void {
         
-        return try Path2DImpl.call_arc(instance, x, y, radius, startAngle, endAngle, counterclockwise.value);
+        return try Path2DImpl.call_arc(instance, x, y, radius, startAngle, endAngle, counterclockwise);
     }
 
     pub fn call_moveTo(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
@@ -155,12 +155,12 @@ pub const Path2D = struct {
 
     pub fn call_ellipse(instance: *runtime.Instance, x: f64, y: f64, radiusX: f64, radiusY: f64, rotation: f64, startAngle: f64, endAngle: f64, counterclockwise: webidl.Opt(bool)) anyerror!void {
         
-        return try Path2DImpl.call_ellipse(instance, x, y, radiusX, radiusY, rotation, startAngle, endAngle, counterclockwise.value);
+        return try Path2DImpl.call_ellipse(instance, x, y, radiusX, radiusY, rotation, startAngle, endAngle, counterclockwise);
     }
 
     pub fn call_addPath(instance: *runtime.Instance, path: *runtime.Instance, transform: webidl.Opt(DOMMatrix2DInit)) anyerror!void {
         
-        return try Path2DImpl.call_addPath(instance, path, transform.value);
+        return try Path2DImpl.call_addPath(instance, path, transform);
     }
 
     pub fn call_closePath(instance: *runtime.Instance) anyerror!void {
@@ -169,7 +169,7 @@ pub const Path2D = struct {
 
     pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64, radii: webidl.Opt(*const anyopaque)) anyerror!void {
         
-        return try Path2DImpl.call_roundRect(instance, x, y, w, h, radii.value);
+        return try Path2DImpl.call_roundRect(instance, x, y, w, h, radii);
     }
 
     pub fn call_rect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {

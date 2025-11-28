@@ -27,6 +27,7 @@ pub const ImplError = error{
     NotSupported,
     InvalidState,
     TypeError,
+    OutOfMemory,
 };
 
 /// Internal state for XSLTProcessor
@@ -145,7 +146,7 @@ pub fn call_transformToFragment(instance: *runtime.Instance, source: *runtime.In
 
 /// Operation: setParameter
 /// Sets a parameter for the XSLT transformation
-pub fn call_setParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMString, localName: runtime.DOMString, value: *const anyopaque) anyerror!void {
+pub fn call_setParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMString, localName: runtime.DOMString, value: *const anyopaque) ImplError!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

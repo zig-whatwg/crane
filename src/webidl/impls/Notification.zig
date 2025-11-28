@@ -27,6 +27,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const mixins = @import("mixins");
+const webidl = @import("webidl");
 const Notification = interfaces.Notification;
 
 pub const State = Notification.State;
@@ -61,7 +62,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, title: runtime.DOMString, options: dictionaries.NotificationOptions) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, title: runtime.DOMString, options: webidl.Opt(dictionaries.NotificationOptions)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &Notification.vtable, ctx);
     errdefer deinit(instance);
@@ -240,7 +241,7 @@ pub fn call_close(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: requestPermission
-pub fn call_requestPermission(instance: *runtime.Instance, deprecatedCallback: callbacks.NotificationPermissionCallback) ImplError!*const anyopaque {
+pub fn call_requestPermission(instance: *runtime.Instance, deprecatedCallback: webidl.Opt(callbacks.NotificationPermissionCallback)) ImplError!*const anyopaque {
     _ = instance;
     _ = deprecatedCallback;
     return error.NotImplemented;

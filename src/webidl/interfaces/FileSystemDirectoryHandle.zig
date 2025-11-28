@@ -1,5 +1,5 @@
 //! Generated from: fs.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -118,7 +118,7 @@ pub const FileSystemDirectoryHandle = struct {
 
     pub fn call_getFileHandle(instance: *runtime.Instance, name: runtime.USVString, options: webidl.Opt(FileSystemGetFileOptions)) anyerror!*const anyopaque {
         
-        return try FileSystemDirectoryHandleImpl.call_getFileHandle(instance, name, options.value);
+        return try FileSystemDirectoryHandleImpl.call_getFileHandle(instance, name, options);
     }
 
     pub fn call_resolve(instance: *runtime.Instance, possibleDescendant: *runtime.Instance) anyerror!*const anyopaque {
@@ -132,7 +132,7 @@ pub const FileSystemDirectoryHandle = struct {
 
     pub fn call_getDirectoryHandle(instance: *runtime.Instance, name: runtime.USVString, options: webidl.Opt(FileSystemGetDirectoryOptions)) anyerror!*const anyopaque {
         
-        return try FileSystemDirectoryHandleImpl.call_getDirectoryHandle(instance, name, options.value);
+        return try FileSystemDirectoryHandleImpl.call_getDirectoryHandle(instance, name, options);
     }
 
     pub fn call_getAsyncIterator(instance: *runtime.Instance) anyerror!*const anyopaque {
@@ -141,7 +141,7 @@ pub const FileSystemDirectoryHandle = struct {
 
     pub fn call_removeEntry(instance: *runtime.Instance, name: runtime.USVString, options: webidl.Opt(FileSystemRemoveOptions)) anyerror!*const anyopaque {
         
-        return try FileSystemDirectoryHandleImpl.call_removeEntry(instance, name, options.value);
+        return try FileSystemDirectoryHandleImpl.call_removeEntry(instance, name, options);
     }
 
 };

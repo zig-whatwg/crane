@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -60,7 +61,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: addModule
-pub fn call_addModule(instance: *runtime.Instance, moduleURL: runtime.USVString, options: dictionaries.WorkletOptions) ImplError!*const anyopaque {
+pub fn call_addModule(instance: *runtime.Instance, moduleURL: runtime.USVString, options: webidl.Opt(dictionaries.WorkletOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = moduleURL;
     _ = options;

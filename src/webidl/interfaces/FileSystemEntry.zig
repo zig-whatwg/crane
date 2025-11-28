@@ -1,5 +1,5 @@
 //! Generated from: entries-api.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -124,7 +124,7 @@ pub const FileSystemEntry = struct {
 
     pub fn call_getParent(instance: *runtime.Instance, successCallback: webidl.Opt(FileSystemEntryCallback), errorCallback: webidl.Opt(ErrorCallback)) anyerror!void {
         
-        return try FileSystemEntryImpl.call_getParent(instance, successCallback.value, errorCallback.value);
+        return try FileSystemEntryImpl.call_getParent(instance, successCallback, errorCallback);
     }
 
 };

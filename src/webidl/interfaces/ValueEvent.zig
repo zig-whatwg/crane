@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:18Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -93,7 +93,7 @@ pub const ValueEvent = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, initDict: webidl.Opt(ValueEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try ValueEventImpl.call_constructor(allocator, ctx, @"type", initDict.value);
+        return try ValueEventImpl.call_constructor(allocator, ctx, @"type", initDict);
     }
 
     pub fn get_value(instance: *runtime.Instance) anyerror!*const anyopaque {

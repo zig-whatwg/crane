@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -163,7 +164,7 @@ pub fn call_update(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Operation: showNotification
-pub fn call_showNotification(instance: *runtime.Instance, title: runtime.DOMString, options: dictionaries.NotificationOptions) ImplError!*const anyopaque {
+pub fn call_showNotification(instance: *runtime.Instance, title: runtime.DOMString, options: webidl.Opt(dictionaries.NotificationOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = title;
     _ = options;
@@ -171,7 +172,7 @@ pub fn call_showNotification(instance: *runtime.Instance, title: runtime.DOMStri
 }
 
 /// Operation: getNotifications
-pub fn call_getNotifications(instance: *runtime.Instance, filter: dictionaries.GetNotificationOptions) ImplError!*const anyopaque {
+pub fn call_getNotifications(instance: *runtime.Instance, filter: webidl.Opt(dictionaries.GetNotificationOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = filter;
     return error.NotImplemented;

@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -79,7 +80,7 @@ pub fn get_knownSources(instance: *runtime.Instance) ImplError!*const anyopaque 
 }
 
 /// Operation: observe
-pub fn call_observe(instance: *runtime.Instance, source: enums.PressureSource, options: dictionaries.PressureObserverOptions) ImplError!*const anyopaque {
+pub fn call_observe(instance: *runtime.Instance, source: enums.PressureSource, options: webidl.Opt(dictionaries.PressureObserverOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = source;
     _ = options;

@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -123,7 +124,7 @@ pub fn call_open(instance: *runtime.Instance, options: dictionaries.SerialOption
 }
 
 /// Operation: setSignals
-pub fn call_setSignals(instance: *runtime.Instance, signals: dictionaries.SerialOutputSignals) ImplError!*const anyopaque {
+pub fn call_setSignals(instance: *runtime.Instance, signals: webidl.Opt(dictionaries.SerialOutputSignals)) ImplError!*const anyopaque {
     _ = instance;
     _ = signals;
     return error.NotImplemented;

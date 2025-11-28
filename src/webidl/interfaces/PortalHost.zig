@@ -1,5 +1,5 @@
 //! Generated from: portals.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -121,7 +121,7 @@ pub const PortalHost = struct {
 
     pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, options: webidl.Opt(PostMessageOptions)) anyerror!void {
         
-        return try PortalHostImpl.call_postMessage(instance, message, options.value);
+        return try PortalHostImpl.call_postMessage(instance, message, options);
     }
 
 };

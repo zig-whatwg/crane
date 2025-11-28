@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -103,7 +103,7 @@ pub const CSSScale = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: CSSNumberish, y: CSSNumberish, z: webidl.Opt(CSSNumberish)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try CSSScaleImpl.call_constructor(allocator, ctx, x, y, z.value);
+        return try CSSScaleImpl.call_constructor(allocator, ctx, x, y, z);
     }
 
     pub fn get_x(instance: *runtime.Instance) anyerror!CSSNumberish {

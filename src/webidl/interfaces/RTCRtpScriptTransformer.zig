@@ -1,5 +1,5 @@
 //! Generated from: webrtc-encoded-transform.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:22Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -140,7 +140,7 @@ pub const RTCRtpScriptTransformer = struct {
 
     pub fn call_generateKeyFrame(instance: *runtime.Instance, rid: webidl.Opt(DOMString)) anyerror!*const anyopaque {
         
-        return try RTCRtpScriptTransformerImpl.call_generateKeyFrame(instance, rid.value);
+        return try RTCRtpScriptTransformerImpl.call_generateKeyFrame(instance, rid);
     }
 
 };

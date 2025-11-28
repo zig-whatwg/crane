@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -725,7 +726,7 @@ pub fn call_select(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: stepUp
-pub fn call_stepUp(instance: *runtime.Instance, n: i32) ImplError!void {
+pub fn call_stepUp(instance: *runtime.Instance, n: webidl.Opt(i32)) ImplError!void {
     _ = instance;
     _ = n;
     return error.NotImplemented;
@@ -738,7 +739,7 @@ pub fn call_checkValidity(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Operation: setSelectionRange
-pub fn call_setSelectionRange(instance: *runtime.Instance, start: u32, end: u32, direction: runtime.DOMString) ImplError!void {
+pub fn call_setSelectionRange(instance: *runtime.Instance, start: u32, end: u32, direction: webidl.Opt(runtime.DOMString)) ImplError!void {
     _ = instance;
     _ = start;
     _ = end;
@@ -753,7 +754,7 @@ pub fn call_reportValidity(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Operation: stepDown
-pub fn call_stepDown(instance: *runtime.Instance, n: i32) ImplError!void {
+pub fn call_stepDown(instance: *runtime.Instance, n: webidl.Opt(i32)) ImplError!void {
     _ = instance;
     _ = n;
     return error.NotImplemented;

@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -86,7 +87,7 @@ pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHand
 }
 
 /// Operation: postMessage
-pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, options: dictionaries.PostMessageOptions) ImplError!void {
+pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, options: webidl.Opt(dictionaries.PostMessageOptions)) ImplError!void {
     _ = instance;
     _ = message;
     _ = options;

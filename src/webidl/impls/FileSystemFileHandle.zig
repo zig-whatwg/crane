@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -66,7 +67,7 @@ pub fn call_getFile(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Operation: createWritable
-pub fn call_createWritable(instance: *runtime.Instance, options: dictionaries.FileSystemCreateWritableOptions) ImplError!*const anyopaque {
+pub fn call_createWritable(instance: *runtime.Instance, options: webidl.Opt(dictionaries.FileSystemCreateWritableOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

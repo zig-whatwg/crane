@@ -1,5 +1,5 @@
 //! Generated from: speech-api.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -107,12 +107,12 @@ pub const SpeechGrammarList = struct {
 
     pub fn call_addFromURI(instance: *runtime.Instance, src: DOMString, weight: webidl.Opt(f32)) anyerror!void {
         
-        return try SpeechGrammarListImpl.call_addFromURI(instance, src, weight.value);
+        return try SpeechGrammarListImpl.call_addFromURI(instance, src, weight);
     }
 
     pub fn call_addFromString(instance: *runtime.Instance, string: DOMString, weight: webidl.Opt(f32)) anyerror!void {
         
-        return try SpeechGrammarListImpl.call_addFromString(instance, string, weight.value);
+        return try SpeechGrammarListImpl.call_addFromString(instance, string, weight);
     }
 
 };

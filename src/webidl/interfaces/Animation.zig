@@ -1,5 +1,5 @@
 //! Generated from: web-animations.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -223,7 +223,7 @@ pub const Animation = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, effect: webidl.Opt(?*runtime.Instance), timeline: webidl.Opt(?*runtime.Instance)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try AnimationImpl.call_constructor(allocator, ctx, effect.value, timeline.value);
+        return try AnimationImpl.call_constructor(allocator, ctx, effect, timeline);
     }
 
     pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {

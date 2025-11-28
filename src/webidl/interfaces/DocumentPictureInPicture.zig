@@ -1,5 +1,5 @@
 //! Generated from: document-picture-in-picture.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -120,7 +120,7 @@ pub const DocumentPictureInPicture = struct {
     pub fn call_requestWindow(instance: *runtime.Instance, options: webidl.Opt(DocumentPictureInPictureOptions)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
-        return try DocumentPictureInPictureImpl.call_requestWindow(instance, options.value);
+        return try DocumentPictureInPictureImpl.call_requestWindow(instance, options);
     }
 
 };

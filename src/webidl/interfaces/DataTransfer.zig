@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:22Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -173,7 +173,7 @@ pub const DataTransfer = struct {
 
     pub fn call_clearData(instance: *runtime.Instance, format: webidl.Opt(DOMString)) anyerror!void {
         
-        return try DataTransferImpl.call_clearData(instance, format.value);
+        return try DataTransferImpl.call_clearData(instance, format);
     }
 
     pub fn call_setDragImage(instance: *runtime.Instance, image: *runtime.Instance, x: i32, y: i32) anyerror!void {

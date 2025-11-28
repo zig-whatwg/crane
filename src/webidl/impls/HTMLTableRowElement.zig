@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -155,7 +156,7 @@ pub fn set_bgColor(instance: *runtime.Instance, value: runtime.DOMString) ImplEr
 }
 
 /// Operation: insertCell
-pub fn call_insertCell(instance: *runtime.Instance, index: i32) ImplError!*runtime.Instance {
+pub fn call_insertCell(instance: *runtime.Instance, index: webidl.Opt(i32)) ImplError!*runtime.Instance {
     _ = instance;
     _ = index;
     return error.NotImplemented;

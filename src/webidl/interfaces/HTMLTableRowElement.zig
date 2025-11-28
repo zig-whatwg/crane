@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -375,7 +375,7 @@ pub const HTMLTableRowElement = struct {
 
     pub fn call_insertCell(instance: *runtime.Instance, index: webidl.Opt(i32)) anyerror!*runtime.Instance {
         
-        return try HTMLTableRowElementImpl.call_insertCell(instance, index.value);
+        return try HTMLTableRowElementImpl.call_insertCell(instance, index);
     }
 
     /// Extended attributes: [CEReactions]

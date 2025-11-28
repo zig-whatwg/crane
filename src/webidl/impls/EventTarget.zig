@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -172,7 +173,7 @@ pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance)
 }
 
 /// Operation: when
-pub fn call_when(instance: *runtime.Instance, @"type": runtime.DOMString, options: dictionaries.ObservableEventListenerOptions) ImplError!*runtime.Instance {
+pub fn call_when(instance: *runtime.Instance, @"type": runtime.DOMString, options: webidl.Opt(dictionaries.ObservableEventListenerOptions)) ImplError!*runtime.Instance {
     _ = instance;
     _ = @"type";
     _ = options;
@@ -180,7 +181,7 @@ pub fn call_when(instance: *runtime.Instance, @"type": runtime.DOMString, option
 }
 
 /// Operation: addEventListener
-pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ??*runtime.CallbackWrapper, options: *const anyopaque) ImplError!void {
+pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(*const anyopaque)) ImplError!void {
     _ = instance;
     _ = @"type";
     _ = callback;
@@ -189,7 +190,7 @@ pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMSt
 }
 
 /// Operation: removeEventListener
-pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ??*runtime.CallbackWrapper, options: *const anyopaque) ImplError!void {
+pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(*const anyopaque)) ImplError!void {
     _ = instance;
     _ = @"type";
     _ = callback;

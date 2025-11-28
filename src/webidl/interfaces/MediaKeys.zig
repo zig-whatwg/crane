@@ -1,5 +1,5 @@
 //! Generated from: encrypted-media.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -96,12 +96,12 @@ pub const MediaKeys = struct {
 
     pub fn call_createSession(instance: *runtime.Instance, sessionType: webidl.Opt(MediaKeySessionType)) anyerror!*runtime.Instance {
         
-        return try MediaKeysImpl.call_createSession(instance, sessionType.value);
+        return try MediaKeysImpl.call_createSession(instance, sessionType);
     }
 
     pub fn call_getStatusForPolicy(instance: *runtime.Instance, policy: webidl.Opt(MediaKeysPolicy)) anyerror!*const anyopaque {
         
-        return try MediaKeysImpl.call_getStatusForPolicy(instance, policy.value);
+        return try MediaKeysImpl.call_getStatusForPolicy(instance, policy);
     }
 
 };

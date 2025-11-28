@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -73,14 +74,14 @@ pub fn set_onended(instance: *runtime.Instance, value: typedefs.EventHandler) Im
 }
 
 /// Operation: stop
-pub fn call_stop(instance: *runtime.Instance, when: f64) ImplError!void {
+pub fn call_stop(instance: *runtime.Instance, when: webidl.Opt(f64)) ImplError!void {
     _ = instance;
     _ = when;
     return error.NotImplemented;
 }
 
 /// Operation: start
-pub fn call_start(instance: *runtime.Instance, when: f64) ImplError!void {
+pub fn call_start(instance: *runtime.Instance, when: webidl.Opt(f64)) ImplError!void {
     _ = instance;
     _ = when;
     return error.NotImplemented;

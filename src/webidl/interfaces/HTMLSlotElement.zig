@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:18Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -269,12 +269,12 @@ pub const HTMLSlotElement = struct {
 
     pub fn call_assignedElements(instance: *runtime.Instance, options: webidl.Opt(AssignedNodesOptions)) anyerror!*const anyopaque {
         
-        return try HTMLSlotElementImpl.call_assignedElements(instance, options.value);
+        return try HTMLSlotElementImpl.call_assignedElements(instance, options);
     }
 
     pub fn call_assignedNodes(instance: *runtime.Instance, options: webidl.Opt(AssignedNodesOptions)) anyerror!*const anyopaque {
         
-        return try HTMLSlotElementImpl.call_assignedNodes(instance, options.value);
+        return try HTMLSlotElementImpl.call_assignedNodes(instance, options);
     }
 
     pub fn call_assign(instance: *runtime.Instance, nodes: []const *const anyopaque) anyerror!void {

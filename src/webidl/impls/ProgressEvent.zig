@@ -17,6 +17,7 @@ const callbacks = @import("callbacks");
 const ProgressEvent = interfaces.ProgressEvent;
 const Event = interfaces.Event;
 const EventImpl = @import("Event.zig");
+const webidl = @import("webidl");
 
 pub const State = ProgressEvent.State;
 
@@ -76,8 +77,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Note: ProgressEvent inherits from Event via prototype chain (BaseType = *Event).
 /// The Event properties (type, bubbles, cancelable, etc.) are handled at the V8/JS level.
 /// We only need to initialize ProgressEvent's own properties here.
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, event_type: runtime.DOMString, eventInitDict: dictionaries.ProgressEventInit) !*runtime.Instance {
-    _ = event_type; // Event type is handled by V8 Event prototype
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ProgressEventInit)) !*runtime.Instance {
+    _ = @"type"; // Event type is handled by V8 Event prototype chain
 
     // Create instance through init()
     const instance = try init(allocator, State, &ProgressEvent.vtable, ctx);
@@ -90,11 +91,16 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, even
     const internal = try allocator.create(InternalState);
     errdefer allocator.destroy(internal);
 
+    // Get values from eventInitDict if passed
+    const length_computable = if (eventInitDict.wasPassed()) eventInitDict.value.lengthComputable orelse false else false;
+    const loaded = if (eventInitDict.wasPassed()) eventInitDict.value.loaded orelse 0 else 0;
+    const total = if (eventInitDict.wasPassed()) eventInitDict.value.total orelse 0 else 0;
+
     internal.* = .{
         .allocator = allocator,
-        .length_computable = eventInitDict.lengthComputable orelse false,
-        .loaded = eventInitDict.loaded orelse 0,
-        .total = eventInitDict.total orelse 0,
+        .length_computable = length_computable,
+        .loaded = loaded,
+        .total = total,
     };
     state.own._internal = internal;
 

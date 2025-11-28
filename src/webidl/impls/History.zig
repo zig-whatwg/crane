@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -91,7 +92,7 @@ pub fn call_forward(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: pushState
-pub fn call_pushState(instance: *runtime.Instance, data: *const anyopaque, unused: runtime.DOMString, url: ?runtime.USVString) ImplError!void {
+pub fn call_pushState(instance: *runtime.Instance, data: *const anyopaque, unused: runtime.DOMString, url: webidl.Opt(?runtime.USVString)) ImplError!void {
     _ = instance;
     _ = data;
     _ = unused;
@@ -100,7 +101,7 @@ pub fn call_pushState(instance: *runtime.Instance, data: *const anyopaque, unuse
 }
 
 /// Operation: go
-pub fn call_go(instance: *runtime.Instance, delta: i32) ImplError!void {
+pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) ImplError!void {
     _ = instance;
     _ = delta;
     return error.NotImplemented;
@@ -113,7 +114,7 @@ pub fn call_back(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: replaceState
-pub fn call_replaceState(instance: *runtime.Instance, data: *const anyopaque, unused: runtime.DOMString, url: ?runtime.USVString) ImplError!void {
+pub fn call_replaceState(instance: *runtime.Instance, data: *const anyopaque, unused: runtime.DOMString, url: webidl.Opt(?runtime.USVString)) ImplError!void {
     _ = instance;
     _ = data;
     _ = unused;

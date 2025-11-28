@@ -8,6 +8,7 @@
 //! and delete databases, list available databases, and compare keys.
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -98,12 +99,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbfactory-open
 ///
 /// Returns an IDBOpenDBRequest that will eventually contain the database connection.
-pub fn call_open(instance: *runtime.Instance, name: runtime.DOMString, version: u64) ImplError!*runtime.Instance {
+pub fn call_open(instance: *runtime.Instance, name: runtime.DOMString, version: webidl.Opt(u64)) ImplError!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
-    // Version 0 is invalid per spec
-    if (version == 0) {
+    // Version 0 is invalid per spec - unwrap Opt
+    const version_val: ?u64 = if (version.wasPassed()) version.value else null;
+    if (version_val != null and version_val.? == 0) {
         return error.TypeError;
     }
 
@@ -111,7 +113,7 @@ pub fn call_open(instance: *runtime.Instance, name: runtime.DOMString, version: 
     const name_slice = name.asSlice();
 
     // Call backend open
-    const request = internal.factory.open(name_slice, version) catch |err| {
+    const request = internal.factory.open(name_slice, version_val) catch |err| {
         return switch (err) {
             error.TypeError => error.TypeError,
             error.SecurityError => error.SecurityError,

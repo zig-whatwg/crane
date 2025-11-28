@@ -1,5 +1,5 @@
 //! Generated from: private-aggregation-api.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -102,7 +102,7 @@ pub const PrivateAggregation = struct {
 
     pub fn call_enableDebugMode(instance: *runtime.Instance, options: webidl.Opt(PADebugModeOptions)) anyerror!void {
         
-        return try PrivateAggregationImpl.call_enableDebugMode(instance, options.value);
+        return try PrivateAggregationImpl.call_enableDebugMode(instance, options);
     }
 
 };

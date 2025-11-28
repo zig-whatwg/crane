@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -100,7 +101,7 @@ pub fn call_setCameraActive(instance: *runtime.Instance, active: bool) ImplError
 }
 
 /// Operation: setPositionState
-pub fn call_setPositionState(instance: *runtime.Instance, state: dictionaries.MediaPositionState) ImplError!void {
+pub fn call_setPositionState(instance: *runtime.Instance, state: webidl.Opt(dictionaries.MediaPositionState)) ImplError!void {
     _ = instance;
     _ = state;
     return error.NotImplemented;

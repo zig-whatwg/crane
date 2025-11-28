@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -78,7 +79,7 @@ pub fn get_defaultPolicy(instance: *runtime.Instance) ImplError!?*runtime.Instan
 }
 
 /// Operation: createPolicy
-pub fn call_createPolicy(instance: *runtime.Instance, policyName: runtime.DOMString, policyOptions: dictionaries.TrustedTypePolicyOptions) ImplError!*runtime.Instance {
+pub fn call_createPolicy(instance: *runtime.Instance, policyName: runtime.DOMString, policyOptions: webidl.Opt(dictionaries.TrustedTypePolicyOptions)) ImplError!*runtime.Instance {
     _ = instance;
     _ = policyName;
     _ = policyOptions;
@@ -100,7 +101,7 @@ pub fn call_isScriptURL(instance: *runtime.Instance, value: *const anyopaque) Im
 }
 
 /// Operation: getPropertyType
-pub fn call_getPropertyType(instance: *runtime.Instance, tagName: runtime.DOMString, property: runtime.DOMString, elementNs: ?runtime.DOMString) ImplError!?runtime.DOMString {
+pub fn call_getPropertyType(instance: *runtime.Instance, tagName: runtime.DOMString, property: runtime.DOMString, elementNs: webidl.Opt(?runtime.DOMString)) ImplError!?runtime.DOMString {
     _ = instance;
     _ = tagName;
     _ = property;
@@ -116,7 +117,7 @@ pub fn call_isHTML(instance: *runtime.Instance, value: *const anyopaque) ImplErr
 }
 
 /// Operation: getAttributeType
-pub fn call_getAttributeType(instance: *runtime.Instance, tagName: runtime.DOMString, attribute: runtime.DOMString, elementNs: ?runtime.DOMString, attrNs: ?runtime.DOMString) ImplError!?runtime.DOMString {
+pub fn call_getAttributeType(instance: *runtime.Instance, tagName: runtime.DOMString, attribute: runtime.DOMString, elementNs: webidl.Opt(?runtime.DOMString), attrNs: webidl.Opt(?runtime.DOMString)) ImplError!?runtime.DOMString {
     _ = instance;
     _ = tagName;
     _ = attribute;

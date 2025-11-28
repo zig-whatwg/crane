@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -98,14 +99,14 @@ pub fn set_height(instance: *runtime.Instance, value: u32) ImplError!void {
 }
 
 /// Operation: captureStream
-pub fn call_captureStream(instance: *runtime.Instance, frameRequestRate: f64) ImplError!*runtime.Instance {
+pub fn call_captureStream(instance: *runtime.Instance, frameRequestRate: webidl.Opt(f64)) ImplError!*runtime.Instance {
     _ = instance;
     _ = frameRequestRate;
     return error.NotImplemented;
 }
 
 /// Operation: getContext
-pub fn call_getContext(instance: *runtime.Instance, contextId: runtime.DOMString, options: *const anyopaque) ImplError!?typedefs.RenderingContext {
+pub fn call_getContext(instance: *runtime.Instance, contextId: runtime.DOMString, options: webidl.Opt(*const anyopaque)) ImplError!?typedefs.RenderingContext {
     _ = instance;
     _ = contextId;
     _ = options;
@@ -113,7 +114,7 @@ pub fn call_getContext(instance: *runtime.Instance, contextId: runtime.DOMString
 }
 
 /// Operation: toDataURL
-pub fn call_toDataURL(instance: *runtime.Instance, @"type": runtime.DOMString, quality: *const anyopaque) ImplError!runtime.USVString {
+pub fn call_toDataURL(instance: *runtime.Instance, @"type": webidl.Opt(runtime.DOMString), quality: webidl.Opt(*const anyopaque)) ImplError!runtime.USVString {
     _ = instance;
     _ = @"type";
     _ = quality;
@@ -121,7 +122,7 @@ pub fn call_toDataURL(instance: *runtime.Instance, @"type": runtime.DOMString, q
 }
 
 /// Operation: toBlob
-pub fn call_toBlob(instance: *runtime.Instance, _callback: callbacks.BlobCallback, @"type": runtime.DOMString, quality: *const anyopaque) ImplError!void {
+pub fn call_toBlob(instance: *runtime.Instance, _callback: callbacks.BlobCallback, @"type": webidl.Opt(runtime.DOMString), quality: webidl.Opt(*const anyopaque)) ImplError!void {
     _ = instance;
     _ = _callback;
     _ = @"type";

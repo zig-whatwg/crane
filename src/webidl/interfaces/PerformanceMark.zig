@@ -1,5 +1,5 @@
 //! Generated from: user-timing.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -89,7 +89,7 @@ pub const PerformanceMark = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, markName: DOMString, markOptions: webidl.Opt(PerformanceMarkOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try PerformanceMarkImpl.call_constructor(allocator, ctx, markName, markOptions.value);
+        return try PerformanceMarkImpl.call_constructor(allocator, ctx, markName, markOptions);
     }
 
     pub fn get_detail(instance: *runtime.Instance) anyerror!*const anyopaque {

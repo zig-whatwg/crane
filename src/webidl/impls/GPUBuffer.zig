@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -97,7 +98,7 @@ pub fn call_unmap(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: getMappedRange
-pub fn call_getMappedRange(instance: *runtime.Instance, offset: typedefs.GPUSize64, size: typedefs.GPUSize64) ImplError!*const anyopaque {
+pub fn call_getMappedRange(instance: *runtime.Instance, offset: webidl.Opt(typedefs.GPUSize64), size: webidl.Opt(typedefs.GPUSize64)) ImplError!*const anyopaque {
     _ = instance;
     _ = offset;
     _ = size;
@@ -105,7 +106,7 @@ pub fn call_getMappedRange(instance: *runtime.Instance, offset: typedefs.GPUSize
 }
 
 /// Operation: mapAsync
-pub fn call_mapAsync(instance: *runtime.Instance, mode: typedefs.GPUMapModeFlags, offset: typedefs.GPUSize64, size: typedefs.GPUSize64) ImplError!*const anyopaque {
+pub fn call_mapAsync(instance: *runtime.Instance, mode: typedefs.GPUMapModeFlags, offset: webidl.Opt(typedefs.GPUSize64), size: webidl.Opt(typedefs.GPUSize64)) ImplError!*const anyopaque {
     _ = instance;
     _ = mode;
     _ = offset;

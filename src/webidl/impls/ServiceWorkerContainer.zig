@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -123,14 +124,14 @@ pub fn call_getRegistrations(instance: *runtime.Instance) ImplError!*const anyop
 }
 
 /// Operation: getRegistration
-pub fn call_getRegistration(instance: *runtime.Instance, clientURL: runtime.USVString) ImplError!*const anyopaque {
+pub fn call_getRegistration(instance: *runtime.Instance, clientURL: webidl.Opt(runtime.USVString)) ImplError!*const anyopaque {
     _ = instance;
     _ = clientURL;
     return error.NotImplemented;
 }
 
 /// Operation: register
-pub fn call_register(instance: *runtime.Instance, scriptURL: runtime.DOMString, options: dictionaries.RegistrationOptions) ImplError!*const anyopaque {
+pub fn call_register(instance: *runtime.Instance, scriptURL: runtime.DOMString, options: webidl.Opt(dictionaries.RegistrationOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = scriptURL;
     _ = options;

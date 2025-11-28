@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -66,7 +67,7 @@ pub fn get_wgslLanguageFeatures(instance: *runtime.Instance) ImplError!*runtime.
 }
 
 /// Operation: requestAdapter
-pub fn call_requestAdapter(instance: *runtime.Instance, options: dictionaries.GPURequestAdapterOptions) ImplError!*const anyopaque {
+pub fn call_requestAdapter(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GPURequestAdapterOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

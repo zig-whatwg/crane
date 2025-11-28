@@ -1,5 +1,5 @@
 //! Generated from: webrtc-encoded-transform.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -121,7 +121,7 @@ pub const SFrameEncrypterStream = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(SFrameTransformOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try SFrameEncrypterStreamImpl.call_constructor(allocator, ctx, options.value);
+        return try SFrameEncrypterStreamImpl.call_constructor(allocator, ctx, options);
     }
 
     pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -142,7 +142,7 @@ pub const SFrameEncrypterStream = struct {
 
     pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyID: webidl.Opt(CryptoKeyID)) anyerror!*const anyopaque {
         
-        return try SFrameEncrypterStreamImpl.call_setEncryptionKey(instance, key, keyID.value);
+        return try SFrameEncrypterStreamImpl.call_setEncryptionKey(instance, key, keyID);
     }
 
 };

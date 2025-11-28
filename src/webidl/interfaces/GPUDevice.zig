@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -318,7 +318,7 @@ pub const GPUDevice = struct {
 
     pub fn call_createCommandEncoder(instance: *runtime.Instance, descriptor: webidl.Opt(GPUCommandEncoderDescriptor)) anyerror!*runtime.Instance {
         
-        return try GPUDeviceImpl.call_createCommandEncoder(instance, descriptor.value);
+        return try GPUDeviceImpl.call_createCommandEncoder(instance, descriptor);
     }
 
     pub fn call_createComputePipelineAsync(instance: *runtime.Instance, descriptor: GPUComputePipelineDescriptor) anyerror!*const anyopaque {
@@ -333,7 +333,7 @@ pub const GPUDevice = struct {
 
     pub fn call_createSampler(instance: *runtime.Instance, descriptor: webidl.Opt(GPUSamplerDescriptor)) anyerror!*runtime.Instance {
         
-        return try GPUDeviceImpl.call_createSampler(instance, descriptor.value);
+        return try GPUDeviceImpl.call_createSampler(instance, descriptor);
     }
 
     pub fn call_importExternalTexture(instance: *runtime.Instance, descriptor: GPUExternalTextureDescriptor) anyerror!*runtime.Instance {

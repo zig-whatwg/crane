@@ -10,6 +10,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const storage = @import("storage");
+const webidl = @import("webidl");
 const IDBVersionChangeEventInterface = interfaces.IDBVersionChangeEvent;
 
 // Backend types
@@ -71,7 +72,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, event_type: runtime.DOMString, eventInitDict: dictionaries.IDBVersionChangeEventInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.IDBVersionChangeEventInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &IDBVersionChangeEventInterface.vtable, ctx);
     errdefer deinit(instance);
@@ -80,9 +81,16 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, even
     const internal = state.own._internal.?;
 
     // Initialize from eventInitDict
-    _ = event_type;
-    internal.old_version = eventInitDict.oldVersion orelse 0;
-    internal.new_version = eventInitDict.newVersion;
+    _ = @"type"; // Event type is handled by V8 Event prototype chain
+
+    // Get values from eventInitDict if passed
+    if (eventInitDict.wasPassed()) {
+        internal.old_version = eventInitDict.value.oldVersion orelse 0;
+        internal.new_version = eventInitDict.value.newVersion;
+    } else {
+        internal.old_version = 0;
+        internal.new_version = null;
+    }
 
     return instance;
 }

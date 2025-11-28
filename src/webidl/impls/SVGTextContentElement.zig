@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -120,7 +121,7 @@ pub fn call_getComputedTextLength(instance: *runtime.Instance) ImplError!f32 {
 }
 
 /// Operation: getCharNumAtPosition
-pub fn call_getCharNumAtPosition(instance: *runtime.Instance, point: dictionaries.DOMPointInit) ImplError!i32 {
+pub fn call_getCharNumAtPosition(instance: *runtime.Instance, point: webidl.Opt(dictionaries.DOMPointInit)) ImplError!i32 {
     _ = instance;
     _ = point;
     return error.NotImplemented;

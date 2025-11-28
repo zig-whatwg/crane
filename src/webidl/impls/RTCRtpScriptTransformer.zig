@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -97,7 +98,7 @@ pub fn call_sendKeyFrameRequest(instance: *runtime.Instance) ImplError!*const an
 }
 
 /// Operation: generateKeyFrame
-pub fn call_generateKeyFrame(instance: *runtime.Instance, rid: runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_generateKeyFrame(instance: *runtime.Instance, rid: webidl.Opt(runtime.DOMString)) ImplError!*const anyopaque {
     _ = instance;
     _ = rid;
     return error.NotImplemented;

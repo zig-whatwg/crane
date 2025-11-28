@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -80,14 +81,14 @@ pub fn call_map(instance: *runtime.Instance, mapper: callbacks.Mapper) ImplError
 }
 
 /// Operation: inspect
-pub fn call_inspect(instance: *runtime.Instance, inspectorUnion: typedefs.ObservableInspectorUnion) ImplError!*runtime.Instance {
+pub fn call_inspect(instance: *runtime.Instance, inspectorUnion: webidl.Opt(typedefs.ObservableInspectorUnion)) ImplError!*runtime.Instance {
     _ = instance;
     _ = inspectorUnion;
     return error.NotImplemented;
 }
 
 /// Operation: forEach
-pub fn call_forEach(instance: *runtime.Instance, callback: callbacks.Visitor, options: dictionaries.SubscribeOptions) ImplError!*const anyopaque {
+pub fn call_forEach(instance: *runtime.Instance, callback: callbacks.Visitor, options: webidl.Opt(dictionaries.SubscribeOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = callback;
     _ = options;
@@ -95,7 +96,7 @@ pub fn call_forEach(instance: *runtime.Instance, callback: callbacks.Visitor, op
 }
 
 /// Operation: every
-pub fn call_every(instance: *runtime.Instance, predicate: callbacks.Predicate, options: dictionaries.SubscribeOptions) ImplError!*const anyopaque {
+pub fn call_every(instance: *runtime.Instance, predicate: callbacks.Predicate, options: webidl.Opt(dictionaries.SubscribeOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = predicate;
     _ = options;
@@ -103,7 +104,7 @@ pub fn call_every(instance: *runtime.Instance, predicate: callbacks.Predicate, o
 }
 
 /// Operation: some
-pub fn call_some(instance: *runtime.Instance, predicate: callbacks.Predicate, options: dictionaries.SubscribeOptions) ImplError!*const anyopaque {
+pub fn call_some(instance: *runtime.Instance, predicate: callbacks.Predicate, options: webidl.Opt(dictionaries.SubscribeOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = predicate;
     _ = options;
@@ -111,7 +112,7 @@ pub fn call_some(instance: *runtime.Instance, predicate: callbacks.Predicate, op
 }
 
 /// Operation: first
-pub fn call_first(instance: *runtime.Instance, options: dictionaries.SubscribeOptions) ImplError!*const anyopaque {
+pub fn call_first(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SubscribeOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -125,7 +126,7 @@ pub fn call_takeUntil(instance: *runtime.Instance, value: *const anyopaque) Impl
 }
 
 /// Operation: find
-pub fn call_find(instance: *runtime.Instance, predicate: callbacks.Predicate, options: dictionaries.SubscribeOptions) ImplError!*const anyopaque {
+pub fn call_find(instance: *runtime.Instance, predicate: callbacks.Predicate, options: webidl.Opt(dictionaries.SubscribeOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = predicate;
     _ = options;
@@ -133,7 +134,7 @@ pub fn call_find(instance: *runtime.Instance, predicate: callbacks.Predicate, op
 }
 
 /// Operation: last
-pub fn call_last(instance: *runtime.Instance, options: dictionaries.SubscribeOptions) ImplError!*const anyopaque {
+pub fn call_last(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SubscribeOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -168,14 +169,14 @@ pub fn call_take(instance: *runtime.Instance, amount: u64) ImplError!*runtime.In
 }
 
 /// Operation: toArray
-pub fn call_toArray(instance: *runtime.Instance, options: dictionaries.SubscribeOptions) ImplError!*const anyopaque {
+pub fn call_toArray(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SubscribeOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: reduce
-pub fn call_reduce(instance: *runtime.Instance, reducer: callbacks.Reducer, initialValue: *const anyopaque, options: dictionaries.SubscribeOptions) ImplError!*const anyopaque {
+pub fn call_reduce(instance: *runtime.Instance, reducer: callbacks.Reducer, initialValue: webidl.Opt(*const anyopaque), options: webidl.Opt(dictionaries.SubscribeOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = reducer;
     _ = initialValue;
@@ -212,7 +213,7 @@ pub fn call_catch(instance: *runtime.Instance, callback: callbacks.CatchCallback
 }
 
 /// Operation: subscribe
-pub fn call_subscribe(instance: *runtime.Instance, observer: typedefs.ObserverUnion, options: dictionaries.SubscribeOptions) ImplError!void {
+pub fn call_subscribe(instance: *runtime.Instance, observer: webidl.Opt(typedefs.ObserverUnion), options: webidl.Opt(dictionaries.SubscribeOptions)) ImplError!void {
     _ = instance;
     _ = observer;
     _ = options;

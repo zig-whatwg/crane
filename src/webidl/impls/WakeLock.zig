@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -60,7 +61,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: request
-pub fn call_request(instance: *runtime.Instance, @"type": enums.WakeLockType) ImplError!*const anyopaque {
+pub fn call_request(instance: *runtime.Instance, @"type": webidl.Opt(enums.WakeLockType)) ImplError!*const anyopaque {
     _ = instance;
     _ = @"type";
     return error.NotImplemented;

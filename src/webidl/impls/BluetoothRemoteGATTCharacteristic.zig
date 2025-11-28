@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -117,7 +118,7 @@ pub fn call_writeValue(instance: *runtime.Instance, value: typedefs.BufferSource
 }
 
 /// Operation: getDescriptors
-pub fn call_getDescriptors(instance: *runtime.Instance, descriptor: typedefs.BluetoothDescriptorUUID) ImplError!*const anyopaque {
+pub fn call_getDescriptors(instance: *runtime.Instance, descriptor: webidl.Opt(typedefs.BluetoothDescriptorUUID)) ImplError!*const anyopaque {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;

@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -114,7 +114,7 @@ pub const StorageEvent = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(StorageEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try StorageEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict.value);
+        return try StorageEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
     pub fn get_key(instance: *runtime.Instance) anyerror!?DOMString {
@@ -139,7 +139,7 @@ pub const StorageEvent = struct {
 
     pub fn call_initStorageEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), key: webidl.Opt(?DOMString), oldValue: webidl.Opt(?DOMString), newValue: webidl.Opt(?DOMString), url: webidl.Opt(runtime.USVString), storageArea: webidl.Opt(?*runtime.Instance)) anyerror!void {
         
-        return try StorageEventImpl.call_initStorageEvent(instance, @"type", bubbles.value, cancelable.value, key.value, oldValue.value, newValue.value, url.value, storageArea.value);
+        return try StorageEventImpl.call_initStorageEvent(instance, @"type", bubbles, cancelable, key, oldValue, newValue, url, storageArea);
     }
 
 };

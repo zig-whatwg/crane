@@ -27,6 +27,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const mixins = @import("mixins");
+const webidl = @import("webidl");
 const CSSStyleSheet = interfaces.CSSStyleSheet;
 
 pub const State = CSSStyleSheet.State;
@@ -61,7 +62,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: dictionaries.CSSStyleSheetInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(dictionaries.CSSStyleSheetInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &CSSStyleSheet.vtable, ctx);
     errdefer deinit(instance);
@@ -112,7 +113,7 @@ pub fn call_replace(instance: *runtime.Instance, text: runtime.USVString) ImplEr
 }
 
 /// Operation: insertRule
-pub fn call_insertRule(instance: *runtime.Instance, rule: typedefs.CSSOMString, index: u32) ImplError!u32 {
+pub fn call_insertRule(instance: *runtime.Instance, rule: typedefs.CSSOMString, index: webidl.Opt(u32)) ImplError!u32 {
     _ = instance;
     _ = rule;
     _ = index;
@@ -120,7 +121,7 @@ pub fn call_insertRule(instance: *runtime.Instance, rule: typedefs.CSSOMString, 
 }
 
 /// Operation: addRule
-pub fn call_addRule(instance: *runtime.Instance, selector: runtime.DOMString, style: runtime.DOMString, index: u32) ImplError!i32 {
+pub fn call_addRule(instance: *runtime.Instance, selector: webidl.Opt(runtime.DOMString), style: webidl.Opt(runtime.DOMString), index: webidl.Opt(u32)) ImplError!i32 {
     _ = instance;
     _ = selector;
     _ = style;
@@ -129,7 +130,7 @@ pub fn call_addRule(instance: *runtime.Instance, selector: runtime.DOMString, st
 }
 
 /// Operation: removeRule
-pub fn call_removeRule(instance: *runtime.Instance, index: u32) ImplError!void {
+pub fn call_removeRule(instance: *runtime.Instance, index: webidl.Opt(u32)) ImplError!void {
     _ = instance;
     _ = index;
     return error.NotImplemented;

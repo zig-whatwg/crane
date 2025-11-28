@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -72,7 +73,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Operation: toRdf
-pub fn call_toRdf(instance: *runtime.Instance, input: typedefs.JsonLdInput, options: dictionaries.JsonLdOptions) ImplError!*const anyopaque {
+pub fn call_toRdf(instance: *runtime.Instance, input: typedefs.JsonLdInput, options: webidl.Opt(dictionaries.JsonLdOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = options;
@@ -80,7 +81,7 @@ pub fn call_toRdf(instance: *runtime.Instance, input: typedefs.JsonLdInput, opti
 }
 
 /// Operation: flatten
-pub fn call_flatten(instance: *runtime.Instance, input: typedefs.JsonLdInput, context: typedefs.JsonLdContext, options: dictionaries.JsonLdOptions) ImplError!*const anyopaque {
+pub fn call_flatten(instance: *runtime.Instance, input: typedefs.JsonLdInput, context: webidl.Opt(typedefs.JsonLdContext), options: webidl.Opt(dictionaries.JsonLdOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = context;
@@ -89,7 +90,7 @@ pub fn call_flatten(instance: *runtime.Instance, input: typedefs.JsonLdInput, co
 }
 
 /// Operation: fromRdf
-pub fn call_fromRdf(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.JsonLdOptions) ImplError!*const anyopaque {
+pub fn call_fromRdf(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.JsonLdOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = options;
@@ -97,7 +98,7 @@ pub fn call_fromRdf(instance: *runtime.Instance, input: *runtime.Instance, optio
 }
 
 /// Operation: expand
-pub fn call_expand(instance: *runtime.Instance, input: typedefs.JsonLdInput, options: dictionaries.JsonLdOptions) ImplError!*const anyopaque {
+pub fn call_expand(instance: *runtime.Instance, input: typedefs.JsonLdInput, options: webidl.Opt(dictionaries.JsonLdOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = options;
@@ -105,7 +106,7 @@ pub fn call_expand(instance: *runtime.Instance, input: typedefs.JsonLdInput, opt
 }
 
 /// Operation: compact
-pub fn call_compact(instance: *runtime.Instance, input: typedefs.JsonLdInput, context: typedefs.JsonLdContext, options: dictionaries.JsonLdOptions) ImplError!*const anyopaque {
+pub fn call_compact(instance: *runtime.Instance, input: typedefs.JsonLdInput, context: webidl.Opt(typedefs.JsonLdContext), options: webidl.Opt(dictionaries.JsonLdOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = context;
@@ -114,7 +115,7 @@ pub fn call_compact(instance: *runtime.Instance, input: typedefs.JsonLdInput, co
 }
 
 /// Operation: frame
-pub fn call_frame(instance: *runtime.Instance, input: typedefs.JsonLdInput, frame: typedefs.JsonLdInput, options: dictionaries.JsonLdOptions) ImplError!*const anyopaque {
+pub fn call_frame(instance: *runtime.Instance, input: typedefs.JsonLdInput, frame: typedefs.JsonLdInput, options: webidl.Opt(dictionaries.JsonLdOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = frame;

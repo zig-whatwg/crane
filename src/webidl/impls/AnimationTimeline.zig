@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -72,7 +73,7 @@ pub fn get_duration(instance: *runtime.Instance) ImplError!?typedefs.CSSNumberis
 }
 
 /// Operation: play
-pub fn call_play(instance: *runtime.Instance, effect: ?*runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_play(instance: *runtime.Instance, effect: webidl.Opt(?*runtime.Instance)) ImplError!*runtime.Instance {
     _ = instance;
     _ = effect;
     return error.NotImplemented;

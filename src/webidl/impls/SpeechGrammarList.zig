@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -85,7 +86,7 @@ pub fn call_item(instance: *runtime.Instance, index: u32) ImplError!*runtime.Ins
 }
 
 /// Operation: addFromURI
-pub fn call_addFromURI(instance: *runtime.Instance, src: runtime.DOMString, weight: f32) ImplError!void {
+pub fn call_addFromURI(instance: *runtime.Instance, src: runtime.DOMString, weight: webidl.Opt(f32)) ImplError!void {
     _ = instance;
     _ = src;
     _ = weight;
@@ -93,7 +94,7 @@ pub fn call_addFromURI(instance: *runtime.Instance, src: runtime.DOMString, weig
 }
 
 /// Operation: addFromString
-pub fn call_addFromString(instance: *runtime.Instance, string: runtime.DOMString, weight: f32) ImplError!void {
+pub fn call_addFromString(instance: *runtime.Instance, string: runtime.DOMString, weight: webidl.Opt(f32)) ImplError!void {
     _ = instance;
     _ = string;
     _ = weight;

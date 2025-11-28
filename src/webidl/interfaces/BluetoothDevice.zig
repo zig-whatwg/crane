@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:18Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -217,7 +217,7 @@ pub const BluetoothDevice = struct {
 
     pub fn call_watchAdvertisements(instance: *runtime.Instance, options: webidl.Opt(WatchAdvertisementsOptions)) anyerror!*const anyopaque {
         
-        return try BluetoothDeviceImpl.call_watchAdvertisements(instance, options.value);
+        return try BluetoothDeviceImpl.call_watchAdvertisements(instance, options);
     }
 
     pub fn call_forget(instance: *runtime.Instance) anyerror!*const anyopaque {

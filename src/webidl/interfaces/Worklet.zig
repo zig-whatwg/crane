@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -84,7 +84,7 @@ pub const Worklet = struct {
     pub fn call_addModule(instance: *runtime.Instance, moduleURL: runtime.USVString, options: webidl.Opt(WorkletOptions)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
-        return try WorkletImpl.call_addModule(instance, moduleURL, options.value);
+        return try WorkletImpl.call_addModule(instance, moduleURL, options);
     }
 
 };

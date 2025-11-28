@@ -27,6 +27,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const mixins = @import("mixins");
+const webidl = @import("webidl");
 const StorageEvent = interfaces.StorageEvent;
 
 pub const State = StorageEvent.State;
@@ -61,7 +62,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.StorageEventInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.StorageEventInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &StorageEvent.vtable, ctx);
     errdefer deinit(instance);
@@ -104,7 +105,7 @@ pub fn get_storageArea(instance: *runtime.Instance) ImplError!?*runtime.Instance
 }
 
 /// Operation: initStorageEvent
-pub fn call_initStorageEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: bool, cancelable: bool, key: ?runtime.DOMString, oldValue: ?runtime.DOMString, newValue: ?runtime.DOMString, url: runtime.USVString, storageArea: ?*runtime.Instance) ImplError!void {
+pub fn call_initStorageEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), key: webidl.Opt(?runtime.DOMString), oldValue: webidl.Opt(?runtime.DOMString), newValue: webidl.Opt(?runtime.DOMString), url: webidl.Opt(runtime.USVString), storageArea: webidl.Opt(?*runtime.Instance)) ImplError!void {
     _ = instance;
     _ = @"type";
     _ = bubbles;

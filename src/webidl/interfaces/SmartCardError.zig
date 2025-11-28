@@ -1,5 +1,5 @@
 //! Generated from: web-smart-card.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -91,7 +91,7 @@ pub const SmartCardError = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, message: webidl.Opt(DOMString), options: SmartCardErrorOptions) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try SmartCardErrorImpl.call_constructor(allocator, ctx, message.value, options);
+        return try SmartCardErrorImpl.call_constructor(allocator, ctx, message, options);
     }
 
     pub fn get_responseCode(instance: *runtime.Instance) anyerror!SmartCardResponseCode {

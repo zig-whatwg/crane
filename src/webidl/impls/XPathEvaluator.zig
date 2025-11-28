@@ -7,6 +7,7 @@
 //! src/dom/xpath/ but needs module wiring to be connected to this WebIDL interface.
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -64,14 +65,7 @@ pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime
 /// Evaluates an XPath expression against a context node
 ///
 /// TODO: Wire up to XPath core in src/dom/xpath/ once module dependencies are resolved
-pub fn call_evaluate(
-    instance: *runtime.Instance,
-    expression: runtime.DOMString,
-    contextNode: *runtime.Instance,
-    resolver: ??*runtime.CallbackWrapper,
-    @"type": ?u16,
-    result: ?*runtime.Instance,
-) ImplError!*runtime.Instance {
+pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString, contextNode: *runtime.Instance, resolver: webidl.Opt(??*runtime.CallbackWrapper), @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) ImplError!*runtime.Instance {
     _ = instance;
     _ = expression;
     _ = contextNode;
@@ -88,11 +82,7 @@ pub fn call_evaluate(
 /// Pre-compiles an XPath expression for later evaluation
 ///
 /// TODO: Wire up to XPath core in src/dom/xpath/ once module dependencies are resolved
-pub fn call_createExpression(
-    instance: *runtime.Instance,
-    expression: runtime.DOMString,
-    resolver: ??*runtime.CallbackWrapper,
-) ImplError!*runtime.Instance {
+pub fn call_createExpression(instance: *runtime.Instance, expression: runtime.DOMString, resolver: webidl.Opt(??*runtime.CallbackWrapper)) ImplError!*runtime.Instance {
     _ = instance;
     _ = expression;
     _ = resolver;

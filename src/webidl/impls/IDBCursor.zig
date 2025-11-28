@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -96,7 +97,7 @@ pub fn call_delete(instance: *runtime.Instance) ImplError!*runtime.Instance {
 }
 
 /// Operation: continue
-pub fn call_continue(instance: *runtime.Instance, key: *const anyopaque) ImplError!void {
+pub fn call_continue(instance: *runtime.Instance, key: webidl.Opt(*const anyopaque)) ImplError!void {
     _ = instance;
     _ = key;
     return error.NotImplemented;

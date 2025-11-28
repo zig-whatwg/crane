@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -123,7 +123,7 @@ pub const RTCDTMFSender = struct {
 
     pub fn call_insertDTMF(instance: *runtime.Instance, tones: DOMString, duration: webidl.Opt(u32), interToneGap: webidl.Opt(u32)) anyerror!void {
         
-        return try RTCDTMFSenderImpl.call_insertDTMF(instance, tones, duration.value, interToneGap.value);
+        return try RTCDTMFSenderImpl.call_insertDTMF(instance, tones, duration, interToneGap);
     }
 
 };

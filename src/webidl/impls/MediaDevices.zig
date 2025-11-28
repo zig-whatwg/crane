@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -86,21 +87,21 @@ pub fn set_oncaptureaction(instance: *runtime.Instance, value: typedefs.EventHan
 }
 
 /// Operation: selectAudioOutput
-pub fn call_selectAudioOutput(instance: *runtime.Instance, options: dictionaries.AudioOutputOptions) ImplError!*const anyopaque {
+pub fn call_selectAudioOutput(instance: *runtime.Instance, options: webidl.Opt(dictionaries.AudioOutputOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: getDisplayMedia
-pub fn call_getDisplayMedia(instance: *runtime.Instance, options: dictionaries.DisplayMediaStreamOptions) ImplError!*const anyopaque {
+pub fn call_getDisplayMedia(instance: *runtime.Instance, options: webidl.Opt(dictionaries.DisplayMediaStreamOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: getUserMedia
-pub fn call_getUserMedia(instance: *runtime.Instance, constraints: dictionaries.MediaStreamConstraints) ImplError!*const anyopaque {
+pub fn call_getUserMedia(instance: *runtime.Instance, constraints: webidl.Opt(dictionaries.MediaStreamConstraints)) ImplError!*const anyopaque {
     _ = instance;
     _ = constraints;
     return error.NotImplemented;
@@ -119,7 +120,7 @@ pub fn call_getSupportedConstraints(instance: *runtime.Instance) ImplError!dicti
 }
 
 /// Operation: getViewportMedia
-pub fn call_getViewportMedia(instance: *runtime.Instance, options: dictionaries.DisplayMediaStreamOptions) ImplError!*const anyopaque {
+pub fn call_getViewportMedia(instance: *runtime.Instance, options: webidl.Opt(dictionaries.DisplayMediaStreamOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -133,7 +134,7 @@ pub fn call_setSupportedCaptureActions(instance: *runtime.Instance, actions: *co
 }
 
 /// Operation: setCaptureHandleConfig
-pub fn call_setCaptureHandleConfig(instance: *runtime.Instance, config: dictionaries.CaptureHandleConfig) ImplError!void {
+pub fn call_setCaptureHandleConfig(instance: *runtime.Instance, config: webidl.Opt(dictionaries.CaptureHandleConfig)) ImplError!void {
     _ = instance;
     _ = config;
     return error.NotImplemented;

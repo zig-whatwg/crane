@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -60,7 +61,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getFileHandle
-pub fn call_getFileHandle(instance: *runtime.Instance, name: runtime.USVString, options: dictionaries.FileSystemGetFileOptions) ImplError!*const anyopaque {
+pub fn call_getFileHandle(instance: *runtime.Instance, name: runtime.USVString, options: webidl.Opt(dictionaries.FileSystemGetFileOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = name;
     _ = options;
@@ -75,7 +76,7 @@ pub fn call_resolve(instance: *runtime.Instance, possibleDescendant: *runtime.In
 }
 
 /// Operation: getDirectoryHandle
-pub fn call_getDirectoryHandle(instance: *runtime.Instance, name: runtime.USVString, options: dictionaries.FileSystemGetDirectoryOptions) ImplError!*const anyopaque {
+pub fn call_getDirectoryHandle(instance: *runtime.Instance, name: runtime.USVString, options: webidl.Opt(dictionaries.FileSystemGetDirectoryOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = name;
     _ = options;
@@ -83,7 +84,7 @@ pub fn call_getDirectoryHandle(instance: *runtime.Instance, name: runtime.USVStr
 }
 
 /// Operation: removeEntry
-pub fn call_removeEntry(instance: *runtime.Instance, name: runtime.USVString, options: dictionaries.FileSystemRemoveOptions) ImplError!*const anyopaque {
+pub fn call_removeEntry(instance: *runtime.Instance, name: runtime.USVString, options: webidl.Opt(dictionaries.FileSystemRemoveOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = name;
     _ = options;

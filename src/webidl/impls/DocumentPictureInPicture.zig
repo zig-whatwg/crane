@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -79,7 +80,7 @@ pub fn set_onenter(instance: *runtime.Instance, value: typedefs.EventHandler) Im
 }
 
 /// Operation: requestWindow
-pub fn call_requestWindow(instance: *runtime.Instance, options: dictionaries.DocumentPictureInPictureOptions) ImplError!*const anyopaque {
+pub fn call_requestWindow(instance: *runtime.Instance, options: webidl.Opt(dictionaries.DocumentPictureInPictureOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -90,7 +90,7 @@ pub const GPUPipelineError = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, message: webidl.Opt(DOMString), options: GPUPipelineErrorInit) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try GPUPipelineErrorImpl.call_constructor(allocator, ctx, message.value, options);
+        return try GPUPipelineErrorImpl.call_constructor(allocator, ctx, message, options);
     }
 
     pub fn get_reason(instance: *runtime.Instance) anyerror!GPUPipelineErrorReason {

@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -72,14 +73,14 @@ pub fn get_inputQuota(instance: *runtime.Instance) ImplError!f64 {
 }
 
 /// Operation: availability
-pub fn call_availability(instance: *runtime.Instance, options: dictionaries.LanguageDetectorCreateCoreOptions) ImplError!*const anyopaque {
+pub fn call_availability(instance: *runtime.Instance, options: webidl.Opt(dictionaries.LanguageDetectorCreateCoreOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: measureInputUsage
-pub fn call_measureInputUsage(instance: *runtime.Instance, input: runtime.DOMString, options: dictionaries.LanguageDetectorDetectOptions) ImplError!*const anyopaque {
+pub fn call_measureInputUsage(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(dictionaries.LanguageDetectorDetectOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = options;
@@ -93,7 +94,7 @@ pub fn call_destroy(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: detect
-pub fn call_detect(instance: *runtime.Instance, input: runtime.DOMString, options: dictionaries.LanguageDetectorDetectOptions) ImplError!*const anyopaque {
+pub fn call_detect(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(dictionaries.LanguageDetectorDetectOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = options;
@@ -101,7 +102,7 @@ pub fn call_detect(instance: *runtime.Instance, input: runtime.DOMString, option
 }
 
 /// Operation: create
-pub fn call_create(instance: *runtime.Instance, options: dictionaries.LanguageDetectorCreateOptions) ImplError!*const anyopaque {
+pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(dictionaries.LanguageDetectorCreateOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

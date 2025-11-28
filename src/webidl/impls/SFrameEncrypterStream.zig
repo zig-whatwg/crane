@@ -27,6 +27,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const mixins = @import("mixins");
+const webidl = @import("webidl");
 const SFrameEncrypterStream = interfaces.SFrameEncrypterStream;
 
 pub const State = SFrameEncrypterStream.State;
@@ -61,7 +62,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: dictionaries.SFrameTransformOptions) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(dictionaries.SFrameTransformOptions)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &SFrameEncrypterStream.vtable, ctx);
     errdefer deinit(instance);
@@ -98,7 +99,7 @@ pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) Im
 }
 
 /// Operation: setEncryptionKey
-pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyID: typedefs.CryptoKeyID) ImplError!*const anyopaque {
+pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyID: webidl.Opt(typedefs.CryptoKeyID)) ImplError!*const anyopaque {
     _ = instance;
     _ = key;
     _ = keyID;

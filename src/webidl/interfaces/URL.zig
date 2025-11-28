@@ -1,5 +1,5 @@
 //! Generated from: url.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -167,7 +167,7 @@ pub const URL = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try URLImpl.call_constructor(allocator, ctx, url, base.value);
+        return try URLImpl.call_constructor(allocator, ctx, url, base);
     }
 
     pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
@@ -277,12 +277,12 @@ pub const URL = struct {
 
     pub fn call_canParse(instance: *runtime.Instance, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) anyerror!bool {
         
-        return try URLImpl.call_canParse(instance, url, base.value);
+        return try URLImpl.call_canParse(instance, url, base);
     }
 
     pub fn call_parse(instance: *runtime.Instance, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) anyerror!?*runtime.Instance {
         
-        return try URLImpl.call_parse(instance, url, base.value);
+        return try URLImpl.call_parse(instance, url, base);
     }
 
     pub fn call_revokeObjectURL(instance: *runtime.Instance, url: DOMString) anyerror!void {

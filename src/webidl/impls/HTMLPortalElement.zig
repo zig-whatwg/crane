@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -124,14 +125,14 @@ pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHand
 }
 
 /// Operation: activate
-pub fn call_activate(instance: *runtime.Instance, options: dictionaries.PortalActivateOptions) ImplError!*const anyopaque {
+pub fn call_activate(instance: *runtime.Instance, options: webidl.Opt(dictionaries.PortalActivateOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: postMessage
-pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, options: dictionaries.PostMessageOptions) ImplError!void {
+pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, options: webidl.Opt(dictionaries.PostMessageOptions)) ImplError!void {
     _ = instance;
     _ = message;
     _ = options;

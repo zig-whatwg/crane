@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -73,7 +74,7 @@ pub fn call_unregister(instance: *runtime.Instance, tag: runtime.DOMString) Impl
 }
 
 /// Operation: register
-pub fn call_register(instance: *runtime.Instance, tag: runtime.DOMString, options: dictionaries.BackgroundSyncOptions) ImplError!*const anyopaque {
+pub fn call_register(instance: *runtime.Instance, tag: runtime.DOMString, options: webidl.Opt(dictionaries.BackgroundSyncOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = tag;
     _ = options;

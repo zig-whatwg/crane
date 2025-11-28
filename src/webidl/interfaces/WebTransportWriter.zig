@@ -1,5 +1,5 @@
 //! Generated from: webtransport.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:22Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -93,7 +93,7 @@ pub const WebTransportWriter = struct {
 
     pub fn call_atomicWrite(instance: *runtime.Instance, chunk: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
         
-        return try WebTransportWriterImpl.call_atomicWrite(instance, chunk.value);
+        return try WebTransportWriterImpl.call_atomicWrite(instance, chunk);
     }
 
 };

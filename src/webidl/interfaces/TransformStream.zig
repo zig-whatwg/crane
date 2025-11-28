@@ -1,5 +1,5 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -89,7 +89,7 @@ pub const TransformStream = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, transformer: webidl.Opt(*const anyopaque), writableStrategy: webidl.Opt(QueuingStrategy), readableStrategy: webidl.Opt(QueuingStrategy)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try TransformStreamImpl.call_constructor(allocator, ctx, transformer.value, writableStrategy.value, readableStrategy.value);
+        return try TransformStreamImpl.call_constructor(allocator, ctx, transformer, writableStrategy, readableStrategy);
     }
 
     pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {

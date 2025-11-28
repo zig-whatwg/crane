@@ -20,7 +20,6 @@ const AsyncPromise = @import("streams_async_promise").AsyncPromise;
 pub const State = WritableStreamDefaultWriter.State;
 
 pub const ImplError = error{
-
     TypeError,
     OutOfMemory,
     InvalidState,
@@ -114,7 +113,7 @@ pub fn get_closed(instance: *runtime.Instance) ImplError!*const anyopaque {
 /// Steps:
 /// 1. If this.[[stream]] is undefined, throw TypeError
 /// 2. Return WritableStreamDefaultWriterGetDesiredSize(this)
-pub fn get_desiredSize(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_desiredSize(instance: *runtime.Instance) ImplError!?f64 {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -172,7 +171,7 @@ pub fn call_releaseLock(instance: *runtime.Instance) ImplError!void {
 /// Steps:
 /// 1. If this.[[stream]] is undefined, return promise rejected with TypeError
 /// 2. Return WritableStreamDefaultWriterAbort(this, reason)
-pub fn call_abort(instance: *runtime.Instance, reason: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) ImplError!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -180,7 +179,10 @@ pub fn call_abort(instance: *runtime.Instance, reason: *const anyopaque) ImplErr
     const stream = internal.stream orelse return error.TypeError;
 
     // 2. Return WritableStreamDefaultWriterAbort(this, reason)
-    return writableStreamDefaultWriterAbort(instance, stream, reason);
+    // Unwrap Opt - use undefined as placeholder if not passed
+    const undefined_ptr: *const anyopaque = @ptrCast(&@as(u8, 0));
+    const actual_reason: *const anyopaque = if (reason.wasPassed()) reason.value else undefined_ptr;
+    return writableStreamDefaultWriterAbort(instance, stream, actual_reason);
 }
 
 /// Operation: write
@@ -193,7 +195,7 @@ pub fn call_abort(instance: *runtime.Instance, reason: *const anyopaque) ImplErr
 /// Steps:
 /// 1. If this.[[stream]] is undefined, return promise rejected with TypeError
 /// 2. Return WritableStreamDefaultWriterWrite(this, chunk)
-pub fn call_write(instance: *runtime.Instance, chunk: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_write(instance: *runtime.Instance, chunk: webidl.Opt(*const anyopaque)) ImplError!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -201,7 +203,10 @@ pub fn call_write(instance: *runtime.Instance, chunk: *const anyopaque) ImplErro
     const stream = internal.stream orelse return error.TypeError;
 
     // 2. Return WritableStreamDefaultWriterWrite(this, chunk)
-    return writableStreamDefaultWriterWrite(instance, stream, chunk);
+    // Unwrap Opt - use undefined as placeholder if not passed
+    const undefined_ptr: *const anyopaque = @ptrCast(&@as(u8, 0));
+    const actual_chunk: *const anyopaque = if (chunk.wasPassed()) chunk.value else undefined_ptr;
+    return writableStreamDefaultWriterWrite(instance, stream, actual_chunk);
 }
 
 /// Operation: close
@@ -353,7 +358,7 @@ fn writableStreamDefaultWriterClose(writer: *runtime.Instance) !*const anyopaque
 /// 3. If state is "errored" or "erroring", return null
 /// 4. If state is "closed", return 0
 /// 5. Return WritableStreamDefaultControllerGetDesiredSize(stream.[[controller]])
-fn writableStreamDefaultWriterGetDesiredSize(stream: *runtime.Instance) !f64 {
+fn writableStreamDefaultWriterGetDesiredSize(stream: *runtime.Instance) ImplError!?f64 {
     const stream_state = stream.getState(interfaces.WritableStream.State);
     const stream_internal = stream_state.own._internal orelse return error.InvalidState;
 
@@ -361,9 +366,8 @@ fn writableStreamDefaultWriterGetDesiredSize(stream: *runtime.Instance) !f64 {
     const state = stream_internal.state;
 
     // 3. If state is "errored" or "erroring", return null
-    // Note: WebIDL doesn't have nullable primitives, so we return NaN for null
     if (state == .errored or state == .erroring) {
-        return std.math.nan(f64);
+        return null;
     }
 
     // 4. If state is "closed", return 0

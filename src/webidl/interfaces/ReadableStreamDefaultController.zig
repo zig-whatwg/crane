@@ -1,5 +1,5 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -94,7 +94,7 @@ pub const ReadableStreamDefaultController = struct {
 
     pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(*const anyopaque)) anyerror!void {
         
-        return try ReadableStreamDefaultControllerImpl.call_error(instance, e.value);
+        return try ReadableStreamDefaultControllerImpl.call_error(instance, e);
     }
 
     pub fn call_close(instance: *runtime.Instance) anyerror!void {
@@ -103,7 +103,7 @@ pub const ReadableStreamDefaultController = struct {
 
     pub fn call_enqueue(instance: *runtime.Instance, chunk: webidl.Opt(*const anyopaque)) anyerror!void {
         
-        return try ReadableStreamDefaultControllerImpl.call_enqueue(instance, chunk.value);
+        return try ReadableStreamDefaultControllerImpl.call_enqueue(instance, chunk);
     }
 
 };

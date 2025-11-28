@@ -27,6 +27,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const mixins = @import("mixins");
+const webidl = @import("webidl");
 const URL = interfaces.URL;
 
 pub const State = URL.State;
@@ -61,7 +62,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url: runtime.USVString, base: runtime.USVString) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &URL.vtable, ctx);
     errdefer deinit(instance);
@@ -229,7 +230,7 @@ pub fn call_toJSON(instance: *runtime.Instance) ImplError!runtime.USVString {
 }
 
 /// Operation: canParse
-pub fn call_canParse(instance: *runtime.Instance, url: runtime.USVString, base: runtime.USVString) ImplError!bool {
+pub fn call_canParse(instance: *runtime.Instance, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) ImplError!bool {
     _ = instance;
     _ = url;
     _ = base;
@@ -237,7 +238,7 @@ pub fn call_canParse(instance: *runtime.Instance, url: runtime.USVString, base: 
 }
 
 /// Operation: parse
-pub fn call_parse(instance: *runtime.Instance, url: runtime.USVString, base: runtime.USVString) ImplError!?*runtime.Instance {
+pub fn call_parse(instance: *runtime.Instance, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) ImplError!?*runtime.Instance {
     _ = instance;
     _ = url;
     _ = base;

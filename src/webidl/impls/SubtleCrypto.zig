@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -106,7 +107,7 @@ pub fn call_decapsulateKey(instance: *runtime.Instance, decapsulationAlgorithm: 
 }
 
 /// Operation: deriveBits
-pub fn call_deriveBits(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, baseKey: *runtime.Instance, length: ?u32) ImplError!*const anyopaque {
+pub fn call_deriveBits(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, baseKey: *runtime.Instance, length: webidl.Opt(?u32)) ImplError!*const anyopaque {
     _ = instance;
     _ = algorithm;
     _ = baseKey;
@@ -144,7 +145,7 @@ pub fn call_verify(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIde
 }
 
 /// Operation: supports
-pub fn call_supports(instance: *runtime.Instance, operation: runtime.DOMString, algorithm: typedefs.AlgorithmIdentifier, length: ?u32) ImplError!bool {
+pub fn call_supports(instance: *runtime.Instance, operation: runtime.DOMString, algorithm: typedefs.AlgorithmIdentifier, length: webidl.Opt(?u32)) ImplError!bool {
     _ = instance;
     _ = operation;
     _ = algorithm;

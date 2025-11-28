@@ -25,7 +25,6 @@ const CancelAlgorithm = streams_common.CancelAlgorithm;
 pub const State = TransformStreamDefaultController.State;
 
 pub const ImplError = error{
-
     TypeError,
     OutOfMemory,
     InvalidState,
@@ -98,7 +97,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Getter for desiredSize
 ///
 /// Spec: § 6.2.3 "The desiredSize getter steps"
-pub fn get_desiredSize(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_desiredSize(instance: *runtime.Instance) ImplError!?f64 {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -125,7 +124,7 @@ pub fn get_desiredSize(instance: *runtime.Instance) ImplError!f64 {
 /// Operation: error
 ///
 /// Spec: § 6.2.3 "The error(e) method steps"
-pub fn call_error(instance: *runtime.Instance, reason: *const anyopaque) ImplError!void {
+pub fn call_error(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) ImplError!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -154,7 +153,7 @@ pub fn call_terminate(instance: *runtime.Instance) ImplError!void {
 /// Operation: enqueue
 ///
 /// Spec: § 6.2.3 "The enqueue(chunk) method steps"
-pub fn call_enqueue(instance: *runtime.Instance, chunk: *const anyopaque) ImplError!void {
+pub fn call_enqueue(instance: *runtime.Instance, chunk: webidl.Opt(*const anyopaque)) ImplError!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -203,7 +202,7 @@ fn enqueueInternal(internal: *InternalState, chunk: JSValue) !void {
     // Spec step 4: Let enqueueResult be ReadableStreamDefaultControllerEnqueue(readableController, chunk)
     // Convert JSValue to anyopaque for ReadableStreamDefaultController API
     const chunk_ptr: *const anyopaque = @ptrCast(&chunk);
-    ReadableStreamDefaultControllerImpl.call_enqueue(controller_instance, chunk_ptr) catch |err| {
+    ReadableStreamDefaultControllerImpl.call_enqueue(controller_instance, webidl.Opt(*const anyopaque).passed(chunk_ptr)) catch |err| {
         // Spec step 5: If enqueueResult is an abrupt completion
         // Spec step 5.1: Perform ! TransformStreamErrorWritableAndUnblockWrite(stream, enqueueResult.[[Value]])
         const error_value = JSValue{ .string = "Enqueue failed" };

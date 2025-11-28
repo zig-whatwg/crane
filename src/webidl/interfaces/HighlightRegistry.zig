@@ -1,5 +1,5 @@
 //! Generated from: css-highlight-api.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:22Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -85,7 +85,7 @@ pub const HighlightRegistry = struct {
 
     pub fn call_highlightsFromPoint(instance: *runtime.Instance, x: f32, y: f32, options: webidl.Opt(HighlightsFromPointOptions)) anyerror!*const anyopaque {
         
-        return try HighlightRegistryImpl.call_highlightsFromPoint(instance, x, y, options.value);
+        return try HighlightRegistryImpl.call_highlightsFromPoint(instance, x, y, options);
     }
 
 };

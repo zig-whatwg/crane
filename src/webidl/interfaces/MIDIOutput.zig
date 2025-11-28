@@ -1,5 +1,5 @@
 //! Generated from: webmidi.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -109,7 +109,7 @@ pub const MIDIOutput = struct {
 
     pub fn call_send(instance: *runtime.Instance, data: *const anyopaque, timestamp: webidl.Opt(DOMHighResTimeStamp)) anyerror!void {
         
-        return try MIDIOutputImpl.call_send(instance, data, timestamp.value);
+        return try MIDIOutputImpl.call_send(instance, data, timestamp);
     }
 
 };

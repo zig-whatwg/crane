@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -246,7 +247,7 @@ pub fn call_taintEnabled(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Operation: setAppBadge
-pub fn call_setAppBadge(instance: *runtime.Instance, contents: u64) ImplError!*const anyopaque {
+pub fn call_setAppBadge(instance: *runtime.Instance, contents: webidl.Opt(u64)) ImplError!*const anyopaque {
     _ = instance;
     _ = contents;
     return error.NotImplemented;

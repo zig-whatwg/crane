@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -103,7 +104,7 @@ pub fn set_onresourcetimingbufferfull(instance: *runtime.Instance, value: typede
 }
 
 /// Operation: measure
-pub fn call_measure(instance: *runtime.Instance, measureName: runtime.DOMString, startOrMeasureOptions: *const anyopaque, endMark: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_measure(instance: *runtime.Instance, measureName: runtime.DOMString, startOrMeasureOptions: webidl.Opt(*const anyopaque), endMark: webidl.Opt(runtime.DOMString)) ImplError!*runtime.Instance {
     _ = instance;
     _ = measureName;
     _ = startOrMeasureOptions;
@@ -125,14 +126,14 @@ pub fn call_getEntriesByType(instance: *runtime.Instance, @"type": runtime.DOMSt
 }
 
 /// Operation: clearMeasures
-pub fn call_clearMeasures(instance: *runtime.Instance, measureName: runtime.DOMString) ImplError!void {
+pub fn call_clearMeasures(instance: *runtime.Instance, measureName: webidl.Opt(runtime.DOMString)) ImplError!void {
     _ = instance;
     _ = measureName;
     return error.NotImplemented;
 }
 
 /// Operation: mark
-pub fn call_mark(instance: *runtime.Instance, markName: runtime.DOMString, markOptions: dictionaries.PerformanceMarkOptions) ImplError!*runtime.Instance {
+pub fn call_mark(instance: *runtime.Instance, markName: runtime.DOMString, markOptions: webidl.Opt(dictionaries.PerformanceMarkOptions)) ImplError!*runtime.Instance {
     _ = instance;
     _ = markName;
     _ = markOptions;
@@ -171,14 +172,14 @@ pub fn call_measureUserAgentSpecificMemory(instance: *runtime.Instance) ImplErro
 }
 
 /// Operation: clearMarks
-pub fn call_clearMarks(instance: *runtime.Instance, markName: runtime.DOMString) ImplError!void {
+pub fn call_clearMarks(instance: *runtime.Instance, markName: webidl.Opt(runtime.DOMString)) ImplError!void {
     _ = instance;
     _ = markName;
     return error.NotImplemented;
 }
 
 /// Operation: getEntriesByName
-pub fn call_getEntriesByName(instance: *runtime.Instance, name: runtime.DOMString, @"type": runtime.DOMString) ImplError!typedefs.PerformanceEntryList {
+pub fn call_getEntriesByName(instance: *runtime.Instance, name: runtime.DOMString, @"type": webidl.Opt(runtime.DOMString)) ImplError!typedefs.PerformanceEntryList {
     _ = instance;
     _ = name;
     _ = @"type";

@@ -27,6 +27,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const mixins = @import("mixins");
+const webidl = @import("webidl");
 const DOMMatrixReadOnly = interfaces.DOMMatrixReadOnly;
 
 pub const State = DOMMatrixReadOnly.State;
@@ -61,7 +62,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: *const anyopaque) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: webidl.Opt(*const anyopaque)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &DOMMatrixReadOnly.vtable, ctx);
     errdefer deinit(instance);
@@ -230,7 +231,7 @@ pub fn call_flipX(instance: *runtime.Instance) ImplError!*runtime.Instance {
 }
 
 /// Operation: scale3d
-pub fn call_scale3d(instance: *runtime.Instance, scale: f64, originX: f64, originY: f64, originZ: f64) ImplError!*runtime.Instance {
+pub fn call_scale3d(instance: *runtime.Instance, scale: webidl.Opt(f64), originX: webidl.Opt(f64), originY: webidl.Opt(f64), originZ: webidl.Opt(f64)) ImplError!*runtime.Instance {
     _ = instance;
     _ = scale;
     _ = originX;
@@ -247,14 +248,14 @@ pub fn call_fromFloat64Array(instance: *runtime.Instance, array64: *const anyopa
 }
 
 /// Operation: fromMatrix
-pub fn call_fromMatrix(instance: *runtime.Instance, other: dictionaries.DOMMatrixInit) ImplError!*runtime.Instance {
+pub fn call_fromMatrix(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMMatrixInit)) ImplError!*runtime.Instance {
     _ = instance;
     _ = other;
     return error.NotImplemented;
 }
 
 /// Operation: rotateAxisAngle
-pub fn call_rotateAxisAngle(instance: *runtime.Instance, x: f64, y: f64, z: f64, angle: f64) ImplError!*runtime.Instance {
+pub fn call_rotateAxisAngle(instance: *runtime.Instance, x: webidl.Opt(f64), y: webidl.Opt(f64), z: webidl.Opt(f64), angle: webidl.Opt(f64)) ImplError!*runtime.Instance {
     _ = instance;
     _ = x;
     _ = y;
@@ -264,14 +265,14 @@ pub fn call_rotateAxisAngle(instance: *runtime.Instance, x: f64, y: f64, z: f64,
 }
 
 /// Operation: skewY
-pub fn call_skewY(instance: *runtime.Instance, sy: f64) ImplError!*runtime.Instance {
+pub fn call_skewY(instance: *runtime.Instance, sy: webidl.Opt(f64)) ImplError!*runtime.Instance {
     _ = instance;
     _ = sy;
     return error.NotImplemented;
 }
 
 /// Operation: rotate
-pub fn call_rotate(instance: *runtime.Instance, rotX: f64, rotY: f64, rotZ: f64) ImplError!*runtime.Instance {
+pub fn call_rotate(instance: *runtime.Instance, rotX: webidl.Opt(f64), rotY: webidl.Opt(f64), rotZ: webidl.Opt(f64)) ImplError!*runtime.Instance {
     _ = instance;
     _ = rotX;
     _ = rotY;
@@ -292,7 +293,7 @@ pub fn call_toFloat64Array(instance: *runtime.Instance) ImplError!*const anyopaq
 }
 
 /// Operation: scale
-pub fn call_scale(instance: *runtime.Instance, scaleX: f64, scaleY: f64, scaleZ: f64, originX: f64, originY: f64, originZ: f64) ImplError!*runtime.Instance {
+pub fn call_scale(instance: *runtime.Instance, scaleX: webidl.Opt(f64), scaleY: webidl.Opt(f64), scaleZ: webidl.Opt(f64), originX: webidl.Opt(f64), originY: webidl.Opt(f64), originZ: webidl.Opt(f64)) ImplError!*runtime.Instance {
     _ = instance;
     _ = scaleX;
     _ = scaleY;
@@ -304,7 +305,7 @@ pub fn call_scale(instance: *runtime.Instance, scaleX: f64, scaleY: f64, scaleZ:
 }
 
 /// Operation: translate
-pub fn call_translate(instance: *runtime.Instance, tx: f64, ty: f64, tz: f64) ImplError!*runtime.Instance {
+pub fn call_translate(instance: *runtime.Instance, tx: webidl.Opt(f64), ty: webidl.Opt(f64), tz: webidl.Opt(f64)) ImplError!*runtime.Instance {
     _ = instance;
     _ = tx;
     _ = ty;
@@ -313,21 +314,21 @@ pub fn call_translate(instance: *runtime.Instance, tx: f64, ty: f64, tz: f64) Im
 }
 
 /// Operation: multiply
-pub fn call_multiply(instance: *runtime.Instance, other: dictionaries.DOMMatrixInit) ImplError!*runtime.Instance {
+pub fn call_multiply(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMMatrixInit)) ImplError!*runtime.Instance {
     _ = instance;
     _ = other;
     return error.NotImplemented;
 }
 
 /// Operation: transformPoint
-pub fn call_transformPoint(instance: *runtime.Instance, point: dictionaries.DOMPointInit) ImplError!*runtime.Instance {
+pub fn call_transformPoint(instance: *runtime.Instance, point: webidl.Opt(dictionaries.DOMPointInit)) ImplError!*runtime.Instance {
     _ = instance;
     _ = point;
     return error.NotImplemented;
 }
 
 /// Operation: skewX
-pub fn call_skewX(instance: *runtime.Instance, sx: f64) ImplError!*runtime.Instance {
+pub fn call_skewX(instance: *runtime.Instance, sx: webidl.Opt(f64)) ImplError!*runtime.Instance {
     _ = instance;
     _ = sx;
     return error.NotImplemented;
@@ -340,7 +341,7 @@ pub fn call_toJSON(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Operation: scaleNonUniform
-pub fn call_scaleNonUniform(instance: *runtime.Instance, scaleX: f64, scaleY: f64) ImplError!*runtime.Instance {
+pub fn call_scaleNonUniform(instance: *runtime.Instance, scaleX: webidl.Opt(f64), scaleY: webidl.Opt(f64)) ImplError!*runtime.Instance {
     _ = instance;
     _ = scaleX;
     _ = scaleY;
@@ -360,7 +361,7 @@ pub fn call_toFloat32Array(instance: *runtime.Instance) ImplError!*const anyopaq
 }
 
 /// Operation: rotateFromVector
-pub fn call_rotateFromVector(instance: *runtime.Instance, x: f64, y: f64) ImplError!*runtime.Instance {
+pub fn call_rotateFromVector(instance: *runtime.Instance, x: webidl.Opt(f64), y: webidl.Opt(f64)) ImplError!*runtime.Instance {
     _ = instance;
     _ = x;
     _ = y;

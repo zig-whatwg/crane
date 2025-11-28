@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -85,7 +86,7 @@ pub fn call_setSkewX(instance: *runtime.Instance, angle: f32) ImplError!void {
 }
 
 /// Operation: setMatrix
-pub fn call_setMatrix(instance: *runtime.Instance, matrix: dictionaries.DOMMatrix2DInit) ImplError!void {
+pub fn call_setMatrix(instance: *runtime.Instance, matrix: webidl.Opt(dictionaries.DOMMatrix2DInit)) ImplError!void {
     _ = instance;
     _ = matrix;
     return error.NotImplemented;

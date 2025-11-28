@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -121,7 +122,7 @@ pub fn call_reportError(instance: *runtime.Instance, e: *const anyopaque) ImplEr
 }
 
 /// Operation: setInterval
-pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: i32, arguments: []const *const anyopaque) ImplError!i32 {
+pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const *const anyopaque) ImplError!i32 {
     _ = instance;
     _ = handler;
     _ = timeout;
@@ -144,7 +145,7 @@ pub fn call_btoa(instance: *runtime.Instance, data: runtime.DOMString) ImplError
 }
 
 /// Operation: createImageBitmap
-pub fn call_createImageBitmap(instance: *runtime.Instance, image: typedefs.ImageBitmapSource, options: dictionaries.ImageBitmapOptions) ImplError!*const anyopaque {
+pub fn call_createImageBitmap(instance: *runtime.Instance, image: typedefs.ImageBitmapSource, options: webidl.Opt(dictionaries.ImageBitmapOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = image;
     _ = options;
@@ -152,7 +153,7 @@ pub fn call_createImageBitmap(instance: *runtime.Instance, image: typedefs.Image
 }
 
 /// Operation: clearInterval
-pub fn call_clearInterval(instance: *runtime.Instance, id: i32) ImplError!void {
+pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) ImplError!void {
     _ = instance;
     _ = id;
     return error.NotImplemented;
@@ -166,7 +167,7 @@ pub fn call_queueMicrotask(instance: *runtime.Instance, callback: callbacks.Void
 }
 
 /// Operation: structuredClone
-pub fn call_structuredClone(instance: *runtime.Instance, value: *const anyopaque, options: dictionaries.StructuredSerializeOptions) ImplError!*const anyopaque {
+pub fn call_structuredClone(instance: *runtime.Instance, value: *const anyopaque, options: webidl.Opt(dictionaries.StructuredSerializeOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = value;
     _ = options;
@@ -174,7 +175,7 @@ pub fn call_structuredClone(instance: *runtime.Instance, value: *const anyopaque
 }
 
 /// Operation: setTimeout
-pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: i32, arguments: []const *const anyopaque) ImplError!i32 {
+pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const *const anyopaque) ImplError!i32 {
     _ = instance;
     _ = handler;
     _ = timeout;
@@ -183,14 +184,14 @@ pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandl
 }
 
 /// Operation: clearTimeout
-pub fn call_clearTimeout(instance: *runtime.Instance, id: i32) ImplError!void {
+pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) ImplError!void {
     _ = instance;
     _ = id;
     return error.NotImplemented;
 }
 
 /// Operation: fetch
-pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: dictionaries.RequestInit) ImplError!*const anyopaque {
+pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = init_data;

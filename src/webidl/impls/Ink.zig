@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -60,7 +61,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: requestPresenter
-pub fn call_requestPresenter(instance: *runtime.Instance, param: dictionaries.InkPresenterParam) ImplError!*const anyopaque {
+pub fn call_requestPresenter(instance: *runtime.Instance, param: webidl.Opt(dictionaries.InkPresenterParam)) ImplError!*const anyopaque {
     _ = instance;
     _ = param;
     return error.NotImplemented;

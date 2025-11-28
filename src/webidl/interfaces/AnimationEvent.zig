@@ -1,5 +1,5 @@
 //! Generated from: css-animations.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -101,7 +101,7 @@ pub const AnimationEvent = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": CSSOMString, animationEventInitDict: webidl.Opt(AnimationEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try AnimationEventImpl.call_constructor(allocator, ctx, @"type", animationEventInitDict.value);
+        return try AnimationEventImpl.call_constructor(allocator, ctx, @"type", animationEventInitDict);
     }
 
     pub fn get_animationName(instance: *runtime.Instance) anyerror!CSSOMString {

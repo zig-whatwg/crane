@@ -27,6 +27,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const mixins = @import("mixins");
+const webidl = @import("webidl");
 const MediaRecorder = interfaces.MediaRecorder;
 
 pub const State = MediaRecorder.State;
@@ -61,7 +62,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, stream: *runtime.Instance, options: dictionaries.MediaRecorderOptions) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, stream: *runtime.Instance, options: webidl.Opt(dictionaries.MediaRecorderOptions)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &MediaRecorder.vtable, ctx);
     errdefer deinit(instance);
@@ -200,7 +201,7 @@ pub fn call_requestData(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: start
-pub fn call_start(instance: *runtime.Instance, timeslice: u32) ImplError!void {
+pub fn call_start(instance: *runtime.Instance, timeslice: webidl.Opt(u32)) ImplError!void {
     _ = instance;
     _ = timeslice;
     return error.NotImplemented;

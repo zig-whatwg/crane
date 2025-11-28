@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -360,7 +360,7 @@ pub const SVGTextContentElement = struct {
 
     pub fn call_getCharNumAtPosition(instance: *runtime.Instance, point: webidl.Opt(DOMPointInit)) anyerror!i32 {
         
-        return try SVGTextContentElementImpl.call_getCharNumAtPosition(instance, point.value);
+        return try SVGTextContentElementImpl.call_getCharNumAtPosition(instance, point);
     }
 
     pub fn call_getSubStringLength(instance: *runtime.Instance, charnum: u32, nchars: u32) anyerror!f32 {

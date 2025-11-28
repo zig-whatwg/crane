@@ -11,6 +11,7 @@
 //! contexts, NOT in the main Window context.
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -185,16 +186,18 @@ pub fn call_readAsDataURL(instance: *runtime.Instance, blob: *runtime.Instance) 
 /// Parameters:
 /// - blob: The blob to read
 /// - encoding: Optional encoding label (default "UTF-8")
-pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: runtime.DOMString) ImplError!runtime.DOMString {
+pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: webidl.Opt(runtime.DOMString)) ImplError!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidState;
     const blob_internal = getBlobInternal(blob) orelse return error.InvalidState;
 
     // Get blob bytes
     const bytes = blob_internal.blob_data.bytes;
 
-    // Get encoding name (default to UTF-8)
-    const enc_slice = encoding.asSlice();
-    const encoding_name: ?[]const u8 = if (enc_slice.len > 0) enc_slice else null;
+    // Get encoding name (default to UTF-8) - unwrap Opt
+    const encoding_name: ?[]const u8 = if (encoding.wasPassed()) blk: {
+        const enc_slice = encoding.value.asSlice();
+        break :blk if (enc_slice.len > 0) enc_slice else null;
+    } else null;
 
     // Package as Text with encoding
     const result = file.algorithms.packageData(

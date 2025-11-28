@@ -1,5 +1,5 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:22Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -140,7 +140,7 @@ pub const ImageDecoder = struct {
 
     pub fn call_decode(instance: *runtime.Instance, options: webidl.Opt(ImageDecodeOptions)) anyerror!*const anyopaque {
         
-        return try ImageDecoderImpl.call_decode(instance, options.value);
+        return try ImageDecoderImpl.call_decode(instance, options);
     }
 
     pub fn call_reset(instance: *runtime.Instance) anyerror!void {

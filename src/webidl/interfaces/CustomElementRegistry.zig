@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -109,7 +109,7 @@ pub const CustomElementRegistry = struct {
         defer runtime.CEReactions.end();
         
         
-        return try CustomElementRegistryImpl.call_define(instance, name, constructor, options.value);
+        return try CustomElementRegistryImpl.call_define(instance, name, constructor, options);
     }
 
     pub fn call_get(instance: *runtime.Instance, name: DOMString) anyerror!*const anyopaque {

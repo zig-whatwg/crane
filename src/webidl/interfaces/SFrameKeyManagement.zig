@@ -1,5 +1,5 @@
 //! Generated from: webrtc-encoded-transform.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -92,7 +92,7 @@ pub const SFrameKeyManagement = struct {
 
     pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyID: webidl.Opt(CryptoKeyID)) anyerror!*const anyopaque {
         
-        return try SFrameKeyManagementImpl.call_setEncryptionKey(instance, key, keyID.value);
+        return try SFrameKeyManagementImpl.call_setEncryptionKey(instance, key, keyID);
     }
 
 };

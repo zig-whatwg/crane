@@ -1,5 +1,5 @@
 //! Generated from: webidl.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -89,7 +89,7 @@ pub const QuotaExceededError = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, message: webidl.Opt(DOMString), options: webidl.Opt(QuotaExceededErrorOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try QuotaExceededErrorImpl.call_constructor(allocator, ctx, message.value, options.value);
+        return try QuotaExceededErrorImpl.call_constructor(allocator, ctx, message, options);
     }
 
     pub fn get_quota(instance: *runtime.Instance) anyerror!?f64 {

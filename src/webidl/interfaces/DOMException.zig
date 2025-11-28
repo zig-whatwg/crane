@@ -1,5 +1,5 @@
 //! Generated from: webidl.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -274,7 +274,7 @@ pub const DOMException = struct {
     /// WebIDL constructor
     pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, message: webidl.Opt(DOMString), name: webidl.Opt(DOMString)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try DOMExceptionImpl.call_constructor(allocator, ctx, message.value, name.value);
+        return try DOMExceptionImpl.call_constructor(allocator, ctx, message, name);
     }
 
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {

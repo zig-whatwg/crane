@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -60,7 +61,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: setTransform
-pub fn call_setTransform(instance: *runtime.Instance, transform: dictionaries.DOMMatrix2DInit) ImplError!void {
+pub fn call_setTransform(instance: *runtime.Instance, transform: webidl.Opt(dictionaries.DOMMatrix2DInit)) ImplError!void {
     _ = instance;
     _ = transform;
     return error.NotImplemented;

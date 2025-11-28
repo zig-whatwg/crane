@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -66,7 +67,7 @@ pub fn get_worklet(instance: *runtime.Instance) ImplError!*runtime.Instance {
 }
 
 /// Operation: delete
-pub fn call_delete(instance: *runtime.Instance, key: runtime.DOMString, options: dictionaries.SharedStorageModifierMethodOptions) ImplError!*const anyopaque {
+pub fn call_delete(instance: *runtime.Instance, key: runtime.DOMString, options: webidl.Opt(dictionaries.SharedStorageModifierMethodOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = key;
     _ = options;
@@ -74,7 +75,7 @@ pub fn call_delete(instance: *runtime.Instance, key: runtime.DOMString, options:
 }
 
 /// Operation: append
-pub fn call_append(instance: *runtime.Instance, key: runtime.DOMString, value: runtime.DOMString, options: dictionaries.SharedStorageModifierMethodOptions) ImplError!*const anyopaque {
+pub fn call_append(instance: *runtime.Instance, key: runtime.DOMString, value: runtime.DOMString, options: webidl.Opt(dictionaries.SharedStorageModifierMethodOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = key;
     _ = value;
@@ -83,7 +84,7 @@ pub fn call_append(instance: *runtime.Instance, key: runtime.DOMString, value: r
 }
 
 /// Operation: batchUpdate
-pub fn call_batchUpdate(instance: *runtime.Instance, methods: *const anyopaque, options: dictionaries.SharedStorageModifierMethodOptions) ImplError!*const anyopaque {
+pub fn call_batchUpdate(instance: *runtime.Instance, methods: *const anyopaque, options: webidl.Opt(dictionaries.SharedStorageModifierMethodOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = methods;
     _ = options;
@@ -91,7 +92,7 @@ pub fn call_batchUpdate(instance: *runtime.Instance, methods: *const anyopaque, 
 }
 
 /// Operation: run
-pub fn call_run(instance: *runtime.Instance, name: runtime.DOMString, options: dictionaries.SharedStorageRunOperationMethodOptions) ImplError!*const anyopaque {
+pub fn call_run(instance: *runtime.Instance, name: runtime.DOMString, options: webidl.Opt(dictionaries.SharedStorageRunOperationMethodOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = name;
     _ = options;
@@ -99,7 +100,7 @@ pub fn call_run(instance: *runtime.Instance, name: runtime.DOMString, options: d
 }
 
 /// Operation: createWorklet
-pub fn call_createWorklet(instance: *runtime.Instance, moduleURL: runtime.USVString, options: dictionaries.SharedStorageWorkletOptions) ImplError!*const anyopaque {
+pub fn call_createWorklet(instance: *runtime.Instance, moduleURL: runtime.USVString, options: webidl.Opt(dictionaries.SharedStorageWorkletOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = moduleURL;
     _ = options;
@@ -107,7 +108,7 @@ pub fn call_createWorklet(instance: *runtime.Instance, moduleURL: runtime.USVStr
 }
 
 /// Operation: set
-pub fn call_set(instance: *runtime.Instance, key: runtime.DOMString, value: runtime.DOMString, options: dictionaries.SharedStorageSetMethodOptions) ImplError!*const anyopaque {
+pub fn call_set(instance: *runtime.Instance, key: runtime.DOMString, value: runtime.DOMString, options: webidl.Opt(dictionaries.SharedStorageSetMethodOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = key;
     _ = value;
@@ -135,14 +136,14 @@ pub fn call_get(instance: *runtime.Instance, key: runtime.DOMString) ImplError!*
 }
 
 /// Operation: clear
-pub fn call_clear(instance: *runtime.Instance, options: dictionaries.SharedStorageModifierMethodOptions) ImplError!*const anyopaque {
+pub fn call_clear(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SharedStorageModifierMethodOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: selectURL
-pub fn call_selectURL(instance: *runtime.Instance, name: runtime.DOMString, urls: *const anyopaque, options: dictionaries.SharedStorageRunOperationMethodOptions) ImplError!*const anyopaque {
+pub fn call_selectURL(instance: *runtime.Instance, name: runtime.DOMString, urls: *const anyopaque, options: webidl.Opt(dictionaries.SharedStorageRunOperationMethodOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = name;
     _ = urls;

@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -127,7 +128,7 @@ pub fn call_destroy(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: createView
-pub fn call_createView(instance: *runtime.Instance, descriptor: dictionaries.GPUTextureViewDescriptor) ImplError!*runtime.Instance {
+pub fn call_createView(instance: *runtime.Instance, descriptor: webidl.Opt(dictionaries.GPUTextureViewDescriptor)) ImplError!*runtime.Instance {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;

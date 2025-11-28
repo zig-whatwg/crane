@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -124,7 +125,7 @@ pub fn set_outgoingHighWaterMark(instance: *runtime.Instance, value: f64) ImplEr
 }
 
 /// Operation: createWritable
-pub fn call_createWritable(instance: *runtime.Instance, options: dictionaries.WebTransportSendOptions) ImplError!*runtime.Instance {
+pub fn call_createWritable(instance: *runtime.Instance, options: webidl.Opt(dictionaries.WebTransportSendOptions)) ImplError!*runtime.Instance {
     _ = instance;
     _ = options;
     return error.NotImplemented;

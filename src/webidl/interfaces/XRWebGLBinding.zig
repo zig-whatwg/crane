@@ -1,5 +1,5 @@
 //! Generated from: webxrlayers.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -159,22 +159,22 @@ pub const XRWebGLBinding = struct {
 
     pub fn call_createCylinderLayer(instance: *runtime.Instance, init_data: webidl.Opt(XRCylinderLayerInit)) anyerror!*runtime.Instance {
         
-        return try XRWebGLBindingImpl.call_createCylinderLayer(instance, init_data.value);
+        return try XRWebGLBindingImpl.call_createCylinderLayer(instance, init_data);
     }
 
     pub fn call_createCubeLayer(instance: *runtime.Instance, init_data: webidl.Opt(XRCubeLayerInit)) anyerror!*runtime.Instance {
         
-        return try XRWebGLBindingImpl.call_createCubeLayer(instance, init_data.value);
+        return try XRWebGLBindingImpl.call_createCubeLayer(instance, init_data);
     }
 
     pub fn call_createQuadLayer(instance: *runtime.Instance, init_data: webidl.Opt(XRQuadLayerInit)) anyerror!*runtime.Instance {
         
-        return try XRWebGLBindingImpl.call_createQuadLayer(instance, init_data.value);
+        return try XRWebGLBindingImpl.call_createQuadLayer(instance, init_data);
     }
 
     pub fn call_getSubImage(instance: *runtime.Instance, layer: *runtime.Instance, frame: *runtime.Instance, eye: webidl.Opt(XREye)) anyerror!*runtime.Instance {
         
-        return try XRWebGLBindingImpl.call_getSubImage(instance, layer, frame, eye.value);
+        return try XRWebGLBindingImpl.call_getSubImage(instance, layer, frame, eye);
     }
 
     pub fn call_getViewSubImage(instance: *runtime.Instance, layer: *runtime.Instance, view: *runtime.Instance) anyerror!*runtime.Instance {
@@ -189,12 +189,12 @@ pub const XRWebGLBinding = struct {
 
     pub fn call_createProjectionLayer(instance: *runtime.Instance, init_data: webidl.Opt(XRProjectionLayerInit)) anyerror!*runtime.Instance {
         
-        return try XRWebGLBindingImpl.call_createProjectionLayer(instance, init_data.value);
+        return try XRWebGLBindingImpl.call_createProjectionLayer(instance, init_data);
     }
 
     pub fn call_createEquirectLayer(instance: *runtime.Instance, init_data: webidl.Opt(XREquirectLayerInit)) anyerror!*runtime.Instance {
         
-        return try XRWebGLBindingImpl.call_createEquirectLayer(instance, init_data.value);
+        return try XRWebGLBindingImpl.call_createEquirectLayer(instance, init_data);
     }
 
     pub fn call_foveateBoundTexture(instance: *runtime.Instance, target: GLenum, fixed_foveation: f32) anyerror!void {

@@ -32,6 +32,7 @@ const typedefs = @import("typedefs");
 const dictionaries = @import("dictionaries");
 const infra = @import("infra");
 const encoding_mod = @import("encoding");
+const webidl = @import("webidl");
 
 const TextDecoder = interfaces.TextDecoder;
 const Encoding = encoding_mod.Encoding;
@@ -136,20 +137,15 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 3. Set this's encoding to encoding.
 /// 4. If options["fatal"] is true, then set this's error mode to "fatal".
 /// 5. Set this's ignore BOM to options["ignoreBOM"].
-pub fn call_constructor(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    label: runtime.DOMString,
-    options: dictionaries.TextDecoderOptions,
-) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, label: webidl.Opt(runtime.DOMString), options: webidl.Opt(dictionaries.TextDecoderOptions)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &TextDecoder.vtable, ctx);
     errdefer deinit(instance);
 
     const state = instance.getState(State);
 
-    // Get label as UTF-8 slice
-    const label_str = label.asSlice();
+    // Get label as UTF-8 slice (default to "utf-8" per spec if not passed)
+    const label_str = if (label.wasPassed()) label.value.asSlice() else "utf-8";
 
     // Step 1: Get encoding from label (§4.2 get an encoding)
     const enc = encoding_mod.getEncoding(label_str) orelse {
@@ -182,11 +178,11 @@ pub fn call_constructor(
     // Step 3: Set this's encoding to encoding
     state.own.encoding = runtime.DOMString.initInterned(enc.whatwg_name);
 
-    // Step 4: If options["fatal"] is true, set error mode to "fatal"
-    state.own.fatal = options.fatal orelse false;
+    // Step 4: If options["fatal"] is true, set error mode to "fatal" - unwrap Opt
+    state.own.fatal = if (options.wasPassed()) options.value.fatal orelse false else false;
 
-    // Step 5: Set this's ignore BOM to options["ignoreBOM"]
-    state.own.ignoreBOM = options.ignoreBOM orelse false;
+    // Step 5: Set this's ignore BOM to options["ignoreBOM"] - unwrap Opt
+    state.own.ignoreBOM = if (options.wasPassed()) options.value.ignoreBOM orelse false else false;
 
     return instance;
 }
@@ -234,16 +230,12 @@ pub fn get_ignoreBOM(instance: *runtime.Instance) ImplError!bool {
 ///       ii.  If result is finished, then return the result of running
 ///            serialize I/O queue with this and output.
 ///       iii. Otherwise, if result is error, throw a TypeError.
-pub fn call_decode(
-    instance: *runtime.Instance,
-    input: typedefs.AllowSharedBufferSource,
-    options: dictionaries.TextDecodeOptions,
-) ImplError!runtime.USVString {
+pub fn call_decode(instance: *runtime.Instance, input: webidl.Opt(typedefs.AllowSharedBufferSource), options: webidl.Opt(dictionaries.TextDecodeOptions)) ImplError!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return ImplError.InvalidState;
 
-    // Get streaming option
-    const stream = options.stream orelse false;
+    // Get streaming option - unwrap Opt
+    const stream = if (options.wasPassed()) options.value.stream orelse false else false;
 
     // Step 1: If do not flush is false, reset decoder state
     if (!internal.do_not_flush) {
@@ -255,8 +247,8 @@ pub fn call_decode(
     // Step 2: Set do not flush to options["stream"]
     internal.do_not_flush = stream;
 
-    // Step 3: Get bytes from input and add to I/O queue
-    const input_bytes = extractBytesFromBufferSource(input);
+    // Step 3: Get bytes from input and add to I/O queue - unwrap Opt
+    const input_bytes = if (input.wasPassed()) extractBytesFromBufferSource(input.value) else &[_]u8{};
 
     // Combine pending bytes (I/O queue) with new input
     var bytes: []const u8 = input_bytes;

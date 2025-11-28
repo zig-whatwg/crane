@@ -1,5 +1,5 @@
 //! Generated from: uievents.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -102,7 +102,7 @@ pub const TextEvent = struct {
 
     pub fn call_initTextEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), view: webidl.Opt(?*runtime.Instance), data: webidl.Opt(DOMString)) anyerror!void {
         
-        return try TextEventImpl.call_initTextEvent(instance, @"type", bubbles.value, cancelable.value, view.value, data.value);
+        return try TextEventImpl.call_initTextEvent(instance, @"type", bubbles, cancelable, view, data);
     }
 
 };

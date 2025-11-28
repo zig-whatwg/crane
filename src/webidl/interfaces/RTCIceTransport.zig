@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:21Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -234,12 +234,12 @@ pub const RTCIceTransport = struct {
 
     pub fn call_gather(instance: *runtime.Instance, options: webidl.Opt(RTCIceGatherOptions)) anyerror!void {
         
-        return try RTCIceTransportImpl.call_gather(instance, options.value);
+        return try RTCIceTransportImpl.call_gather(instance, options);
     }
 
     pub fn call_addRemoteCandidate(instance: *runtime.Instance, remoteCandidate: webidl.Opt(RTCIceCandidateInit)) anyerror!void {
         
-        return try RTCIceTransportImpl.call_addRemoteCandidate(instance, remoteCandidate.value);
+        return try RTCIceTransportImpl.call_addRemoteCandidate(instance, remoteCandidate);
     }
 
     pub fn call_getRemoteParameters(instance: *runtime.Instance) anyerror!?RTCIceParameters {
@@ -264,7 +264,7 @@ pub const RTCIceTransport = struct {
 
     pub fn call_start(instance: *runtime.Instance, remoteParameters: webidl.Opt(RTCIceParameters), role: webidl.Opt(RTCIceRole)) anyerror!void {
         
-        return try RTCIceTransportImpl.call_start(instance, remoteParameters.value, role.value);
+        return try RTCIceTransportImpl.call_start(instance, remoteParameters, role);
     }
 
 };

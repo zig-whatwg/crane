@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-28T19:51:34Z
+//! Generated at: 2025-11-28T22:33:20Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -2655,7 +2655,7 @@ pub const Document = struct {
     pub fn call_createExpression(instance: *runtime.Instance, expression: DOMString, resolver: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try DocumentImpl.call_createExpression(instance, expression, resolver.value);
+        return try DocumentImpl.call_createExpression(instance, expression, resolver);
     }
 
     pub fn call_elementFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyerror!?*runtime.Instance {
@@ -2671,7 +2671,7 @@ pub const Document = struct {
         
         // [NewObject] - Caller owns the returned object
         
-        return try DocumentImpl.call_createElement(instance, localName, options.value);
+        return try DocumentImpl.call_createElement(instance, localName, options);
     }
 
     pub fn call_releaseEvents(instance: *runtime.Instance) anyerror!void {
@@ -2690,7 +2690,7 @@ pub const Document = struct {
 
     pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
         
-        return try DocumentImpl.call_convertQuadFromNode(instance, quad, from, options.value);
+        return try DocumentImpl.call_convertQuadFromNode(instance, quad, from, options);
     }
 
     pub fn call_queryCommandSupported(instance: *runtime.Instance, commandId: DOMString) anyerror!bool {
@@ -2715,7 +2715,7 @@ pub const Document = struct {
         defer runtime.CEReactions.end();
         
         
-        return try DocumentImpl.call_open(instance, unused1.value, unused2.value);
+        return try DocumentImpl.call_open(instance, unused1, unused2);
     }
 
     pub fn call_hasUnpartitionedCookieAccess(instance: *runtime.Instance) anyerror!*const anyopaque {
@@ -2734,7 +2734,7 @@ pub const Document = struct {
         defer runtime.CEReactions.end();
         
         
-        return try DocumentImpl.call_execCommand(instance, commandId, showUI.value, value.value);
+        return try DocumentImpl.call_execCommand(instance, commandId, showUI, value);
     }
 
     pub fn call_measureElement(instance: *runtime.Instance, element: *runtime.Instance) anyerror!*runtime.Instance {
@@ -2804,12 +2804,12 @@ pub const Document = struct {
 
     pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!*const anyopaque {
         
-        return try DocumentImpl.call_getBoxQuads(instance, options.value);
+        return try DocumentImpl.call_getBoxQuads(instance, options);
     }
 
     pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
         
-        return try DocumentImpl.call_convertPointFromNode(instance, point, from, options.value);
+        return try DocumentImpl.call_convertPointFromNode(instance, point, from, options);
     }
 
     pub fn call_getAnimations(instance: *runtime.Instance) anyerror!*const anyopaque {
@@ -2828,7 +2828,7 @@ pub const Document = struct {
 
     pub fn call_evaluate(instance: *runtime.Instance, expression: DOMString, contextNode: *runtime.Instance, resolver: webidl.Opt(??*runtime.CallbackWrapper), @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
         
-        return try DocumentImpl.call_evaluate(instance, expression, contextNode, resolver.value, @"type".value, result.value);
+        return try DocumentImpl.call_evaluate(instance, expression, contextNode, resolver, @"type", result);
     }
 
     pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!?*runtime.Instance {
@@ -2848,7 +2848,7 @@ pub const Document = struct {
         
         // [NewObject] - Caller owns the returned object
         
-        return try DocumentImpl.call_importNode(instance, node, options.value);
+        return try DocumentImpl.call_importNode(instance, node, options);
     }
 
     /// Extended attributes: [NewObject]
@@ -2910,7 +2910,7 @@ pub const Document = struct {
     pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try DocumentImpl.call_createTreeWalker(instance, root, whatToShow.value, filter.value);
+        return try DocumentImpl.call_createTreeWalker(instance, root, whatToShow, filter);
     }
 
     pub fn call_getElementsByName(instance: *runtime.Instance, elementName: DOMString) anyerror!*runtime.Instance {
@@ -2950,7 +2950,7 @@ pub const Document = struct {
 
     pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
         
-        return try DocumentImpl.call_convertRectFromNode(instance, rect, from, options.value);
+        return try DocumentImpl.call_convertRectFromNode(instance, rect, from, options);
     }
 
     pub fn call_queryCommandValue(instance: *runtime.Instance, commandId: DOMString) anyerror!DOMString {
@@ -2960,12 +2960,12 @@ pub const Document = struct {
 
     pub fn call_caretPositionFromPoint(instance: *runtime.Instance, x: f64, y: f64, options: webidl.Opt(CaretPositionFromPointOptions)) anyerror!?*runtime.Instance {
         
-        return try DocumentImpl.call_caretPositionFromPoint(instance, x, y, options.value);
+        return try DocumentImpl.call_caretPositionFromPoint(instance, x, y, options);
     }
 
     pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
         
-        return try DocumentImpl.call_startViewTransition(instance, callbackOptions.value);
+        return try DocumentImpl.call_startViewTransition(instance, callbackOptions);
     }
 
     /// Extended attributes: [NewObject]
@@ -3006,7 +3006,7 @@ pub const Document = struct {
         
         // [NewObject] - Caller owns the returned object
         
-        return try DocumentImpl.call_createElementNS(instance, namespace, qualifiedName, options.value);
+        return try DocumentImpl.call_createElementNS(instance, namespace, qualifiedName, options);
     }
 
     pub fn call_captureEvents(instance: *runtime.Instance) anyerror!void {
@@ -3023,7 +3023,7 @@ pub const Document = struct {
     /// Extended attributes: [SecureContext]
     pub fn call_browsingTopics(instance: *runtime.Instance, options: webidl.Opt(BrowsingTopicsOptions)) anyerror!*const anyopaque {
         
-        return try DocumentImpl.call_browsingTopics(instance, options.value);
+        return try DocumentImpl.call_browsingTopics(instance, options);
     }
 
     pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime.Instance) anyerror!*runtime.Instance {
@@ -3035,7 +3035,7 @@ pub const Document = struct {
     pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try DocumentImpl.call_createNodeIterator(instance, root, whatToShow.value, filter.value);
+        return try DocumentImpl.call_createNodeIterator(instance, root, whatToShow, filter);
     }
 
     pub fn call_measureText(instance: *runtime.Instance, text: DOMString, styleMap: *runtime.Instance) anyerror!*runtime.Instance {

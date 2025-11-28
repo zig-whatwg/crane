@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -60,7 +61,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: postTask
-pub fn call_postTask(instance: *runtime.Instance, callback: callbacks.SchedulerPostTaskCallback, options: dictionaries.SchedulerPostTaskOptions) ImplError!*const anyopaque {
+pub fn call_postTask(instance: *runtime.Instance, callback: callbacks.SchedulerPostTaskCallback, options: webidl.Opt(dictionaries.SchedulerPostTaskOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = callback;
     _ = options;

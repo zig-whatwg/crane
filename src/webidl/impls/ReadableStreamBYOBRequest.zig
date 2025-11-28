@@ -20,10 +20,11 @@ pub const ImplError = error{
     InvalidState,
     OutOfMemory,
     BufferDetached, // From ReadableByteStreamController
-
     RangeError, // From ReadableByteStreamController
     NullValue, // From ReadableByteStreamController
     NoEventLoop,
+    IndexOutOfBounds,
+    EmptyQueue,
 };
 
 /// Internal state for ReadableStreamBYOBRequest

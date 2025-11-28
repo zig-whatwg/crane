@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -72,7 +73,7 @@ pub fn get_detail(instance: *runtime.Instance) ImplError!i32 {
 }
 
 /// Operation: initTimeEvent
-pub fn call_initTimeEvent(instance: *runtime.Instance, typeArg: runtime.DOMString, viewArg: ?*runtime.Instance, detailArg: i32) ImplError!void {
+pub fn call_initTimeEvent(instance: *runtime.Instance, typeArg: runtime.DOMString, viewArg: webidl.Opt(?*runtime.Instance), detailArg: webidl.Opt(i32)) ImplError!void {
     _ = instance;
     _ = typeArg;
     _ = viewArg;

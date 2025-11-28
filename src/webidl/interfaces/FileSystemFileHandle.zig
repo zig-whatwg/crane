@@ -1,5 +1,5 @@
 //! Generated from: fs.idl
-//! Generated at: 2025-11-28T19:51:33Z
+//! Generated at: 2025-11-28T22:33:19Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -106,7 +106,7 @@ pub const FileSystemFileHandle = struct {
 
     pub fn call_createWritable(instance: *runtime.Instance, options: webidl.Opt(FileSystemCreateWritableOptions)) anyerror!*const anyopaque {
         
-        return try FileSystemFileHandleImpl.call_createWritable(instance, options.value);
+        return try FileSystemFileHandleImpl.call_createWritable(instance, options);
     }
 
     /// Extended attributes: [Exposed=DedicatedWorker]

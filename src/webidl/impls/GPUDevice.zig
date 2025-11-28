@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -158,7 +159,7 @@ pub fn call_createShaderModule(instance: *runtime.Instance, descriptor: dictiona
 }
 
 /// Operation: createCommandEncoder
-pub fn call_createCommandEncoder(instance: *runtime.Instance, descriptor: dictionaries.GPUCommandEncoderDescriptor) ImplError!*runtime.Instance {
+pub fn call_createCommandEncoder(instance: *runtime.Instance, descriptor: webidl.Opt(dictionaries.GPUCommandEncoderDescriptor)) ImplError!*runtime.Instance {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
@@ -179,7 +180,7 @@ pub fn call_createBindGroupLayout(instance: *runtime.Instance, descriptor: dicti
 }
 
 /// Operation: createSampler
-pub fn call_createSampler(instance: *runtime.Instance, descriptor: dictionaries.GPUSamplerDescriptor) ImplError!*runtime.Instance {
+pub fn call_createSampler(instance: *runtime.Instance, descriptor: webidl.Opt(dictionaries.GPUSamplerDescriptor)) ImplError!*runtime.Instance {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;

@@ -20,6 +20,7 @@
 //! ============================================================================
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -104,7 +105,7 @@ pub fn call_getChannelData(instance: *runtime.Instance, channel: u32) ImplError!
 }
 
 /// Operation: copyFromChannel
-pub fn call_copyFromChannel(instance: *runtime.Instance, destination: *const anyopaque, channelNumber: u32, bufferOffset: u32) ImplError!void {
+pub fn call_copyFromChannel(instance: *runtime.Instance, destination: *const anyopaque, channelNumber: u32, bufferOffset: webidl.Opt(u32)) ImplError!void {
     _ = instance;
     _ = destination;
     _ = channelNumber;
@@ -113,7 +114,7 @@ pub fn call_copyFromChannel(instance: *runtime.Instance, destination: *const any
 }
 
 /// Operation: copyToChannel
-pub fn call_copyToChannel(instance: *runtime.Instance, source: *const anyopaque, channelNumber: u32, bufferOffset: u32) ImplError!void {
+pub fn call_copyToChannel(instance: *runtime.Instance, source: *const anyopaque, channelNumber: u32, bufferOffset: webidl.Opt(u32)) ImplError!void {
     _ = instance;
     _ = source;
     _ = channelNumber;
