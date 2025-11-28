@@ -60,7 +60,7 @@ pub const InternalState = struct {
     };
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
-        return .{
+        return InternalState{
             .allocator = allocator,
             .namespace_uri = null,
             .prefix = null,
@@ -68,7 +68,7 @@ pub const InternalState = struct {
             .id = runtime.DOMString.initEmpty(),
             .class_name = runtime.DOMString.initEmpty(),
             .slot = runtime.DOMString.initEmpty(),
-            .attributes = std.ArrayList(AttributeEntry).init(allocator),
+            .attributes = .{}, // Use default empty initialization
         };
     }
 
@@ -86,7 +86,7 @@ pub const InternalState = struct {
             self.allocator.free(entry.local_name);
             self.allocator.free(entry.value);
         }
-        self.attributes.deinit();
+        self.attributes.deinit(self.allocator);
     }
 };
 
