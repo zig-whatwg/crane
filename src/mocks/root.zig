@@ -36,6 +36,7 @@ pub const file_system = @import("file_system.zig");
 pub const structured_clone = @import("structured_clone.zig");
 pub const environment = @import("environment.zig");
 pub const origin_utils = @import("origin_utils.zig");
+pub const service_worker = @import("service_worker.zig");
 
 // Environment exports for convenience.
 pub const EnvironmentSettingsObject = environment.EnvironmentSettingsObject;
@@ -51,6 +52,10 @@ pub const isSameOriginDomain = origin_utils.isSameOriginDomain;
 pub const isSameSite = origin_utils.isSameSite;
 pub const isSchemelesslySameSite = origin_utils.isSchemelesslySameSite;
 pub const getRegistrableDomain = origin_utils.getRegistrableDomain;
+
+// Service worker exports
+pub const ServiceWorkerController = service_worker.ServiceWorkerController;
+pub const ServiceWorkersMode = service_worker.ServiceWorkersMode;
 
 /// Common error type for mock implementations
 pub const MockError = error{
