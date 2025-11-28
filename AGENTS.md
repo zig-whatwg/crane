@@ -1,140 +1,3 @@
-We track work in Beads instead of Markdown. Run \`bd quickstart\` to see how.
-
-## Issue Tracking with bd (beads)
-
-**IMPORTANT**: This project uses **bd (beads)** for ALL issue tracking. Do NOT use markdown TODOs, task lists, or other tracking methods.
-
-### Why bd?
-
-- Dependency-aware: Track blockers and relationships between issues
-- Git-friendly: Auto-syncs to JSONL for version control
-- Agent-optimized: JSON output, ready work detection, discovered-from links
-- Prevents duplicate tracking systems and confusion
-
-### Quick Start
-
-**Check for ready work:**
-```bash
-bd ready --json
-```
-
-**Create new issues:**
-```bash
-bd create "Issue title" -t bug|feature|task -p 0-4 --json
-bd create "Issue title" -p 1 --deps discovered-from:bd-123 --json
-```
-
-**Claim and update:**
-```bash
-bd update bd-42 --status in_progress --json
-bd update bd-42 --priority 1 --json
-```
-
-**Complete work:**
-```bash
-bd close bd-42 --reason "Completed" --json
-```
-
-### Issue Types
-
-- `bug` - Something broken
-- `feature` - New functionality
-- `task` - Work item (tests, docs, refactoring)
-- `epic` - Large feature with subtasks
-- `chore` - Maintenance (dependencies, tooling)
-
-### Priorities
-
-- `0` - Critical (security, data loss, broken builds)
-- `1` - High (major features, important bugs)
-- `2` - Medium (default, nice-to-have)
-- `3` - Low (polish, optimization)
-- `4` - Backlog (future ideas)
-
-### Workflow for AI Agents
-
-1. **Check ready work**: `bd ready` shows unblocked issues
-2. **Claim your task**: `bd update <id> --status in_progress`
-3. **Work on it**: Implement, test, document
-4. **Discover new work?** Create linked issue:
-   - `bd create "Found bug" -p 1 --deps discovered-from:<parent-id>`
-5. **Complete**: `bd close <id> --reason "Done"`
-6. **Commit together**: Always commit the `.beads/issues.jsonl` file together with the code changes so issue state stays in sync with code state
-
-### Auto-Sync
-
-bd automatically syncs with git:
-- Exports to `.beads/issues.jsonl` after changes (5s debounce)
-- Imports from JSONL when newer (e.g., after `git pull`)
-- No manual export/import needed!
-
-### GitHub Copilot Integration
-
-If using GitHub Copilot, also create `.github/copilot-instructions.md` for automatic instruction loading.
-Run `bd onboard` to get the content, or see step 2 of the onboard instructions.
-
-### MCP Server (Recommended)
-
-If using Claude or MCP-compatible clients, install the beads MCP server:
-
-```bash
-pip install beads-mcp
-```
-
-Add to MCP config (e.g., `~/.config/claude/config.json`):
-```json
-{
-  "beads": {
-    "command": "beads-mcp",
-    "args": []
-  }
-}
-```
-
-Then use `mcp__beads__*` functions instead of CLI commands.
-
-### Managing AI-Generated Planning Documents
-
-AI assistants often create planning and design documents during development:
-- PLAN.md, IMPLEMENTATION.md, ARCHITECTURE.md
-- DESIGN.md, CODEBASE_SUMMARY.md, INTEGRATION_PLAN.md
-- TESTING_GUIDE.md, TECHNICAL_DESIGN.md, and similar files
-
-**Best Practice: Use a dedicated directory for these ephemeral files**
-
-**Recommended approach:**
-- Create a `history/` directory in the project root
-- Store ALL AI-generated planning/design docs in `history/`
-- Keep the repository root clean and focused on permanent project files
-- Only access `history/` when explicitly asked to review past planning
-
-**Example .gitignore entry (optional):**
-```
-# AI planning documents (ephemeral)
-history/
-```
-
-**Benefits:**
-- ✅ Clean repository root
-- ✅ Clear separation between ephemeral and permanent documentation
-- ✅ Easy to exclude from version control if desired
-- ✅ Preserves planning history for archeological research
-- ✅ Reduces noise when browsing the project
-
-### Important Rules
-
-- ✅ Use bd for ALL task tracking
-- ✅ Always use `--json` flag for programmatic use
-- ✅ Link discovered work with `discovered-from` dependencies
-- ✅ Check `bd ready` before asking "what should I work on?"
-- ✅ Store AI planning docs in `history/` directory
-- ❌ Do NOT create markdown TODO lists
-- ❌ Do NOT use external issue trackers
-- ❌ Do NOT duplicate tracking systems
-- ❌ Do NOT clutter repo root with planning documents
-
-For more details, see README.md and QUICKSTART.md.
-
 # Agent Guidelines for WHATWG Specifications Monorepo in Zig
 
 ## ⚠️ CRITICAL: Ask Clarifying Questions When Unclear
@@ -332,7 +195,6 @@ This project uses a **dynamic skill loading system** where the LLM should:
    - User says "oneshot [task]" → Load `oneshot` skill (takes over execution)
    - Zig code changes → Load `zig` skill
    - C++ code changes (V8 wrappers) → Load `cpp` skill
-   - Task tracking → Load `beads_workflow` skill
    - Git operations → Load `commit_workflow` skill
    - Ambiguous requirements → `communication_protocol` (always active)
    - Temporary files → `temporary_files` (always active)
@@ -380,10 +242,6 @@ Analyze task type
     ↓ ALSO CHECK
 ┌──────────────────────────────┐
 │ Is this C++ code (V8 FFI)?  │ → YES → Load: cpp
-└──────────────────────────────┘
-    ↓ ALSO CHECK
-┌──────────────────────────────┐
-│ Is this task tracking?       │ → YES → Use: beads
 └──────────────────────────────┘
     ↓ ALSO CHECK
 ┌──────────────────────────────┐
@@ -683,94 +541,6 @@ chmod +x .git/hooks/pre-commit
 See `skills/pre_commit_checks/SKILL.md` for complete setup guide.
 
 
-## Issue Tracking with bd (beads)
-
-**IMPORTANT**: This project uses **bd (beads)** for ALL issue tracking. Do NOT use markdown TODOs, task lists, or other tracking methods.
-
-### Why bd?
-
-- Dependency-aware: Track blockers and relationships between issues
-- Git-friendly: Auto-syncs to JSONL for version control
-- Agent-optimized: JSON output, ready work detection, discovered-from links
-- Prevents duplicate tracking systems and confusion
-
-### Quick Start
-
-**Check for ready work:**
-```bash
-bd ready --json
-```
-
-**Create new issues:**
-```bash
-bd create "Issue title" -t bug|feature|task -p 0-4 --json
-bd create "Issue title" -p 1 --deps discovered-from:bd-123 --json
-```
-
-**Claim and update:**
-```bash
-bd update bd-42 --status in_progress --json
-bd update bd-42 --priority 1 --json
-```
-
-**Complete work:**
-```bash
-bd close bd-42 --reason "Completed" --json
-```
-
-### Issue Types
-
-- `bug` - Something broken
-- `feature` - New functionality
-- `task` - Work item (tests, docs, refactoring)
-- `epic` - Large feature with subtasks
-- `chore` - Maintenance (dependencies, tooling)
-
-### Priorities
-
-- `0` - Critical (security, data loss, broken builds)
-- `1` - High (major features, important bugs)
-- `2` - Medium (default, nice-to-have)
-- `3` - Low (polish, optimization)
-- `4` - Backlog (future ideas)
-
-### Workflow for AI Agents
-
-1. **Check ready work**: `bd ready` shows unblocked issues
-2. **Claim your task**: `bd update <id> --status in_progress`
-3. **Work on it**: Implement, test, document
-4. **Discover new work?** Create linked issue:
-   - `bd create "Found bug" -p 1 --deps discovered-from:<parent-id>`
-5. **Complete**: `bd close <id> --reason "Done"`
-6. **Commit together**: Always commit the `.beads/issues.jsonl` file together with the code changes so issue state stays in sync with code state
-
-### Auto-Sync
-
-bd automatically syncs with git:
-- Exports to `.beads/issues.jsonl` after changes (5s debounce)
-- Imports from JSONL when newer (e.g., after `git pull`)
-- No manual export/import needed!
-
-### MCP Server (Recommended)
-
-If using Claude or MCP-compatible clients, install the beads MCP server:
-
-```bash
-pip install beads-mcp
-```
-
-Add to MCP config (e.g., `~/.config/claude/config.json`):
-```json
-{
-  "beads": {
-    "command": "beads-mcp",
-    "args": []
-  }
-}
-```
-
-Then use `mcp__beads__*` functions instead of CLI commands.
-
 ### Managing AI-Generated Documents
 
 **DEFAULT: ALL AI-generated documents go to `tmp/` unless user explicitly requests otherwise.**
@@ -800,17 +570,8 @@ Did user explicitly request a different location?
 
 ### Important Rules
 
-- ✅ Use bd for ALL task tracking
-- ✅ Always use `--json` flag for programmatic use
-- ✅ Link discovered work with `discovered-from` dependencies
-- ✅ Check `bd ready` before asking "what should I work on?"
 - ✅ Store AI-generated docs in `tmp/` by default (unless explicitly requested otherwise)
-- ❌ Do NOT create markdown TODO lists
-- ❌ Do NOT use external issue trackers
-- ❌ Do NOT duplicate tracking systems
 - ❌ Do NOT clutter repo root with temporary documents
-
-For complete details, see `skills/beads_workflow/SKILL.md`.
 
 ---
 
@@ -849,16 +610,13 @@ WHATWG specs underpin all web platform functionality. Optimize for performance w
 
 **Use descriptive commit messages** following the project's conventional commit style. See "Workflow" sections below for commit procedures.
 
-### 8. **Use bd for Task Tracking** ⭐
-All tasks, bugs, and features tracked in bd (beads). Always use `bd ready --json` to check for work. Link discovered issues with `discovered-from`. Never use markdown TODOs.
-
-### 9. **Handle Dependencies Correctly** ⭐
+### 8. **Handle Dependencies Correctly** ⭐
 When a spec depends on another spec, check `src/` for implementation. If not implemented, create a temporary mock with clear markers. Never skip dependency handling.
 
-### 10. **All Temporary Files Go to tmp/** ⭐
+### 9. **All Temporary Files Go to tmp/** ⭐
 **DEFAULT: ALL** AI-generated summaries, analyses, plans, and temporary documentation MUST go into `tmp/` directory by default. Never clutter project root. Only place files elsewhere when user explicitly requests it. See `skills/temporary_files/SKILL.md` for complete policy.
 
-### 11. **NEVER Modify Generated Files Directly** ⭐⭐⭐
+### 10. **NEVER Modify Generated Files Directly** ⭐⭐⭐
 **Files in `src/webidl/` subdirectories (interfaces/, typedefs/, dictionaries/, callbacks/) are code-generated outputs. NEVER make direct changes to them unless explicitly directed by the user.**
 
 **General Rule:**
@@ -901,7 +659,7 @@ zig build codegen -- specs/idl/ specs/supplementary/ --dest-root src/webidl/
 5. Verify tests pass
 6. Commit codegen changes AND regenerated files together
 
-### 12. **Implementation Files (impls/) Workflow** ⭐⭐⭐
+### 11. **Implementation Files (impls/) Workflow** ⭐⭐⭐
 
 **Implementation files in `src/webidl/impls/` contain CUSTOM CODE and are NOT overwritten by codegen.**
 
@@ -980,40 +738,34 @@ zig build codegen -- specs/idl/ specs/supplementary/ --dest-root src/webidl/
 
 ### Workflow (New Features)
 
-1. **Check bd for issue** - `bd ready --json` or create new issue if needed
-2. **Claim the issue** - `bd update bd-N --status in_progress --json`
-3. **Identify context** - Determine which spec you're implementing (from file path or issue description)
-4. **Read spec** - Load complete spec from `specs/whatwg/[spec-name]/` or relevant spec directory
-5. **Understand full algorithm** - Read all steps with context, dependencies, and edge cases
-6. **Check dependencies** - Use `monorepo_navigation` skill to find required specs in `src/`
-7. **Handle missing dependencies** - Create temporary mocks if needed using `dependency_mocking` skill
-8. **Write tests first** - Test all algorithm steps and edge cases
-9. **Implement precisely** - Follow spec steps exactly, numbered comments
-10. **Document** - Inline docs with spec references (do this BEFORE committing)
-11. **Verify** - No leaks, all tests pass, pre-commit checks pass
-12. **✅ COMMIT** - Implementation + tests + inline docs together (see Golden Rule #7)
-13. **Update CHANGELOG.md** - Document what was added
-14. **✅ COMMIT** - Commit changelog update
-15. **Update FEATURE_CATALOG.md** if user-facing API
-16. **✅ COMMIT** - Commit catalog update
-17. **Close issue** - `bd close bd-N --reason "Implemented" --json`
+1. **Identify context** - Determine which spec you're implementing (from file path or task description)
+2. **Read spec** - Load complete spec from `specs/whatwg/[spec-name]/` or relevant spec directory
+3. **Understand full algorithm** - Read all steps with context, dependencies, and edge cases
+4. **Check dependencies** - Use `monorepo_navigation` skill to find required specs in `src/`
+5. **Handle missing dependencies** - Create temporary mocks if needed using `dependency_mocking` skill
+6. **Write tests first** - Test all algorithm steps and edge cases
+7. **Implement precisely** - Follow spec steps exactly, numbered comments
+8. **Document** - Inline docs with spec references (do this BEFORE committing)
+9. **Verify** - No leaks, all tests pass, pre-commit checks pass
+10. **✅ COMMIT** - Implementation + tests + inline docs together (see Golden Rule #7)
+11. **Update CHANGELOG.md** - Document what was added
+12. **✅ COMMIT** - Commit changelog update
+13. **Update FEATURE_CATALOG.md** if user-facing API
+14. **✅ COMMIT** - Commit catalog update
 
 **Remember:** Commit after EACH working step. Implementation + tests + docs = ONE commit. Changelog and catalog are separate commits.
 
 ### Workflow (Bug Fixes)
 
-1. **Check bd for issue** - or create: `bd create "Bug: ..." -t bug -p 1 --json`
-2. **Claim the issue** - `bd update bd-N --status in_progress --json`
-3. **Identify context** - Determine which spec has the bug
-4. **Write failing test** that reproduces the bug
-5. **Read spec** - Load relevant spec from `specs/whatwg/` to verify expected behavior
-6. **Fix the bug** with minimal code change
-7. **Document** - Add/update inline docs if needed
-8. **Verify** all tests pass (including new test), pre-commit checks pass
-9. **✅ COMMIT** - Fix + test + docs together with clear description
-10. **Update** CHANGELOG.md if user-visible
-11. **✅ COMMIT** - Commit changelog update
-12. **Close issue** - `bd close bd-N --reason "Fixed" --json`
+1. **Identify context** - Determine which spec has the bug
+2. **Write failing test** that reproduces the bug
+3. **Read spec** - Load relevant spec from `specs/whatwg/` to verify expected behavior
+4. **Fix the bug** with minimal code change
+5. **Document** - Add/update inline docs if needed
+6. **Verify** all tests pass (including new test), pre-commit checks pass
+7. **✅ COMMIT** - Fix + test + docs together with clear description
+8. **Update** CHANGELOG.md if user-visible
+9. **✅ COMMIT** - Commit changelog update
 
 **Remember:** Commit after EACH working step. Fix + test + docs = ONE commit. Changelog is separate.
 
@@ -1128,9 +880,6 @@ skills/
 ├── pre_commit_checks/       # Automated quality checks
 │   ├── USAGE.md             # When to use (autodiscovery)
 │   └── SKILL.md             # Complete documentation
-├── beads_workflow/          # ⭐ Task tracking with bd (beads)
-│   ├── USAGE.md             # When to use (autodiscovery)
-│   └── SKILL.md             # Complete documentation
 ├── monorepo_navigation/     # ⭐ Finding dependencies in monorepo
 │   ├── USAGE.md             # When to use (autodiscovery)
 │   └── SKILL.md             # Complete documentation
@@ -1167,9 +916,6 @@ src/                         # Source code (organized by spec)
 ├── infra/                   # Infra Standard implementation
 ├── streams/                 # Streams Standard implementation
 └── root.zig                 # Monorepo root
-
-.beads/
-└── issues.jsonl             # Beads issue tracking database (git-versioned)
 
 memory/                      # Persistent knowledge (memory tool)
 ├── completed_features.json
@@ -1367,7 +1113,6 @@ Most WHATWG specs depend on other WHATWG specs implemented in this monorepo:
 **If Dependency Not Implemented:**
 1. **Use `dependency_mocking` skill** - Create temporary mock with clear markers
 2. **Mark as TODO** - Indicate this must be replaced with real implementation
-3. **Track in bd** - Create issue to implement the dependency
 
 ### Internal WebIDL Codegen
 
@@ -1391,17 +1136,16 @@ The WebIDL code generation system is built-in to this monorepo at `src/webidl/co
 ## When in Doubt
 
 1. **ASK A CLARIFYING QUESTION** ⭐ - Don't assume, just ask (one question at a time)
-2. **Check bd for existing issues** - `bd ready --json` - See if work is already tracked
-3. **Have you committed recently?** ⭐⭐⭐ - If you have working changes, commit them NOW
-4. **Creating files?** - Put generated docs/scripts in `tmp/` unless explicitly requested otherwise
-5. **Identify context** - Which spec are you working on? (file path, imports)
-6. **Read the WHATWG spec** - Load complete spec from `specs/whatwg/[spec-name]/`
-7. **Read the complete section** - Context matters, never rely on fragments
-8. **Check dependencies** - Use `monorepo_navigation` to find implementations
-9. **Load relevant skills** - Get specialized, context-aware guidance
-10. **Look at existing tests** - See patterns in similar specs
-11. **Check FEATURE_CATALOG.md** - See existing API patterns
-12. **Follow the Golden Rules** - Especially algorithm precision, committing, and dependency handling
+2. **Have you committed recently?** ⭐⭐⭐ - If you have working changes, commit them NOW
+3. **Creating files?** - Put generated docs/scripts in `tmp/` unless explicitly requested otherwise
+4. **Identify context** - Which spec are you working on? (file path, imports)
+5. **Read the WHATWG spec** - Load complete spec from `specs/whatwg/[spec-name]/`
+6. **Read the complete section** - Context matters, never rely on fragments
+7. **Check dependencies** - Use `monorepo_navigation` to find implementations
+8. **Load relevant skills** - Get specialized, context-aware guidance
+9. **Look at existing tests** - See patterns in similar specs
+10. **Check FEATURE_CATALOG.md** - See existing API patterns
+11. **Follow the Golden Rules** - Especially algorithm precision, committing, and dependency handling
 
 ---
 
