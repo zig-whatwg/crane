@@ -1,12 +1,15 @@
 //! Auto-generated
 pub const AddressValue = @import("AddressValue.zig").AddressValue;
 pub const AlgorithmIdentifier = @import("AlgorithmIdentifier.zig").AlgorithmIdentifier;
+pub const AllowSharedBufferSource = @import("AllowSharedBufferSource.zig").AllowSharedBufferSource;
+pub const ArrayBufferView = @import("ArrayBufferView.zig").ArrayBufferView;
 pub const Base64URLString = @import("Base64URLString.zig").Base64URLString;
 pub const BigInteger = @import("BigInteger.zig").BigInteger;
 pub const BlobPart = @import("BlobPart.zig").BlobPart;
 pub const BluetoothCharacteristicUUID = @import("BluetoothCharacteristicUUID.zig").BluetoothCharacteristicUUID;
 pub const BluetoothDescriptorUUID = @import("BluetoothDescriptorUUID.zig").BluetoothDescriptorUUID;
 pub const BluetoothServiceUUID = @import("BluetoothServiceUUID.zig").BluetoothServiceUUID;
+pub const BufferSource = @import("BufferSource.zig").BufferSource;
 pub const BodyInit = @import("BodyInit.zig").BodyInit;
 pub const COSEAlgorithmIdentifier = @import("COSEAlgorithmIdentifier.zig").COSEAlgorithmIdentifier;
 pub const CSSColorAngle = @import("CSSColorAngle.zig").CSSColorAngle;
