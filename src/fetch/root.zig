@@ -38,6 +38,7 @@ pub const referrer_policy = @import("referrer_policy/root.zig");
 pub const cookies = @import("cookies/root.zig");
 pub const cors = @import("cors/root.zig");
 pub const network = @import("network/root.zig");
+pub const cache = @import("cache/root.zig");
 
 // Re-export commonly used types
 pub const HeaderList = internal.HeaderList;
@@ -61,10 +62,18 @@ pub const NetworkResponse = network.NetworkResponse;
 pub const NetworkError = network.NetworkError;
 pub const MockBackend = network.MockBackend;
 
+// Re-export cache types
+pub const CacheBackend = cache.CacheBackend;
+pub const CacheKey = cache.CacheKey;
+pub const CacheEntry = cache.CacheEntry;
+pub const CacheControl = cache.CacheControl;
+pub const MemoryCacheBackend = cache.MemoryCacheBackend;
+
 test {
     _ = internal;
     _ = referrer_policy;
     _ = cookies;
     _ = cors;
     _ = network;
+    _ = cache;
 }
