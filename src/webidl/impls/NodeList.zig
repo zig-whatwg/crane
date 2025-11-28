@@ -28,18 +28,53 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const mixins = @import("mixins");
 const NodeList = interfaces.NodeList;
+const infra = @import("infra");
 
 pub const State = NodeList.State;
 
 pub const ImplError = error{
     NotImplemented,
+    InvalidState,
+    OutOfMemory,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Internal state for NodeList implementation
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+    nodes: infra.List(*runtime.Instance),
+    is_live: bool = false,
+    root: ?*runtime.Instance = null,
+
+    pub fn init(allocator: std.mem.Allocator) InternalState {
+        return .{
+            .allocator = allocator,
+            .nodes = infra.List(*runtime.Instance).init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *InternalState) void {
+        self.nodes.deinit();
+    }
+};
+
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    const state = instance.getState(State);
+    return state.own._internal;
+}
+
+pub fn addNode(instance: *runtime.Instance, node: *runtime.Instance) !void {
+    const internal = getInternal(instance) orelse return error.InvalidState;
+    try internal.nodes.append(node);
+    const state = instance.getState(State);
+    state.own.length = @intCast(internal.nodes.size());
+}
+
+pub fn clear(instance: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    internal.nodes.clear();
+    const state = instance.getState(State);
+    state.own.length = 0;
+}
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -78,4 +113,3 @@ pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) Imp
     _ = callback;
     return error.NotImplemented;
 }
-

@@ -28,18 +28,49 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const mixins = @import("mixins");
 const HTMLCollection = interfaces.HTMLCollection;
+const infra = @import("infra");
 
 pub const State = HTMLCollection.State;
 
 pub const ImplError = error{
     NotImplemented,
+    InvalidState,
+    OutOfMemory,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Internal state for HTMLCollection implementation
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+    elements: infra.List(*runtime.Instance),
+    root: ?*runtime.Instance = null,
+    filter_tag: ?runtime.DOMString = null,
+    filter_class: ?runtime.DOMString = null,
+
+    pub fn init(allocator: std.mem.Allocator) InternalState {
+        return .{
+            .allocator = allocator,
+            .elements = infra.List(*runtime.Instance).init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *InternalState) void {
+        self.elements.deinit();
+        if (self.filter_tag) |*tag| tag.deinit(self.allocator);
+        if (self.filter_class) |*class| class.deinit(self.allocator);
+    }
+};
+
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    const state = instance.getState(State);
+    return state.own._internal;
+}
+
+pub fn addElement(instance: *runtime.Instance, element: *runtime.Instance) !void {
+    const internal = getInternal(instance) orelse return error.InvalidState;
+    try internal.elements.append(element);
+    const state = instance.getState(State);
+    state.own.length = @intCast(internal.elements.size());
+}
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -78,4 +109,3 @@ pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) Impl
     _ = name;
     return null;
 }
-
