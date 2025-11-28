@@ -1,5 +1,5 @@
 //! Generated from: attribution-reporting-api.idl
-//! Generated at: 2025-11-28T03:24:37Z
+//! Generated at: 2025-11-28T18:02:24Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 

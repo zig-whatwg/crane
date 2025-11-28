@@ -1,5 +1,5 @@
 //! Generated from: encoding.idl
-//! Generated at: 2025-11-28T03:24:38Z
+//! Generated at: 2025-11-28T18:02:25Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 

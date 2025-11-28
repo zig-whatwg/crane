@@ -560,7 +560,7 @@ fn writeTypeSimple(w: anytype, webidl_type: types.IDLType, type_registry: ?*cons
         if (isTrustedTypeOrStringUnion(union_types)) {
             // TrustedTypes are not yet implemented - treat as DOMString
             // This handles (TrustedType or DOMString), (TrustedHTML or DOMString), etc.
-            try w.writeAll("DOMString");
+            try w.writeAll("runtime.DOMString");
             return;
         }
         // Fallback for other union types - use anyopaque
@@ -718,6 +718,7 @@ fn generateImplFile(
     try w.writeAll("const enums = @import(\"enums\");\n");
     try w.writeAll("const dictionaries = @import(\"dictionaries\");\n");
     try w.writeAll("const callbacks = @import(\"callbacks\");\n");
+    try w.writeAll("const mixins = @import(\"mixins\");\n");
     try w.print("const {s} = interfaces.{s};\n\n", .{ interface.name, interface.name });
 
     // State type alias
