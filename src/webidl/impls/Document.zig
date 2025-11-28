@@ -21,6 +21,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -33,13 +34,20 @@ pub const State = Document.State;
 
 pub const ImplError = error{
     NotImplemented,
+    InvalidStateError,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Document format type enumeration
+pub const DocType = enum {
+    html,
+    xml,
+};
+
+/// Internal state for Document implementation (minimal stub)
+pub const InternalState = struct {
+    /// Document type: html or xml
+    doc_type: DocType = .xml,
+};
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -49,13 +57,26 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    errdefer runtime.Instance.deinit(instance);
+
+    const state = instance.getState(StateType);
+    state.own._internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(state.own._internal.?);
+
+    state.own._internal.?.* = InternalState{
+        .doc_type = .xml, // Default to XML
+    };
+
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
+    const state = instance.getState(State);
+    if (state.own._internal) |_internal| {
+        // InternalState has no dynamic allocations for now
+        _ = _internal;
+    }
     runtime.Instance.deinit(instance);
 }
 
@@ -2042,7 +2063,7 @@ pub fn call_exitPictureInPicture(instance: *runtime.Instance) ImplError!*const a
 }
 
 /// Operation: createExpression
-pub fn call_createExpression(instance: *runtime.Instance, expression: runtime.DOMString, resolver: ??*runtime.CallbackWrapper) ImplError!*runtime.Instance {
+pub fn call_createExpression(instance: *runtime.Instance, expression: runtime.DOMString, resolver: webidl.Opt(??*runtime.CallbackWrapper)) ImplError!*runtime.Instance {
     _ = instance;
     _ = expression;
     _ = resolver;
@@ -2058,7 +2079,7 @@ pub fn call_elementFromPoint(instance: *runtime.Instance, x: f64, y: f64) ImplEr
 }
 
 /// Operation: createElement
-pub fn call_createElement(instance: *runtime.Instance, localName: runtime.DOMString, options: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_createElement(instance: *runtime.Instance, localName: runtime.DOMString, options: webidl.Opt(*const anyopaque)) ImplError!*runtime.Instance {
     _ = instance;
     _ = localName;
     _ = options;
@@ -2079,7 +2100,7 @@ pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNod
 }
 
 /// Operation: convertQuadFromNode
-pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: dictionaries.DOMQuadInit, from: typedefs.GeometryNode, options: dictionaries.ConvertCoordinateOptions) ImplError!*runtime.Instance {
+pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: dictionaries.DOMQuadInit, from: typedefs.GeometryNode, options: webidl.Opt(dictionaries.ConvertCoordinateOptions)) ImplError!*runtime.Instance {
     _ = instance;
     _ = quad;
     _ = from;
@@ -2109,7 +2130,7 @@ pub fn call_requestStorageAccessFor(instance: *runtime.Instance, requestedOrigin
 }
 
 /// Operation: open
-pub fn call_open(instance: *runtime.Instance, unused1: runtime.DOMString, unused2: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMString), unused2: webidl.Opt(runtime.DOMString)) ImplError!*runtime.Instance {
     _ = instance;
     _ = unused1;
     _ = unused2;
@@ -2130,7 +2151,7 @@ pub fn call_hasRedemptionRecord(instance: *runtime.Instance, issuer: runtime.USV
 }
 
 /// Operation: execCommand
-pub fn call_execCommand(instance: *runtime.Instance, commandId: runtime.DOMString, showUI: bool, value: runtime.DOMString) ImplError!bool {
+pub fn call_execCommand(instance: *runtime.Instance, commandId: runtime.DOMString, showUI: webidl.Opt(bool), value: webidl.Opt(runtime.DOMString)) ImplError!bool {
     _ = instance;
     _ = commandId;
     _ = showUI;
@@ -2211,14 +2232,14 @@ pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.P
 }
 
 /// Operation: getBoxQuads
-pub fn call_getBoxQuads(instance: *runtime.Instance, options: dictionaries.BoxQuadOptions) ImplError!*const anyopaque {
+pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BoxQuadOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: convertPointFromNode
-pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionaries.DOMPointInit, from: typedefs.GeometryNode, options: dictionaries.ConvertCoordinateOptions) ImplError!*runtime.Instance {
+pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionaries.DOMPointInit, from: typedefs.GeometryNode, options: webidl.Opt(dictionaries.ConvertCoordinateOptions)) ImplError!*runtime.Instance {
     _ = instance;
     _ = point;
     _ = from;
@@ -2247,7 +2268,7 @@ pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: run
 }
 
 /// Operation: evaluate
-pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString, contextNode: *runtime.Instance, resolver: ??*runtime.CallbackWrapper, @"type": u16, result: ?*runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString, contextNode: *runtime.Instance, resolver: webidl.Opt(??*runtime.CallbackWrapper), @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) ImplError!*runtime.Instance {
     _ = instance;
     _ = expression;
     _ = contextNode;
@@ -2271,7 +2292,7 @@ pub fn call_hasStorageAccess(instance: *runtime.Instance) ImplError!*const anyop
 }
 
 /// Operation: importNode
-pub fn call_importNode(instance: *runtime.Instance, node: *runtime.Instance, options: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_importNode(instance: *runtime.Instance, node: *runtime.Instance, options: webidl.Opt(*const anyopaque)) ImplError!*runtime.Instance {
     _ = instance;
     _ = node;
     _ = options;
@@ -2340,7 +2361,7 @@ pub fn call_createTextNode(instance: *runtime.Instance, data: runtime.DOMString)
 }
 
 /// Operation: createTreeWalker
-pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: u32, filter: ??*runtime.CallbackWrapper) ImplError!*runtime.Instance {
+pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(??*runtime.CallbackWrapper)) ImplError!*runtime.Instance {
     _ = instance;
     _ = root;
     _ = whatToShow;
@@ -2378,7 +2399,7 @@ pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, chi
 }
 
 /// Operation: convertRectFromNode
-pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: typedefs.GeometryNode, options: dictionaries.ConvertCoordinateOptions) ImplError!*runtime.Instance {
+pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: typedefs.GeometryNode, options: webidl.Opt(dictionaries.ConvertCoordinateOptions)) ImplError!*runtime.Instance {
     _ = instance;
     _ = rect;
     _ = from;
@@ -2394,7 +2415,7 @@ pub fn call_queryCommandValue(instance: *runtime.Instance, commandId: runtime.DO
 }
 
 /// Operation: caretPositionFromPoint
-pub fn call_caretPositionFromPoint(instance: *runtime.Instance, x: f64, y: f64, options: dictionaries.CaretPositionFromPointOptions) ImplError!?*runtime.Instance {
+pub fn call_caretPositionFromPoint(instance: *runtime.Instance, x: f64, y: f64, options: webidl.Opt(dictionaries.CaretPositionFromPointOptions)) ImplError!?*runtime.Instance {
     _ = instance;
     _ = x;
     _ = y;
@@ -2403,7 +2424,7 @@ pub fn call_caretPositionFromPoint(instance: *runtime.Instance, x: f64, y: f64, 
 }
 
 /// Operation: startViewTransition
-pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: webidl.Opt(*const anyopaque)) ImplError!*runtime.Instance {
     _ = instance;
     _ = callbackOptions;
     return error.NotImplemented;
@@ -2441,7 +2462,7 @@ pub fn call_requestStorageAccess(instance: *runtime.Instance) ImplError!*const a
 }
 
 /// Operation: createElementNS
-pub fn call_createElementNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, qualifiedName: runtime.DOMString, options: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_createElementNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, qualifiedName: runtime.DOMString, options: webidl.Opt(*const anyopaque)) ImplError!*runtime.Instance {
     _ = instance;
     _ = namespace;
     _ = qualifiedName;
@@ -2463,7 +2484,7 @@ pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOM
 }
 
 /// Operation: browsingTopics
-pub fn call_browsingTopics(instance: *runtime.Instance, options: dictionaries.BrowsingTopicsOptions) ImplError!*const anyopaque {
+pub fn call_browsingTopics(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BrowsingTopicsOptions)) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -2477,7 +2498,7 @@ pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime
 }
 
 /// Operation: createNodeIterator
-pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: u32, filter: ??*runtime.CallbackWrapper) ImplError!*runtime.Instance {
+pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(??*runtime.CallbackWrapper)) ImplError!*runtime.Instance {
     _ = instance;
     _ = root;
     _ = whatToShow;
@@ -2493,3 +2514,18 @@ pub fn call_measureText(instance: *runtime.Instance, text: runtime.DOMString, st
     return error.NotImplemented;
 }
 
+// =============================================================================
+// Helper Functions for Internal Use (DOMImplementation, etc.)
+// =============================================================================
+
+/// Get the internal state from an instance
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    const state = instance.getState(State);
+    return state.own._internal;
+}
+
+/// Set the document type (html or xml)
+pub fn setDocumentType(instance: *runtime.Instance, doc_type: DocType) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    internal.doc_type = doc_type;
+}
