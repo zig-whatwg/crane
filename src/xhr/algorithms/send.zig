@@ -16,9 +16,8 @@ const ResponseProcessor = @import("response.zig").ResponseProcessor;
 const UploadTracker = @import("upload.zig").UploadTracker;
 const event_support = @import("../internal/event_support.zig");
 
-// TODO: Import real Fetch when integrated
-// For now, use simplified mock for Week 4
-const SimpleFetch = @import("simple_fetch.zig");
+// Fetch integration
+const FetchIntegration = @import("fetch_integration.zig");
 
 /// Send request
 ///
@@ -89,9 +88,8 @@ fn sendAsync(
         });
     }
 
-    // Start simplified fetch
-    // TODO: Replace with real Fetch integration
-    try SimpleFetch.fetch(state, body, &processor, &upload_tracker);
+    // Start fetch with real Fetch infrastructure
+    try FetchIntegration.fetch(state, body, &processor, &upload_tracker);
 }
 
 /// Send request synchronously (Week 5)

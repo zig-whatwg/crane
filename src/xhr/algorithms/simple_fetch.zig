@@ -1,7 +1,10 @@
-//! Simplified Fetch for XHR Week 4
+//! Simplified Fetch for XHR Week 4 (DEPRECATED)
 //!
-//! Temporary simplified fetch implementation for development.
-//! TODO: Replace with real Fetch integration from src/fetch/
+//! ⚠️ DEPRECATED: This file is no longer used. Replaced by fetch_integration.zig
+//! which integrates with the real WHATWG Fetch infrastructure.
+//!
+//! This was a temporary simplified fetch implementation for development.
+//! Kept for reference only. Will be removed after Week 4 completion.
 
 const std = @import("std");
 const xhr_root = @import("../root.zig");
