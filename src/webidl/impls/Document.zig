@@ -45,8 +45,19 @@ pub const DocType = enum {
 
 /// Internal state for Document implementation (minimal stub)
 pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+
     /// Document type: html or xml
     doc_type: DocType = .xml,
+
+    /// Document content type (e.g., "text/html", "application/xml")
+    content_type: ?[]const u8 = null,
+
+    pub fn deinit(self: *InternalState) void {
+        if (self.content_type) |ct| {
+            self.allocator.free(ct);
+        }
+    }
 };
 
 /// Initialize instance (creates the instance)
@@ -64,7 +75,9 @@ pub fn init(
     errdefer allocator.destroy(state.own._internal.?);
 
     state.own._internal.?.* = InternalState{
+        .allocator = allocator,
         .doc_type = .xml, // Default to XML
+        .content_type = null,
     };
 
     return instance;
@@ -73,9 +86,9 @@ pub fn init(
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
-    if (state.own._internal) |_internal| {
-        // InternalState has no dynamic allocations for now
-        _ = _internal;
+    if (state.own._internal) |internal| {
+        internal.deinit();
+        state.own._internal = null;
     }
     runtime.Instance.deinit(instance);
 }
@@ -2528,4 +2541,17 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 pub fn setDocumentType(instance: *runtime.Instance, doc_type: DocType) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     internal.doc_type = doc_type;
+}
+
+/// Set the content type (e.g., "text/html", "application/xml")
+pub fn setContentType(instance: *runtime.Instance, content_type: []const u8) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Free old content_type if it exists
+    if (internal.content_type) |old_ct| {
+        internal.allocator.free(old_ct);
+    }
+
+    // Duplicate and store new content_type
+    internal.content_type = try internal.allocator.dupe(u8, content_type);
 }
