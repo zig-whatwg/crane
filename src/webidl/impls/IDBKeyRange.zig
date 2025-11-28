@@ -138,14 +138,14 @@ pub fn get_upperOpen(instance: *runtime.Instance) ImplError!bool {
 ///
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbkeyrange-only
 pub fn call_only(instance: *runtime.Instance, value: *const anyopaque) ImplError!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
+    // Static method - use context directly, not instance state
+    const allocator = instance.ctx.allocator;
 
     // Convert JS value to IDBKey
     const key = convertToKey(value) catch return error.DataError;
 
     // Create new range instance
-    const new_instance = IDBKeyRangeInterface.init(internal.allocator, instance.ctx) catch {
+    const new_instance = IDBKeyRangeInterface.init(allocator, instance.ctx) catch {
         return error.OutOfMemory;
     };
 
@@ -179,8 +179,8 @@ pub fn call_includes(instance: *runtime.Instance, key: *const anyopaque) ImplErr
 ///
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbkeyrange-bound
 pub fn call_bound(instance: *runtime.Instance, lower: *const anyopaque, upper: *const anyopaque, lowerOpen: bool, upperOpen: bool) ImplError!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
+    // Static method - use context directly, not instance state
+    const allocator = instance.ctx.allocator;
 
     // Convert JS values to IDBKey
     const lower_key = convertToKey(lower) catch return error.DataError;
@@ -192,7 +192,7 @@ pub fn call_bound(instance: *runtime.Instance, lower: *const anyopaque, upper: *
     };
 
     // Create new range instance
-    const new_instance = IDBKeyRangeInterface.init(internal.allocator, instance.ctx) catch {
+    const new_instance = IDBKeyRangeInterface.init(allocator, instance.ctx) catch {
         return error.OutOfMemory;
     };
 
@@ -211,14 +211,14 @@ pub fn call_bound(instance: *runtime.Instance, lower: *const anyopaque, upper: *
 ///
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbkeyrange-upperbound
 pub fn call_upperBound(instance: *runtime.Instance, upper: *const anyopaque, open: bool) ImplError!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
+    // Static method - use context directly, not instance state
+    const allocator = instance.ctx.allocator;
 
     // Convert JS value to IDBKey
     const upper_key = convertToKey(upper) catch return error.DataError;
 
     // Create new range instance
-    const new_instance = IDBKeyRangeInterface.init(internal.allocator, instance.ctx) catch {
+    const new_instance = IDBKeyRangeInterface.init(allocator, instance.ctx) catch {
         return error.OutOfMemory;
     };
 
@@ -237,14 +237,14 @@ pub fn call_upperBound(instance: *runtime.Instance, upper: *const anyopaque, ope
 ///
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbkeyrange-lowerbound
 pub fn call_lowerBound(instance: *runtime.Instance, lower: *const anyopaque, open: bool) ImplError!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
+    // Static method - use context directly, not instance state
+    const allocator = instance.ctx.allocator;
 
     // Convert JS value to IDBKey
     const lower_key = convertToKey(lower) catch return error.DataError;
 
     // Create new range instance
-    const new_instance = IDBKeyRangeInterface.init(internal.allocator, instance.ctx) catch {
+    const new_instance = IDBKeyRangeInterface.init(allocator, instance.ctx) catch {
         return error.OutOfMemory;
     };
 

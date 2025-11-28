@@ -39,10 +39,64 @@ const template_registry = @import("template_registry.zig");
 /// Re-export WrapperTypeInfo for use by generated bindings
 pub const WrapperTypeInfo = wrapper_type_info.WrapperTypeInfo;
 
+/// Import webidl for Opt type checking
+const webidl = @import("webidl");
+
 /// Number of internal fields required for wrapped objects
 /// Slot 0: Zig instance pointer
 /// Slot 1: WrapperTypeInfo pointer (for type-safe unwrapping)
 pub const INTERNAL_FIELD_COUNT: c_int = 2;
+
+/// Check if a type is a webidl.Opt (Optional) wrapper type by checking for notPassed() declaration
+fn isWebIdlOpt(comptime T: type) bool {
+    const info = @typeInfo(T);
+    // Must be a struct to have declarations
+    if (info != .@"struct") return false;
+    // Must have notPassed() and wasPassed() functions (characteristic of webidl.Optional/Opt)
+    return @hasDecl(T, "notPassed") and @hasDecl(T, "wasPassed");
+}
+
+/// Get the default value for a parameter type when the argument was not provided.
+/// Returns null if no default is possible and NotEnoughArguments should be returned.
+/// This function handles all the type-specific logic at comptime to avoid
+/// generating invalid code paths for incompatible types.
+fn getDefaultArgValue(comptime T: type) ?T {
+    const info = @typeInfo(T);
+
+    // Check webidl.Opt first (highest priority)
+    if (info == .@"struct" and @hasDecl(T, "notPassed") and @hasDecl(T, "wasPassed")) {
+        return T.notPassed();
+    }
+
+    // Check for dictionary types with all-optional fields
+    if (info == .@"struct" and canDefaultInit(T)) {
+        return defaultInit(T);
+    }
+
+    // Check Zig optional type
+    if (info == .optional) {
+        return null;
+    }
+
+    // Check DOMString type
+    if (T == runtime.DOMString) {
+        return runtime.DOMString.initEmpty();
+    }
+
+    // For anyopaque pointers, we can't return a valid default
+    // Caller must handle this case specially
+    if (T == *const anyopaque or T == *anyopaque) {
+        return null; // Signal to use undefined
+    }
+
+    // No valid default
+    return null;
+}
+
+/// Check if a type can have a default or should use undefined (for anyopaque pointers)
+fn canUseUndefined(comptime T: type) bool {
+    return T == *const anyopaque or T == *anyopaque;
+}
 
 /// Check if a type can be default-initialized (all fields have defaults or are optional/struct)
 fn canDefaultInit(comptime T: type) bool {
@@ -804,16 +858,10 @@ pub fn V8Interface(comptime Interface: type) type {
                         const v8_arg1 = info.get(0);
                         break :arg_blk try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
                     } else arg_blk: {
-                        // Try default value
-                        if (canDefaultInit(Param1Type)) {
-                            break :arg_blk defaultInit(Param1Type);
-                        } else if (@typeInfo(Param1Type) == .optional) {
-                            break :arg_blk null;
-                        } else if (Param1Type == runtime.DOMString) {
-                            break :arg_blk runtime.DOMString.initEmpty();
-                        } else if (Param1Type == *const anyopaque or Param1Type == *anyopaque) {
-                            // Allow null for anyopaque pointer types (optional object parameters)
-                            // Use undefined to satisfy type system - impl code should check for null
+                        // Get default value for optional parameter
+                        if (comptime getDefaultArgValue(Param1Type)) |default_val| {
+                            break :arg_blk default_val;
+                        } else if (comptime canUseUndefined(Param1Type)) {
                             break :arg_blk undefined;
                         } else {
                             return error.NotEnoughArguments;
@@ -833,13 +881,10 @@ pub fn V8Interface(comptime Interface: type) type {
                         const v8_arg2 = info.get(1);
                         break :arg_blk try conv.fromV8Value(Param2Type, allocator, isolate, v8_context, v8_arg2);
                     } else arg_blk: {
-                        if (canDefaultInit(Param2Type)) {
-                            break :arg_blk defaultInit(Param2Type);
-                        } else if (@typeInfo(Param2Type) == .optional) {
-                            break :arg_blk null;
-                        } else if (Param2Type == *const anyopaque or Param2Type == *anyopaque) {
-                            // Allow null for anyopaque pointer types (optional object parameters)
-                            // Use undefined to satisfy type system - impl code should check for null
+                        // Get default value for optional parameter
+                        if (comptime getDefaultArgValue(Param2Type)) |default_val| {
+                            break :arg_blk default_val;
+                        } else if (comptime canUseUndefined(Param2Type)) {
                             break :arg_blk undefined;
                         } else {
                             return error.NotEnoughArguments;
@@ -862,13 +907,10 @@ pub fn V8Interface(comptime Interface: type) type {
                         const v8_arg3 = info.get(2);
                         break :arg_blk try conv.fromV8Value(Param3Type, allocator, isolate, v8_context, v8_arg3);
                     } else arg_blk: {
-                        if (canDefaultInit(Param3Type)) {
-                            break :arg_blk defaultInit(Param3Type);
-                        } else if (@typeInfo(Param3Type) == .optional) {
-                            break :arg_blk null;
-                        } else if (Param3Type == *const anyopaque or Param3Type == *anyopaque) {
-                            // Allow null for anyopaque pointer types (optional object parameters)
-                            // Use undefined to satisfy type system - impl code should check for null
+                        // Get default value for optional parameter
+                        if (comptime getDefaultArgValue(Param3Type)) |default_val| {
+                            break :arg_blk default_val;
+                        } else if (comptime canUseUndefined(Param3Type)) {
                             break :arg_blk undefined;
                         } else {
                             return error.NotEnoughArguments;
@@ -1762,7 +1804,6 @@ pub fn V8Interface(comptime Interface: type) type {
                         // call_values(instance, options) - has options
                         const OptionsType = @import("dictionaries").ReadableStreamIteratorOptions;
                         const options: OptionsType = .{ .preventCancel = false };
-                        const webidl = @import("webidl");
                         const opt_options = webidl.Opt(OptionsType).passed(options);
                         break :blk Interface.call_values(instance, opt_options) catch |err| {
                             const err_name = @errorName(err);

@@ -115,8 +115,9 @@ pub fn call_constructor(
 // === Static Methods ===
 
 pub fn call_error(instance: *runtime.Instance) !*runtime.Instance {
-    const state = instance.getState(State);
-    const allocator = state.own._internal.?.allocator;
+    // Static method - use context directly, not instance state
+    // (instance is just a template for context/allocator access)
+    const allocator = instance.ctx.allocator;
     const ctx = instance.ctx;
 
     const error_instance = try init(allocator, State, &Response.vtable, ctx);
@@ -134,8 +135,8 @@ pub fn call_redirect(instance: *runtime.Instance, url: []const u8, status: u16) 
         return error.RangeError;
     }
 
-    const state = instance.getState(State);
-    const allocator = state.own._internal.?.allocator;
+    // Static method - use context directly, not instance state
+    const allocator = instance.ctx.allocator;
     const ctx = instance.ctx;
 
     const redirect_instance = try init(allocator, State, &Response.vtable, ctx);
@@ -151,8 +152,8 @@ pub fn call_redirect(instance: *runtime.Instance, url: []const u8, status: u16) 
 pub fn call_json(instance: *runtime.Instance, data: *const anyopaque, init_data: dictionaries.ResponseInit) !*runtime.Instance {
     _ = data;
 
-    const state = instance.getState(State);
-    const allocator = state.own._internal.?.allocator;
+    // Static method - use context directly, not instance state
+    const allocator = instance.ctx.allocator;
     const ctx = instance.ctx;
 
     const dummy: u8 = 0;
