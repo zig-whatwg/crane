@@ -30,6 +30,7 @@ pub const data_url = @import("data_url.zig");
 pub const scheme_fetch = @import("scheme_fetch.zig");
 pub const main_fetch = @import("main_fetch.zig");
 pub const http_fetch = @import("http_fetch.zig");
+pub const fetch_algorithm = @import("fetch.zig");
 
 // Re-export main types and functions
 pub const DataUrlResult = data_url.DataUrlResult;
@@ -55,6 +56,13 @@ pub const httpRedirectFetch = http_fetch.httpRedirectFetch;
 pub const httpNetworkOrCacheFetch = http_fetch.httpNetworkOrCacheFetch;
 pub const httpNetworkFetch = http_fetch.httpNetworkFetch;
 pub const corsCheck = http_fetch.corsCheck;
+
+pub const FetchError = fetch_algorithm.FetchError;
+pub const FetchResult = fetch_algorithm.FetchResult;
+pub const FetchOptions = fetch_algorithm.FetchOptions;
+pub const fetch = fetch_algorithm.fetch;
+pub const fetchSimple = fetch_algorithm.fetchSimple;
+pub const fetchWithAbort = fetch_algorithm.fetchWithAbort;
 
 test {
     std.testing.refAllDecls(@This());
