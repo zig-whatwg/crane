@@ -1093,6 +1093,9 @@ pub fn build(b: *std.Build) void {
     // fetch_mod.addImport("streams", streams_mod);
     // fetch_mod.addImport("encoding", encoding_mod);
 
+    // Allow impls to access fetch for Headers, Request, Response implementations
+    impls_mod.addImport("fetch", fetch_mod);
+
     // Wire spec modules into whatwg module
     whatwg_mod.addImport("infra", infra_mod);
     whatwg_mod.addImport("webidl", webidl_mod);
