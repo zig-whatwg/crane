@@ -36,9 +36,14 @@ const std = @import("std");
 // Internal
 pub const context = @import("internal/context.zig");
 pub const GlobalContext = context.GlobalContext;
+pub const state_machine = @import("internal/state_machine.zig");
+pub const XMLHttpRequestState = state_machine.XMLHttpRequestState;
+pub const ReadyState = state_machine.ReadyState;
 
-// Algorithms (will be added in later phases)
-// pub const open = @import("algorithms/open.zig");
+// Algorithms
+pub const open = @import("algorithms/open.zig");
+
+// TODO: Add in later phases
 // pub const send = @import("algorithms/send.zig");
 // pub const abort = @import("algorithms/abort.zig");
 
