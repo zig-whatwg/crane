@@ -8,6 +8,7 @@
 //! - `internal`: Internal data structures (header list, request/response internals)
 //! - `referrer_policy`: W3C Referrer Policy implementation
 //! - `cookies`: RFC 6265bis cookie handling
+//! - `cors`: CORS check and validation algorithms
 //!
 //! ## Usage
 //!
@@ -27,11 +28,15 @@
 //! // Use cookie store
 //! var store = fetch.cookies.CookieStore.init(allocator);
 //! defer store.deinit();
+//!
+//! // Use CORS check
+//! const result = fetch.cors.corsCheck("https://example.com", .omit, response_headers);
 //! ```
 
 pub const internal = @import("internal/root.zig");
 pub const referrer_policy = @import("referrer_policy/root.zig");
 pub const cookies = @import("cookies/root.zig");
+pub const cors = @import("cors/root.zig");
 
 // Re-export commonly used types
 pub const HeaderList = internal.HeaderList;
@@ -44,8 +49,13 @@ pub const ReferrerPolicy = referrer_policy.ReferrerPolicy;
 pub const CookieStore = cookies.CookieStore;
 pub const Cookie = cookies.Cookie;
 
+// Re-export CORS types
+pub const CredentialsMode = cors.CredentialsMode;
+pub const corsCheck = cors.corsCheck;
+
 test {
     _ = internal;
     _ = referrer_policy;
     _ = cookies;
+    _ = cors;
 }
