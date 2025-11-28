@@ -1558,3 +1558,46 @@ pub fn call_setPointerCapture(instance: *runtime.Instance, pointerId: i32) ImplE
     _ = pointerId;
     return error.NotImplemented;
 }
+
+// =============================================================================
+// Helper Functions for Internal Use (DOMImplementation, etc.)
+// =============================================================================
+
+/// Set the local name of this element (called by DOMImplementation)
+pub fn setLocalName(instance: *runtime.Instance, local_name: []const u8) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Free existing local name
+    internal.local_name.deinit(internal.allocator);
+
+    // Set new local name
+    internal.local_name = try runtime.DOMString.initDupe(internal.allocator, local_name);
+}
+
+/// Set the namespace URI of this element (called by DOMImplementation)
+pub fn setNamespaceURI(instance: *runtime.Instance, namespace: []const u8) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Free existing namespace if any
+    if (internal.namespace_uri) |*ns| {
+        ns.deinit(internal.allocator);
+        internal.namespace_uri = null;
+    }
+
+    // Set new namespace
+    internal.namespace_uri = try runtime.DOMString.initDupe(internal.allocator, namespace);
+}
+
+/// Set the prefix of this element (called by DOMImplementation)
+pub fn setPrefix(instance: *runtime.Instance, prefix: []const u8) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Free existing prefix if any
+    if (internal.prefix) |*p| {
+        p.deinit(internal.allocator);
+        internal.prefix = null;
+    }
+
+    // Set new prefix
+    internal.prefix = try runtime.DOMString.initDupe(internal.allocator, prefix);
+}
