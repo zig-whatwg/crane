@@ -37,6 +37,25 @@ fn isTrustedTypeOrStringUnion(union_types: []const types.IDLType) bool {
     return has_trusted_type and has_string;
 }
 
+/// Check if a union type is the (Node or DOMString) pattern used by DOM mutation methods
+/// This pattern is used by ParentNode.prepend/append/replaceChildren and ChildNode.before/after/replaceWith
+fn isNodeOrDOMStringUnion(union_types: []const types.IDLType) bool {
+    if (union_types.len != 2) return false;
+
+    var has_node = false;
+    var has_string = false;
+
+    for (union_types) |ut| {
+        const t = ut.type;
+        if (std.mem.eql(u8, t, "Node")) has_node = true;
+        if (std.mem.eql(u8, t, "DOMString")) has_string = true;
+        // Also handle TrustedScript variant used in some specs
+        if (std.mem.eql(u8, t, "TrustedScript")) has_string = true;
+    }
+
+    return has_node and has_string;
+}
+
 /// Write a file header comment with source information and timestamp
 ///
 /// Example output:
@@ -109,6 +128,9 @@ pub fn writeImports(
 
     // Import implementation from "impls" module
     try writer.print("const {s}Impl = @import(\"impls\").{s};\n", .{ interface_name, interface_name });
+
+    // Import mixins module (for ParentNode.NodeOrString and other mixin types)
+    try writer.writeAll("const mixins = @import(\"mixins\");\n");
 
     // Track which types we've already imported to avoid duplicates
     var imported = std.StringHashMap(void).init(std.heap.page_allocator);
@@ -1748,6 +1770,15 @@ pub fn writeConstructor(
 
     // Write constructor parameters
     for (constructor.arguments) |arg| {
+        try writer.writeAll(", ");
+        try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
+        try writer.writeAll(": ");
+
+        // Handle variadic parameters: T... becomes []const T
+        if (arg.variadic) {
+            try writer.writeAll("[]const ");
+        }
+
         const type_mapping = if (type_registry) |reg|
             mapWebIDLTypeWithRegistry(arg.idlType, reg)
         else
@@ -1766,17 +1797,27 @@ pub fn writeConstructor(
             arg_type = "*const anyopaque";
         }
 
-        try writer.writeAll(", ");
-        try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
-
         // For callback interface types, use ?*runtime.CallbackWrapper
         // For regular interface types, use *runtime.Instance directly
+        // Handle nullable parameters: T? becomes ?T (but not for variadic - slice handles null)
         if (is_callback_interface) {
-            try writer.writeAll(": ?*runtime.CallbackWrapper");
+            if (arg.idlType.nullable and !arg.variadic) {
+                try writer.writeAll("??*runtime.CallbackWrapper");
+            } else {
+                try writer.writeAll("?*runtime.CallbackWrapper");
+            }
         } else if (is_interface) {
-            try writer.writeAll(": *runtime.Instance");
+            if (arg.idlType.nullable and !arg.variadic) {
+                try writer.writeAll("?*runtime.Instance");
+            } else {
+                try writer.writeAll("*runtime.Instance");
+            }
         } else {
-            try writer.print(": {s}", .{arg_type});
+            if (arg.idlType.nullable and !arg.variadic) {
+                try writer.print("?{s}", .{arg_type});
+            } else {
+                try writer.print("{s}", .{arg_type});
+            }
         }
     }
 
@@ -1833,15 +1874,32 @@ pub fn writeOverloadedConstructor(
             try writer.writeAll("        /// constructor()\n");
             try writer.print("        {s}: void,\n", .{variant_name});
         } else if (ctor.arguments.len == 1) {
-            var arg_type = if (type_registry) |reg|
-                mapWebIDLTypeWithRegistry(ctor.arguments[0].idlType, reg).type_name
-            else
-                mapWebIDLType(ctor.arguments[0].idlType);
-            if (std.mem.eql(u8, arg_type, "anyopaque")) {
-                arg_type = "*const anyopaque";
+            // Build type with variadic and nullable handling
+            var buffer: [512]u8 = undefined;
+            var fbs = std.io.fixedBufferStream(&buffer);
+            const arg = ctor.arguments[0];
+
+            // Variadic: T... -> []const T
+            if (arg.variadic) {
+                try fbs.writer().writeAll("[]const ");
             }
-            try writer.print("        /// constructor({s})\n", .{ctor.arguments[0].name});
-            try writer.print("        {s}: {s},\n", .{ variant_name, arg_type });
+
+            // Nullable: T? -> ?T (but not for variadic)
+            if (arg.idlType.nullable and !arg.variadic) {
+                try fbs.writer().writeByte('?');
+            }
+
+            var base_type = if (type_registry) |reg|
+                mapWebIDLTypeWithRegistry(arg.idlType, reg).type_name
+            else
+                mapWebIDLType(arg.idlType);
+            if (std.mem.eql(u8, base_type, "anyopaque")) {
+                base_type = "*const anyopaque";
+            }
+            try fbs.writer().writeAll(base_type);
+
+            try writer.print("        /// constructor({s})\n", .{arg.name});
+            try writer.print("        {s}: {s},\n", .{ variant_name, fbs.getWritten() });
         } else {
             try writer.writeAll("        /// constructor(");
             for (ctor.arguments, 0..) |arg, i| {
@@ -1852,19 +1910,34 @@ pub fn writeOverloadedConstructor(
 
             try writer.print("        {s}: struct {{\n", .{variant_name});
             for (ctor.arguments) |arg| {
-                var arg_type = if (type_registry) |reg|
+                // Build type with variadic and nullable handling
+                var buffer: [512]u8 = undefined;
+                var fbs = std.io.fixedBufferStream(&buffer);
+
+                // Variadic: T... -> []const T
+                if (arg.variadic) {
+                    try fbs.writer().writeAll("[]const ");
+                }
+
+                // Nullable: T? -> ?T (but not for variadic)
+                if (arg.idlType.nullable and !arg.variadic) {
+                    try fbs.writer().writeByte('?');
+                }
+
+                var base_type = if (type_registry) |reg|
                     mapWebIDLTypeWithRegistry(arg.idlType, reg).type_name
                 else
                     mapWebIDLType(arg.idlType);
-                if (std.mem.eql(u8, arg_type, "anyopaque")) {
-                    arg_type = "*const anyopaque";
+                if (std.mem.eql(u8, base_type, "anyopaque")) {
+                    base_type = "*const anyopaque";
                 }
+                try fbs.writer().writeAll(base_type);
 
                 // Escape Zig keywords using @"..." syntax
                 if (isKeyword(arg.name)) {
-                    try writer.print("            @\"{s}\": {s},\n", .{ arg.name, arg_type });
+                    try writer.print("            @\"{s}\": {s},\n", .{ arg.name, fbs.getWritten() });
                 } else {
-                    try writer.print("            {s}: {s},\n", .{ arg.name, arg_type });
+                    try writer.print("            {s}: {s},\n", .{ arg.name, fbs.getWritten() });
                 }
             }
             try writer.writeAll("        },\n");
@@ -1974,6 +2047,15 @@ fn writeSingleOperation(
 
     // Write parameters
     for (op.arguments) |arg| {
+        try writer.writeAll(", ");
+        try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
+        try writer.writeAll(": ");
+
+        // Handle variadic parameters: T... becomes []const T
+        if (arg.variadic) {
+            try writer.writeAll("[]const ");
+        }
+
         // Check if parameter type is an interface - if so, use *runtime.Instance
         // Callback interfaces use ?*runtime.CallbackWrapper through EngineInterface
         const type_kind = if (type_registry) |reg| reg.lookup(arg.idlType.type) else null;
@@ -1995,9 +2077,12 @@ fn writeSingleOperation(
             arg_type = "*const anyopaque";
         }
 
-        try writer.writeAll(", ");
-        try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
-        try writer.print(": {s}", .{arg_type});
+        // Handle nullable parameters: T? becomes ?T (but not for variadic - slice handles null)
+        if (arg.idlType.nullable and !arg.variadic) {
+            try writer.print("?{s}", .{arg_type});
+        } else {
+            try writer.print("{s}", .{arg_type});
+        }
     }
 
     // For nullable return types, return ?T instead of T (allows returning null instead of error)
@@ -2098,12 +2183,29 @@ fn writeOverloadedOperation(
             try writer.print("        /// {s}()\n", .{name});
             try writer.print("        {s}: void,\n", .{variant_name});
         } else if (op.arguments.len == 1) {
-            const arg_type = if (type_registry) |reg|
-                mapWebIDLTypeWithRegistry(op.arguments[0].idlType, reg).type_name
+            // Build type with variadic and nullable handling
+            var buffer: [512]u8 = undefined;
+            var fbs = std.io.fixedBufferStream(&buffer);
+            const arg = op.arguments[0];
+
+            // Variadic: T... -> []const T
+            if (arg.variadic) {
+                try fbs.writer().writeAll("[]const ");
+            }
+
+            // Nullable: T? -> ?T (but not for variadic)
+            if (arg.idlType.nullable and !arg.variadic) {
+                try fbs.writer().writeByte('?');
+            }
+
+            const base_type = if (type_registry) |reg|
+                mapWebIDLTypeWithRegistry(arg.idlType, reg).type_name
             else
-                mapWebIDLType(op.arguments[0].idlType);
-            try writer.print("        /// {s}({s})\n", .{ name, op.arguments[0].name });
-            try writer.print("        {s}: {s},\n", .{ variant_name, arg_type });
+                mapWebIDLType(arg.idlType);
+            try fbs.writer().writeAll(base_type);
+
+            try writer.print("        /// {s}({s})\n", .{ name, arg.name });
+            try writer.print("        {s}: {s},\n", .{ variant_name, fbs.getWritten() });
         } else {
             try writer.print("        /// {s}(", .{name});
             for (op.arguments, 0..) |arg, i| {
@@ -2114,16 +2216,31 @@ fn writeOverloadedOperation(
 
             try writer.print("        {s}: struct {{\n", .{variant_name});
             for (op.arguments) |arg| {
-                const arg_type = if (type_registry) |reg|
+                // Build type with variadic and nullable handling
+                var buffer: [512]u8 = undefined;
+                var fbs = std.io.fixedBufferStream(&buffer);
+
+                // Variadic: T... -> []const T
+                if (arg.variadic) {
+                    try fbs.writer().writeAll("[]const ");
+                }
+
+                // Nullable: T? -> ?T (but not for variadic)
+                if (arg.idlType.nullable and !arg.variadic) {
+                    try fbs.writer().writeByte('?');
+                }
+
+                const base_type = if (type_registry) |reg|
                     mapWebIDLTypeWithRegistry(arg.idlType, reg).type_name
                 else
                     mapWebIDLType(arg.idlType);
+                try fbs.writer().writeAll(base_type);
 
                 // Escape Zig keywords using @"..." syntax
                 if (isKeyword(arg.name)) {
-                    try writer.print("            @\"{s}\": {s},\n", .{ arg.name, arg_type });
+                    try writer.print("            @\"{s}\": {s},\n", .{ arg.name, fbs.getWritten() });
                 } else {
-                    try writer.print("            {s}: {s},\n", .{ arg.name, arg_type });
+                    try writer.print("            {s}: {s},\n", .{ arg.name, fbs.getWritten() });
                 }
             }
             try writer.writeAll("        },\n");
@@ -2485,6 +2602,13 @@ pub const TypeMapping = struct {
 fn mapWebIDLTypeWithRegistry(idl_type: types.IDLType, type_registry: *const @import("ir.zig").TypeRegistry) TypeMapping {
     // Handle union types first (before registry lookup, since unions have special .type values)
     if (idl_type.unionTypes) |union_types| {
+        // Check for (Node or DOMString) pattern used by DOM mutation methods
+        if (isNodeOrDOMStringUnion(union_types)) {
+            return .{
+                .type_name = "mixins.ParentNode.NodeOrString",
+                .needs_import = false, // Already using mixins prefix
+            };
+        }
         // Check for (TrustedType or DOMString/USVString) pattern
         // TrustedTypes are not yet implemented, so treat as plain string
         if (isTrustedTypeOrStringUnion(union_types)) {

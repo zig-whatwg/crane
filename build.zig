@@ -462,6 +462,9 @@ pub fn build(b: *std.Build) void {
     // Add mixins to impls (so impls can use shared mixin code)
     impls_mod.addImport("mixins", mixins_mod);
 
+    // Add mixins to interfaces (for ParentNode.NodeOrString and other mixin types)
+    interfaces_mod.addImport("mixins", mixins_mod);
+
     const encoding_mod = b.addModule("encoding", .{
         .root_source_file = b.path("src/encoding/root.zig"),
         .target = target,
