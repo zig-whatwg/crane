@@ -1184,12 +1184,22 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Call the interface's constructor with arguments parsed at comptime
             const instance = callConstructorWithArgs(info, allocator, ctx, v8_context, isolate) catch |err| {
-                const err_msg = std.fmt.allocPrint(allocator, "Constructor failed: {s}", .{@errorName(err)}) catch {
-                    conv.throwError(isolate, "Constructor failed");
-                    return;
-                };
-                defer allocator.free(err_msg);
-                conv.throwError(isolate, err_msg);
+                // Throw appropriate error type based on error name
+                const err_name = @errorName(err);
+                if (std.mem.eql(u8, err_name, "TypeError")) {
+                    conv.throwTypeError(isolate, "Invalid argument");
+                } else if (std.mem.eql(u8, err_name, "RangeError")) {
+                    conv.throwRangeError(isolate, "Value out of range");
+                } else if (std.mem.eql(u8, err_name, "OutOfMemory")) {
+                    conv.throwError(isolate, "Out of memory");
+                } else {
+                    const err_msg = std.fmt.allocPrint(allocator, "Constructor failed: {s}", .{err_name}) catch {
+                        conv.throwError(isolate, "Constructor failed");
+                        return;
+                    };
+                    defer allocator.free(err_msg);
+                    conv.throwError(isolate, err_msg);
+                }
                 return;
             };
 

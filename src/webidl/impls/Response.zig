@@ -144,6 +144,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, body
     // Handle body parameter
     if (body.wasPassed()) {
         if (body.value) |body_init| {
+            // Per Fetch spec: If init["status"] is a null body status, then throw a TypeError
+            // Null body statuses are: 204, 205, 304
+            const status = internal.response.status;
+            if (status == 204 or status == 205 or status == 304) {
+                return error.TypeError;
+            }
+
             // Extract body bytes based on BodyInit variant
             const body_bytes: ?[]const u8 = switch (body_init) {
                 .string => |s| s,
