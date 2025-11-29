@@ -70,14 +70,29 @@ pub fn init(
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
 
-    // Initialize DocumentFragment internal state
     const state = instance.getState(StateType);
     const ArenaAllocator = @import("runtime").ArenaAllocator;
+
+    // Initialize Node's internal state (DocumentFragment inherits from Node)
+    // With embedded inheritance, Node.State is in state.base
+    const node_internal = try ArenaAllocator.get().create(NodeImpl.InternalState);
+    node_internal.* = NodeImpl.InternalState.init(allocator);
+    node_internal.node_type = NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE;
+    state.base.own._internal = node_internal;
+
+    // Initialize DocumentFragment's own internal state
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
     state.own._internal = internal;
 
     return instance;
+}
+
+/// Get the Node internal state from a DocumentFragment instance
+/// With embedded inheritance, Node.State is in state.base
+pub fn getNodeInternal(instance: *runtime.Instance) ?*NodeImpl.InternalState {
+    const state = instance.getState(State);
+    return state.base.own._internal;
 }
 
 /// Deinitialize instance

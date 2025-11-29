@@ -127,15 +127,36 @@ pub fn init(
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
 
-    // Initialize internal state
+    const state = instance.getState(StateType);
+    const ArenaAllocator = @import("runtime").ArenaAllocator;
+    const NodeImpl = @import("Node.zig");
+    const DocumentFragmentImpl = @import("DocumentFragment.zig");
+
+    // Initialize Node's internal state (ShadowRoot → DocumentFragment → Node)
+    // With embedded inheritance: state.base = DocumentFragment.State, state.base.base = Node.State
+    const node_internal = try ArenaAllocator.get().create(NodeImpl.InternalState);
+    node_internal.* = NodeImpl.InternalState.init(allocator);
+    node_internal.node_type = NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE;
+    state.base.base.own._internal = node_internal;
+
+    // Initialize DocumentFragment's internal state
+    const df_internal = try ArenaAllocator.get().create(DocumentFragmentImpl.InternalState);
+    df_internal.* = DocumentFragmentImpl.InternalState.init(allocator);
+    state.base.own._internal = df_internal;
+
+    // Initialize ShadowRoot's own internal state
     const internal = try allocator.create(InternalState);
     internal.* = InternalState.init(allocator);
-
-    // Store internal state in instance
-    const state = instance.getState(State);
     state.own._internal = internal;
 
     return instance;
+}
+
+/// Get the Node internal state from a ShadowRoot instance
+/// With embedded inheritance: state.base.base = Node.State
+pub fn getNodeInternal(instance: *runtime.Instance) ?*@import("Node.zig").InternalState {
+    const state = instance.getState(State);
+    return state.base.base.own._internal;
 }
 
 /// Deinitialize instance
