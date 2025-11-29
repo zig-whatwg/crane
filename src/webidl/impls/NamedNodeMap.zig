@@ -96,8 +96,9 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
 /// Operation: item(index)
 /// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-item
 pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-    return internal.attrs.get(index) orelse return error.NotImplemented;
+    const internal = getInternal(instance) orelse return null;
+    // Return null for out of bounds per spec
+    return internal.attrs.get(index);
 }
 
 /// Operation: getNamedItem(qualifiedName)
@@ -117,7 +118,7 @@ pub fn call_getNamedItem(instance: *runtime.Instance, qualifiedName: runtime.DOM
         }
     }
 
-    return error.NotImplemented; // null
+    return null; // Not found
 }
 
 /// Operation: getNamedItemNS(namespace, localName)

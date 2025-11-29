@@ -101,8 +101,9 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
 /// Spec: https://dom.spec.whatwg.org/#dom-nodelist-item
 /// Returns the node at the given index, or null if out of bounds.
 pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-    return internal.nodes.get(index) orelse return error.NotImplemented;
+    const internal = getInternal(instance) orelse return null;
+    // Return null for out of bounds per spec
+    return internal.nodes.get(index);
 }
 
 /// Operation: forEach(callback)

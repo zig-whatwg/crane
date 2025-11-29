@@ -172,10 +172,11 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror
 
 /// Operation: item(index)
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-item
+/// Returns the token at the given index, or null if out of bounds.
 pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?runtime.DOMString {
-    const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
-    const token = internal.tokens.get(index) orelse return runtime.DOMString.initEmpty();
-    return token;
+    const internal = getInternal(instance) orelse return null;
+    // Return null for out of bounds per spec
+    return internal.tokens.get(index);
 }
 
 /// Operation: contains(token)
