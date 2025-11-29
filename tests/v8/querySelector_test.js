@@ -25,11 +25,11 @@ header.className = "header primary";
 var h1 = doc.createElement("h1");
 h1.className = "title";
 h1.textContent = "Test Document";
-header.appendChild(h1);
+var _h1app = header.appendChild(h1);
 
 var nav = doc.createElement("nav");
 nav.className = "navigation";
-header.appendChild(nav);
+var _navapp = header.appendChild(nav);
 
 // Create navigation links
 var navList = doc.createElement("ul");
@@ -39,10 +39,10 @@ for (var i = 1; i <= 3; i++) {
     a.setAttribute("href", "#section" + i);  // Use setAttribute so [href] selector works
     a.className = "nav-link";
     a.textContent = "Section " + i;
-    li.appendChild(a);
-    navList.appendChild(li);
+    var _aapp = li.appendChild(a);
+    var _liapp = navList.appendChild(li);
 }
-nav.appendChild(navList);
+var _navlistapp = nav.appendChild(navList);
 
 // Create main content area
 var main = doc.createElement("main");
@@ -58,12 +58,12 @@ for (var i = 1; i <= 3; i++) {
     
     var h2 = doc.createElement("h2");
     h2.textContent = "Section " + i + " Title";
-    section.appendChild(h2);
+    var _h2app = section.appendChild(h2);
     
     var p = doc.createElement("p");
     p.className = "description";
     p.textContent = "This is section " + i + " content.";
-    section.appendChild(p);
+    var _papp = section.appendChild(p);
     
     // Add nested divs in section 2
     if (i === 2) {
@@ -73,18 +73,18 @@ for (var i = 1; i <= 3; i++) {
         var innerDiv = doc.createElement("div");
         innerDiv.className = "inner-content highlight";
         innerDiv.textContent = "Nested content";
-        container.appendChild(innerDiv);
+        var _innerdivapp = container.appendChild(innerDiv);
         
         var specialSpan = doc.createElement("span");
         specialSpan.className = "special";
         specialSpan.setAttribute("data-type", "info");
         specialSpan.textContent = "Important info";
-        innerDiv.appendChild(specialSpan);
+        var _spanapp = innerDiv.appendChild(specialSpan);
         
-        section.appendChild(container);
+        var _containerapp = section.appendChild(container);
     }
     
-    main.appendChild(section);
+    var _sectionapp = main.appendChild(section);
 }
 
 // Create sidebar with form
@@ -101,28 +101,28 @@ inputName.setAttribute("type", "text");  // Use setAttribute for attribute selec
 inputName.setAttribute("name", "name");  // Use setAttribute for attribute selectors to work
 inputName.className = "form-input";
 inputName.placeholder = "Name";
-form.appendChild(inputName);
+var _inputnameapp = form.appendChild(inputName);
 
 var inputEmail = doc.createElement("input");
 inputEmail.setAttribute("type", "email");  // Use setAttribute for attribute selectors to work
 inputEmail.setAttribute("name", "email");  // Use setAttribute for attribute selectors to work
 inputEmail.className = "form-input";
 inputEmail.setAttribute("required", "");  // Use setAttribute for attribute selectors to work
-form.appendChild(inputEmail);
+var _inputemailapp = form.appendChild(inputEmail);
 
 var textarea = doc.createElement("textarea");
 textarea.setAttribute("name", "message");  // Use setAttribute for attribute selectors to work
 textarea.className = "form-input";
 textarea.rows = 5;
-form.appendChild(textarea);
+var _textareaapp = form.appendChild(textarea);
 
 var submitBtn = doc.createElement("button");
 submitBtn.setAttribute("type", "submit");  // Use setAttribute for attribute selectors to work
 submitBtn.className = "btn primary";
 submitBtn.textContent = "Submit";
-form.appendChild(submitBtn);
+var _submitapp = form.appendChild(submitBtn);
 
-aside.appendChild(form);
+var _formapp = aside.appendChild(form);
 
 // Create footer
 var footer = doc.createElement("footer");
@@ -131,14 +131,14 @@ footer.className = "footer";
 
 var footerText = doc.createElement("p");
 footerText.textContent = "© 2024 Test Document";
-footer.appendChild(footerText);
+var _footertextapp = footer.appendChild(footerText);
 
 // Assemble document
-body.appendChild(header);
-body.appendChild(main);
-body.appendChild(aside);
-body.appendChild(footer);
-html.appendChild(body);
+var _headerapp = body.appendChild(header);
+var _mainapp = body.appendChild(main);
+var _asideapp = body.appendChild(aside);
+var _footerapp = body.appendChild(footer);
+var _bodyapp = html.appendChild(body);
 // Note: Can't append to doc directly, but we can query from body
 
 // ============================================================================
@@ -146,377 +146,325 @@ html.appendChild(body);
 // ============================================================================
 
 // querySelector returns first match or null
-body.querySelector("#main-header") === header
-body.querySelector(".title") === h1
-body.querySelector("nav") === nav
-body.querySelector("#nonexistent") === null
-body.querySelector(".nonexistent") === null
+assert.strictEqual(body.querySelector("#main-header"), header, "querySelector should find #main-header")
+assert.strictEqual(body.querySelector(".title"), h1, "querySelector should find .title")
+assert.strictEqual(body.querySelector("nav"), nav, "querySelector should find nav")
+assert.strictEqual(body.querySelector("#nonexistent"), null, "querySelector should return null for #nonexistent")
+assert.strictEqual(body.querySelector(".nonexistent"), null, "querySelector should return null for .nonexistent")
 
 // querySelectorAll returns NodeList (or similar collection)
-(() => {
+assert.isTrue((() => {
     var result = body.querySelectorAll("section");
     return result !== null && result !== undefined;
-})()
+})(), "querySelectorAll should return a collection")
 
 // ID selector
-body.querySelector("#content") === main
-body.querySelector("#sidebar") === aside
-body.querySelector("#section1") !== null
-body.querySelector("#section2") !== null
+assert.strictEqual(body.querySelector("#content"), main, "querySelector should find #content")
+assert.strictEqual(body.querySelector("#sidebar"), aside, "querySelector should find #sidebar")
+assert.isNotNull(body.querySelector("#section1"), "#section1 should exist")
+assert.isNotNull(body.querySelector("#section2"), "#section2 should exist")
 
 // Class selector (single class)
-body.querySelector(".title") === h1
-body.querySelector(".navigation") === nav
-body.querySelector(".description") !== null
+assert.strictEqual(body.querySelector(".title"), h1, ".title should find h1")
+assert.strictEqual(body.querySelector(".navigation"), nav, ".navigation should find nav")
+assert.isNotNull(body.querySelector(".description"), ".description should exist")
 
 // Type selector
-body.querySelector("header") === header
-body.querySelector("main") === main
-body.querySelector("footer") === footer
-body.querySelector("section") !== null
-body.querySelector("form") === form
+assert.strictEqual(body.querySelector("header"), header, "header selector should find header")
+assert.strictEqual(body.querySelector("main"), main, "main selector should find main")
+assert.strictEqual(body.querySelector("footer"), footer, "footer selector should find footer")
+assert.isNotNull(body.querySelector("section"), "section selector should find element")
+assert.strictEqual(body.querySelector("form"), form, "form selector should find form")
 
 // ============================================================================
 // DESCENDANT COMBINATOR TESTS
 // ============================================================================
 
 // Space combinator (descendant)
-body.querySelector("header h1") === h1
-body.querySelector("nav ul") === navList
-body.querySelector("main section") !== null
-body.querySelector("aside form") === form
-body.querySelector("section p") !== null
+assert.strictEqual(body.querySelector("header h1"), h1, "header h1 should find h1")
+assert.strictEqual(body.querySelector("nav ul"), navList, "nav ul should find navList")
+assert.isNotNull(body.querySelector("main section"), "main section should find element")
+assert.strictEqual(body.querySelector("aside form"), form, "aside form should find form")
+assert.isNotNull(body.querySelector("section p"), "section p should find element")
 
 // Multi-level descendant
-body.querySelector("nav ul li") !== null
-body.querySelector("main section p") !== null
-body.querySelector("aside form input") !== null
+assert.isNotNull(body.querySelector("nav ul li"), "nav ul li should find element")
+assert.isNotNull(body.querySelector("main section p"), "main section p should find element")
+assert.isNotNull(body.querySelector("aside form input"), "aside form input should find element")
 
 // Deep nesting
-body.querySelector("section .nested-container .inner-content") !== null
-body.querySelector("section .nested-container .inner-content .special") !== null
+assert.isNotNull(body.querySelector("section .nested-container .inner-content"), "deep nesting should find element")
+assert.isNotNull(body.querySelector("section .nested-container .inner-content .special"), "deeper nesting should find element")
 
 // ============================================================================
 // CHILD COMBINATOR TESTS
 // ============================================================================
 
 // Direct child (>)
-body.querySelector("header > h1") === h1
-body.querySelector("nav > ul") === navList
-body.querySelector("main > section") !== null
-body.querySelector("form > input") !== null
-body.querySelector("form > button") === submitBtn
+assert.strictEqual(body.querySelector("header > h1"), h1, "header > h1 should find h1")
+assert.strictEqual(body.querySelector("nav > ul"), navList, "nav > ul should find navList")
+assert.isNotNull(body.querySelector("main > section"), "main > section should find element")
+assert.isNotNull(body.querySelector("form > input"), "form > input should find element")
+assert.strictEqual(body.querySelector("form > button"), submitBtn, "form > button should find submitBtn")
 
 // Child vs descendant distinction
-body.querySelector("body > header") === header
-body.querySelector("body > main") === main
-body.querySelector("body section") !== null
-body.querySelector("body > section") === null  // section is child of main, not body
+assert.strictEqual(body.querySelector("body > header"), header, "body > header should find header")
+assert.strictEqual(body.querySelector("body > main"), main, "body > main should find main")
+assert.isNotNull(body.querySelector("body section"), "body section (descendant) should find element")
+assert.strictEqual(body.querySelector("body > section"), null, "body > section should be null (section is child of main)")
 
 // ============================================================================
 // ATTRIBUTE SELECTOR TESTS
 // ============================================================================
 
 // Attribute existence
-body.querySelector("[id]") !== null
-body.querySelector("[class]") !== null
-body.querySelector("[data-priority]") !== null
-body.querySelector("[data-type]") !== null
-body.querySelector("[href]") !== null
-body.querySelector("[type]") !== null
+assert.isNotNull(body.querySelector("[id]"), "[id] should find element")
+assert.isNotNull(body.querySelector("[class]"), "[class] should find element")
+assert.isNotNull(body.querySelector("[data-priority]"), "[data-priority] should find element")
+assert.isNotNull(body.querySelector("[data-type]"), "[data-type] should find element")
+assert.isNotNull(body.querySelector("[href]"), "[href] should find element")
+assert.isNotNull(body.querySelector("[type]"), "[type] should find element")
 
 // Attribute exact value
-body.querySelector("[id='main-header']") === header
-body.querySelector("[id='content']") === main
-body.querySelector("[data-priority='high']") !== null
-body.querySelector("[data-type='info']") !== null
-body.querySelector("[type='text']") === inputName
-body.querySelector("[type='email']") === inputEmail
-body.querySelector("[type='submit']") === submitBtn
+assert.strictEqual(body.querySelector("[id='main-header']"), header, "[id='main-header'] should find header")
+assert.strictEqual(body.querySelector("[id='content']"), main, "[id='content'] should find main")
+assert.isNotNull(body.querySelector("[data-priority='high']"), "[data-priority='high'] should find element")
+assert.isNotNull(body.querySelector("[data-type='info']"), "[data-type='info'] should find element")
+assert.strictEqual(body.querySelector("[type='text']"), inputName, "[type='text'] should find inputName")
+assert.strictEqual(body.querySelector("[type='email']"), inputEmail, "[type='email'] should find inputEmail")
+assert.strictEqual(body.querySelector("[type='submit']"), submitBtn, "[type='submit'] should find submitBtn")
 
 // Attribute contains word ([attr~=value])
 // class="header primary" should match [class~="primary"]
-body.querySelector("[class~='primary']") !== null
-body.querySelector("[class~='header']") !== null
-body.querySelector("[class~='secondary']") === aside
+assert.isNotNull(body.querySelector("[class~='primary']"), "[class~='primary'] should find element")
+assert.isNotNull(body.querySelector("[class~='header']"), "[class~='header'] should find element")
+assert.strictEqual(body.querySelector("[class~='secondary']"), aside, "[class~='secondary'] should find aside")
 
 // Attribute starts with ([attr^=value])
-body.querySelector("[id^='section']") !== null
-body.querySelector("[class^='form']") !== null
-body.querySelector("[class^='nav']") !== null
+assert.isNotNull(body.querySelector("[id^='section']"), "[id^='section'] should find element")
+assert.isNotNull(body.querySelector("[class^='form']"), "[class^='form'] should find element")
+assert.isNotNull(body.querySelector("[class^='nav']"), "[class^='nav'] should find element")
 
 // Attribute ends with ([attr$=value])
-body.querySelector("[id$='header']") === header
-body.querySelector("[id$='footer']") === footer
-body.querySelector("[class$='primary']") !== null
+assert.strictEqual(body.querySelector("[id$='header']"), header, "[id$='header'] should find header")
+assert.strictEqual(body.querySelector("[id$='footer']"), footer, "[id$='footer'] should find footer")
+assert.isNotNull(body.querySelector("[class$='primary']"), "[class$='primary'] should find element")
 
 // Attribute contains substring ([attr*=value])
-body.querySelector("[id*='section']") !== null
-body.querySelector("[class*='content']") !== null
-body.querySelector("[href*='section']") !== null
+assert.isNotNull(body.querySelector("[id*='section']"), "[id*='section'] should find element")
+assert.isNotNull(body.querySelector("[class*='content']"), "[class*='content'] should find element")
+assert.isNotNull(body.querySelector("[href*='section']"), "[href*='section'] should find element")
 
 // ============================================================================
 // CLASS SELECTOR TESTS (MULTIPLE CLASSES)
 // ============================================================================
 
 // Single class match
-body.querySelector(".title") === h1
-body.querySelector(".navigation") === nav
-body.querySelector(".description") !== null
-body.querySelector(".form-input") !== null
+assert.strictEqual(body.querySelector(".title"), h1, ".title should find h1")
+assert.strictEqual(body.querySelector(".navigation"), nav, ".navigation should find nav")
+assert.isNotNull(body.querySelector(".description"), ".description should find element")
+assert.isNotNull(body.querySelector(".form-input"), ".form-input should find element")
 
 // Multiple class match (element must have all)
-body.querySelector(".header.primary") === header
-body.querySelector(".sidebar.secondary") === aside
-body.querySelector(".inner-content.highlight") !== null
-body.querySelector(".btn.primary") === submitBtn
+assert.strictEqual(body.querySelector(".header.primary"), header, ".header.primary should find header")
+assert.strictEqual(body.querySelector(".sidebar.secondary"), aside, ".sidebar.secondary should find aside")
+assert.isNotNull(body.querySelector(".inner-content.highlight"), ".inner-content.highlight should find element")
+assert.strictEqual(body.querySelector(".btn.primary"), submitBtn, ".btn.primary should find submitBtn")
 
 // Class with descendant
-body.querySelector(".content-section .description") !== null
-body.querySelector(".nested-container .special") !== null
-body.querySelector(".form .form-input") !== null
+assert.isNotNull(body.querySelector(".content-section .description"), ".content-section .description should find element")
+assert.isNotNull(body.querySelector(".nested-container .special"), ".nested-container .special should find element")
+assert.isNotNull(body.querySelector(".form .form-input"), ".form .form-input should find element")
 
 // ============================================================================
 // PSEUDO-CLASS TESTS
 // ============================================================================
 
 // :first-child
-body.querySelector("ul li:first-child") !== null
-body.querySelector("main section:first-child") !== null
+assert.isNotNull(body.querySelector("ul li:first-child"), "ul li:first-child should find element")
+assert.isNotNull(body.querySelector("main section:first-child"), "main section:first-child should find element")
 
 // :last-child
-body.querySelector("ul li:last-child") !== null
-body.querySelector("main section:last-child") !== null
+assert.isNotNull(body.querySelector("ul li:last-child"), "ul li:last-child should find element")
+assert.isNotNull(body.querySelector("main section:last-child"), "main section:last-child should find element")
 
 // :nth-child(n)
-body.querySelector("section:nth-child(1)") !== null
-body.querySelector("section:nth-child(2)") !== null
-body.querySelector("li:nth-child(2)") !== null
+assert.isNotNull(body.querySelector("section:nth-child(1)"), "section:nth-child(1) should find element")
+assert.isNotNull(body.querySelector("section:nth-child(2)"), "section:nth-child(2) should find element")
+assert.isNotNull(body.querySelector("li:nth-child(2)"), "li:nth-child(2) should find element")
 
 // :nth-child(odd) and :nth-child(even)
-body.querySelector("section:nth-child(odd)") !== null
-body.querySelector("section:nth-child(even)") !== null
+assert.isNotNull(body.querySelector("section:nth-child(odd)"), "section:nth-child(odd) should find element")
+assert.isNotNull(body.querySelector("section:nth-child(even)"), "section:nth-child(even) should find element")
 
 // :only-child
-body.querySelector("header h1:only-child") === null  // h1 is not only child (nav exists)
-body.querySelector("footer p:only-child") === footerText  // p is only child in footer
-
-// :empty
-// Note: Elements with text content are not empty
-// We'd need to create an empty element for this test
+assert.strictEqual(body.querySelector("header h1:only-child"), null, "h1 is not only child (nav exists)")
+assert.strictEqual(body.querySelector("footer p:only-child"), footerText, "footer p:only-child should find footerText")
 
 // ============================================================================
 // COMBINING SELECTORS TESTS
 // ============================================================================
 
 // Multiple selectors (comma-separated, OR logic)
-body.querySelector("h1, h2") !== null  // Should match h1 first
-body.querySelector("header, footer") === header  // Should match first found
-body.querySelector(".title, .description") === h1  // Should match first
+assert.isNotNull(body.querySelector("h1, h2"), "h1, h2 should find element")
+assert.strictEqual(body.querySelector("header, footer"), header, "header, footer should find header first")
+assert.strictEqual(body.querySelector(".title, .description"), h1, ".title, .description should find h1 first")
 
 // Complex combinations
-body.querySelector("main section.content-section") !== null
-body.querySelector("#content section[data-priority='high']") !== null
-body.querySelector("aside #contact-form .form-input") !== null
-body.querySelector("section > .description") !== null
-body.querySelector("nav ul li a.nav-link") !== null
+assert.isNotNull(body.querySelector("main section.content-section"), "main section.content-section should find element")
+assert.isNotNull(body.querySelector("#content section[data-priority='high']"), "#content section[data-priority='high'] should find element")
+assert.isNotNull(body.querySelector("aside #contact-form .form-input"), "aside #contact-form .form-input should find element")
+assert.isNotNull(body.querySelector("section > .description"), "section > .description should find element")
+assert.isNotNull(body.querySelector("nav ul li a.nav-link"), "nav ul li a.nav-link should find element")
 
 // Very complex selectors
-body.querySelector("body > main#content > section.content-section[data-priority]") !== null
-body.querySelector("section .nested-container > .inner-content.highlight .special[data-type='info']") !== null
-body.querySelector("aside#sidebar form#contact-form input.form-input[type='email'][required]") === inputEmail
+assert.isNotNull(body.querySelector("body > main#content > section.content-section[data-priority]"), "very complex selector should find element")
+assert.isNotNull(body.querySelector("section .nested-container > .inner-content.highlight .special[data-type='info']"), "complex nested selector should find element")
+assert.strictEqual(body.querySelector("aside#sidebar form#contact-form input.form-input[type='email'][required]"), inputEmail, "complex attribute selector should find inputEmail")
 
 // ============================================================================
 // QUERYSELECTORALL TESTS
 // ============================================================================
 
 // querySelectorAll returns all matches
-(() => {
-    var sections = body.querySelectorAll("section");
-    return sections.length === 3;
-})()
+assert.strictEqual(body.querySelectorAll("section").length, 3, "querySelectorAll('section') should find 3")
 
-(() => {
-    var links = body.querySelectorAll("a.nav-link");
-    return links.length === 3;
-})()
+assert.strictEqual(body.querySelectorAll("a.nav-link").length, 3, "querySelectorAll('a.nav-link') should find 3")
 
-(() => {
-    var formInputs = body.querySelectorAll(".form-input");
-    return formInputs.length === 3;  // 2 inputs + 1 textarea
-})()
+assert.strictEqual(body.querySelectorAll(".form-input").length, 3, "querySelectorAll('.form-input') should find 3 (2 inputs + 1 textarea)")
 
 // querySelectorAll with descendant selector
-(() => {
-    var navItems = body.querySelectorAll("nav ul li");
-    return navItems.length === 3;
-})()
+assert.strictEqual(body.querySelectorAll("nav ul li").length, 3, "querySelectorAll('nav ul li') should find 3")
 
 // querySelectorAll with attribute selector
-(() => {
-    var priorityElements = body.querySelectorAll("[data-priority]");
-    return priorityElements.length >= 1;
-})()
+assert.isTrue(body.querySelectorAll("[data-priority]").length >= 1, "querySelectorAll('[data-priority]') should find at least 1")
 
 // querySelectorAll with multiple classes
-(() => {
-    var results = body.querySelectorAll(".content-section");
-    return results.length === 3;
-})()
+assert.strictEqual(body.querySelectorAll(".content-section").length, 3, "querySelectorAll('.content-section') should find 3")
 
 // querySelectorAll with :nth-child
-(() => {
-    var results = body.querySelectorAll("section:nth-child(odd)");
-    return results.length >= 1;
-})()
+assert.isTrue(body.querySelectorAll("section:nth-child(odd)").length >= 1, "querySelectorAll('section:nth-child(odd)') should find at least 1")
 
 // querySelectorAll with comma-separated selectors
-(() => {
-    var results = body.querySelectorAll("h1, h2");
-    return results.length === 4;  // 1 h1 + 3 h2
-})()
+assert.strictEqual(body.querySelectorAll("h1, h2").length, 4, "querySelectorAll('h1, h2') should find 4 (1 h1 + 3 h2)")
 
 // ============================================================================
 // EDGE CASES AND ERROR HANDLING
 // ============================================================================
 
 // Invalid selector should throw or return null
-(() => {
+assert.isTrue((() => {
     try {
         var result = body.querySelector("");
         return result === null;
     } catch(e) {
         return true;  // Throwing is also acceptable
     }
-})()
+})(), "Empty selector should return null or throw")
 
 // querySelector on element (not just document)
-header.querySelector("h1") === h1
-nav.querySelector("ul") === navList
-main.querySelector("section") !== null
-form.querySelector("button") === submitBtn
-aside.querySelector("form") === form
+assert.strictEqual(header.querySelector("h1"), h1, "header.querySelector('h1') should find h1")
+assert.strictEqual(nav.querySelector("ul"), navList, "nav.querySelector('ul') should find navList")
+assert.isNotNull(main.querySelector("section"), "main.querySelector('section') should find element")
+assert.strictEqual(form.querySelector("button"), submitBtn, "form.querySelector('button') should find submitBtn")
+assert.strictEqual(aside.querySelector("form"), form, "aside.querySelector('form') should find form")
 
 // querySelectorAll on element
-(() => {
-    var mainSections = main.querySelectorAll("section");
-    return mainSections.length === 3;
-})()
+assert.strictEqual(main.querySelectorAll("section").length, 3, "main.querySelectorAll('section') should find 3")
 
-(() => {
-    var formElements = form.querySelectorAll("input, textarea, button");
-    return formElements.length === 4;
-})()
+assert.strictEqual(form.querySelectorAll("input, textarea, button").length, 4, "form.querySelectorAll('input, textarea, button') should find 4")
 
 // Case sensitivity
 // Per CSS Selectors spec, type selectors are case-INSENSITIVE in HTML documents
-body.querySelector("HEADER") === header  // HTML type selectors are case-insensitive
-body.querySelector("header") === header
-body.querySelector("[ID='main-header']") === header  // Attribute names are case-insensitive in HTML
-body.querySelector("[id='main-header']") === header
-body.querySelector("[class='TITLE']") === null  // Attribute values are case-sensitive
-body.querySelector("[class='title']") === h1
+assert.strictEqual(body.querySelector("HEADER"), header, "HEADER should find header (case-insensitive)")
+assert.strictEqual(body.querySelector("header"), header, "header should find header")
+assert.strictEqual(body.querySelector("[ID='main-header']"), header, "[ID='main-header'] should find header (attr name case-insensitive)")
+assert.strictEqual(body.querySelector("[id='main-header']"), header, "[id='main-header'] should find header")
+assert.strictEqual(body.querySelector("[class='TITLE']"), null, "[class='TITLE'] should be null (attr value case-sensitive)")
+assert.strictEqual(body.querySelector("[class='title']"), h1, "[class='title'] should find h1")
 
 // querySelector returns first match in document order
-(() => {
+assert.isTrue((() => {
     var first = body.querySelector(".content-section");
     return first.id === "section1";
-})()
+})(), "querySelector('.content-section') should return first in document order (section1)")
 
 // Selector scoping - querySelector only finds descendants
-(() => {
+assert.isTrue((() => {
     var result = header.querySelector("footer");
     return result === null;  // footer is sibling, not descendant
-})()
+})(), "header.querySelector('footer') should be null (sibling, not descendant)")
 
 // ============================================================================
 // PERFORMANCE AND STRESS TESTS
 // ============================================================================
 
 // Deeply nested selector
-body.querySelector("body > main > section > .nested-container > .inner-content > .special") !== null
+assert.isNotNull(body.querySelector("body > main > section > .nested-container > .inner-content > .special"), "deeply nested selector should find element")
 
 // Long comma-separated selector list
-body.querySelector("h1, h2, h3, h4, h5, h6, p, div, span, a, ul, li, input, button, form, header, footer, nav, section, aside, main") !== null
+assert.isNotNull(body.querySelector("h1, h2, h3, h4, h5, h6, p, div, span, a, ul, li, input, button, form, header, footer, nav, section, aside, main"), "long selector list should find element")
 
 // Multiple attribute selectors combined
-body.querySelector("input[type='email'][class='form-input'][name='email'][required]") === inputEmail
+assert.strictEqual(body.querySelector("input[type='email'][class='form-input'][name='email'][required]"), inputEmail, "multiple attribute selectors should find inputEmail")
 
 // Selector with all combinator types
-body.querySelector("body main#content > section.content-section[data-priority] .nested-container .inner-content.highlight") !== null
+assert.isNotNull(body.querySelector("body main#content > section.content-section[data-priority] .nested-container .inner-content.highlight"), "all combinator types should find element")
 
 // ============================================================================
 // REAL-WORLD SCENARIOS
 // ============================================================================
 
 // Find all interactive elements
-(() => {
-    var interactive = body.querySelectorAll("a, button, input, textarea, select");
-    return interactive.length >= 5;
-})()
+assert.isTrue(body.querySelectorAll("a, button, input, textarea, select").length >= 5, "interactive elements should be >= 5")
 
 // Find all elements with specific data attributes
-(() => {
-    var dataElements = body.querySelectorAll("[data-priority], [data-type]");
-    return dataElements.length >= 2;
-})()
+assert.isTrue(body.querySelectorAll("[data-priority], [data-type]").length >= 2, "data attribute elements should be >= 2")
 
 // Find form elements by type
-(() => {
-    var textInputs = body.querySelectorAll("input[type='text'], input[type='email'], textarea");
-    return textInputs.length === 3;
-})()
+assert.strictEqual(body.querySelectorAll("input[type='text'], input[type='email'], textarea").length, 3, "form elements by type should find 3")
 
 // Find all headings
-(() => {
-    var headings = body.querySelectorAll("h1, h2, h3, h4, h5, h6");
-    return headings.length === 4;  // 1 h1 + 3 h2
-})()
+assert.strictEqual(body.querySelectorAll("h1, h2, h3, h4, h5, h6").length, 4, "headings should find 4 (1 h1 + 3 h2)")
 
 // Find elements by class prefix pattern
-(() => {
-    var formElements = body.querySelectorAll("[class^='form']");
-    return formElements.length >= 4;
-})()
+assert.isTrue(body.querySelectorAll("[class^='form']").length >= 4, "class prefix pattern should find >= 4")
 
 // Find nested elements at specific depth
-body.querySelector("main > section > div > div > span") !== null
+assert.isNotNull(body.querySelector("main > section > div > div > span"), "specific depth selector should find element")
 
 // Find elements with multiple conditions
-(() => {
-    var specialInputs = body.querySelectorAll("form input.form-input[type]:not([type='submit'])");
-    return specialInputs.length === 2;
-})()
+assert.strictEqual(body.querySelectorAll("form input.form-input[type]:not([type='submit'])").length, 2, ":not() selector should find 2")
 
 // ============================================================================
 // DOCUMENT VS ELEMENT SCOPING
 // ============================================================================
 
 // querySelector from different scopes gives different results
-body.querySelector("section") !== null
-header.querySelector("section") === null  // No section in header
-main.querySelector("section") !== null  // Sections are in main
+assert.isNotNull(body.querySelector("section"), "body.querySelector('section') should find element")
+assert.strictEqual(header.querySelector("section"), null, "header.querySelector('section') should be null")
+assert.isNotNull(main.querySelector("section"), "main.querySelector('section') should find element")
 
 // querySelectorAll scoping
-(() => {
+assert.isTrue((() => {
     var bodyInputs = body.querySelectorAll("input");
     var formInputs = form.querySelectorAll("input");
     return bodyInputs.length >= formInputs.length && formInputs.length === 2;
-})()
+})(), "querySelectorAll scoping should work correctly")
 
 // Finding elements in specific subtree
-(() => {
-    var headerLinks = header.querySelectorAll("a");
-    return headerLinks.length === 3;  // Only nav links in header
-})()
+assert.strictEqual(header.querySelectorAll("a").length, 3, "header.querySelectorAll('a') should find 3 nav links")
 
 // ============================================================================
 // SUMMARY VALIDATION
 // ============================================================================
 
 // Verify core functionality works
-body.querySelector("#main-header") === header &&
-body.querySelector(".title") === h1 &&
-body.querySelectorAll("section").length === 3 &&
-body.querySelector("section .special[data-type='info']") !== null &&
-form.querySelectorAll(".form-input").length === 3
+assert.isTrue(
+    body.querySelector("#main-header") === header &&
+    body.querySelector(".title") === h1 &&
+    body.querySelectorAll("section").length === 3 &&
+    body.querySelector("section .special[data-type='info']") !== null &&
+    form.querySelectorAll(".form-input").length === 3,
+    "Core querySelector functionality should work correctly"
+)

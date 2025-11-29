@@ -4,161 +4,106 @@
 // ============================================================================
 // Test 1: Prototype Chain is Correctly Set Up
 // ============================================================================
-
-// Verify prototype chain: Element -> Node -> EventTarget
-Element.prototype.__proto__ === Node.prototype
-Node.prototype.__proto__ === EventTarget.prototype
-
-// HTMLElement should extend Element
-HTMLElement.prototype.__proto__ === Element.prototype
+assert.strictEqual(Element.prototype.__proto__, Node.prototype, "Element.prototype should inherit from Node.prototype")
+assert.strictEqual(Node.prototype.__proto__, EventTarget.prototype, "Node.prototype should inherit from EventTarget.prototype")
+assert.strictEqual(HTMLElement.prototype.__proto__, Element.prototype, "HTMLElement.prototype should inherit from Element.prototype")
 
 // ============================================================================
 // Test 2: addEventListener is ONLY on EventTarget.prototype
 // ============================================================================
-
-// addEventListener should be an own property of EventTarget.prototype
-Object.getOwnPropertyDescriptor(EventTarget.prototype, "addEventListener") !== undefined
-
-// addEventListener should NOT be an own property of Node.prototype (inherited from EventTarget)
-Object.getOwnPropertyDescriptor(Node.prototype, "addEventListener") === undefined
-
-// addEventListener should NOT be an own property of Element.prototype (inherited from EventTarget)
-Object.getOwnPropertyDescriptor(Element.prototype, "addEventListener") === undefined
-
-// addEventListener should NOT be an own property of HTMLElement.prototype (inherited from EventTarget)
-Object.getOwnPropertyDescriptor(HTMLElement.prototype, "addEventListener") === undefined
+assert.isDefined(Object.getOwnPropertyDescriptor(EventTarget.prototype, "addEventListener"), "EventTarget.prototype should own addEventListener")
+assert.isUndefined(Object.getOwnPropertyDescriptor(Node.prototype, "addEventListener"), "Node.prototype should not own addEventListener")
+assert.isUndefined(Object.getOwnPropertyDescriptor(Element.prototype, "addEventListener"), "Element.prototype should not own addEventListener")
+assert.isUndefined(Object.getOwnPropertyDescriptor(HTMLElement.prototype, "addEventListener"), "HTMLElement.prototype should not own addEventListener")
 
 // But it should be accessible via prototype chain
-typeof Element.prototype.addEventListener === "function"
-typeof Node.prototype.addEventListener === "function"
-typeof HTMLElement.prototype.addEventListener === "function"
+assert.isFunction(Element.prototype.addEventListener, "Element.prototype.addEventListener should be accessible")
+assert.isFunction(Node.prototype.addEventListener, "Node.prototype.addEventListener should be accessible")
+assert.isFunction(HTMLElement.prototype.addEventListener, "HTMLElement.prototype.addEventListener should be accessible")
 
 // ============================================================================
 // Test 3: appendChild is ONLY on Node.prototype
 // ============================================================================
-
-// appendChild should be an own property of Node.prototype
-Object.getOwnPropertyDescriptor(Node.prototype, "appendChild") !== undefined
-
-// appendChild should NOT be an own property of Element.prototype (inherited from Node)
-Object.getOwnPropertyDescriptor(Element.prototype, "appendChild") === undefined
-
-// appendChild should NOT be an own property of HTMLElement.prototype (inherited from Node)
-Object.getOwnPropertyDescriptor(HTMLElement.prototype, "appendChild") === undefined
+assert.isDefined(Object.getOwnPropertyDescriptor(Node.prototype, "appendChild"), "Node.prototype should own appendChild")
+assert.isUndefined(Object.getOwnPropertyDescriptor(Element.prototype, "appendChild"), "Element.prototype should not own appendChild")
+assert.isUndefined(Object.getOwnPropertyDescriptor(HTMLElement.prototype, "appendChild"), "HTMLElement.prototype should not own appendChild")
 
 // But it should be accessible via prototype chain
-typeof Element.prototype.appendChild === "function"
-typeof HTMLElement.prototype.appendChild === "function"
+assert.isFunction(Element.prototype.appendChild, "Element.prototype.appendChild should be accessible")
+assert.isFunction(HTMLElement.prototype.appendChild, "HTMLElement.prototype.appendChild should be accessible")
 
-// appendChild should NOT exist on EventTarget.prototype (not in hierarchy)
-typeof EventTarget.prototype.appendChild === "undefined"
+// appendChild should NOT exist on EventTarget.prototype
+assert.isUndefined(EventTarget.prototype.appendChild, "EventTarget.prototype.appendChild should be undefined")
 
 // ============================================================================
 // Test 4: nodeType getter is ONLY on Node.prototype
 // ============================================================================
-
-// nodeType should be an own property (accessor) of Node.prototype
-Object.getOwnPropertyDescriptor(Node.prototype, "nodeType") !== undefined
-Object.getOwnPropertyDescriptor(Node.prototype, "nodeType").get !== undefined
-
-// nodeType should NOT be an own property of Element.prototype (inherited from Node)
-Object.getOwnPropertyDescriptor(Element.prototype, "nodeType") === undefined
-
-// nodeType should NOT be an own property of HTMLElement.prototype (inherited from Node)
-Object.getOwnPropertyDescriptor(HTMLElement.prototype, "nodeType") === undefined
-
-// But it should be accessible via prototype chain (once we have instances)
-// We can't test the actual value without creating instances, so we verify the getter exists
-
-// nodeType should NOT exist on EventTarget.prototype (not in hierarchy)
-Object.getOwnPropertyDescriptor(EventTarget.prototype, "nodeType") === undefined
+assert.isDefined(Object.getOwnPropertyDescriptor(Node.prototype, "nodeType"), "Node.prototype should own nodeType")
+assert.isDefined(Object.getOwnPropertyDescriptor(Node.prototype, "nodeType").get, "nodeType should be a getter")
+assert.isUndefined(Object.getOwnPropertyDescriptor(Element.prototype, "nodeType"), "Element.prototype should not own nodeType")
+assert.isUndefined(Object.getOwnPropertyDescriptor(HTMLElement.prototype, "nodeType"), "HTMLElement.prototype should not own nodeType")
+assert.isUndefined(Object.getOwnPropertyDescriptor(EventTarget.prototype, "nodeType"), "EventTarget.prototype should not have nodeType")
 
 // ============================================================================
 // Test 5: dispatchEvent is ONLY on EventTarget.prototype
 // ============================================================================
-
-// dispatchEvent should be an own property of EventTarget.prototype
-Object.getOwnPropertyDescriptor(EventTarget.prototype, "dispatchEvent") !== undefined
-
-// dispatchEvent should NOT be an own property of Node.prototype (inherited)
-Object.getOwnPropertyDescriptor(Node.prototype, "dispatchEvent") === undefined
-
-// dispatchEvent should NOT be an own property of Element.prototype (inherited)
-Object.getOwnPropertyDescriptor(Element.prototype, "dispatchEvent") === undefined
-
-// But accessible via chain
-typeof Node.prototype.dispatchEvent === "function"
-typeof Element.prototype.dispatchEvent === "function"
+assert.isDefined(Object.getOwnPropertyDescriptor(EventTarget.prototype, "dispatchEvent"), "EventTarget.prototype should own dispatchEvent")
+assert.isUndefined(Object.getOwnPropertyDescriptor(Node.prototype, "dispatchEvent"), "Node.prototype should not own dispatchEvent")
+assert.isUndefined(Object.getOwnPropertyDescriptor(Element.prototype, "dispatchEvent"), "Element.prototype should not own dispatchEvent")
+assert.isFunction(Node.prototype.dispatchEvent, "Node.prototype.dispatchEvent should be accessible")
+assert.isFunction(Element.prototype.dispatchEvent, "Element.prototype.dispatchEvent should be accessible")
 
 // ============================================================================
 // Test 6: removeEventListener is ONLY on EventTarget.prototype
 // ============================================================================
-
-Object.getOwnPropertyDescriptor(EventTarget.prototype, "removeEventListener") !== undefined
-Object.getOwnPropertyDescriptor(Node.prototype, "removeEventListener") === undefined
-Object.getOwnPropertyDescriptor(Element.prototype, "removeEventListener") === undefined
-typeof Node.prototype.removeEventListener === "function"
-typeof Element.prototype.removeEventListener === "function"
+assert.isDefined(Object.getOwnPropertyDescriptor(EventTarget.prototype, "removeEventListener"), "EventTarget.prototype should own removeEventListener")
+assert.isUndefined(Object.getOwnPropertyDescriptor(Node.prototype, "removeEventListener"), "Node.prototype should not own removeEventListener")
+assert.isUndefined(Object.getOwnPropertyDescriptor(Element.prototype, "removeEventListener"), "Element.prototype should not own removeEventListener")
+assert.isFunction(Node.prototype.removeEventListener, "Node.prototype.removeEventListener should be accessible")
+assert.isFunction(Element.prototype.removeEventListener, "Element.prototype.removeEventListener should be accessible")
 
 // ============================================================================
 // Test 7: Element-specific methods are ONLY on Element.prototype
 // ============================================================================
-
-// getAttribute should be an own property of Element.prototype
-Object.getOwnPropertyDescriptor(Element.prototype, "getAttribute") !== undefined
-
-// getAttribute should NOT be on Node.prototype (not inherited, Element introduces it)
-typeof Node.prototype.getAttribute === "undefined"
-
-// getAttribute should NOT be on EventTarget.prototype
-typeof EventTarget.prototype.getAttribute === "undefined"
-
-// But should be accessible from HTMLElement via chain
-typeof HTMLElement.prototype.getAttribute === "function"
-
-// getAttribute should NOT be an own property of HTMLElement (inherited from Element)
-Object.getOwnPropertyDescriptor(HTMLElement.prototype, "getAttribute") === undefined
+assert.isDefined(Object.getOwnPropertyDescriptor(Element.prototype, "getAttribute"), "Element.prototype should own getAttribute")
+assert.isUndefined(Node.prototype.getAttribute, "Node.prototype.getAttribute should be undefined")
+assert.isUndefined(EventTarget.prototype.getAttribute, "EventTarget.prototype.getAttribute should be undefined")
+assert.isFunction(HTMLElement.prototype.getAttribute, "HTMLElement.prototype.getAttribute should be accessible")
+assert.isUndefined(Object.getOwnPropertyDescriptor(HTMLElement.prototype, "getAttribute"), "HTMLElement.prototype should not own getAttribute")
 
 // ============================================================================
-// Test 8: Own vs Inherited Properties Summary
+// Test 8: Own vs Inherited Properties
 // ============================================================================
+assert.ok(Object.getOwnPropertyNames(EventTarget.prototype).includes("addEventListener"), "EventTarget own props should include addEventListener")
+assert.ok(!Object.getOwnPropertyNames(Node.prototype).includes("addEventListener"), "Node own props should not include addEventListener")
+assert.ok(!Object.getOwnPropertyNames(Element.prototype).includes("addEventListener"), "Element own props should not include addEventListener")
 
-// Count own properties on each prototype (should only have OWN members, not inherited)
-Object.getOwnPropertyNames(EventTarget.prototype).includes("addEventListener")
-!Object.getOwnPropertyNames(Node.prototype).includes("addEventListener")
-!Object.getOwnPropertyNames(Element.prototype).includes("addEventListener")
+assert.ok(Object.getOwnPropertyNames(Node.prototype).includes("appendChild"), "Node own props should include appendChild")
+assert.ok(!Object.getOwnPropertyNames(Element.prototype).includes("appendChild"), "Element own props should not include appendChild")
 
-Object.getOwnPropertyNames(Node.prototype).includes("appendChild")
-!Object.getOwnPropertyNames(Element.prototype).includes("appendChild")
-
-Object.getOwnPropertyNames(Element.prototype).includes("getAttribute")
-!Object.getOwnPropertyNames(Node.prototype).includes("getAttribute")
+assert.ok(Object.getOwnPropertyNames(Element.prototype).includes("getAttribute"), "Element own props should include getAttribute")
+assert.ok(!Object.getOwnPropertyNames(Node.prototype).includes("getAttribute"), "Node own props should not include getAttribute")
 
 // ============================================================================
 // Test 9: Method Identity - Same Function Reference
 // ============================================================================
+assert.strictEqual(Element.prototype.addEventListener, Node.prototype.addEventListener, "addEventListener should be same on Element and Node")
+assert.strictEqual(Node.prototype.addEventListener, EventTarget.prototype.addEventListener, "addEventListener should be same on Node and EventTarget")
+assert.strictEqual(HTMLElement.prototype.addEventListener, EventTarget.prototype.addEventListener, "addEventListener should be same on HTMLElement and EventTarget")
 
-// Inherited methods should be the exact same function object
-Element.prototype.addEventListener === Node.prototype.addEventListener
-Node.prototype.addEventListener === EventTarget.prototype.addEventListener
-HTMLElement.prototype.addEventListener === EventTarget.prototype.addEventListener
+assert.strictEqual(Element.prototype.dispatchEvent, Node.prototype.dispatchEvent, "dispatchEvent should be same on Element and Node")
+assert.strictEqual(Node.prototype.dispatchEvent, EventTarget.prototype.dispatchEvent, "dispatchEvent should be same on Node and EventTarget")
 
-Element.prototype.dispatchEvent === Node.prototype.dispatchEvent
-Node.prototype.dispatchEvent === EventTarget.prototype.dispatchEvent
-
-Element.prototype.appendChild === Node.prototype.appendChild
-HTMLElement.prototype.appendChild === Node.prototype.appendChild
+assert.strictEqual(Element.prototype.appendChild, Node.prototype.appendChild, "appendChild should be same on Element and Node")
+assert.strictEqual(HTMLElement.prototype.appendChild, Node.prototype.appendChild, "appendChild should be same on HTMLElement and Node")
 
 // ============================================================================
-// Test 10: Summary - Methods vs Attributes
+// Test 10: hasOwnProperty verification
 // ============================================================================
+assert.ok(Object.hasOwnProperty.call(EventTarget.prototype, "addEventListener"), "EventTarget.prototype should have own addEventListener")
+assert.ok(!Object.hasOwnProperty.call(Node.prototype, "addEventListener"), "Node.prototype should not have own addEventListener")
+assert.ok(!Object.hasOwnProperty.call(Element.prototype, "addEventListener"), "Element.prototype should not have own addEventListener")
 
-// ✅ CORRECT: Methods are NOT duplicated (only on owning prototype)
-Object.hasOwnProperty.call(EventTarget.prototype, "addEventListener")
-!Object.hasOwnProperty.call(Node.prototype, "addEventListener")
-!Object.hasOwnProperty.call(Element.prototype, "addEventListener")
-
-// Verify nodeType is only on Node.prototype (not duplicated on child prototypes)
-Object.hasOwnProperty.call(Node.prototype, "nodeType")
-!Object.hasOwnProperty.call(Element.prototype, "nodeType")  // Should NOT have it
-!Object.hasOwnProperty.call(HTMLElement.prototype, "nodeType")  // Should NOT have it
+assert.ok(Object.hasOwnProperty.call(Node.prototype, "nodeType"), "Node.prototype should have own nodeType")
+assert.ok(!Object.hasOwnProperty.call(Element.prototype, "nodeType"), "Element.prototype should not have own nodeType")
+assert.ok(!Object.hasOwnProperty.call(HTMLElement.prototype, "nodeType"), "HTMLElement.prototype should not have own nodeType")

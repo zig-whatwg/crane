@@ -17,481 +17,481 @@
 // ==========================================
 
 // IDBFactory exists as the entry point
-typeof indexedDB === "object"
+assert.strictEqual(typeof indexedDB, "object", "indexedDB should be an object")
 
 // IDBFactory constructor should not be callable directly (it's a singleton)
-typeof IDBFactory === "function"
+assert.isFunction(IDBFactory, "IDBFactory should be a function")
 
 // IDBKeyRange is a constructible interface
-typeof IDBKeyRange === "function"
+assert.isFunction(IDBKeyRange, "IDBKeyRange should be a function")
 
 // IDBDatabase exists
-typeof IDBDatabase === "function"
+assert.isFunction(IDBDatabase, "IDBDatabase should be a function")
 
 // IDBTransaction exists
-typeof IDBTransaction === "function"
+assert.isFunction(IDBTransaction, "IDBTransaction should be a function")
 
 // IDBObjectStore exists
-typeof IDBObjectStore === "function"
+assert.isFunction(IDBObjectStore, "IDBObjectStore should be a function")
 
 // IDBIndex exists
-typeof IDBIndex === "function"
+assert.isFunction(IDBIndex, "IDBIndex should be a function")
 
 // IDBCursor exists
-typeof IDBCursor === "function"
+assert.isFunction(IDBCursor, "IDBCursor should be a function")
 
 // IDBCursorWithValue exists
-typeof IDBCursorWithValue === "function"
+assert.isFunction(IDBCursorWithValue, "IDBCursorWithValue should be a function")
 
 // IDBRequest exists
-typeof IDBRequest === "function"
+assert.isFunction(IDBRequest, "IDBRequest should be a function")
 
 // IDBOpenDBRequest exists
-typeof IDBOpenDBRequest === "function"
+assert.isFunction(IDBOpenDBRequest, "IDBOpenDBRequest should be a function")
 
 // IDBVersionChangeEvent exists and is constructible
-typeof IDBVersionChangeEvent === "function"
+assert.isFunction(IDBVersionChangeEvent, "IDBVersionChangeEvent should be a function")
 
 // ==========================================
 // Prototype Chain Tests
 // ==========================================
 
 // IDBRequest inherits from EventTarget
-IDBRequest.prototype instanceof EventTarget || Object.getPrototypeOf(IDBRequest.prototype) === EventTarget.prototype
+assert.isTrue(IDBRequest.prototype instanceof EventTarget || Object.getPrototypeOf(IDBRequest.prototype) === EventTarget.prototype, "IDBRequest should inherit from EventTarget")
 
 // IDBOpenDBRequest inherits from IDBRequest
-IDBOpenDBRequest.prototype instanceof IDBRequest || Object.getPrototypeOf(IDBOpenDBRequest.prototype) === IDBRequest.prototype
+assert.isTrue(IDBOpenDBRequest.prototype instanceof IDBRequest || Object.getPrototypeOf(IDBOpenDBRequest.prototype) === IDBRequest.prototype, "IDBOpenDBRequest should inherit from IDBRequest")
 
 // IDBCursorWithValue inherits from IDBCursor
-IDBCursorWithValue.prototype instanceof IDBCursor || Object.getPrototypeOf(IDBCursorWithValue.prototype) === IDBCursor.prototype
+assert.isTrue(IDBCursorWithValue.prototype instanceof IDBCursor || Object.getPrototypeOf(IDBCursorWithValue.prototype) === IDBCursor.prototype, "IDBCursorWithValue should inherit from IDBCursor")
 
 // IDBDatabase inherits from EventTarget
-IDBDatabase.prototype instanceof EventTarget || Object.getPrototypeOf(IDBDatabase.prototype) === EventTarget.prototype
+assert.isTrue(IDBDatabase.prototype instanceof EventTarget || Object.getPrototypeOf(IDBDatabase.prototype) === EventTarget.prototype, "IDBDatabase should inherit from EventTarget")
 
 // IDBTransaction inherits from EventTarget
-IDBTransaction.prototype instanceof EventTarget || Object.getPrototypeOf(IDBTransaction.prototype) === EventTarget.prototype
+assert.isTrue(IDBTransaction.prototype instanceof EventTarget || Object.getPrototypeOf(IDBTransaction.prototype) === EventTarget.prototype, "IDBTransaction should inherit from EventTarget")
 
 // IDBVersionChangeEvent inherits from Event
-IDBVersionChangeEvent.prototype instanceof Event || Object.getPrototypeOf(IDBVersionChangeEvent.prototype) === Event.prototype
+assert.isTrue(IDBVersionChangeEvent.prototype instanceof Event || Object.getPrototypeOf(IDBVersionChangeEvent.prototype) === Event.prototype, "IDBVersionChangeEvent should inherit from Event")
 
 // ==========================================
 // IDBFactory Methods
 // ==========================================
 
 // indexedDB has open method
-typeof indexedDB.open === "function"
+assert.isFunction(indexedDB.open, "indexedDB.open should be a function")
 
 // indexedDB has deleteDatabase method
-typeof indexedDB.deleteDatabase === "function"
+assert.isFunction(indexedDB.deleteDatabase, "indexedDB.deleteDatabase should be a function")
 
 // indexedDB has databases method (returns Promise)
-typeof indexedDB.databases === "function"
+assert.isFunction(indexedDB.databases, "indexedDB.databases should be a function")
 
 // indexedDB has cmp method for key comparison
-typeof indexedDB.cmp === "function"
+assert.isFunction(indexedDB.cmp, "indexedDB.cmp should be a function")
 
 // cmp returns -1 for lesser key
-indexedDB.cmp(1, 2) === -1
+assert.strictEqual(indexedDB.cmp(1, 2), -1, "cmp(1, 2) should return -1")
 
 // cmp returns 0 for equal keys
-indexedDB.cmp(1, 1) === 0
+assert.strictEqual(indexedDB.cmp(1, 1), 0, "cmp(1, 1) should return 0")
 
 // cmp returns 1 for greater key
-indexedDB.cmp(2, 1) === 1
+assert.strictEqual(indexedDB.cmp(2, 1), 1, "cmp(2, 1) should return 1")
 
 // cmp with strings
-indexedDB.cmp("a", "b") === -1
+assert.strictEqual(indexedDB.cmp("a", "b"), -1, "cmp('a', 'b') should return -1")
 
 // cmp with string equality
-indexedDB.cmp("test", "test") === 0
+assert.strictEqual(indexedDB.cmp("test", "test"), 0, "cmp('test', 'test') should return 0")
 
 // ==========================================
 // IDBKeyRange Static Methods
 // ==========================================
 
 // IDBKeyRange.only exists
-typeof IDBKeyRange.only === "function"
+assert.isFunction(IDBKeyRange.only, "IDBKeyRange.only should be a function")
 
 // IDBKeyRange.lowerBound exists
-typeof IDBKeyRange.lowerBound === "function"
+assert.isFunction(IDBKeyRange.lowerBound, "IDBKeyRange.lowerBound should be a function")
 
 // IDBKeyRange.upperBound exists
-typeof IDBKeyRange.upperBound === "function"
+assert.isFunction(IDBKeyRange.upperBound, "IDBKeyRange.upperBound should be a function")
 
 // IDBKeyRange.bound exists
-typeof IDBKeyRange.bound === "function"
+assert.isFunction(IDBKeyRange.bound, "IDBKeyRange.bound should be a function")
 
 // IDBKeyRange.only creates a range
-IDBKeyRange.only(42) instanceof IDBKeyRange
+assert.isTrue(IDBKeyRange.only(42) instanceof IDBKeyRange, "IDBKeyRange.only(42) should return IDBKeyRange")
 
 // IDBKeyRange.lowerBound creates a range
-IDBKeyRange.lowerBound(10) instanceof IDBKeyRange
+assert.isTrue(IDBKeyRange.lowerBound(10) instanceof IDBKeyRange, "IDBKeyRange.lowerBound(10) should return IDBKeyRange")
 
 // IDBKeyRange.upperBound creates a range
-IDBKeyRange.upperBound(100) instanceof IDBKeyRange
+assert.isTrue(IDBKeyRange.upperBound(100) instanceof IDBKeyRange, "IDBKeyRange.upperBound(100) should return IDBKeyRange")
 
 // IDBKeyRange.bound creates a range
-IDBKeyRange.bound(10, 100) instanceof IDBKeyRange
+assert.isTrue(IDBKeyRange.bound(10, 100) instanceof IDBKeyRange, "IDBKeyRange.bound(10, 100) should return IDBKeyRange")
 
 // ==========================================
 // IDBKeyRange Properties
 // ==========================================
 
 // only() range has lower equal to value
-IDBKeyRange.only(42).lower === 42
+assert.strictEqual(IDBKeyRange.only(42).lower, 42, "only(42).lower should be 42")
 
 // only() range has upper equal to value
-IDBKeyRange.only(42).upper === 42
+assert.strictEqual(IDBKeyRange.only(42).upper, 42, "only(42).upper should be 42")
 
 // only() range has lowerOpen = false
-IDBKeyRange.only(42).lowerOpen === false
+assert.strictEqual(IDBKeyRange.only(42).lowerOpen, false, "only(42).lowerOpen should be false")
 
 // only() range has upperOpen = false
-IDBKeyRange.only(42).upperOpen === false
+assert.strictEqual(IDBKeyRange.only(42).upperOpen, false, "only(42).upperOpen should be false")
 
 // lowerBound() range has correct lower
-IDBKeyRange.lowerBound(10).lower === 10
+assert.strictEqual(IDBKeyRange.lowerBound(10).lower, 10, "lowerBound(10).lower should be 10")
 
 // lowerBound() range has correct lowerOpen (default false)
-IDBKeyRange.lowerBound(10).lowerOpen === false
+assert.strictEqual(IDBKeyRange.lowerBound(10).lowerOpen, false, "lowerBound(10).lowerOpen should be false")
 
 // lowerBound(value, true) has lowerOpen = true
-IDBKeyRange.lowerBound(10, true).lowerOpen === true
+assert.strictEqual(IDBKeyRange.lowerBound(10, true).lowerOpen, true, "lowerBound(10, true).lowerOpen should be true")
 
 // upperBound() range has correct upper
-IDBKeyRange.upperBound(100).upper === 100
+assert.strictEqual(IDBKeyRange.upperBound(100).upper, 100, "upperBound(100).upper should be 100")
 
 // upperBound() range has correct upperOpen (default false)
-IDBKeyRange.upperBound(100).upperOpen === false
+assert.strictEqual(IDBKeyRange.upperBound(100).upperOpen, false, "upperBound(100).upperOpen should be false")
 
 // upperBound(value, true) has upperOpen = true
-IDBKeyRange.upperBound(100, true).upperOpen === true
+assert.strictEqual(IDBKeyRange.upperBound(100, true).upperOpen, true, "upperBound(100, true).upperOpen should be true")
 
 // bound() range has correct lower and upper
-IDBKeyRange.bound(10, 100).lower === 10 && IDBKeyRange.bound(10, 100).upper === 100
+assert.isTrue(IDBKeyRange.bound(10, 100).lower === 10 && IDBKeyRange.bound(10, 100).upper === 100, "bound(10, 100) should have correct lower and upper")
 
 // ==========================================
 // IDBKeyRange.includes() method
 // ==========================================
 
 // includes method exists on IDBKeyRange instances
-typeof IDBKeyRange.only(42).includes === "function"
+assert.isFunction(IDBKeyRange.only(42).includes, "IDBKeyRange.includes should be a function")
 
 // only(42) includes 42
-IDBKeyRange.only(42).includes(42) === true
+assert.strictEqual(IDBKeyRange.only(42).includes(42), true, "only(42).includes(42) should be true")
 
 // only(42) does not include 41
-IDBKeyRange.only(42).includes(41) === false
+assert.strictEqual(IDBKeyRange.only(42).includes(41), false, "only(42).includes(41) should be false")
 
 // lowerBound(10) includes 10 (closed)
-IDBKeyRange.lowerBound(10).includes(10) === true
+assert.strictEqual(IDBKeyRange.lowerBound(10).includes(10), true, "lowerBound(10).includes(10) should be true")
 
 // lowerBound(10) includes 20
-IDBKeyRange.lowerBound(10).includes(20) === true
+assert.strictEqual(IDBKeyRange.lowerBound(10).includes(20), true, "lowerBound(10).includes(20) should be true")
 
 // lowerBound(10) does not include 5
-IDBKeyRange.lowerBound(10).includes(5) === false
+assert.strictEqual(IDBKeyRange.lowerBound(10).includes(5), false, "lowerBound(10).includes(5) should be false")
 
 // lowerBound(10, true) does not include 10 (open)
-IDBKeyRange.lowerBound(10, true).includes(10) === false
+assert.strictEqual(IDBKeyRange.lowerBound(10, true).includes(10), false, "lowerBound(10, true).includes(10) should be false")
 
 // upperBound(100) includes 100 (closed)
-IDBKeyRange.upperBound(100).includes(100) === true
+assert.strictEqual(IDBKeyRange.upperBound(100).includes(100), true, "upperBound(100).includes(100) should be true")
 
 // upperBound(100) includes 50
-IDBKeyRange.upperBound(100).includes(50) === true
+assert.strictEqual(IDBKeyRange.upperBound(100).includes(50), true, "upperBound(100).includes(50) should be true")
 
 // upperBound(100) does not include 101
-IDBKeyRange.upperBound(100).includes(101) === false
+assert.strictEqual(IDBKeyRange.upperBound(100).includes(101), false, "upperBound(100).includes(101) should be false")
 
 // upperBound(100, true) does not include 100 (open)
-IDBKeyRange.upperBound(100, true).includes(100) === false
+assert.strictEqual(IDBKeyRange.upperBound(100, true).includes(100), false, "upperBound(100, true).includes(100) should be false")
 
 // bound(10, 100) includes 50
-IDBKeyRange.bound(10, 100).includes(50) === true
+assert.strictEqual(IDBKeyRange.bound(10, 100).includes(50), true, "bound(10, 100).includes(50) should be true")
 
 // bound(10, 100) includes boundaries
-IDBKeyRange.bound(10, 100).includes(10) === true && IDBKeyRange.bound(10, 100).includes(100) === true
+assert.isTrue(IDBKeyRange.bound(10, 100).includes(10) && IDBKeyRange.bound(10, 100).includes(100), "bound(10, 100) should include boundaries")
 
 // bound(10, 100, true, true) excludes boundaries
-IDBKeyRange.bound(10, 100, true, true).includes(10) === false && IDBKeyRange.bound(10, 100, true, true).includes(100) === false
+assert.isTrue(!IDBKeyRange.bound(10, 100, true, true).includes(10) && !IDBKeyRange.bound(10, 100, true, true).includes(100), "bound(10, 100, true, true) should exclude boundaries")
 
 // ==========================================
 // IDBVersionChangeEvent Constructor
 // ==========================================
 
 // IDBVersionChangeEvent constructor exists
-typeof IDBVersionChangeEvent === "function"
+assert.isFunction(IDBVersionChangeEvent, "IDBVersionChangeEvent should be a function")
 
 // Can construct IDBVersionChangeEvent
-new IDBVersionChangeEvent("versionchange") instanceof IDBVersionChangeEvent
+assert.isTrue(new IDBVersionChangeEvent("versionchange") instanceof IDBVersionChangeEvent, "new IDBVersionChangeEvent should create instance")
 
 // IDBVersionChangeEvent has type property
-new IDBVersionChangeEvent("versionchange").type === "versionchange"
+assert.strictEqual(new IDBVersionChangeEvent("versionchange").type, "versionchange", "IDBVersionChangeEvent.type should be 'versionchange'")
 
 // IDBVersionChangeEvent with init dict
-new IDBVersionChangeEvent("versionchange", { oldVersion: 1, newVersion: 2 }).oldVersion === 1
+assert.strictEqual(new IDBVersionChangeEvent("versionchange", { oldVersion: 1, newVersion: 2 }).oldVersion, 1, "IDBVersionChangeEvent.oldVersion should be 1")
 
 // IDBVersionChangeEvent newVersion from init
-new IDBVersionChangeEvent("versionchange", { oldVersion: 1, newVersion: 2 }).newVersion === 2
+assert.strictEqual(new IDBVersionChangeEvent("versionchange", { oldVersion: 1, newVersion: 2 }).newVersion, 2, "IDBVersionChangeEvent.newVersion should be 2")
 
 // Default oldVersion is 0
-new IDBVersionChangeEvent("versionchange", {}).oldVersion === 0
+assert.strictEqual(new IDBVersionChangeEvent("versionchange", {}).oldVersion, 0, "Default oldVersion should be 0")
 
 // Default newVersion is null (for deletion)
-new IDBVersionChangeEvent("versionchange", {}).newVersion === null
+assert.strictEqual(new IDBVersionChangeEvent("versionchange", {}).newVersion, null, "Default newVersion should be null")
 
 // ==========================================
 // IDBRequest States
 // ==========================================
 
 // IDBRequest has readyState property accessor
-"readyState" in IDBRequest.prototype
+assert.isTrue("readyState" in IDBRequest.prototype, "IDBRequest.prototype should have readyState")
 
 // IDBRequest has result property accessor
-"result" in IDBRequest.prototype
+assert.isTrue("result" in IDBRequest.prototype, "IDBRequest.prototype should have result")
 
 // IDBRequest has error property accessor
-"error" in IDBRequest.prototype
+assert.isTrue("error" in IDBRequest.prototype, "IDBRequest.prototype should have error")
 
 // IDBRequest has source property accessor
-"source" in IDBRequest.prototype
+assert.isTrue("source" in IDBRequest.prototype, "IDBRequest.prototype should have source")
 
 // IDBRequest has transaction property accessor
-"transaction" in IDBRequest.prototype
+assert.isTrue("transaction" in IDBRequest.prototype, "IDBRequest.prototype should have transaction")
 
 // IDBRequest has onsuccess property
-"onsuccess" in IDBRequest.prototype
+assert.isTrue("onsuccess" in IDBRequest.prototype, "IDBRequest.prototype should have onsuccess")
 
 // IDBRequest has onerror property
-"onerror" in IDBRequest.prototype
+assert.isTrue("onerror" in IDBRequest.prototype, "IDBRequest.prototype should have onerror")
 
 // ==========================================
 // IDBOpenDBRequest Additional Events
 // ==========================================
 
 // IDBOpenDBRequest has onupgradeneeded property
-"onupgradeneeded" in IDBOpenDBRequest.prototype
+assert.isTrue("onupgradeneeded" in IDBOpenDBRequest.prototype, "IDBOpenDBRequest.prototype should have onupgradeneeded")
 
 // IDBOpenDBRequest has onblocked property
-"onblocked" in IDBOpenDBRequest.prototype
+assert.isTrue("onblocked" in IDBOpenDBRequest.prototype, "IDBOpenDBRequest.prototype should have onblocked")
 
 // ==========================================
 // IDBDatabase Properties and Methods
 // ==========================================
 
 // IDBDatabase has name property
-"name" in IDBDatabase.prototype
+assert.isTrue("name" in IDBDatabase.prototype, "IDBDatabase.prototype should have name")
 
 // IDBDatabase has version property
-"version" in IDBDatabase.prototype
+assert.isTrue("version" in IDBDatabase.prototype, "IDBDatabase.prototype should have version")
 
 // IDBDatabase has objectStoreNames property
-"objectStoreNames" in IDBDatabase.prototype
+assert.isTrue("objectStoreNames" in IDBDatabase.prototype, "IDBDatabase.prototype should have objectStoreNames")
 
 // IDBDatabase has transaction method
-typeof IDBDatabase.prototype.transaction === "function"
+assert.isFunction(IDBDatabase.prototype.transaction, "IDBDatabase.prototype.transaction should be a function")
 
 // IDBDatabase has createObjectStore method
-typeof IDBDatabase.prototype.createObjectStore === "function"
+assert.isFunction(IDBDatabase.prototype.createObjectStore, "IDBDatabase.prototype.createObjectStore should be a function")
 
 // IDBDatabase has deleteObjectStore method
-typeof IDBDatabase.prototype.deleteObjectStore === "function"
+assert.isFunction(IDBDatabase.prototype.deleteObjectStore, "IDBDatabase.prototype.deleteObjectStore should be a function")
 
 // IDBDatabase has close method
-typeof IDBDatabase.prototype.close === "function"
+assert.isFunction(IDBDatabase.prototype.close, "IDBDatabase.prototype.close should be a function")
 
 // IDBDatabase has event handlers
-"onabort" in IDBDatabase.prototype && "onerror" in IDBDatabase.prototype && "onversionchange" in IDBDatabase.prototype && "onclose" in IDBDatabase.prototype
+assert.isTrue("onabort" in IDBDatabase.prototype && "onerror" in IDBDatabase.prototype && "onversionchange" in IDBDatabase.prototype && "onclose" in IDBDatabase.prototype, "IDBDatabase should have event handlers")
 
 // ==========================================
 // IDBTransaction Properties and Methods
 // ==========================================
 
 // IDBTransaction has mode property
-"mode" in IDBTransaction.prototype
+assert.isTrue("mode" in IDBTransaction.prototype, "IDBTransaction.prototype should have mode")
 
 // IDBTransaction has durability property
-"durability" in IDBTransaction.prototype
+assert.isTrue("durability" in IDBTransaction.prototype, "IDBTransaction.prototype should have durability")
 
 // IDBTransaction has db property
-"db" in IDBTransaction.prototype
+assert.isTrue("db" in IDBTransaction.prototype, "IDBTransaction.prototype should have db")
 
 // IDBTransaction has objectStoreNames property
-"objectStoreNames" in IDBTransaction.prototype
+assert.isTrue("objectStoreNames" in IDBTransaction.prototype, "IDBTransaction.prototype should have objectStoreNames")
 
 // IDBTransaction has error property
-"error" in IDBTransaction.prototype
+assert.isTrue("error" in IDBTransaction.prototype, "IDBTransaction.prototype should have error")
 
 // IDBTransaction has objectStore method
-typeof IDBTransaction.prototype.objectStore === "function"
+assert.isFunction(IDBTransaction.prototype.objectStore, "IDBTransaction.prototype.objectStore should be a function")
 
 // IDBTransaction has commit method
-typeof IDBTransaction.prototype.commit === "function"
+assert.isFunction(IDBTransaction.prototype.commit, "IDBTransaction.prototype.commit should be a function")
 
 // IDBTransaction has abort method
-typeof IDBTransaction.prototype.abort === "function"
+assert.isFunction(IDBTransaction.prototype.abort, "IDBTransaction.prototype.abort should be a function")
 
 // IDBTransaction has event handlers
-"onabort" in IDBTransaction.prototype && "oncomplete" in IDBTransaction.prototype && "onerror" in IDBTransaction.prototype
+assert.isTrue("onabort" in IDBTransaction.prototype && "oncomplete" in IDBTransaction.prototype && "onerror" in IDBTransaction.prototype, "IDBTransaction should have event handlers")
 
 // ==========================================
 // IDBObjectStore Properties and Methods
 // ==========================================
 
 // IDBObjectStore has name property
-"name" in IDBObjectStore.prototype
+assert.isTrue("name" in IDBObjectStore.prototype, "IDBObjectStore.prototype should have name")
 
 // IDBObjectStore has keyPath property
-"keyPath" in IDBObjectStore.prototype
+assert.isTrue("keyPath" in IDBObjectStore.prototype, "IDBObjectStore.prototype should have keyPath")
 
 // IDBObjectStore has indexNames property
-"indexNames" in IDBObjectStore.prototype
+assert.isTrue("indexNames" in IDBObjectStore.prototype, "IDBObjectStore.prototype should have indexNames")
 
 // IDBObjectStore has transaction property
-"transaction" in IDBObjectStore.prototype
+assert.isTrue("transaction" in IDBObjectStore.prototype, "IDBObjectStore.prototype should have transaction")
 
 // IDBObjectStore has autoIncrement property
-"autoIncrement" in IDBObjectStore.prototype
+assert.isTrue("autoIncrement" in IDBObjectStore.prototype, "IDBObjectStore.prototype should have autoIncrement")
 
 // IDBObjectStore has put method
-typeof IDBObjectStore.prototype.put === "function"
+assert.isFunction(IDBObjectStore.prototype.put, "IDBObjectStore.prototype.put should be a function")
 
 // IDBObjectStore has add method
-typeof IDBObjectStore.prototype.add === "function"
+assert.isFunction(IDBObjectStore.prototype.add, "IDBObjectStore.prototype.add should be a function")
 
 // IDBObjectStore has delete method
-typeof IDBObjectStore.prototype.delete === "function"
+assert.isFunction(IDBObjectStore.prototype.delete, "IDBObjectStore.prototype.delete should be a function")
 
 // IDBObjectStore has clear method
-typeof IDBObjectStore.prototype.clear === "function"
+assert.isFunction(IDBObjectStore.prototype.clear, "IDBObjectStore.prototype.clear should be a function")
 
 // IDBObjectStore has get method
-typeof IDBObjectStore.prototype.get === "function"
+assert.isFunction(IDBObjectStore.prototype.get, "IDBObjectStore.prototype.get should be a function")
 
 // IDBObjectStore has getKey method
-typeof IDBObjectStore.prototype.getKey === "function"
+assert.isFunction(IDBObjectStore.prototype.getKey, "IDBObjectStore.prototype.getKey should be a function")
 
 // IDBObjectStore has getAll method
-typeof IDBObjectStore.prototype.getAll === "function"
+assert.isFunction(IDBObjectStore.prototype.getAll, "IDBObjectStore.prototype.getAll should be a function")
 
 // IDBObjectStore has getAllKeys method
-typeof IDBObjectStore.prototype.getAllKeys === "function"
+assert.isFunction(IDBObjectStore.prototype.getAllKeys, "IDBObjectStore.prototype.getAllKeys should be a function")
 
 // IDBObjectStore has count method
-typeof IDBObjectStore.prototype.count === "function"
+assert.isFunction(IDBObjectStore.prototype.count, "IDBObjectStore.prototype.count should be a function")
 
 // IDBObjectStore has openCursor method
-typeof IDBObjectStore.prototype.openCursor === "function"
+assert.isFunction(IDBObjectStore.prototype.openCursor, "IDBObjectStore.prototype.openCursor should be a function")
 
 // IDBObjectStore has openKeyCursor method
-typeof IDBObjectStore.prototype.openKeyCursor === "function"
+assert.isFunction(IDBObjectStore.prototype.openKeyCursor, "IDBObjectStore.prototype.openKeyCursor should be a function")
 
 // IDBObjectStore has index method
-typeof IDBObjectStore.prototype.index === "function"
+assert.isFunction(IDBObjectStore.prototype.index, "IDBObjectStore.prototype.index should be a function")
 
 // IDBObjectStore has createIndex method
-typeof IDBObjectStore.prototype.createIndex === "function"
+assert.isFunction(IDBObjectStore.prototype.createIndex, "IDBObjectStore.prototype.createIndex should be a function")
 
 // IDBObjectStore has deleteIndex method
-typeof IDBObjectStore.prototype.deleteIndex === "function"
+assert.isFunction(IDBObjectStore.prototype.deleteIndex, "IDBObjectStore.prototype.deleteIndex should be a function")
 
 // ==========================================
 // IDBIndex Properties and Methods
 // ==========================================
 
 // IDBIndex has name property
-"name" in IDBIndex.prototype
+assert.isTrue("name" in IDBIndex.prototype, "IDBIndex.prototype should have name")
 
 // IDBIndex has objectStore property
-"objectStore" in IDBIndex.prototype
+assert.isTrue("objectStore" in IDBIndex.prototype, "IDBIndex.prototype should have objectStore")
 
 // IDBIndex has keyPath property
-"keyPath" in IDBIndex.prototype
+assert.isTrue("keyPath" in IDBIndex.prototype, "IDBIndex.prototype should have keyPath")
 
 // IDBIndex has multiEntry property
-"multiEntry" in IDBIndex.prototype
+assert.isTrue("multiEntry" in IDBIndex.prototype, "IDBIndex.prototype should have multiEntry")
 
 // IDBIndex has unique property
-"unique" in IDBIndex.prototype
+assert.isTrue("unique" in IDBIndex.prototype, "IDBIndex.prototype should have unique")
 
 // IDBIndex has get method
-typeof IDBIndex.prototype.get === "function"
+assert.isFunction(IDBIndex.prototype.get, "IDBIndex.prototype.get should be a function")
 
 // IDBIndex has getKey method
-typeof IDBIndex.prototype.getKey === "function"
+assert.isFunction(IDBIndex.prototype.getKey, "IDBIndex.prototype.getKey should be a function")
 
 // IDBIndex has getAll method
-typeof IDBIndex.prototype.getAll === "function"
+assert.isFunction(IDBIndex.prototype.getAll, "IDBIndex.prototype.getAll should be a function")
 
 // IDBIndex has getAllKeys method
-typeof IDBIndex.prototype.getAllKeys === "function"
+assert.isFunction(IDBIndex.prototype.getAllKeys, "IDBIndex.prototype.getAllKeys should be a function")
 
 // IDBIndex has count method
-typeof IDBIndex.prototype.count === "function"
+assert.isFunction(IDBIndex.prototype.count, "IDBIndex.prototype.count should be a function")
 
 // IDBIndex has openCursor method
-typeof IDBIndex.prototype.openCursor === "function"
+assert.isFunction(IDBIndex.prototype.openCursor, "IDBIndex.prototype.openCursor should be a function")
 
 // IDBIndex has openKeyCursor method
-typeof IDBIndex.prototype.openKeyCursor === "function"
+assert.isFunction(IDBIndex.prototype.openKeyCursor, "IDBIndex.prototype.openKeyCursor should be a function")
 
 // ==========================================
 // IDBCursor Properties and Methods
 // ==========================================
 
 // IDBCursor has source property
-"source" in IDBCursor.prototype
+assert.isTrue("source" in IDBCursor.prototype, "IDBCursor.prototype should have source")
 
 // IDBCursor has direction property
-"direction" in IDBCursor.prototype
+assert.isTrue("direction" in IDBCursor.prototype, "IDBCursor.prototype should have direction")
 
 // IDBCursor has key property
-"key" in IDBCursor.prototype
+assert.isTrue("key" in IDBCursor.prototype, "IDBCursor.prototype should have key")
 
 // IDBCursor has primaryKey property
-"primaryKey" in IDBCursor.prototype
+assert.isTrue("primaryKey" in IDBCursor.prototype, "IDBCursor.prototype should have primaryKey")
 
 // IDBCursor has request property
-"request" in IDBCursor.prototype
+assert.isTrue("request" in IDBCursor.prototype, "IDBCursor.prototype should have request")
 
 // IDBCursor has advance method
-typeof IDBCursor.prototype.advance === "function"
+assert.isFunction(IDBCursor.prototype.advance, "IDBCursor.prototype.advance should be a function")
 
 // IDBCursor has continue method
-typeof IDBCursor.prototype.continue === "function"
+assert.isFunction(IDBCursor.prototype.continue, "IDBCursor.prototype.continue should be a function")
 
 // IDBCursor has continuePrimaryKey method
-typeof IDBCursor.prototype.continuePrimaryKey === "function"
+assert.isFunction(IDBCursor.prototype.continuePrimaryKey, "IDBCursor.prototype.continuePrimaryKey should be a function")
 
 // IDBCursor has update method
-typeof IDBCursor.prototype.update === "function"
+assert.isFunction(IDBCursor.prototype.update, "IDBCursor.prototype.update should be a function")
 
 // IDBCursor has delete method
-typeof IDBCursor.prototype.delete === "function"
+assert.isFunction(IDBCursor.prototype.delete, "IDBCursor.prototype.delete should be a function")
 
 // ==========================================
 // IDBCursorWithValue Properties
 // ==========================================
 
 // IDBCursorWithValue has value property
-"value" in IDBCursorWithValue.prototype
+assert.isTrue("value" in IDBCursorWithValue.prototype, "IDBCursorWithValue.prototype should have value")
 
 // IDBCursorWithValue inherits cursor methods
-typeof IDBCursorWithValue.prototype.advance === "function"
+assert.isFunction(IDBCursorWithValue.prototype.advance, "IDBCursorWithValue.prototype.advance should be a function")
 
 // ==========================================
 // StorageManager (if available)
 // ==========================================
 
 // navigator.storage exists (NavigatorStorage mixin)
-typeof navigator === "object" ? typeof navigator.storage === "object" : true
+assert.isTrue(typeof navigator === "object" ? typeof navigator.storage === "object" : true, "navigator.storage should exist if navigator exists")
 
 // StorageManager has estimate method
-typeof StorageManager === "function" ? typeof StorageManager.prototype.estimate === "function" : true
+assert.isTrue(typeof StorageManager === "function" ? typeof StorageManager.prototype.estimate === "function" : true, "StorageManager.prototype.estimate should be a function")
 
 // StorageManager has persist method
-typeof StorageManager === "function" ? typeof StorageManager.prototype.persist === "function" : true
+assert.isTrue(typeof StorageManager === "function" ? typeof StorageManager.prototype.persist === "function" : true, "StorageManager.prototype.persist should be a function")
 
 // StorageManager has persisted method
-typeof StorageManager === "function" ? typeof StorageManager.prototype.persisted === "function" : true
+assert.isTrue(typeof StorageManager === "function" ? typeof StorageManager.prototype.persisted === "function" : true, "StorageManager.prototype.persisted should be a function")

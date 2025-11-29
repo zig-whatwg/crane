@@ -1079,10 +1079,50 @@ const Repl = struct {
         errors: usize,
     };
 
+    /// Minimal assertion library injected into test files
+    const assert_library =
+        \\(function(g){
+        \\  class AssertionError extends Error { constructor(m,a,e,o){super(m);this.name='AssertionError';this.actual=a;this.expected=e;this.operator=o;} }
+        \\  function fmt(v){if(v===null)return'null';if(v===undefined)return'undefined';if(typeof v==='string')return JSON.stringify(v);if(typeof v==='object')try{return JSON.stringify(v)}catch(e){return Object.prototype.toString.call(v)}return String(v);}
+        \\  const assert=function(v,m){if(!v)throw new AssertionError(m||'Expected truthy, got '+fmt(v),v,true,'==');return true;};
+        \\  assert.ok=assert;
+        \\  assert.equal=function(a,e,m){if(a!=e)throw new AssertionError(m||'Expected '+fmt(e)+', got '+fmt(a),a,e,'==');return true;};
+        \\  assert.strictEqual=function(a,e,m){if(a!==e)throw new AssertionError(m||'Expected '+fmt(e)+' (===), got '+fmt(a),a,e,'===');return true;};
+        \\  assert.notEqual=function(a,e,m){if(a==e)throw new AssertionError(m||'Expected '+fmt(a)+' to not equal '+fmt(e),a,e,'!=');return true;};
+        \\  assert.notStrictEqual=function(a,e,m){if(a===e)throw new AssertionError(m||'Expected '+fmt(a)+' to not strictly equal '+fmt(e),a,e,'!==');return true;};
+        \\  assert.deepEqual=function(a,e,m){if(JSON.stringify(a)!==JSON.stringify(e))throw new AssertionError(m||'Deep equal failed',a,e,'deepEqual');return true;};
+        \\  assert.throws=function(fn,ee,m){let threw=false,err;try{fn()}catch(e){threw=true;err=e}if(!threw)throw new AssertionError(m||'Expected function to throw',undefined,ee||'error','throws');if(ee&&typeof ee==='function'&&!(err instanceof ee))throw new AssertionError(m||'Wrong error type',err,ee,'throws');if(ee instanceof RegExp&&!ee.test(err.message))throw new AssertionError(m||'Error message mismatch',err.message,ee,'throws');return true;};
+        \\  assert.doesNotThrow=function(fn,m){try{fn()}catch(e){throw new AssertionError(m||'Expected no throw, got: '+e.message,e,undefined,'doesNotThrow')}return true;};
+        \\  assert.isNull=function(v,m){if(v!==null)throw new AssertionError(m||'Expected null, got '+fmt(v),v,null,'===null');return true;};
+        \\  assert.isNotNull=function(v,m){if(v===null)throw new AssertionError(m||'Expected non-null',v,'non-null','!==null');return true;};
+        \\  assert.isUndefined=function(v,m){if(v!==undefined)throw new AssertionError(m||'Expected undefined, got '+fmt(v),v,undefined,'===undefined');return true;};
+        \\  assert.isDefined=function(v,m){if(v===undefined)throw new AssertionError(m||'Expected defined value',v,'defined','!==undefined');return true;};
+        \\  assert.isFunction=function(v,m){if(typeof v!=='function')throw new AssertionError(m||'Expected function, got '+typeof v,typeof v,'function','typeof');return true;};
+        \\  assert.isObject=function(v,m){if(typeof v!=='object'||v===null)throw new AssertionError(m||'Expected object',typeof v,'object','typeof');return true;};
+        \\  assert.isString=function(v,m){if(typeof v!=='string')throw new AssertionError(m||'Expected string, got '+typeof v,typeof v,'string','typeof');return true;};
+        \\  assert.isNumber=function(v,m){if(typeof v!=='number')throw new AssertionError(m||'Expected number, got '+typeof v,typeof v,'number','typeof');return true;};
+        \\  assert.isBoolean=function(v,m){if(typeof v!=='boolean')throw new AssertionError(m||'Expected boolean, got '+typeof v,typeof v,'boolean','typeof');return true;};
+        \\  assert.isArray=function(v,m){if(!Array.isArray(v))throw new AssertionError(m||'Expected array, got '+typeof v,typeof v,'array','isArray');return true;};
+        \\  assert.instanceOf=function(v,c,m){if(!(v instanceof c))throw new AssertionError(m||'Expected instance of '+c.name,v,c,'instanceof');return true;};
+        \\  assert.match=function(v,r,m){if(!r.test(v))throw new AssertionError(m||'Expected "'+v+'" to match '+r,v,r,'match');return true;};
+        \\  assert.includes=function(h,n,m){if(!(Array.isArray(h)?h.includes(n):String(h).includes(n)))throw new AssertionError(m||'Expected to include '+fmt(n),h,n,'includes');return true;};
+        \\  assert.greaterThan=function(a,b,m){if(!(a>b))throw new AssertionError(m||'Expected '+a+' > '+b,a,b,'>');return true;};
+        \\  assert.lessThan=function(a,b,m){if(!(a<b))throw new AssertionError(m||'Expected '+a+' < '+b,a,b,'<');return true;};
+        \\  assert.AssertionError=AssertionError;
+        \\  g.assert=assert;g.AssertionError=AssertionError;
+        \\})(globalThis);
+    ;
+
     /// Run a test file - execute each statement and check if it returns true
     /// Handles multi-line constructs by accumulating lines until they form complete code
     pub fn runTestFile(self: *Self, file_path: []const u8) !TestFileResult {
         const stdout = std.fs.File.stdout();
+
+        // Inject the assertion library before running tests
+        _ = self.eval(assert_library) catch |err| {
+            try print(self.allocator, stdout, "Error loading assert library: {}\n", .{err});
+            return .{ .passed = 0, .failed = 0, .errors = 1 };
+        };
 
         // Read the file
         const file = std.fs.cwd().openFile(file_path, .{}) catch |err| {

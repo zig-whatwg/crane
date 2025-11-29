@@ -18,52 +18,52 @@
 // ============================================================================
 
 // fetch() function exists
-typeof fetch === "function"
+assert.isFunction(fetch, "fetch should be a function")
 
 // fetch() returns Promise
-(() => {
+assert.isTrue((() => {
     const promise = fetch("http://localhost:8080/api/test");
     return promise instanceof Promise;
-})()
+})(), "fetch() should return Promise")
 
 // fetch() - simple GET request
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/api/test");
     return response instanceof Response;
-})()
+})(), "fetch() should return Response for simple GET")
 
 // fetch() - response has correct status
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/api/test");
     return response.status === 200;
-})()
+})(), "fetch() response should have correct status")
 
 // fetch() - response is ok
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/api/test");
     return response.ok === true;
-})()
+})(), "fetch() response should be ok")
 
 // fetch() - can read response body
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/api/test");
     const text = await response.text();
     return typeof text === "string" && text.length > 0;
-})()
+})(), "fetch() response body should be readable")
 
 // ============================================================================
 // JSON API TESTS
 // ============================================================================
 
 // fetch() - GET JSON data
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/api/users");
     const data = await response.json();
     return Array.isArray(data) && data.length > 0;
-})()
+})(), "fetch() should GET JSON data")
 
 // fetch() - POST JSON data
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/api/users", {
         method: "POST",
         headers: {
@@ -72,82 +72,82 @@ typeof fetch === "function"
         body: JSON.stringify({ name: "John Doe", email: "john@example.com" })
     });
     return response.status === 201;
-})()
+})(), "fetch() should POST JSON data")
 
 // fetch() - response includes correct headers
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/api/users");
     return response.headers.get("content-type") === "application/json";
-})()
+})(), "fetch() response should include correct headers")
 
 // fetch() - complex JSON response
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/api/users/123");
     const user = await response.json();
     return user.id === 123 && 
            user.name && 
            user.email;
-})()
+})(), "fetch() should handle complex JSON response")
 
 // ============================================================================
 // HTTP METHODS TESTS
 // ============================================================================
 
 // fetch() - GET method (default)
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/api/test");
     return response.status === 200;
-})()
+})(), "fetch() GET method should work")
 
 // fetch() - POST method
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/api/posts", {
         method: "POST",
         body: "test data"
     });
     return response.status === 201;
-})()
+})(), "fetch() POST method should work")
 
 // fetch() - PUT method
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/api/posts/1", {
         method: "PUT",
         body: JSON.stringify({ title: "Updated" })
     });
     return response.status === 200;
-})()
+})(), "fetch() PUT method should work")
 
 // fetch() - PATCH method
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/api/posts/1", {
         method: "PATCH",
         body: JSON.stringify({ title: "Patched" })
     });
     return response.status === 200;
-})()
+})(), "fetch() PATCH method should work")
 
 // fetch() - DELETE method
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/api/posts/1", {
         method: "DELETE"
     });
     return response.status === 204;
-})()
+})(), "fetch() DELETE method should work")
 
 // fetch() - HEAD method
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/api/test", {
         method: "HEAD"
     });
     return response.status === 200 && !response.body;
-})()
+})(), "fetch() HEAD method should work")
 
 // ============================================================================
 // REQUEST HEADERS TESTS
 // ============================================================================
 
 // fetch() - custom headers sent
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/echo/headers", {
         headers: {
             "X-Custom-Header": "test-value",
@@ -157,10 +157,10 @@ typeof fetch === "function"
     const echoed = await response.json();
     return echoed["x-custom-header"] === "test-value" &&
            echoed["authorization"] === "Bearer token123";
-})()
+})(), "fetch() should send custom headers")
 
 // fetch() - Content-Type header
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/echo/headers", {
         method: "POST",
         headers: {
@@ -170,10 +170,10 @@ typeof fetch === "function"
     });
     const echoed = await response.json();
     return echoed["content-type"] === "application/json";
-})()
+})(), "fetch() should send Content-Type header")
 
 // fetch() - User-Agent header
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/echo/headers", {
         headers: {
             "User-Agent": "CustomAgent/1.0"
@@ -181,110 +181,110 @@ typeof fetch === "function"
     });
     const echoed = await response.json();
     return echoed["user-agent"] === "CustomAgent/1.0";
-})()
+})(), "fetch() should send User-Agent header")
 
 // ============================================================================
 // RESPONSE STATUS TESTS
 // ============================================================================
 
 // fetch() - 200 OK
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/status/200");
     return response.status === 200 && response.ok === true;
-})()
+})(), "fetch() should handle 200 OK")
 
 // fetch() - 201 Created
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/status/201");
     return response.status === 201 && response.ok === true;
-})()
+})(), "fetch() should handle 201 Created")
 
 // fetch() - 204 No Content
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/status/204");
     return response.status === 204 && response.ok === true;
-})()
+})(), "fetch() should handle 204 No Content")
 
 // fetch() - 400 Bad Request
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/status/400");
     return response.status === 400 && response.ok === false;
-})()
+})(), "fetch() should handle 400 Bad Request")
 
 // fetch() - 401 Unauthorized
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/status/401");
     return response.status === 401 && response.ok === false;
-})()
+})(), "fetch() should handle 401 Unauthorized")
 
 // fetch() - 403 Forbidden
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/status/403");
     return response.status === 403 && response.ok === false;
-})()
+})(), "fetch() should handle 403 Forbidden")
 
 // fetch() - 404 Not Found
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/status/404");
     return response.status === 404 && response.ok === false;
-})()
+})(), "fetch() should handle 404 Not Found")
 
 // fetch() - 500 Internal Server Error
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/status/500");
     return response.status === 500 && response.ok === false;
-})()
+})(), "fetch() should handle 500 Internal Server Error")
 
 // fetch() - 503 Service Unavailable
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/status/503");
     return response.status === 503 && response.ok === false;
-})()
+})(), "fetch() should handle 503 Service Unavailable")
 
 // ============================================================================
 // REDIRECT TESTS
 // ============================================================================
 
 // fetch() - follows redirects by default
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/redirect/permanent");
     return response.status === 200 && response.redirected === true;
-})()
+})(), "fetch() should follow redirects by default")
 
 // fetch() - redirect sets final URL
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/redirect/permanent");
     return response.url === "http://localhost:8080/redirect/target";
-})()
+})(), "fetch() redirect should set final URL")
 
 // fetch() - 301 Moved Permanently
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/redirect/301");
     return response.redirected === true;
-})()
+})(), "fetch() should handle 301 redirect")
 
 // fetch() - 302 Found
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/redirect/302");
     return response.redirected === true;
-})()
+})(), "fetch() should handle 302 redirect")
 
 // fetch() - 307 Temporary Redirect
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/redirect/307");
     return response.redirected === true;
-})()
+})(), "fetch() should handle 307 redirect")
 
 // fetch() - redirect: "manual" doesn't follow
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/redirect/permanent", {
         redirect: "manual"
     });
     return response.status === 301 && response.redirected === false;
-})()
+})(), "fetch() with redirect:'manual' should not follow")
 
 // fetch() - redirect: "error" throws on redirect
-(async () => {
+assert.isTrue((async () => {
     try {
         await fetch("http://localhost:8080/redirect/permanent", {
             redirect: "error"
@@ -293,45 +293,45 @@ typeof fetch === "function"
     } catch (e) {
         return e.name === "TypeError";
     }
-})()
+})(), "fetch() with redirect:'error' should throw")
 
 // ============================================================================
 // BODY FORMATS TESTS
 // ============================================================================
 
 // fetch() - text/plain response
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/content/text");
     const text = await response.text();
     return text === "Hello, World!";
-})()
+})(), "fetch() should handle text/plain response")
 
 // fetch() - application/json response
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/content/json");
     const data = await response.json();
     return data.message === "success";
-})()
+})(), "fetch() should handle application/json response")
 
 // fetch() - binary data response
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/content/binary");
     const buffer = await response.arrayBuffer();
     return buffer.byteLength > 0;
-})()
+})(), "fetch() should handle binary data response")
 
 // fetch() - POST with text body
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/echo/body", {
         method: "POST",
         body: "plain text data"
     });
     const echoed = await response.text();
     return echoed === "plain text data";
-})()
+})(), "fetch() should POST with text body")
 
 // fetch() - POST with JSON body
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/echo/body", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -339,10 +339,10 @@ typeof fetch === "function"
     });
     const echoed = await response.json();
     return echoed.key === "value" && echoed.number === 42;
-})()
+})(), "fetch() should POST with JSON body")
 
 // fetch() - POST with FormData
-(async () => {
+assert.isTrue((async () => {
     const formData = new FormData();
     formData.append("username", "johndoe");
     formData.append("email", "john@example.com");
@@ -352,10 +352,10 @@ typeof fetch === "function"
         body: formData
     });
     return response.status === 200;
-})()
+})(), "fetch() should POST with FormData")
 
 // fetch() - POST with URLSearchParams
-(async () => {
+assert.isTrue((async () => {
     const params = new URLSearchParams();
     params.append("key1", "value1");
     params.append("key2", "value2");
@@ -366,86 +366,86 @@ typeof fetch === "function"
     });
     const echoed = await response.text();
     return echoed === "key1=value1&key2=value2";
-})()
+})(), "fetch() should POST with URLSearchParams")
 
 // ============================================================================
 // RESPONSE HEADERS TESTS
 // ============================================================================
 
 // fetch() - response has headers
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/headers/custom");
     return response.headers.get("x-custom-header") === "custom-value";
-})()
+})(), "fetch() response should have headers")
 
 // fetch() - response Content-Type header
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/content/json");
     return response.headers.get("content-type") === "application/json";
-})()
+})(), "fetch() response should have Content-Type header")
 
 // fetch() - response Content-Length header
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/content/text");
     const length = response.headers.get("content-length");
     return length && parseInt(length) > 0;
-})()
+})(), "fetch() response should have Content-Length header")
 
 // fetch() - multiple values for same header
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/headers/multiple");
     const values = response.headers.get("set-cookie");
     return values && values.includes(",");
-})()
+})(), "fetch() should handle multiple header values")
 
 // ============================================================================
 // CACHE CONTROL TESTS
 // ============================================================================
 
 // fetch() - cache: "default"
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/api/test", {
         cache: "default"
     });
     return response.status === 200;
-})()
+})(), "fetch() with cache:'default' should work")
 
 // fetch() - cache: "no-cache"
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/api/test", {
         cache: "no-cache"
     });
     return response.status === 200;
-})()
+})(), "fetch() with cache:'no-cache' should work")
 
 // fetch() - cache: "no-store"
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/api/test", {
         cache: "no-store"
     });
     return response.status === 200;
-})()
+})(), "fetch() with cache:'no-store' should work")
 
 // fetch() - cache: "reload"
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/api/test", {
         cache: "reload"
     });
     return response.status === 200;
-})()
+})(), "fetch() with cache:'reload' should work")
 
 // ============================================================================
 // CORS TESTS
 // ============================================================================
 
 // fetch() - same-origin request succeeds
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/api/test");
     return response.ok === true;
-})()
+})(), "fetch() same-origin request should succeed")
 
 // fetch() - CORS preflight for cross-origin
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/cors/allowed", {
         method: "POST",
         headers: {
@@ -453,84 +453,84 @@ typeof fetch === "function"
         }
     });
     return response.ok === true;
-})()
+})(), "fetch() CORS preflight should work")
 
 // fetch() - CORS headers in response
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/cors/allowed");
     return response.headers.has("access-control-allow-origin");
-})()
+})(), "fetch() should receive CORS headers")
 
 // fetch() - mode: "cors" allows CORS
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/cors/allowed", {
         mode: "cors"
     });
     return response.ok === true;
-})()
+})(), "fetch() with mode:'cors' should work")
 
 // fetch() - mode: "no-cors" for opaque responses
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/api/test", {
         mode: "no-cors"
     });
     return response.type === "opaque";
-})()
+})(), "fetch() with mode:'no-cors' should return opaque response")
 
 // ============================================================================
 // CREDENTIALS TESTS
 // ============================================================================
 
 // fetch() - credentials: "omit"
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/api/test", {
         credentials: "omit"
     });
     return response.ok === true;
-})()
+})(), "fetch() with credentials:'omit' should work")
 
 // fetch() - credentials: "same-origin"
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/api/test", {
         credentials: "same-origin"
     });
     return response.ok === true;
-})()
+})(), "fetch() with credentials:'same-origin' should work")
 
 // fetch() - credentials: "include"
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/api/test", {
         credentials: "include"
     });
     return response.ok === true;
-})()
+})(), "fetch() with credentials:'include' should work")
 
 // ============================================================================
 // ERROR HANDLING TESTS
 // ============================================================================
 
 // fetch() - network error rejects Promise
-(async () => {
+assert.isTrue((async () => {
     try {
         await fetch("http://localhost:9999/nonexistent");
         return false; // Should have thrown
     } catch (e) {
         return e.name === "TypeError";
     }
-})()
+})(), "fetch() network error should reject Promise")
 
 // fetch() - invalid URL rejects
-(async () => {
+assert.isTrue((async () => {
     try {
         await fetch("not a valid url");
         return false; // Should have thrown
     } catch (e) {
         return e.name === "TypeError";
     }
-})()
+})(), "fetch() invalid URL should reject")
 
 // fetch() - timeout (if supported)
-(async () => {
+assert.isTrue((async () => {
     try {
         const controller = new AbortController();
         setTimeout(() => controller.abort(), 100);
@@ -542,17 +542,17 @@ typeof fetch === "function"
     } catch (e) {
         return e.name === "AbortError";
     }
-})()
+})(), "fetch() timeout should throw AbortError")
 
 // ============================================================================
 // ABORT SIGNAL TESTS
 // ============================================================================
 
 // AbortController exists
-typeof AbortController === "function"
+assert.isFunction(AbortController, "AbortController should be a function")
 
 // fetch() - can be aborted
-(async () => {
+assert.isTrue((async () => {
     const controller = new AbortController();
     const promise = fetch("http://localhost:8080/delay/5000", {
         signal: controller.signal
@@ -566,10 +566,10 @@ typeof AbortController === "function"
     } catch (e) {
         return e.name === "AbortError";
     }
-})()
+})(), "fetch() can be aborted")
 
 // fetch() - abort before request
-(async () => {
+assert.isTrue((async () => {
     const controller = new AbortController();
     controller.abort();
     
@@ -581,14 +581,14 @@ typeof AbortController === "function"
     } catch (e) {
         return e.name === "AbortError";
     }
-})()
+})(), "fetch() should abort before request if signal already aborted")
 
 // ============================================================================
 // COMPLEX SCENARIOS
 // ============================================================================
 
 // fetch() - multiple requests in parallel
-(async () => {
+assert.isTrue((async () => {
     const promises = [
         fetch("http://localhost:8080/api/users"),
         fetch("http://localhost:8080/api/posts"),
@@ -597,10 +597,10 @@ typeof AbortController === "function"
     
     const responses = await Promise.all(promises);
     return responses.every(r => r.ok === true);
-})()
+})(), "fetch() multiple parallel requests should work")
 
 // fetch() - sequential requests
-(async () => {
+assert.isTrue((async () => {
     const r1 = await fetch("http://localhost:8080/api/users");
     const users = await r1.json();
     
@@ -608,10 +608,10 @@ typeof AbortController === "function"
     const user = await r2.json();
     
     return user.id === users[0].id;
-})()
+})(), "fetch() sequential requests should work")
 
 // fetch() - request/response cycle
-(async () => {
+assert.isTrue((async () => {
     // POST to create
     const createResponse = await fetch("http://localhost:8080/api/posts", {
         method: "POST",
@@ -625,17 +625,17 @@ typeof AbortController === "function"
     const retrieved = await getResponse.json();
     
     return retrieved.title === "Test Post";
-})()
+})(), "fetch() request/response cycle should work")
 
 // fetch() - handles large response
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/content/large");
     const text = await response.text();
     return text.length > 10000; // 10KB+
-})()
+})(), "fetch() should handle large response")
 
 // fetch() - streaming response (if supported)
-(async () => {
+assert.isTrue((async () => {
     const response = await fetch("http://localhost:8080/content/stream");
     const reader = response.body.getReader();
     
@@ -647,7 +647,7 @@ typeof AbortController === "function"
     }
     
     return chunks > 0;
-})()
+})(), "fetch() should handle streaming response")
 
 // End of tests marker
-true
+assert.isTrue(true, "All fetch integration tests completed")

@@ -1,29 +1,27 @@
-// Simple querySelector test to debug issues
+// Simple querySelector test
 
-// Basic setup
-var doc = new Document();
-var body = doc.createElement("body");
-var header = doc.createElement("header");
-body.appendChild(header);
+// Setup
+var doc = new Document()
+var body = doc.createElement("body")
+var header = doc.createElement("header")
+var _setup = body.appendChild(header)
 
-// Test 1: querySelector returns something
-typeof body.querySelector !== "undefined"
+// Test 1: querySelector is defined
+assert.isDefined(body.querySelector, "querySelector should be defined")
 
 // Test 2: querySelector is a function
-typeof body.querySelector === "function"
+assert.isFunction(body.querySelector, "querySelector should be a function")
 
 // Test 3: querySelector finds the element
-body.querySelector("header") !== null
+assert.isNotNull(body.querySelector("header"), "querySelector('header') should find element")
 
 // Test 4: querySelector returns the same object (wrapper identity)
-body.querySelector("header") === header
+assert.strictEqual(body.querySelector("header"), header, "querySelector should return the appended header element")
 
 // Test 5: querySelector returns consistent results
-body.querySelector("header") === body.querySelector("header")
+assert.strictEqual(body.querySelector("header"), body.querySelector("header"), "querySelector should return same object on repeated calls")
 
-// Test 6: Test with div
-(() => {
-    var div = doc.createElement("div");
-    body.appendChild(div);
-    return body.querySelector("div") === div;
-})()
+// Test 6: Test with dynamically created element
+var div = doc.createElement("div")
+var _append = body.appendChild(div)
+assert.strictEqual(body.querySelector("div"), div, "querySelector should find dynamically added div")
