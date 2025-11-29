@@ -1121,10 +1121,11 @@ const Repl = struct {
         const stdout = std.fs.File.stdout();
 
         // Inject the assertion library before running tests
-        _ = self.eval(assert_library) catch |err| {
+        const assert_result = self.eval(assert_library) catch |err| {
             try print(self.allocator, stdout, "Error loading assert library: {}\n", .{err});
             return .{ .passed = 0, .failed = 0, .errors = 1 };
         };
+        self.allocator.free(assert_result);
 
         // Read the file
         const file = std.fs.cwd().openFile(file_path, .{}) catch |err| {
@@ -1198,12 +1199,18 @@ const Repl = struct {
             std.mem.startsWith(u8, code, "const "))
         {
             // Execute but don't count as assertion
-            _ = self.eval(code) catch {
+            const result = self.eval(code) catch {
                 errors.* += 1;
                 return false;
             };
+            self.allocator.free(result);
             return true;
         }
+
+        // Check if this is an assignment expression (not a declaration)
+        // Assignment expressions like "element.id = 'value'" return the assigned value
+        // and should not be counted as assertions
+        const is_assignment = self.isAssignmentExpression(code);
 
         // Evaluate the statement
         const result = self.eval(code) catch {
@@ -1219,10 +1226,69 @@ const Repl = struct {
         } else if (std.mem.eql(u8, result, "undefined")) {
             // Statements like function calls that return undefined are not assertions
             return true;
+        } else if (is_assignment) {
+            // Assignment expressions return their assigned value, not true/undefined
+            // Don't count them as failed assertions
+            return true;
         } else {
             failed.* += 1;
             return false;
         }
+    }
+
+    /// Check if code is a simple assignment expression (not a declaration or comparison)
+    /// Examples that return true: "element.id = 'value'", "obj.prop = 123"
+    /// Examples that return false: "var x = 1", "x === y", "assert.equal(a, b)"
+    fn isAssignmentExpression(self: *Self, code: []const u8) bool {
+        _ = self;
+
+        // Skip if it's a declaration
+        if (std.mem.startsWith(u8, code, "var ") or
+            std.mem.startsWith(u8, code, "let ") or
+            std.mem.startsWith(u8, code, "const "))
+        {
+            return false;
+        }
+
+        // Skip if it looks like an assertion or function call
+        if (std.mem.startsWith(u8, code, "assert.") or
+            std.mem.startsWith(u8, code, "console."))
+        {
+            return false;
+        }
+
+        // Look for assignment operator (=) that's not part of == or === or != or !==
+        var i: usize = 0;
+        while (i < code.len) : (i += 1) {
+            const c = code[i];
+
+            // Skip string literals
+            if (c == '"' or c == '\'') {
+                const quote = c;
+                i += 1;
+                while (i < code.len and code[i] != quote) : (i += 1) {
+                    if (code[i] == '\\' and i + 1 < code.len) i += 1; // Skip escaped chars
+                }
+                continue;
+            }
+
+            // Check for = that's not == or === or != or !== or <= or >= or =>
+            if (c == '=') {
+                // Check what comes before and after
+                const prev = if (i > 0) code[i - 1] else ' ';
+                const next = if (i + 1 < code.len) code[i + 1] else ' ';
+
+                // Skip if it's ==, ===, !=, !==, <=, >=, =>
+                if (next == '=' or prev == '=' or prev == '!' or prev == '<' or prev == '>' or next == '>') {
+                    continue;
+                }
+
+                // This is an assignment
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// Run the REPL loop
