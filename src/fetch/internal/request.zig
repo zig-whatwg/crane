@@ -404,6 +404,11 @@ pub const InternalRequest = struct {
         }
         self.url_list.deinit(self.allocator);
 
+        // Free integrity_metadata if it was allocated (non-empty means it was set)
+        if (self.integrity_metadata.len > 0) {
+            self.allocator.free(self.integrity_metadata);
+        }
+
         // Free body if it's a Body object we own
         if (self.body) |b| {
             switch (b) {

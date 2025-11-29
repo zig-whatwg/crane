@@ -282,8 +282,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, inpu
 
     // Step 23: If init["integrity"] exists
     if (init_opts.integrity) |integrity| {
-        // TODO: Handle DOMString union properly
-        _ = integrity;
+        // Set integrity_metadata - we need to dupe since we're storing on the request
+        const integrity_str = switch (integrity) {
+            .empty => "",
+            .interned => |s| s,
+            .owned => |s| s,
+        };
+        base_request.integrity_metadata = try allocator.dupe(u8, integrity_str);
     }
 
     // Step 24: If init["keepalive"] exists
