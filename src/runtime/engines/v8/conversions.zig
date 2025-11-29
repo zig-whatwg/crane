@@ -262,9 +262,31 @@ pub fn fromV8Value(
         return try fromV8Value(ChildType, allocator, isolate, context, value);
     }
 
-    // Handle slices (sequence<T>)
+    // Handle slices (sequence<T> or ByteString)
     if (type_info == .pointer and type_info.pointer.size == .slice) {
         const ElemType = type_info.pointer.child;
+
+        // Special case: []const u8 (ByteString) - convert from V8 string
+        if (ElemType == u8) {
+            if (v8.v8_Value_IsString(value)) {
+                // Convert V8 string to []const u8
+                const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
+                const length = v8.v8_String_Utf8Length(string);
+                if (length < 0) return ConversionError.StringError;
+                if (length == 0) return &[_]u8{};
+
+                const buffer = try allocator.alloc(u8, @intCast(length));
+                const written = v8.v8_String_WriteUtf8(string, buffer.ptr, @intCast(length));
+                if (written != length) {
+                    allocator.free(buffer);
+                    return ConversionError.StringError;
+                }
+                return buffer;
+            }
+            // If not a string, might be an array - fall through to sequence handling
+        }
+
+        // Generic sequence handling - value must be an array
         if (!v8.v8_Value_IsArray(value)) {
             return ConversionError.TypeError;
         }
@@ -283,15 +305,121 @@ pub fn fromV8Value(
 
     // Handle unions (for constructor overloading and type unions)
     if (type_info == .@"union") {
-        // Union types require manual type discrimination per WebIDL specification.
-        // Each interface implementation must handle union parameter conversion directly,
-        // as the correct conversion depends on runtime type checking of the V8 value.
-        // Generic conversion cannot determine which union variant to use.
+        // Union types require runtime type discrimination per WebIDL specification.
         //
-        // Note: This should never be reached for constructor args, as union types
-        // in ConstructorArgs should be handled by interface impl constructors.
-        // If you're seeing this error, the interface implementation needs to handle
-        // the union type conversion manually before calling the generic converter.
+        // For common union patterns (HeadersInit, BodyInit, etc.), we try to
+        // find the best matching variant based on the V8 value type.
+        //
+        // Strategy: At comptime, find which variant matches each JS type category,
+        // then dispatch at runtime based on the actual value type.
+
+        const union_info = type_info.@"union";
+        const fields = union_info.fields;
+
+        // Find indices for different type categories at comptime
+        const sequence_idx: ?usize = comptime blk: {
+            for (fields, 0..) |field, i| {
+                const field_info = @typeInfo(field.type);
+                if (field_info == .pointer and field_info.pointer.size == .slice) {
+                    break :blk i;
+                }
+            }
+            break :blk null;
+        };
+
+        const string_idx: ?usize = comptime blk: {
+            for (fields, 0..) |field, i| {
+                if (field.type == runtime.DOMString or field.type == runtime.ByteString or field.type == runtime.USVString) {
+                    break :blk i;
+                }
+            }
+            break :blk null;
+        };
+
+        const dict_idx: ?usize = comptime blk: {
+            for (fields, 0..) |field, i| {
+                const field_info = @typeInfo(field.type);
+                if (field_info == .@"struct" and !@hasDecl(field.type, "Meta")) {
+                    break :blk i;
+                }
+            }
+            break :blk null;
+        };
+
+        const boolean_idx: ?usize = comptime blk: {
+            for (fields, 0..) |field, i| {
+                if (field.type == runtime.Boolean) {
+                    break :blk i;
+                }
+            }
+            break :blk null;
+        };
+
+        const number_idx: ?usize = comptime blk: {
+            for (fields, 0..) |field, i| {
+                const field_info = @typeInfo(field.type);
+                if (field_info == .int or field_info == .float or
+                    field.type == runtime.Double or field.type == runtime.Long)
+                {
+                    break :blk i;
+                }
+            }
+            break :blk null;
+        };
+
+        // Check if this union has only *anyopaque variants (generated for unresolved unions)
+        const anyopaque_idx: ?usize = comptime blk: {
+            for (fields, 0..) |field, i| {
+                if (field.type == *const anyopaque or field.type == *anyopaque) {
+                    break :blk i;
+                }
+            }
+            break :blk null;
+        };
+
+        // Runtime dispatch based on V8 value type
+        if (v8.v8_Value_IsArray(value)) {
+            if (sequence_idx) |idx| {
+                const FieldType = fields[idx].type;
+                const converted = try fromV8Value(FieldType, allocator, isolate, context, value);
+                return @unionInit(T, fields[idx].name, converted);
+            }
+        } else if (v8.v8_Value_IsString(value)) {
+            if (string_idx) |idx| {
+                const FieldType = fields[idx].type;
+                const converted = try fromV8Value(FieldType, allocator, isolate, context, value);
+                return @unionInit(T, fields[idx].name, converted);
+            }
+        } else if (v8.v8_Value_IsBoolean(value)) {
+            if (boolean_idx) |idx| {
+                const FieldType = fields[idx].type;
+                const converted = try fromV8Value(FieldType, allocator, isolate, context, value);
+                return @unionInit(T, fields[idx].name, converted);
+            }
+        } else if (v8.v8_Value_IsNumber(value)) {
+            if (number_idx) |idx| {
+                const FieldType = fields[idx].type;
+                const converted = try fromV8Value(FieldType, allocator, isolate, context, value);
+                return @unionInit(T, fields[idx].name, converted);
+            }
+        } else if (v8.v8_Value_IsObject(value)) {
+            if (dict_idx) |idx| {
+                const FieldType = fields[idx].type;
+                const converted = try fromV8Value(FieldType, allocator, isolate, context, value);
+                return @unionInit(T, fields[idx].name, converted);
+            }
+        }
+
+        // Fallback: If no typed variant matched but we have an anyopaque variant,
+        // use it to pass through the V8 value. This handles unions like HeadersInit
+        // where codegen generates *anyopaque variants for unresolved types.
+        if (anyopaque_idx) |idx| {
+            // Pass through the V8 value as an opaque pointer
+            // The implementation is responsible for parsing this
+            return @unionInit(T, fields[idx].name, @ptrCast(value));
+        }
+
+        // No matching variant found - return error
         return ConversionError.TypeError;
     }
 
@@ -399,6 +527,32 @@ pub fn fromV8Value(
             // The V8 function object will be wrapped and called later
             return @ptrCast(@alignCast(@constCast(value)));
         }
+    }
+
+    // Handle webidl.Opt (Optional wrapper type)
+    // This must come before generic struct handling since Opt is a struct
+    if (type_info == .@"struct" and @hasDecl(T, "notPassed") and @hasDecl(T, "wasPassed")) {
+        // This is a webidl.Opt(InnerType) - convert the inner value and wrap it
+        // Get the inner type from the 'value' field using comptime struct field access
+        const InnerType = comptime blk: {
+            const fields = std.meta.fields(T);
+            for (fields) |field| {
+                if (std.mem.eql(u8, field.name, "value")) {
+                    break :blk field.type;
+                }
+            }
+            // Opt types always have a 'value' field
+            @compileError("webidl.Opt type missing 'value' field");
+        };
+
+        // Check for null/undefined - return notPassed
+        if (v8.v8_Value_IsNullOrUndefined(value)) {
+            return T.notPassed();
+        }
+
+        // Convert the inner value
+        const inner_value = try fromV8Value(InnerType, allocator, isolate, context, value);
+        return T.passed(inner_value);
     }
 
     // Handle structs (dictionaries vs interfaces)
@@ -519,6 +673,21 @@ pub fn fromV8Value(
             return @ptrCast(w);
         }
         return null;
+    }
+
+    // Handle pointer types that might be generated by codegen for buffer sources
+    // This catches things like *ArrayBuffer, *TypedArray, etc.
+    if (type_info == .pointer and type_info.pointer.size == .one) {
+        const ChildType = type_info.pointer.child;
+        const child_info = @typeInfo(ChildType);
+
+        // Check if child type is a struct (like ArrayBuffer)
+        if (child_info == .@"struct") {
+            // For now, return TypeError - buffer source conversion requires
+            // special V8 API calls that aren't yet implemented
+            // TODO: Implement V8 ArrayBuffer/TypedArray extraction
+            return ConversionError.TypeError;
+        }
     }
 
     // If we get here, it's an unsupported type

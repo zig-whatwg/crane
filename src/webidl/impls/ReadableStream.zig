@@ -137,14 +137,14 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
     // Get event loop from context (required for async operations)
     const loop = try ctx.getEventLoop();
 
-    // Step 1: If underlyingSource is missing, it would be null
-    // (handled by caller setting it to null/undefined)
-
+    // Step 1: If underlyingSource is missing, use default empty dictionary
     // Step 2: Convert to UnderlyingSource dictionary
-    // For now, we'll assume underlyingSource is already a dictionary pointer
-    // In real implementation, this would involve WebIDL type conversion
-    const underlying_source_ptr: *const anyopaque = if (underlyingSource.was_passed) underlyingSource.value else @ptrFromInt(1);
-    const underlying_source_dict: *const dictionaries.UnderlyingSource = @ptrCast(@alignCast(underlying_source_ptr));
+    // When underlyingSource is not passed, use a default empty dictionary
+    const default_source = dictionaries.UnderlyingSource{};
+    const underlying_source_dict: *const dictionaries.UnderlyingSource = if (underlyingSource.was_passed)
+        @ptrCast(@alignCast(underlyingSource.value))
+    else
+        &default_source;
 
     // Step 3: Perform InitializeReadableStream
     const instance = try init(allocator, State, &ReadableStream.vtable, ctx);
@@ -187,10 +187,11 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
         const high_water_mark = try extractHighWaterMark(&strat, 0.0);
 
         // Step 4.3: Perform ? SetUpReadableByteStreamControllerFromUnderlyingSource
+        // Note: The first anyopaque param is unused, passing dict pointer as placeholder
         try setUpReadableByteStreamControllerFromUnderlyingSource(
             instance,
             internal,
-            underlying_source_ptr,
+            @ptrCast(underlying_source_dict),
             underlying_source_dict,
             high_water_mark,
         );
@@ -206,10 +207,11 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
         const high_water_mark = try extractHighWaterMark(&strat, 1.0);
 
         // Step 5.4: Perform SetUpReadableStreamDefaultControllerFromUnderlyingSource
+        // Note: The first anyopaque param is unused, passing dict pointer as placeholder
         try setUpReadableStreamDefaultControllerFromUnderlyingSource(
             instance,
             internal,
-            underlying_source_ptr,
+            @ptrCast(underlying_source_dict),
             underlying_source_dict,
             high_water_mark,
         );
