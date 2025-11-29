@@ -237,6 +237,15 @@ pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) Imp
     }
 }
 
+/// Internal method to get all entries for pair iterable support
+/// Returns the raw entries slice from the HeaderList
+/// This is used by V8Interface for entries(), keys(), values() iteration
+pub fn getEntriesInternal(instance: *runtime.Instance) ?[]const fetch.internal.header_list.Header {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return null;
+    return internal.header_list.entries.items;
+}
+
 // === Helper Functions ===
 
 /// Check if mutation is allowed for this header name

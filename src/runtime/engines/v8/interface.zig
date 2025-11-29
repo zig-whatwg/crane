@@ -1700,7 +1700,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
         const IteratorKind = enum { entries, keys, values };
 
-        /// Create a JavaScript iterator object for indexed collections
+        /// Create a JavaScript iterator object for indexed or pair collections
         fn createValueIterator(
             isolate: *v8.Isolate,
             context: *v8.Context,
@@ -1709,10 +1709,6 @@ pub fn V8Interface(comptime Interface: type) type {
         ) ?*v8.Object {
             // Create iterator state object to track position
             const iterator_obj = v8.v8_Object_New(isolate) orelse return null;
-
-            // Store reference to target object
-            const target_key = v8.v8_String_NewFromUtf8(isolate, "_target", 7) orelse return null;
-            _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(target_key), @ptrCast(target));
 
             // Store current index
             const index_key = v8.v8_String_NewFromUtf8(isolate, "_index", 6) orelse return null;
@@ -1724,11 +1720,53 @@ pub fn V8Interface(comptime Interface: type) type {
             const kind_val = v8.v8_Number_New(isolate, @floatFromInt(@intFromEnum(kind)));
             _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(kind_key), @ptrCast(kind_val));
 
-            // Create next() method
-            const next_tmpl = v8.v8_FunctionTemplate_New(isolate, iteratorNextCallback, null) orelse return null;
-            const next_func = v8.v8_FunctionTemplate_GetFunction(next_tmpl, context) orelse return null;
-            const next_key = v8.v8_String_NewFromUtf8(isolate, "next", 4) orelse return null;
-            _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(next_key), @ptrCast(next_func));
+            // Check if this is a pair iterable (has forEach but no length)
+            // For pair iterables, we collect entries upfront using forEach
+            const length_key = v8.v8_String_NewFromUtf8(isolate, "length", 6) orelse return null;
+            const length_val = v8.v8_Object_Get(target, context, @ptrCast(length_key));
+            const has_length = if (length_val) |lv| !v8.v8_Value_IsUndefined(@ptrCast(lv)) else false;
+
+            if (!has_length) {
+                // This is likely a pair iterable (like Headers, URLSearchParams, FormData)
+                // Collect entries by calling forEach and building an array
+                const entries_array = collectPairIterableEntries(isolate, context, target) orelse {
+                    // Fallback: store target directly (will return empty)
+                    const target_key = v8.v8_String_NewFromUtf8(isolate, "_target", 7) orelse return null;
+                    _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(target_key), @ptrCast(target));
+                    const entries_key = v8.v8_String_NewFromUtf8(isolate, "_entries", 8) orelse return null;
+                    const empty_array = v8.v8_Array_New(isolate, 0);
+                    _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(entries_key), @ptrCast(empty_array));
+
+                    // Create next() method for pair iterator
+                    const next_tmpl = v8.v8_FunctionTemplate_New(isolate, pairIteratorNextCallback, null) orelse return null;
+                    const next_func = v8.v8_FunctionTemplate_GetFunction(next_tmpl, context) orelse return null;
+                    const next_key = v8.v8_String_NewFromUtf8(isolate, "next", 4) orelse return null;
+                    _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(next_key), @ptrCast(next_func));
+
+                    return iterator_obj;
+                };
+
+                // Store the collected entries array
+                const entries_key = v8.v8_String_NewFromUtf8(isolate, "_entries", 8) orelse return null;
+                _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(entries_key), @ptrCast(entries_array));
+
+                // Create next() method for pair iterator
+                const next_tmpl = v8.v8_FunctionTemplate_New(isolate, pairIteratorNextCallback, null) orelse return null;
+                const next_func = v8.v8_FunctionTemplate_GetFunction(next_tmpl, context) orelse return null;
+                const next_key = v8.v8_String_NewFromUtf8(isolate, "next", 4) orelse return null;
+                _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(next_key), @ptrCast(next_func));
+            } else {
+                // This is an indexed iterable (like NodeList, HTMLCollection)
+                // Store reference to target object
+                const target_key = v8.v8_String_NewFromUtf8(isolate, "_target", 7) orelse return null;
+                _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(target_key), @ptrCast(target));
+
+                // Create next() method for indexed iterator
+                const next_tmpl = v8.v8_FunctionTemplate_New(isolate, iteratorNextCallback, null) orelse return null;
+                const next_func = v8.v8_FunctionTemplate_GetFunction(next_tmpl, context) orelse return null;
+                const next_key = v8.v8_String_NewFromUtf8(isolate, "next", 4) orelse return null;
+                _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(next_key), @ptrCast(next_func));
+            }
 
             // Set Symbol.toStringTag to "Array Iterator" (spec-compliant)
             const symbol_toStringTag = v8.v8_Symbol_GetToStringTag(isolate);
@@ -1739,7 +1777,174 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
             }
 
+            // Set Symbol.iterator on the iterator object itself (returns this)
+            // This makes the iterator iterable (required for for...of and spread)
+            const symbol_iterator = v8.v8_Symbol_GetIterator(isolate);
+            if (symbol_iterator) |symbol| {
+                // Create a function that returns 'this'
+                const self_iterator_tmpl = v8.v8_FunctionTemplate_New(isolate, iteratorSelfCallback, null);
+                if (self_iterator_tmpl) |tmpl| {
+                    const self_iterator_func = v8.v8_FunctionTemplate_GetFunction(tmpl, context);
+                    if (self_iterator_func) |func| {
+                        _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(symbol), @ptrCast(func));
+                    }
+                }
+            }
+
             return iterator_obj;
+        }
+
+        /// Callback for [Symbol.iterator] on iterator objects - returns this
+        fn iteratorSelfCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+            const this_obj = info.getThis();
+            info.setReturnValue(@ptrCast(this_obj));
+        }
+
+        /// Collect entries from a pair iterable
+        /// Tries to use getEntriesForIterable if available on the Interface,
+        /// otherwise falls back to forEach-based collection (which may not work for all impls)
+        fn collectPairIterableEntries(
+            isolate: *v8.Isolate,
+            context: *v8.Context,
+            target: *v8.Object,
+        ) ?*v8.Array {
+            // Create an array to store entries
+            const entries_array = v8.v8_Array_New(isolate, 0);
+
+            // Try to get entries directly from the Interface if it has getEntriesForIterable
+            if (comptime @hasDecl(Interface, "getEntriesForIterable")) {
+                // Get the instance from the V8 object's internal field
+                const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(target, 0);
+                if (instance_ptr) |ptr| {
+                    const instance: *runtime.Instance = @ptrCast(@alignCast(ptr));
+
+                    // Call getEntriesForIterable to get the Zig entries
+                    if (Interface.getEntriesForIterable(instance)) |entries| {
+                        // Convert entries to V8 array
+                        var idx: u32 = 0;
+                        for (entries) |entry| {
+                            // Create [key, value] pair as V8 array
+                            const pair = v8.v8_Array_New(isolate, 2);
+
+                            // entry.name is the key, entry.value is the value
+                            const key_str = v8.v8_String_NewFromUtf8(isolate, entry.name.ptr, @intCast(entry.name.len));
+                            const val_str = v8.v8_String_NewFromUtf8(isolate, entry.value.ptr, @intCast(entry.value.len));
+
+                            if (key_str) |k| {
+                                _ = v8.v8_Array_Set(pair, context, 0, @ptrCast(k));
+                            }
+                            if (val_str) |val| {
+                                _ = v8.v8_Array_Set(pair, context, 1, @ptrCast(val));
+                            }
+
+                            // Add pair to entries array
+                            _ = v8.v8_Array_Set(entries_array, context, idx, @ptrCast(pair));
+                            idx += 1;
+                        }
+                        return entries_array;
+                    }
+                }
+            }
+
+            // Fallback: try forEach-based collection (may not work if forEach impl is incomplete)
+            const forEach_key = v8.v8_String_NewFromUtf8(isolate, "forEach", 7) orelse return entries_array;
+            const forEach_val = v8.v8_Object_Get(target, context, @ptrCast(forEach_key)) orelse return entries_array;
+
+            if (!v8.v8_Value_IsFunction(forEach_val)) {
+                return entries_array;
+            }
+
+            // Create a callback function that collects entries via JavaScript
+            const script_str =
+                \\(function(target, entries) {
+                \\  target.forEach(function(value, key) {
+                \\    entries.push([key, value]);
+                \\  });
+                \\  return entries;
+                \\})
+            ;
+            const script_v8_str = v8.v8_String_NewFromUtf8(isolate, script_str.ptr, @intCast(script_str.len)) orelse return entries_array;
+            const script = v8.v8_Script_Compile(context, script_v8_str) orelse return entries_array;
+            const func_val = v8.v8_Script_Run(context, script) orelse return entries_array;
+
+            if (!v8.v8_Value_IsFunction(func_val)) {
+                return entries_array;
+            }
+
+            // Call the function with target and entries array
+            var args = [_]*v8.Value{ @ptrCast(target), @ptrCast(entries_array) };
+            const global = v8.v8_Context_Global(context) orelse return entries_array;
+            _ = v8.v8_Function_Call(@ptrCast(func_val), context, @ptrCast(global), 2, @ptrCast(&args));
+
+            return entries_array;
+        }
+
+        /// next() callback for pair iterator objects (uses pre-collected entries)
+        fn pairIteratorNextCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+            const isolate = info.getIsolate();
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+                conv.throwError(isolate, "No V8 context");
+                return;
+            };
+
+            // Get the iterator object (this)
+            const iterator_obj = info.getThis();
+
+            // Get stored state
+            const index_key = v8.v8_String_NewFromUtf8(isolate, "_index", 6) orelse return;
+            const kind_key = v8.v8_String_NewFromUtf8(isolate, "_kind", 5) orelse return;
+            const entries_key = v8.v8_String_NewFromUtf8(isolate, "_entries", 8) orelse return;
+
+            const index_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(index_key)) orelse return;
+            const kind_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(kind_key)) orelse return;
+            const entries_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(entries_key)) orelse return;
+
+            const index: u32 = @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(index_val), v8_context));
+            const kind: IteratorKind = @enumFromInt(@as(u2, @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(kind_val), v8_context))));
+
+            // Get length of entries array
+            const length = v8.v8_Array_Length(@ptrCast(entries_val));
+
+            // Create result object { value: ..., done: ... }
+            const result_obj = v8.v8_Object_New(isolate) orelse return;
+            const value_key = v8.v8_String_NewFromUtf8(isolate, "value", 5) orelse return;
+            const done_key = v8.v8_String_NewFromUtf8(isolate, "done", 4) orelse return;
+
+            if (index >= length) {
+                // Iterator exhausted
+                _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(value_key), @ptrCast(v8.v8_Undefined(isolate)));
+                _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(done_key), @ptrCast(v8.v8_Boolean_New(isolate, true)));
+            } else {
+                // Get entry at index (it's a [key, value] array)
+                const entry = v8.v8_Array_Get(v8_context, @ptrCast(entries_val), index) orelse {
+                    _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(value_key), @ptrCast(v8.v8_Undefined(isolate)));
+                    _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(done_key), @ptrCast(v8.v8_Boolean_New(isolate, true)));
+                    info.setReturnValue(@ptrCast(result_obj));
+                    return;
+                };
+
+                // Extract key and value from entry
+                const zero_key = v8.v8_Number_New(isolate, 0);
+                const one_key = v8.v8_Number_New(isolate, 1);
+                const key_v8 = v8.v8_Object_Get(@ptrCast(entry), v8_context, @ptrCast(zero_key));
+                const val_v8 = v8.v8_Object_Get(@ptrCast(entry), v8_context, @ptrCast(one_key));
+
+                // Return value based on kind
+                const result_val: *v8.Value = switch (kind) {
+                    .keys => @ptrCast(key_v8 orelse v8.v8_Undefined(isolate)),
+                    .values => @ptrCast(val_v8 orelse v8.v8_Undefined(isolate)),
+                    .entries => @ptrCast(entry), // Return the [key, value] pair
+                };
+
+                _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(value_key), result_val);
+                _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(done_key), @ptrCast(v8.v8_Boolean_New(isolate, false)));
+
+                // Increment index
+                const new_index = v8.v8_Number_New(isolate, @floatFromInt(index + 1));
+                _ = v8.v8_Object_Set(iterator_obj, v8_context, @ptrCast(index_key), @ptrCast(new_index));
+            }
+
+            info.setReturnValue(@ptrCast(result_obj));
         }
 
         /// next() callback for iterator objects
