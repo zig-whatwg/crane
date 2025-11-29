@@ -1084,9 +1084,11 @@ const Repl = struct {
         \\(function(g){
         \\  class AssertionError extends Error { constructor(m,a,e,o){super(m);this.name='AssertionError';this.actual=a;this.expected=e;this.operator=o;} }
         \\  function fmt(v){if(v===null)return'null';if(v===undefined)return'undefined';if(typeof v==='string')return JSON.stringify(v);if(typeof v==='object')try{return JSON.stringify(v)}catch(e){return Object.prototype.toString.call(v)}return String(v);}
+        \\  function isPromise(v){return v&&typeof v==='object'&&typeof v.then==='function';}
+        \\  g._pendingAsserts=[];g._assertsPassed=0;g._assertsFailed=0;
         \\  const assert=function(v,m){if(!v)throw new AssertionError(m||'Expected truthy, got '+fmt(v),v,true,'==');return true;};
         \\  assert.ok=assert;
-        \\  assert.isTrue=function(v,m){if(v!==true)throw new AssertionError(m||'Expected true, got '+fmt(v),v,true,'===true');return true;};
+        \\  assert.isTrue=function(v,m){if(isPromise(v)){g._pendingAsserts.push(v.then(function(r){if(r!==true)throw new AssertionError(m||'Expected true, got '+fmt(r),r,true,'===true');g._assertsPassed++;return true;}).catch(function(e){g._assertsFailed++;throw e;}));return true;}if(v!==true)throw new AssertionError(m||'Expected true, got '+fmt(v),v,true,'===true');return true;};
         \\  assert.isFalse=function(v,m){if(v!==false)throw new AssertionError(m||'Expected false, got '+fmt(v),v,false,'===false');return true;};
         \\  assert.equal=function(a,e,m){if(a!=e)throw new AssertionError(m||'Expected '+fmt(e)+', got '+fmt(a),a,e,'==');return true;};
         \\  assert.strictEqual=function(a,e,m){if(a!==e)throw new AssertionError(m||'Expected '+fmt(e)+' (===), got '+fmt(a),a,e,'===');return true;};
@@ -1183,6 +1185,38 @@ const Repl = struct {
             const result = self.evalStatement(stmt_buffer.items, &passed, &failed, &errors);
             _ = result;
         }
+
+        // Wait for async assertions to complete by pumping microtasks
+        // This runs any pending promise callbacks
+        var iterations: usize = 0;
+        while (iterations < 100) : (iterations += 1) {
+            // Pump V8 microtasks
+            v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
+            std.Thread.sleep(10 * std.time.ns_per_ms);
+
+            // Check if all pending asserts are done
+            const check_code = "globalThis._pendingAsserts?globalThis._pendingAsserts.length:0";
+            if (self.eval(check_code)) |check_result| {
+                defer self.allocator.free(check_result);
+                if (std.mem.eql(u8, check_result, "0")) break;
+            } else |_| break;
+        }
+
+        // Get async test counts
+        const passed_code = "globalThis._assertsPassed||0";
+        const failed_code = "globalThis._assertsFailed||0";
+        if (self.eval(passed_code)) |p| {
+            defer self.allocator.free(p);
+            if (std.fmt.parseInt(usize, p, 10)) |n| {
+                passed += n;
+            } else |_| {}
+        } else |_| {}
+        if (self.eval(failed_code)) |f| {
+            defer self.allocator.free(f);
+            if (std.fmt.parseInt(usize, f, 10)) |n| {
+                failed += n;
+            } else |_| {}
+        } else |_| {}
 
         // Print summary for this file
         const total = passed + failed + errors;
