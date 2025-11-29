@@ -1260,12 +1260,26 @@ fn generateInterfaceFile(
         try own_ops.append(allocator, getAsyncIterator_op);
     }
 
+    // Check if base type is an interface (vs dictionary/typedef)
+    // If base is an interface, we use BaseType = ParentInterface.State for embedded inheritance
+    // If base is not an interface (e.g., dictionary), we use BaseType = *Dictionary pointer
+    const base_is_interface = if (interface.inheritance) |base_name| blk: {
+        if (type_registry) |reg| {
+            if (reg.lookup(base_name)) |kind| {
+                break :blk (kind == .interface or kind == .callback_interface);
+            }
+        }
+        // Default to true if we can't determine (most common case)
+        break :blk true;
+    } else false;
+
     // Generate metadata with property/method hints for V8 bindings
     try writer.writeMetadata(
         w,
         interface.name,
         null, // spec_url - would come from extended attributes
         interface.inheritance,
+        base_is_interface,
         mixin_list.items,
         interface.extAttrs,
         all_attrs.items, // Metadata includes all attributes (for reflection)

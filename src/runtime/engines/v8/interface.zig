@@ -719,9 +719,21 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
             }
 
-            // Handle inheritance (BaseType)
-            if (Meta.BaseType != ?*anyopaque) {
-                // Get the base type from Meta
+            // Handle inheritance (prototype chain for V8)
+            // Use ParentInterface (the actual interface type) for prototype chain setup
+            // ParentInterface is set when BaseType is an embedded state struct
+            if (@hasDecl(Meta, "ParentInterface")) {
+                const ParentType = Meta.ParentInterface;
+                if (@hasDecl(ParentType, "Meta")) {
+                    // Create parent template
+                    const ParentBinding = V8Interface(ParentType);
+                    const parent_template = ParentBinding.createTemplate(isolate);
+
+                    // Set up prototype chain
+                    v8.v8_FunctionTemplate_Inherit(template, parent_template);
+                }
+            } else if (Meta.BaseType != ?*anyopaque) {
+                // Fallback: check if BaseType is a pointer to an interface (for backwards compatibility)
                 const BaseTypeInfo = @typeInfo(Meta.BaseType);
                 if (BaseTypeInfo == .pointer) {
                     const ChildType = BaseTypeInfo.pointer.child;

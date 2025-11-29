@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-29T02:15:45Z
+//! Generated at: 2025-11-29T05:01:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -26,7 +26,8 @@ pub const XRBoundedReferenceSpace = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = *XRReferenceSpace;
+        pub const BaseType = XRReferenceSpace.State;
+        pub const ParentInterface = XRReferenceSpace;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "SecureContext" },

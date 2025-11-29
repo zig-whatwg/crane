@@ -1,5 +1,5 @@
 //! Generated from: writing-assistance-apis.idl
-//! Generated at: 2025-11-29T02:15:44Z
+//! Generated at: 2025-11-29T05:01:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 

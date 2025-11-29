@@ -160,6 +160,13 @@ pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return state.own._internal;
 }
 
+/// Get the Node internal state from an Element instance
+/// With embedded inheritance, Node.State is in state.base
+pub fn getNodeInternal(instance: *runtime.Instance) ?*NodeImpl.InternalState {
+    const state = instance.getState(State);
+    return state.base.own._internal;
+}
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -170,9 +177,17 @@ pub fn init(
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
 
-    // Initialize Element internal state
     const state = instance.getState(StateType);
     const ArenaAllocator = @import("runtime").ArenaAllocator;
+
+    // Initialize Node's internal state (Element inherits from Node)
+    // With embedded inheritance, Node.State is in state.base
+    const node_internal = try ArenaAllocator.get().create(NodeImpl.InternalState);
+    node_internal.* = NodeImpl.InternalState.init(allocator);
+    node_internal.node_type = NodeImpl.NodeType.ELEMENT_NODE;
+    state.base.own._internal = node_internal;
+
+    // Initialize Element's own internal state
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
     state.own._internal = internal;

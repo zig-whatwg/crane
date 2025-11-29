@@ -1,5 +1,5 @@
 //! Generated from: webrtc-identity.idl
-//! Generated at: 2025-11-29T02:15:46Z
+//! Generated at: 2025-11-29T05:01:35Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -47,7 +47,8 @@ pub const RTCIdentityProviderGlobalScope = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = *WorkerGlobalScope;
+        pub const BaseType = WorkerGlobalScope.State;
+        pub const ParentInterface = WorkerGlobalScope;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Global", .value = .{ .identifier_list = &.{ "Worker", "RTCIdentityProvider" } } },

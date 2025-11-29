@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-29T02:15:45Z
+//! Generated at: 2025-11-29T05:01:32Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -80,7 +80,8 @@ pub const HTMLLabelElement = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = *HTMLElement;
+        pub const BaseType = HTMLElement.State;
+        pub const ParentInterface = HTMLElement;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },

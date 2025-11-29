@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-29T02:15:45Z
+//! Generated at: 2025-11-29T05:01:33Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -81,7 +81,8 @@ pub const SVGElement = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = *Element;
+        pub const BaseType = Element.State;
+        pub const ParentInterface = Element;
         pub const MixinTypes = &.{
             ElementCSSInlineStyle,
             GlobalEventHandlers,

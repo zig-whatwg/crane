@@ -285,6 +285,7 @@ pub fn writeMetadata(
     interface_name: []const u8,
     spec_url: ?[]const u8,
     base_type: ?[]const u8,
+    base_is_interface: bool,
     mixins: []const []const u8,
     extended_attrs: []const types.ExtendedAttribute,
     attributes: []const types.Attribute,
@@ -312,7 +313,17 @@ pub fn writeMetadata(
     }
 
     if (base_type) |base| {
-        try writer.print("        pub const BaseType = *{s};\n", .{base});
+        if (base_is_interface) {
+            // Use Parent.State so FlattenedState embeds the parent's state struct,
+            // enabling proper inheritance of internal state (_internal field accessible
+            // via state.base.own._internal from subclasses)
+            try writer.print("        pub const BaseType = {s}.State;\n", .{base});
+            // Also provide ParentInterface for V8 prototype chain setup
+            try writer.print("        pub const ParentInterface = {s};\n", .{base});
+        } else {
+            // For non-interface base types (dictionaries, etc.), use pointer
+            try writer.print("        pub const BaseType = *{s};\n", .{base});
+        }
     } else {
         try writer.writeAll("        pub const BaseType = ?*anyopaque;\n");
     }
@@ -3142,12 +3153,12 @@ test "writeMetadata generates Meta struct" {
 
     const writer = buffer.writer(testing.allocator);
 
-    try writeMetadata(writer.any(), "Node", "https://dom.spec.whatwg.org/#interface-node", "EventTarget", &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null);
+    try writeMetadata(writer.any(), "Node", "https://dom.spec.whatwg.org/#interface-node", "EventTarget", true, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null);
 
     const output = buffer.items;
     try testing.expect(std.mem.indexOf(u8, output, "pub const Meta = struct {") != null);
     try testing.expect(std.mem.indexOf(u8, output, "pub const name = \"Node\";") != null);
-    try testing.expect(std.mem.indexOf(u8, output, "pub const BaseType = *EventTarget;") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "pub const BaseType = EventTarget.State;") != null);
 }
 
 test "writeMetadata handles no base type" {
@@ -3156,7 +3167,7 @@ test "writeMetadata handles no base type" {
 
     const writer = buffer.writer(testing.allocator);
 
-    try writeMetadata(writer.any(), "EventTarget", null, null, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null);
+    try writeMetadata(writer.any(), "EventTarget", null, null, false, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null);
 
     const output = buffer.items;
     try testing.expect(std.mem.indexOf(u8, output, "pub const BaseType = ?*anyopaque;") != null);
@@ -3169,7 +3180,7 @@ test "writeMetadata includes mixins" {
     const writer = buffer.writer(testing.allocator);
 
     const mixins = [_][]const u8{"ParentNode"};
-    try writeMetadata(writer.any(), "Node", null, null, &mixins, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null);
+    try writeMetadata(writer.any(), "Node", null, null, false, &mixins, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null);
 
     const output = buffer.items;
     try testing.expect(std.mem.indexOf(u8, output, "pub const MixinTypes = &.{") != null);
@@ -3186,7 +3197,7 @@ test "writeMetadata includes extended attributes" {
         .{ .name = "Exposed", .rhs = .{ .identifier = "Window" } },
         .{ .name = "LegacyUnforgeable", .rhs = null },
     };
-    try writeMetadata(writer.any(), "Event", null, null, &.{}, &ext_attrs, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null);
+    try writeMetadata(writer.any(), "Event", null, null, false, &.{}, &ext_attrs, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null);
 
     const output = buffer.items;
     try testing.expect(std.mem.indexOf(u8, output, "pub const extended_attributes = .{") != null);
@@ -3218,7 +3229,7 @@ test "writeMetadata includes legacy unforgeable properties" {
         },
     };
 
-    try writeMetadata(writer.any(), "Event", null, null, &.{}, &.{}, &attrs, &.{}, &.{}, &.{}, false, false, false, null, &attrs, null);
+    try writeMetadata(writer.any(), "Event", null, null, false, &.{}, &.{}, &attrs, &.{}, &.{}, &.{}, false, false, false, null, &attrs, null);
 
     const output = buffer.items;
 

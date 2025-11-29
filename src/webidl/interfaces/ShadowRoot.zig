@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-29T02:15:46Z
+//! Generated at: 2025-11-29T05:01:34Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -40,7 +40,8 @@ pub const ShadowRoot = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = *DocumentFragment;
+        pub const BaseType = DocumentFragment.State;
+        pub const ParentInterface = DocumentFragment;
         pub const MixinTypes = &.{
             DocumentOrShadowRoot,
         };
