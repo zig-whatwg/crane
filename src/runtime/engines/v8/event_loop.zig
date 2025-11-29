@@ -294,7 +294,9 @@ const MicrotaskContext = struct {
 ///
 /// V8 calls this C function, which unwraps the context and calls the
 /// original Zig callback.
-fn microtaskTrampoline(data: ?*anyopaque) void {
+///
+/// IMPORTANT: Must use callconv(.c) because V8 calls this with C calling convention.
+fn microtaskTrampoline(data: ?*anyopaque) callconv(.c) void {
     const ctx: *MicrotaskContext = @ptrCast(@alignCast(data.?));
     defer ctx.allocator.destroy(ctx);
 

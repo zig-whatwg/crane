@@ -1086,6 +1086,14 @@ pub fn V8Interface(comptime Interface: type) type {
                 return @ptrCast(v8_str);
             }
 
+            // Handle union types (e.g., ReadableStreamReader)
+            if (type_info == .@"union") {
+                // Use the generic toV8Value conversion which handles unions
+                return conv.toV8Value(ReturnType, isolate, v8_context, result) catch {
+                    return @ptrCast(v8.v8_Undefined(isolate));
+                };
+            }
+
             // For other types, return undefined as fallback
             // TODO: Expand type conversion coverage
             return @ptrCast(v8.v8_Undefined(isolate));

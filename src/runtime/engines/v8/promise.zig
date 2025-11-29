@@ -73,7 +73,13 @@ pub fn Promise(comptime T: type) type {
         /// ```
         pub fn resolve(self: *Self, value: T) !void {
             const v8_value = try conv.toV8(T, self.isolate, self.context, value);
-            defer v8.v8_Value_Dispose(v8_value);
+            // NOTE: Do NOT dispose v8_value here!
+            // The value is passed to V8's Promise resolver and will be delivered
+            // to .then() handlers via V8's microtask queue. V8/JS GC manages
+            // the value's lifetime from this point on.
+            //
+            // Disposing here causes use-after-free when V8 tries to deliver
+            // the value to Promise reaction handlers.
 
             if (!v8.v8_PromiseResolver_Resolve(self.resolver, self.context, v8_value)) {
                 return error.PromiseResolveFailed;
@@ -91,7 +97,9 @@ pub fn Promise(comptime T: type) type {
         /// ```
         pub fn reject(self: *Self, reason: anytype) !void {
             const v8_reason = try conv.toV8(@TypeOf(reason), self.isolate, self.context, reason);
-            defer v8.v8_Value_Dispose(v8_reason);
+            // NOTE: Do NOT dispose v8_reason here!
+            // Same as resolve() - the reason is passed to V8's Promise resolver
+            // and delivered via microtask queue to .catch() handlers.
 
             if (!v8.v8_PromiseResolver_Reject(self.resolver, self.context, v8_reason)) {
                 return error.PromiseRejectFailed;
@@ -158,6 +166,23 @@ pub fn Promise(comptime T: type) type {
         ///
         /// Disposes both the Promise and PromiseResolver.
         /// After calling deinit(), the Promise cannot be used.
+        ///
+        /// **IMPORTANT**: Do NOT call this if the Promise was returned to JavaScript!
+        ///
+        /// When you call `getPromise()` and return that to JavaScript (e.g., from
+        /// an async iterator's `next()` method), JavaScript now owns the Promise.
+        /// V8's garbage collector will manage its lifetime. Calling deinit() in
+        /// that case causes use-after-free crashes when V8 tries to deliver the
+        /// resolved/rejected value to JavaScript `.then()` handlers.
+        ///
+        /// **When to call deinit():**
+        /// - Promise was created but never returned to JavaScript
+        /// - Promise is only used internally in Zig code
+        /// - Error paths where Promise creation failed and it was never exposed
+        ///
+        /// **When NOT to call deinit():**
+        /// - Promise was returned to JavaScript via getPromise()
+        /// - Promise is being resolved/rejected and JS handlers will receive it
         pub fn deinit(self: *Self) void {
             v8.v8_Promise_Dispose(self.promise);
             v8.v8_PromiseResolver_Dispose(self.resolver);

@@ -861,19 +861,15 @@ pub fn fromV8Value(
     }
     if (T == runtime.Any) return fromV8Any(value);
     if (T == *const anyopaque) {
-        // For anyopaque parameters, we need to detect the actual type and convert appropriately
-        // This handles cases like (TrustedType or DOMString) unions where codegen uses anyopaque
-        if (v8.v8_Value_IsString(value)) {
-            // Convert string to DOMString and return pointer to allocated storage
-            const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
-            const dom_string = try fromV8String(allocator, isolate, context, string);
-
-            // Allocate storage for the DOMString and return pointer
-            const storage = try allocator.create(runtime.DOMString);
-            storage.* = dom_string;
-            return @ptrCast(storage);
-        }
-        // For non-string types, pass through as-is (used for variadic ...any parameters)
+        // For anyopaque parameters (WebIDL 'any' type), pass through the V8 value as-is.
+        // The V8 value pointer (Global<Value>*) is returned so it can be stored and
+        // passed back to JavaScript unchanged.
+        //
+        // IMPORTANT: Do NOT convert the value to Zig types here!
+        // - Streams API uses 'any' for chunks that should round-trip to JS unchanged
+        // - Converting to DOMString would lose the original V8 reference
+        // - When the value is later passed back (e.g., in iterator.next()), we need
+        //   the original V8 pointer to pass to toV8() which expects a V8 value
         return @ptrCast(value);
     }
 
@@ -1188,18 +1184,46 @@ pub fn toV8Value(
 
     // Handle structs (convert to V8 object with fields)
     if (type_info == .@"struct") {
-        const obj = v8.v8_Object_New(isolate);
+        const obj = v8.v8_Object_New(isolate) orelse return ConversionError.OutOfMemory;
         inline for (std.meta.fields(T)) |field| {
-            const field_name_str = v8.v8_String_NewFromUtf8(
+            if (v8.v8_String_NewFromUtf8(
                 isolate,
                 field.name.ptr,
                 @intCast(field.name.len),
-            );
-            const field_value = @field(value, field.name);
-            const field_v8 = try toV8Value(field.type, isolate, context, field_value);
-            _ = v8.v8_Object_Set(obj, context, @ptrCast(field_name_str), field_v8);
+            )) |field_name_str| {
+                const field_value = @field(value, field.name);
+                const field_v8 = try toV8Value(field.type, isolate, context, field_value);
+                _ = v8.v8_Object_Set(obj, context, @ptrCast(field_name_str), field_v8);
+            }
         }
         return @ptrCast(obj);
+    }
+
+    // Handle unions (convert active field to V8)
+    if (type_info == .@"union") {
+        const union_info = type_info.@"union";
+        const fields = union_info.fields;
+
+        // Use inline switch to dispatch on active field at runtime
+        inline for (fields) |field| {
+            if (std.mem.eql(u8, @tagName(value), field.name)) {
+                const field_value = @field(value, field.name);
+
+                // Special case: *const anyopaque and *anyopaque are wrapped interface instances
+                // These need to be converted back to V8 objects using instanceToV8
+                if (field.type == *const anyopaque or field.type == *anyopaque) {
+                    // The anyopaque pointer is actually a *runtime.Instance
+                    const instance: *runtime.Instance = @ptrCast(@alignCast(@constCast(field_value)));
+                    return instanceToV8(isolate, instance);
+                }
+
+                // For other types, recursively convert
+                return try toV8Value(field.type, isolate, context, field_value);
+            }
+        }
+
+        // No active field found (shouldn't happen with valid union)
+        return toV8Undefined(isolate);
     }
 
     // Handle void (return undefined)

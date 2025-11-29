@@ -2055,14 +2055,15 @@ static void AsyncIteratorNextCallback(const FunctionCallbackInfo<Value>& info) {
     }
     
     // Get current context as Global handle
+    // NOTE: Do NOT delete this context handle immediately after calling the Zig function.
+    // The Zig code stores this context pointer in a PromiseBridge and uses it later
+    // when resolving the promise (in a microtask). Deleting it here causes use-after-free.
+    // The context handle will be managed by V8's GC - we intentionally don't delete it.
     Local<Context> local_context = isolate->GetCurrentContext();
     Global<Context>* context = new Global<Context>(isolate, local_context);
     
     // Call Zig next function - it returns a V8 Promise
     Global<Promise>* promise_global = data->next_fn(isolate, context, data->iterator_ptr);
-    
-    // Clean up context handle
-    delete context;
     
     if (!promise_global) {
         isolate->ThrowException(Exception::Error(
@@ -2103,14 +2104,13 @@ static void AsyncIteratorReturnCallback(const FunctionCallbackInfo<Value>& info)
     }
     
     // Get current context as Global handle
+    // NOTE: Do NOT delete this context handle immediately after calling the Zig function.
+    // Same reason as in AsyncIteratorNextCallback - the context is stored in PromiseBridge.
     Local<Context> local_context = isolate->GetCurrentContext();
     Global<Context>* context = new Global<Context>(isolate, local_context);
     
     // Call Zig return function - it returns a V8 Promise
     Global<Promise>* promise_global = data->return_fn(isolate, context, data->iterator_ptr);
-    
-    // Clean up context handle
-    delete context;
     
     if (!promise_global) {
         isolate->ThrowException(Exception::Error(

@@ -99,16 +99,23 @@ fn jsCallbackInvoke(
     controller: *runtime.Instance,
     context: ?*anyopaque,
 ) !*AsyncPromise(void) {
-    const callback_ptr = context orelse return error.InvalidAlgorithm;
-    const callback: callbacks.UnderlyingSourcePullCallback =
-        @ptrCast(@alignCast(callback_ptr));
+    _ = context;
+    // TODO: Implement proper V8 callback invocation
+    //
+    // The callback stored in context is a V8 Global<Value>* (not a Zig function pointer).
+    // Invoking V8 callbacks requires access to V8 FFI which isn't available in this
+    // engine-agnostic module.
+    //
+    // For now, we return a resolved promise. This means:
+    // - pull() callbacks won't be invoked (stream won't auto-fill)
+    // - cancel() callbacks won't be invoked
+    //
+    // Streams with start() that enqueue all data upfront will still work.
+    // Streams relying on pull() for lazy data loading won't work yet.
+    //
+    // Proper fix: Add callback invocation support to runtime.Context interface
+    // so algorithms can invoke callbacks through an engine-agnostic API.
 
-    // Call JavaScript callback
-    _ = callback(@ptrCast(controller));
-    // TODO: Handle promise returned by callback
-
-    // Wrap result in promise (callback returns *const anyopaque which is a promise)
-    // For now, create resolved promise
     const allocator = controller.ctx.getAllocator();
     const event_loop = try controller.ctx.getEventLoop();
     const promise = try AsyncPromise(void).init(allocator, event_loop);

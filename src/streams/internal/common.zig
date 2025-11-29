@@ -31,6 +31,9 @@ pub const JSValue = union(enum) {
     string: []const u8,
     bytes: []const u8,
     object: void,
+    /// V8 value pointer - stores raw V8 Global<Value>* for JavaScript engine integration
+    /// Used when chunks come from JavaScript and need to be passed back unchanged
+    v8_value: *anyopaque,
     /// Close sentinel - unique value for WritableStream close signaling
     /// Spec: § 3.9.17 "The close sentinel is a unique value enqueued into [[queue]]"
     close_sentinel: void,

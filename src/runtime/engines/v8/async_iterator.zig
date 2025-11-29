@@ -127,7 +127,13 @@ const PromiseBridge = struct {
     }
 
     fn deinit(self: *PromiseBridge) void {
-        self.v8_promise.deinit();
+        // NOTE: Do NOT call self.v8_promise.deinit() here!
+        // The V8 Promise was returned to JavaScript via getPromise().
+        // JavaScript owns it now and V8's GC will manage its lifetime.
+        // Disposing here causes use-after-free when V8 tries to deliver
+        // the resolved value to JavaScript .then() handlers.
+        //
+        // We only free the PromiseBridge wrapper struct itself.
         self.allocator.destroy(self);
     }
 
@@ -191,7 +197,13 @@ const VoidPromiseBridge = struct {
     }
 
     fn deinit(self: *VoidPromiseBridge) void {
-        self.v8_promise.deinit();
+        // NOTE: Do NOT call self.v8_promise.deinit() here!
+        // The V8 Promise was returned to JavaScript via getPromise().
+        // JavaScript owns it now and V8's GC will manage its lifetime.
+        // Disposing here causes use-after-free when V8 tries to deliver
+        // the resolved value to JavaScript .then() handlers.
+        //
+        // We only free the VoidPromiseBridge wrapper struct itself.
         self.allocator.destroy(self);
     }
 

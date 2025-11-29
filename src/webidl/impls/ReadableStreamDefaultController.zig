@@ -363,11 +363,9 @@ fn readableStreamDefaultControllerEnqueue(internal: *InternalState, chunk: *cons
     const chunk_size: f64 = 1.0; // Future: Invoke strategySizeAlgorithm(chunk) for dynamic sizing
 
     // Enqueue the chunk
-    // In the real implementation, chunk would be a JavaScript value
-    // For now, we wrap the opaque pointer in a JSValue
-    const chunk_ptr: *anyopaque = @constCast(chunk);
-    const value: streams_common.JSValue = .{ .object = {} }; // Placeholder - in real impl would box the JS value
-    _ = chunk_ptr; // Will be used when we properly handle JS values
+    // The chunk is a V8 Global<Value>* pointer from JavaScript
+    // Store it directly as v8_value so it can be passed back unchanged
+    const value: streams_common.JSValue = .{ .v8_value = @constCast(chunk) };
 
     try internal.queue.enqueueValueWithSize(value, chunk_size);
     internal.queue_total_size = internal.queue.queue_total_size;
@@ -660,13 +658,21 @@ pub fn pullSteps(
         // Step 2.4: Perform chunk steps (fulfill promise with chunk)
         const ReadableStreamDefaultReaderImpl = @import("ReadableStreamDefaultReader.zig");
 
-        // Allocate the chunk on the heap so it can be passed as *const anyopaque
-        // In a real implementation, chunks would be JavaScript values managed by the runtime
-        const chunk_ptr = try internal.allocator.create(streams_common.JSValue);
-        chunk_ptr.* = chunk;
+        // Extract the V8 value from JSValue
+        // If it's a v8_value, use the stored pointer directly
+        // Otherwise, create a pointer to the JSValue for conversion
+        const value_ptr: ?*anyopaque = switch (chunk) {
+            .v8_value => |v| v,
+            else => blk: {
+                // Allocate the JSValue on the heap so it can be passed as *anyopaque
+                const chunk_ptr = try internal.allocator.create(streams_common.JSValue);
+                chunk_ptr.* = chunk;
+                break :blk @ptrCast(chunk_ptr);
+            },
+        };
 
         read_promise.*.fulfill(ReadableStreamDefaultReaderImpl.ReadResult{
-            .value = @ptrCast(chunk_ptr),
+            .value = value_ptr,
             .done = false,
         });
     } else {
