@@ -1033,6 +1033,7 @@ pub fn toV8Null(isolate: *v8.Isolate) *v8.Value {
 
 /// Convert Zig enum to V8 String (for WebIDL enums)
 /// Strips leading/trailing underscores from enum field names (used for reserved words)
+/// Converts internal underscores to hyphens (WebIDL values like "same-origin" become _same_origin_ in Zig)
 pub fn enumToV8String(comptime T: type, isolate: *v8.Isolate, value: T) *v8.Value {
     // Get the tag name at runtime
     const tag_name = @tagName(value);
@@ -1042,8 +1043,21 @@ pub fn enumToV8String(comptime T: type, isolate: *v8.Isolate, value: T) *v8.Valu
     if (name.len > 0 and name[0] == '_') name = name[1..];
     if (name.len > 0 and name[name.len - 1] == '_') name = name[0 .. name.len - 1];
 
-    if (v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len))) |str| {
-        return @ptrCast(str);
+    // Convert internal underscores to hyphens
+    // WebIDL enum values like "same-origin" are stored as _same_origin_ in Zig
+    var buffer: [256]u8 = undefined;
+    if (name.len <= buffer.len) {
+        for (name, 0..) |c, i| {
+            buffer[i] = if (c == '_') '-' else c;
+        }
+        if (v8.v8_String_NewFromUtf8(isolate, &buffer, @intCast(name.len))) |str| {
+            return @ptrCast(str);
+        }
+    } else {
+        // Fallback for very long names (shouldn't happen in practice)
+        if (v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len))) |str| {
+            return @ptrCast(str);
+        }
     }
     return v8.v8_Undefined(isolate) orelse unreachable;
 }
