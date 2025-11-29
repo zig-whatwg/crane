@@ -161,9 +161,17 @@ fn v8RejectPromise(
         @intCast(err_name.len),
     ) orelse return EngineError.OperationFailed;
 
-    // Create Error object
-    const err_obj = ffi.v8_Exception_Error(err_str) orelse
-        return EngineError.OperationFailed;
+    // Create appropriate Error object based on error type
+    const err_obj = switch (err) {
+        error.SyntaxError => ffi.v8_Exception_SyntaxError(err_str) orelse
+            return EngineError.OperationFailed,
+        error.TypeError => ffi.v8_Exception_TypeError(err_str) orelse
+            return EngineError.OperationFailed,
+        error.RangeError => ffi.v8_Exception_RangeError(err_str) orelse
+            return EngineError.OperationFailed,
+        else => ffi.v8_Exception_Error(err_str) orelse
+            return EngineError.OperationFailed,
+    };
 
     if (!ffi.v8_PromiseResolver_Reject(handle.resolver, handle.context, err_obj)) {
         return EngineError.PromiseError;

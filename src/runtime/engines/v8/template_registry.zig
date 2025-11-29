@@ -373,6 +373,18 @@ pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
         return "Response";
     }
 
+    if (inst_vtable == &interfaces.Blob.vtable) {
+        return "Blob";
+    }
+
+    if (inst_vtable == &interfaces.File.vtable) {
+        return "File";
+    }
+
+    if (inst_vtable == &interfaces.FormData.vtable) {
+        return "FormData";
+    }
+
     // Default to "Element" for unknown types (backwards compat)
     return "Element";
 }

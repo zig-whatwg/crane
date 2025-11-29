@@ -619,6 +619,14 @@ Global<Value>* v8_Exception_RangeError(Global<String>* message) {
     return new Global<Value>(isolate, exception);
 }
 
+Global<Value>* v8_Exception_SyntaxError(Global<String>* message) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<String> msg = message->Get(isolate);
+    Local<Value> exception = Exception::SyntaxError(msg);
+    return new Global<Value>(isolate, exception);
+}
+
 Global<Value>* v8_Exception_Error(Global<String>* message) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);

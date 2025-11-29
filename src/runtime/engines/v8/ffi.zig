@@ -424,6 +424,7 @@ pub extern fn v8_Script_Dispose(script: *Script) void;
 // Exception handling
 pub extern fn v8_Exception_TypeError(message: *String) ?*Value;
 pub extern fn v8_Exception_RangeError(message: *String) ?*Value;
+pub extern fn v8_Exception_SyntaxError(message: *String) ?*Value;
 pub extern fn v8_Exception_Error(message: *String) ?*Value;
 pub extern fn v8_TryCatch_Exception(context: *Context) ?*Value;
 
