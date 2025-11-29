@@ -23,48 +23,6 @@ python tools/encoding/generate_encoding.py
 python tools/encoding/generate_gb18030.py
 ```
 
-### Sync Impl Signatures (`tools/sync_impl_signatures.zig`)
-
-A tool to safely update function signatures in `src/webidl/impls/` to match generated stubs in `src/webidl/impls_tmp/`, while preserving function bodies.
-
-**When to use**:
-- After regenerating WebIDL code with `zig build codegen`
-- When interface signatures change (parameters, return types)
-- To add new stub functions from generated code
-
-**Usage**:
-```bash
-# Dry run - show what would change without modifying files
-zig build sync-impl-signatures -- --dry-run
-
-# Verbose dry run - show old and new signatures
-zig build sync-impl-signatures -- --dry-run --verbose
-
-# Actually sync the signatures
-zig build sync-impl-signatures
-
-# Sync a specific file
-zig build sync-impl-signatures -- Document.zig
-```
-
-**How it works**:
-1. Iterates over all files in `impls_tmp/` (source of truth)
-2. For each file:
-   - If impl doesn't exist: copies entire stub file (NEW interface)
-   - If impl exists: parses both using Zig AST
-3. For each top-level function in the stub:
-   - If function exists in impl: updates signature, preserves body
-   - If function is new: adds stub with NotImplemented body
-4. Preserves all other code (imports, types, nested functions, helpers)
-5. Only processes top-level functions (not nested in structs)
-
-**Safety features**:
-- Uses Zig's built-in AST parser for accurate parsing
-- Preserves function bodies exactly (including comments)
-- Only processes unindented (top-level) functions
-- Dry-run mode shows all changes before applying
-- Reports all changes for review
-
 ### URL (`tools/url/`)
 
 Zig and shell tools for URL-related code generation:

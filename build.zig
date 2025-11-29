@@ -1548,24 +1548,6 @@ pub fn build(b: *std.Build) void {
     const interfaces_tool_step = b.step("interfaces-tool", "Run interfaces tool (use -- to pass args)");
     interfaces_tool_step.dependOn(&run_interfaces_tool.step);
 
-    // Sync impl signatures tool
-    const sync_impl_exe = b.addExecutable(.{
-        .name = "sync-impl-signatures",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("tools/sync_impl_signatures.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
-    });
-    b.installArtifact(sync_impl_exe);
-
-    // Add run step for sync-impl-signatures
-    const run_sync_impl = b.addRunArtifact(sync_impl_exe);
-    if (b.args) |args| run_sync_impl.addArgs(args);
-
-    const sync_impl_step = b.step("sync-impl-signatures", "Sync impl signatures from impls_tmp/ to impls/ (use -- to pass args)");
-    sync_impl_step.dependOn(&run_sync_impl.step);
-
     // REPL tool
     const repl_exe = b.addExecutable(.{
         .name = "repl",

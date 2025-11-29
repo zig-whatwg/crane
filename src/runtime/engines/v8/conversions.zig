@@ -262,19 +262,6 @@ pub fn fromV8Value(
         return try fromV8Value(ChildType, allocator, isolate, context, value);
     }
 
-    // Handle webidl.Opt types (optional parameters with wasPassed tracking)
-    // webidl.Opt(T) wraps T and tracks whether a value was actually passed
-    if (type_info == .@"struct" and @hasDecl(T, "notPassed") and @hasDecl(T, "wasPassed") and @hasDecl(T, "passed")) {
-        // Check for undefined (not passed)
-        if (v8.v8_Value_IsUndefined(value)) {
-            return T.notPassed();
-        }
-        // Value was passed - convert the inner type and wrap it
-        const InnerType = @typeInfo(@TypeOf(T.passed)).@"fn".params[0].type.?;
-        const inner_value = try fromV8Value(InnerType, allocator, isolate, context, value);
-        return T.passed(inner_value);
-    }
-
     // Handle slices (sequence<T>)
     if (type_info == .pointer and type_info.pointer.size == .slice) {
         const ElemType = type_info.pointer.child;

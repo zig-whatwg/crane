@@ -84,14 +84,28 @@ pub fn main() !void {
         is_directory = stat.kind == .directory;
     }
 
-    // If --force is specified, delete the entire dest-root directory first
+    // If --force is specified, delete generated directories (but NEVER impls/)
     if (force_clean) {
-        std.debug.print("Force clean: removing {s}/\n", .{dest_root.?});
-        std.fs.cwd().deleteTree(dest_root.?) catch |err| {
-            if (err != error.FileNotFound) {
-                std.debug.print("Warning: Could not remove {s}: {}\n", .{ dest_root.?, err });
-            }
+        std.debug.print("Force clean: removing generated directories (preserving impls/)\n", .{});
+        const generated_dirs = [_][]const u8{
+            "interfaces",
+            "typedefs",
+            "dictionaries",
+            "enums",
+            "callbacks",
+            "namespaces",
+            "mixins",
+            "impls_tmp", // Only delete the tmp stubs, never impls/
         };
+        for (generated_dirs) |dir| {
+            const path = try std.fs.path.join(allocator, &.{ dest_root.?, dir });
+            defer allocator.free(path);
+            std.fs.cwd().deleteTree(path) catch |err| {
+                if (err != error.FileNotFound) {
+                    std.debug.print("Warning: Could not remove {s}: {}\n", .{ path, err });
+                }
+            };
+        }
     }
 
     // Print configuration
