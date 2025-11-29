@@ -904,6 +904,19 @@ fn insertNode(node: *runtime.Instance, parent: *runtime.Instance, child: ?*runti
 
     // Update isConnected for descendants
     try updateConnectedStatus(node, node_internal.is_connected);
+
+    // Special handling: If parent is a Document and node is an Element,
+    // update document_element if it's not already set
+    if (parent_internal.node_type == NodeType.DOCUMENT_NODE and
+        node_internal.node_type == NodeType.ELEMENT_NODE)
+    {
+        const DocumentImpl = @import("Document.zig");
+        if (DocumentImpl.getInternalState(parent)) |doc_internal| {
+            if (doc_internal.document_element == null) {
+                doc_internal.document_element = node;
+            }
+        }
+    }
 }
 
 /// Internal helper: Remove node from parent
