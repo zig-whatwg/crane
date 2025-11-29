@@ -241,9 +241,9 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, inpu
         // Step 25.2: If method is not a method or is forbidden, throw TypeError
         // TODO: Validate method
 
-        // Step 25.3: Normalize method
+        // Step 25.3: Normalize method (uppercase standard methods)
         // Step 25.4: Set request's method to method
-        base_request.method = method;
+        base_request.method = normalizeMethod(method);
     }
 
     // Step 16-18: Handle mode
@@ -1173,4 +1173,20 @@ pub fn call_text(instance: *runtime.Instance) ImplError!*const anyopaque {
     }
 
     return @ptrCast(promise);
+}
+
+// === Helper Functions ===
+
+/// Normalize HTTP method per Fetch spec
+/// Uppercases DELETE, GET, HEAD, OPTIONS, POST, PUT
+fn normalizeMethod(method: []const u8) []const u8 {
+    // Check case-insensitively and return uppercase version
+    if (std.ascii.eqlIgnoreCase(method, "DELETE")) return "DELETE";
+    if (std.ascii.eqlIgnoreCase(method, "GET")) return "GET";
+    if (std.ascii.eqlIgnoreCase(method, "HEAD")) return "HEAD";
+    if (std.ascii.eqlIgnoreCase(method, "OPTIONS")) return "OPTIONS";
+    if (std.ascii.eqlIgnoreCase(method, "POST")) return "POST";
+    if (std.ascii.eqlIgnoreCase(method, "PUT")) return "PUT";
+    // Non-standard methods are returned as-is
+    return method;
 }

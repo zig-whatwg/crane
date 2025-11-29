@@ -93,6 +93,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, body
     const internal = state.own._internal.?;
 
     // Handle init options first (status, statusText, headers)
+    var status_text_provided = false;
     if (init_data.wasPassed()) {
         if (init_data.value.status) |status| {
             if (status < 200 or status > 599) {
@@ -103,7 +104,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, body
 
         if (init_data.value.statusText) |status_text| {
             internal.response.status_message = status_text;
+            status_text_provided = true;
         }
+    }
+
+    // Set default statusText based on status if not explicitly provided
+    if (!status_text_provided) {
+        internal.response.status_message = getDefaultStatusText(internal.response.status);
     }
 
     // Handle body parameter
@@ -798,4 +805,54 @@ pub fn call_text(instance: *runtime.Instance) ImplError!*const anyopaque {
 
     // Return the JS Promise object
     return engine.getPromiseObject(promise_handle);
+}
+
+// === Helper Functions ===
+
+/// Get default status text for HTTP status codes
+fn getDefaultStatusText(status: u16) []const u8 {
+    return switch (status) {
+        100 => "Continue",
+        101 => "Switching Protocols",
+        200 => "OK",
+        201 => "Created",
+        202 => "Accepted",
+        203 => "Non-Authoritative Information",
+        204 => "No Content",
+        205 => "Reset Content",
+        206 => "Partial Content",
+        300 => "Multiple Choices",
+        301 => "Moved Permanently",
+        302 => "Found",
+        303 => "See Other",
+        304 => "Not Modified",
+        307 => "Temporary Redirect",
+        308 => "Permanent Redirect",
+        400 => "Bad Request",
+        401 => "Unauthorized",
+        403 => "Forbidden",
+        404 => "Not Found",
+        405 => "Method Not Allowed",
+        406 => "Not Acceptable",
+        408 => "Request Timeout",
+        409 => "Conflict",
+        410 => "Gone",
+        411 => "Length Required",
+        412 => "Precondition Failed",
+        413 => "Payload Too Large",
+        414 => "URI Too Long",
+        415 => "Unsupported Media Type",
+        416 => "Range Not Satisfiable",
+        417 => "Expectation Failed",
+        418 => "I'm a teapot",
+        422 => "Unprocessable Entity",
+        429 => "Too Many Requests",
+        500 => "Internal Server Error",
+        501 => "Not Implemented",
+        502 => "Bad Gateway",
+        503 => "Service Unavailable",
+        504 => "Gateway Timeout",
+        505 => "HTTP Version Not Supported",
+        else => "",
+    };
 }
