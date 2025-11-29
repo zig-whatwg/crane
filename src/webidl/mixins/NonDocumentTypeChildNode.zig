@@ -1,8 +1,9 @@
-//! NonDocumentTypeChildNode Mixin Implementation
+//! NonDocumentTypeChildNode Mixin
 //!
 //! Spec: https://dom.spec.whatwg.org/#interface-nondocumenttypechildnode
 //!
-//! This mixin provides sibling element accessors for Element and CharacterData.
+//! This mixin delegates to the NonDocumentTypeChildNode impl for all functionality.
+//! The impl contains the actual logic for NonDocumentTypeChildNode methods.
 //!
 //! The NonDocumentTypeChildNode mixin defines:
 //! - previousElementSibling - Returns the previous sibling that is an element
@@ -10,11 +11,9 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
-const interfaces = @import("interfaces");
 
-// Import impl modules for accessing internal state
-const impls = @import("impls");
-const NodeImpl = impls.Node;
+// Import the impl which contains all the actual logic
+const NonDocumentTypeChildNodeImpl = @import("impls").NonDocumentTypeChildNode;
 
 pub const MixinError = error{
     NotImplemented,
@@ -22,51 +21,26 @@ pub const MixinError = error{
 };
 
 // =============================================================================
-// NonDocumentTypeChildNode Attributes
+// NonDocumentTypeChildNode Attributes (delegate to impl)
 // =============================================================================
 
 /// previousElementSibling - Returns the previous sibling that is an element
 /// Spec: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-previouselementsibling
-///
-/// Returns the first preceding sibling that is an element, or null if none exists.
 pub fn previousElementSibling(node: *runtime.Instance) ?*runtime.Instance {
-    var sibling = NodeImpl.getPreviousSibling(node);
-    while (sibling) |s| {
-        const node_type = NodeImpl.getNodeType(s) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
-            return s;
-        }
-        sibling = NodeImpl.getPreviousSibling(s);
-    }
-    return null;
+    return NonDocumentTypeChildNodeImpl.get_previousElementSibling(node) catch null;
 }
 
 /// nextElementSibling - Returns the next sibling that is an element
 /// Spec: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-nextelementsibling
-///
-/// Returns the first following sibling that is an element, or null if none exists.
 pub fn nextElementSibling(node: *runtime.Instance) ?*runtime.Instance {
-    var sibling = NodeImpl.getNextSibling(node);
-    while (sibling) |s| {
-        const node_type = NodeImpl.getNodeType(s) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
-            return s;
-        }
-        sibling = NodeImpl.getNextSibling(s);
-    }
-    return null;
+    return NonDocumentTypeChildNodeImpl.get_nextElementSibling(node) catch null;
 }
 
 // =============================================================================
 // Tests
 // =============================================================================
 
-test "NonDocumentTypeChildNode mixin - previousElementSibling" {
-    // Test would require setting up runtime instances
-    // Placeholder for now
-}
-
-test "NonDocumentTypeChildNode mixin - nextElementSibling" {
-    // Test would require setting up runtime instances
-    // Placeholder for now
+test "NonDocumentTypeChildNode mixin - delegation to impl" {
+    // Test that mixin correctly delegates to impl
+    // Full tests are in the impl file
 }

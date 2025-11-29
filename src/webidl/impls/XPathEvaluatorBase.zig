@@ -1,4 +1,14 @@
-//! Implementation for XPathEvaluatorBase interface
+//! Implementation for XPathEvaluatorBase mixin
+//!
+//! Spec: https://dom.spec.whatwg.org/#interface-xpathevaluatorbase
+//!
+//! This impl contains the actual logic for XPathEvaluatorBase methods.
+//! The mixin file delegates to these functions.
+//!
+//! The XPathEvaluatorBase mixin defines:
+//! - createExpression(expression, resolver) - Creates a compiled XPath expression
+//! - createNSResolver(nodeResolver) - Creates an XPathNSResolver
+//! - evaluate(expression, contextNode, resolver, type, result) - Evaluates XPath
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -8,18 +18,18 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
-const XPathEvaluatorBase = interfaces.XPathEvaluatorBase;
 
-pub const State = XPathEvaluatorBase.State;
+pub const State = interfaces.XPathEvaluatorBase.State;
 
 pub const ImplError = error{
     NotImplemented,
+    InvalidStateError,
+    SyntaxError,
+    TypeError,
+    OutOfMemory,
 };
 
 /// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
 pub const InternalState = struct {};
 
 /// Initialize instance (creates the instance)
@@ -30,39 +40,85 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
     runtime.Instance.deinit(instance);
 }
 
-/// Operation: createNSResolver
-pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime.Instance) anyerror!*runtime.Instance {
+// =============================================================================
+// XPathEvaluatorBase Methods
+// =============================================================================
+
+/// createExpression - Creates a compiled XPath expression
+/// Spec: https://dom.spec.whatwg.org/#dom-xpathevaluatorbase-createexpression
+pub fn call_createExpression(
+    instance: *runtime.Instance,
+    expression: runtime.DOMString,
+    resolver: webidl.Opt(??*runtime.CallbackWrapper),
+) anyerror!*runtime.Instance {
     _ = instance;
-    _ = nodeResolver;
+    _ = expression;
+    _ = resolver;
+
+    // TODO: Implement XPath expression parsing and compilation
+    // This requires the XPath parser from src/dom/xpath/
     return error.NotImplemented;
 }
 
-/// Operation: evaluate
-pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString, contextNode: *runtime.Instance, resolver: webidl.Opt(??*runtime.CallbackWrapper), @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
+/// createNSResolver - Creates an XPathNSResolver from a node
+/// Spec: https://dom.spec.whatwg.org/#dom-xpathevaluatorbase-creatensresolver
+pub fn call_createNSResolver(
+    instance: *runtime.Instance,
+    node_resolver: *runtime.Instance,
+) anyerror!*runtime.Instance {
+    _ = instance;
+    _ = node_resolver;
+
+    // TODO: Implement NS resolver creation
+    return error.NotImplemented;
+}
+
+/// evaluate - Evaluates an XPath expression
+/// Spec: https://dom.spec.whatwg.org/#dom-xpathevaluatorbase-evaluate
+pub fn call_evaluate(
+    instance: *runtime.Instance,
+    expression: runtime.DOMString,
+    context_node: *runtime.Instance,
+    resolver: webidl.Opt(??*runtime.CallbackWrapper),
+    result_type: webidl.Opt(u16),
+    result: webidl.Opt(?*runtime.Instance),
+) anyerror!*runtime.Instance {
     _ = instance;
     _ = expression;
-    _ = contextNode;
+    _ = context_node;
     _ = resolver;
-    _ = @"type";
+    _ = result_type;
     _ = result;
+
+    // TODO: Implement XPath evaluation
+    // This requires:
+    // 1. Parse the expression
+    // 2. Evaluate against context_node
+    // 3. Return result of requested type
     return error.NotImplemented;
 }
 
-/// Operation: createExpression
-pub fn call_createExpression(instance: *runtime.Instance, expression: runtime.DOMString, resolver: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = expression;
-    _ = resolver;
-    return error.NotImplemented;
-}
+// =============================================================================
+// XPath Result Types (from XPathResult interface)
+// =============================================================================
 
+pub const ResultType = struct {
+    pub const ANY_TYPE: u16 = 0;
+    pub const NUMBER_TYPE: u16 = 1;
+    pub const STRING_TYPE: u16 = 2;
+    pub const BOOLEAN_TYPE: u16 = 3;
+    pub const UNORDERED_NODE_ITERATOR_TYPE: u16 = 4;
+    pub const ORDERED_NODE_ITERATOR_TYPE: u16 = 5;
+    pub const UNORDERED_NODE_SNAPSHOT_TYPE: u16 = 6;
+    pub const ORDERED_NODE_SNAPSHOT_TYPE: u16 = 7;
+    pub const ANY_UNORDERED_NODE_TYPE: u16 = 8;
+    pub const FIRST_ORDERED_NODE_TYPE: u16 = 9;
+};

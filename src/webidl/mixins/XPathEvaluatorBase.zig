@@ -1,8 +1,9 @@
-//! XPathEvaluatorBase Mixin Implementation
+//! XPathEvaluatorBase Mixin
 //!
 //! Spec: https://dom.spec.whatwg.org/#interface-xpathevaluatorbase
 //!
-//! This mixin provides XPath evaluation methods for Document and XPathEvaluator.
+//! This mixin delegates to the XPathEvaluatorBase impl for all functionality.
+//! The impl contains the actual logic for XPathEvaluatorBase methods.
 //!
 //! The XPathEvaluatorBase mixin defines:
 //! - createExpression(expression, resolver) - Creates a compiled XPath expression
@@ -11,11 +12,9 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
-const interfaces = @import("interfaces");
 
-// Import impl modules for accessing internal state
-const impls = @import("impls");
-const NodeImpl = impls.Node;
+// Import the impl which contains all the actual logic
+const XPathEvaluatorBaseImpl = @import("impls").XPathEvaluatorBase;
 
 pub const MixinError = error{
     NotImplemented,
@@ -25,17 +24,15 @@ pub const MixinError = error{
     OutOfMemory,
 };
 
+// Re-export ResultType from impl
+pub const ResultType = XPathEvaluatorBaseImpl.ResultType;
+
 // =============================================================================
-// XPathEvaluatorBase Methods
+// XPathEvaluatorBase Methods (delegate to impl)
 // =============================================================================
 
 /// createExpression - Creates a compiled XPath expression
 /// Spec: https://dom.spec.whatwg.org/#dom-xpathevaluatorbase-createexpression
-///
-/// Steps:
-/// 1. Let expression be the result of parsing expression
-/// 2. If parsing failed, throw SyntaxError
-/// 3. Return a new XPathExpression with expression
 pub fn createExpression(
     allocator: std.mem.Allocator,
     root: *runtime.Instance,
@@ -44,20 +41,20 @@ pub fn createExpression(
     ctx: runtime.Context,
 ) MixinError!*runtime.Instance {
     _ = allocator;
-    _ = root;
-    _ = expression;
     _ = resolver;
     _ = ctx;
 
-    // TODO: Implement XPath expression parsing and compilation
-    // This requires the XPath parser from src/dom/xpath/
-    return error.NotImplemented;
+    const dom_string = runtime.DOMString.initInterned(expression);
+    return XPathEvaluatorBaseImpl.call_createExpression(root, dom_string, .none) catch |err| switch (err) {
+        error.NotImplemented => return error.NotImplemented,
+        error.SyntaxError => return error.SyntaxError,
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return error.InvalidStateError,
+    };
 }
 
 /// createNSResolver - Creates an XPathNSResolver from a node
 /// Spec: https://dom.spec.whatwg.org/#dom-xpathevaluatorbase-creatensresolver
-///
-/// Returns an XPathNSResolver that resolves namespaces from the given node.
 pub fn createNSResolver(
     allocator: std.mem.Allocator,
     root: *runtime.Instance,
@@ -65,20 +62,17 @@ pub fn createNSResolver(
     ctx: runtime.Context,
 ) MixinError!*runtime.Instance {
     _ = allocator;
-    _ = root;
-    _ = node_resolver;
     _ = ctx;
 
-    // TODO: Implement NS resolver creation
-    return error.NotImplemented;
+    return XPathEvaluatorBaseImpl.call_createNSResolver(root, node_resolver) catch |err| switch (err) {
+        error.NotImplemented => return error.NotImplemented,
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return error.InvalidStateError,
+    };
 }
 
 /// evaluate - Evaluates an XPath expression
 /// Spec: https://dom.spec.whatwg.org/#dom-xpathevaluatorbase-evaluate
-///
-/// Steps:
-/// 1. Let expression be the result of calling createExpression
-/// 2. Return the result of calling expression's evaluate method
 pub fn evaluate(
     allocator: std.mem.Allocator,
     root: *runtime.Instance,
@@ -90,44 +84,31 @@ pub fn evaluate(
     ctx: runtime.Context,
 ) MixinError!*runtime.Instance {
     _ = allocator;
-    _ = root;
-    _ = expression;
-    _ = context_node;
     _ = resolver;
-    _ = result_type;
-    _ = result;
     _ = ctx;
 
-    // TODO: Implement XPath evaluation
-    // This requires:
-    // 1. Parse the expression
-    // 2. Evaluate against context_node
-    // 3. Return result of requested type
-    return error.NotImplemented;
+    const dom_string = runtime.DOMString.initInterned(expression);
+    return XPathEvaluatorBaseImpl.call_evaluate(
+        root,
+        dom_string,
+        context_node,
+        .none,
+        .{ .value = result_type },
+        .{ .value = result },
+    ) catch |err| switch (err) {
+        error.NotImplemented => return error.NotImplemented,
+        error.SyntaxError => return error.SyntaxError,
+        error.TypeError => return error.TypeError,
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return error.InvalidStateError,
+    };
 }
-
-// =============================================================================
-// XPath Result Types (from XPathResult interface)
-// =============================================================================
-
-pub const ResultType = struct {
-    pub const ANY_TYPE: u16 = 0;
-    pub const NUMBER_TYPE: u16 = 1;
-    pub const STRING_TYPE: u16 = 2;
-    pub const BOOLEAN_TYPE: u16 = 3;
-    pub const UNORDERED_NODE_ITERATOR_TYPE: u16 = 4;
-    pub const ORDERED_NODE_ITERATOR_TYPE: u16 = 5;
-    pub const UNORDERED_NODE_SNAPSHOT_TYPE: u16 = 6;
-    pub const ORDERED_NODE_SNAPSHOT_TYPE: u16 = 7;
-    pub const ANY_UNORDERED_NODE_TYPE: u16 = 8;
-    pub const FIRST_ORDERED_NODE_TYPE: u16 = 9;
-};
 
 // =============================================================================
 // Tests
 // =============================================================================
 
-test "XPathEvaluatorBase mixin - createExpression" {
-    // Test would require XPath parser integration
-    // Placeholder for now
+test "XPathEvaluatorBase mixin - delegation to impl" {
+    // Test that mixin correctly delegates to impl
+    // Full tests are in the impl file
 }

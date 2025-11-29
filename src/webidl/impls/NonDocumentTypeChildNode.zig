@@ -1,4 +1,13 @@
-//! Implementation for NonDocumentTypeChildNode interface
+//! Implementation for NonDocumentTypeChildNode mixin
+//!
+//! Spec: https://dom.spec.whatwg.org/#interface-nondocumenttypechildnode
+//!
+//! This impl contains the actual logic for NonDocumentTypeChildNode methods.
+//! The mixin file delegates to these functions.
+//!
+//! The NonDocumentTypeChildNode mixin defines:
+//! - previousElementSibling - Returns the previous sibling that is an element
+//! - nextElementSibling - Returns the next sibling that is an element
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -7,18 +16,18 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const NonDocumentTypeChildNode = interfaces.NonDocumentTypeChildNode;
 
-pub const State = NonDocumentTypeChildNode.State;
+// Import impl modules for accessing internal state
+const NodeImpl = @import("Node.zig");
+
+pub const State = interfaces.NonDocumentTypeChildNode.State;
 
 pub const ImplError = error{
     NotImplemented,
+    InvalidStateError,
 };
 
 /// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
 pub const InternalState = struct {};
 
 /// Initialize instance (creates the instance)
@@ -29,25 +38,46 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
     runtime.Instance.deinit(instance);
 }
 
-/// Getter for previousElementSibling
+// =============================================================================
+// NonDocumentTypeChildNode Attributes
+// =============================================================================
+
+/// previousElementSibling - Returns the previous sibling that is an element
+/// Spec: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-previouselementsibling
+///
+/// Returns the first preceding sibling that is an element, or null if none exists.
 pub fn get_previousElementSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
+    var sibling = NodeImpl.getPreviousSibling(instance);
+    while (sibling) |s| {
+        const node_type = NodeImpl.getNodeType(s) orelse 0;
+        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+            return s;
+        }
+        sibling = NodeImpl.getPreviousSibling(s);
+    }
     return null;
 }
 
-/// Getter for nextElementSibling
+/// nextElementSibling - Returns the next sibling that is an element
+/// Spec: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-nextelementsibling
+///
+/// Returns the first following sibling that is an element, or null if none exists.
 pub fn get_nextElementSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
+    var sibling = NodeImpl.getNextSibling(instance);
+    while (sibling) |s| {
+        const node_type = NodeImpl.getNodeType(s) orelse 0;
+        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+            return s;
+        }
+        sibling = NodeImpl.getNextSibling(s);
+    }
     return null;
 }
-
