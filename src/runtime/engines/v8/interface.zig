@@ -1095,6 +1095,13 @@ pub fn V8Interface(comptime Interface: type) type {
                 };
             }
 
+            // Handle *const anyopaque - ALWAYS return undefined for now.
+            // This type is ambiguous (could be V8 value or Zig data).
+            // TODO: Introduce a proper type for Promise returns vs data returns.
+            if (ReturnType == *const anyopaque) {
+                return @ptrCast(v8.v8_Undefined(isolate));
+            }
+
             // For other types, return undefined as fallback
             // TODO: Expand type conversion coverage
             return @ptrCast(v8.v8_Undefined(isolate));
