@@ -1086,6 +1086,8 @@ const Repl = struct {
         \\  function fmt(v){if(v===null)return'null';if(v===undefined)return'undefined';if(typeof v==='string')return JSON.stringify(v);if(typeof v==='object')try{return JSON.stringify(v)}catch(e){return Object.prototype.toString.call(v)}return String(v);}
         \\  const assert=function(v,m){if(!v)throw new AssertionError(m||'Expected truthy, got '+fmt(v),v,true,'==');return true;};
         \\  assert.ok=assert;
+        \\  assert.isTrue=function(v,m){if(v!==true)throw new AssertionError(m||'Expected true, got '+fmt(v),v,true,'===true');return true;};
+        \\  assert.isFalse=function(v,m){if(v!==false)throw new AssertionError(m||'Expected false, got '+fmt(v),v,false,'===false');return true;};
         \\  assert.equal=function(a,e,m){if(a!=e)throw new AssertionError(m||'Expected '+fmt(e)+', got '+fmt(a),a,e,'==');return true;};
         \\  assert.strictEqual=function(a,e,m){if(a!==e)throw new AssertionError(m||'Expected '+fmt(e)+' (===), got '+fmt(a),a,e,'===');return true;};
         \\  assert.notEqual=function(a,e,m){if(a==e)throw new AssertionError(m||'Expected '+fmt(a)+' to not equal '+fmt(e),a,e,'!=');return true;};
