@@ -164,9 +164,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Constructor - implements full Request(input, init) constructor algorithm
 /// Spec: https://fetch.spec.whatwg.org/#dom-request
 pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) !*runtime.Instance {
-    // WORKAROUND: Cast init_data to our full struct
-    // This is a temporary hack until codegen properly handles partial dictionaries
-    const init_opts = @as(*const RequestInitFull, @ptrCast(&init_data));
+    // NOTE: The generated RequestInit dictionary only has 'privateToken' field.
+    // The full Fetch spec RequestInit has many more fields (method, headers, body, etc.)
+    // Until codegen is fixed, we can't properly parse the init object.
+    // For now, just use defaults regardless of whether init was passed.
+    // TODO: Fix codegen to generate complete RequestInit dictionary
+    _ = init_data;
+    const init_opts = RequestInitFull{};
 
     // Step 1: Let request be null (will be InternalRequest)
     var base_request: *InternalRequest = undefined;

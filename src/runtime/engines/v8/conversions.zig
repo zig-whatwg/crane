@@ -317,19 +317,33 @@ pub fn fromV8Value(
         const fields = union_info.fields;
 
         // Find indices for different type categories at comptime
-        const sequence_idx: ?usize = comptime blk: {
+        // Note: []const u8 (ByteString, USVString) could match both string and sequence
+        // so we need to check for byte slices specifically
+
+        // String types: DOMString (union), or []const u8 (ByteString/USVString)
+        const string_idx: ?usize = comptime blk: {
             for (fields, 0..) |field, i| {
+                if (field.type == runtime.DOMString) {
+                    break :blk i;
+                }
+                // Check for []const u8 (ByteString, USVString, runtime.ByteString, runtime.USVString)
                 const field_info = @typeInfo(field.type);
-                if (field_info == .pointer and field_info.pointer.size == .slice) {
+                if (field_info == .pointer and field_info.pointer.size == .slice and
+                    field_info.pointer.child == u8)
+                {
                     break :blk i;
                 }
             }
             break :blk null;
         };
 
-        const string_idx: ?usize = comptime blk: {
+        // Sequence types: slices that are NOT []const u8
+        const sequence_idx: ?usize = comptime blk: {
             for (fields, 0..) |field, i| {
-                if (field.type == runtime.DOMString or field.type == runtime.ByteString or field.type == runtime.USVString) {
+                const field_info = @typeInfo(field.type);
+                if (field_info == .pointer and field_info.pointer.size == .slice) {
+                    // Skip []const u8 which is handled as string above
+                    if (field_info.pointer.child == u8) continue;
                     break :blk i;
                 }
             }
