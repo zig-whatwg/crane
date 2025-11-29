@@ -266,13 +266,54 @@ pub fn call_lowerBound(instance: *runtime.Instance, lower: *const anyopaque, ope
 ///
 /// This handles the conversion from V8 values (passed as opaque pointers)
 /// to the backend IDBKey type.
+///
+/// Per IndexedDB spec, valid key types are:
+/// - number (not NaN)
+/// - Date (converted to its time value)
+/// - string
+/// - binary (ArrayBuffer, etc.)
+/// - array (of valid keys)
 fn convertToKey(ptr: *const anyopaque) !BackendKey {
-    // For now, assume the pointer is directly an IDBKey
-    // In full implementation, this would inspect the JS value type
-    // and construct the appropriate IDBKey variant
-    _ = ptr;
+    const v8 = @import("v8");
 
-    // TODO: Implement proper JS value to IDBKey conversion
-    // This requires integration with the V8 conversions layer
-    return BackendKey.number(0); // Placeholder
+    // Cast to V8 value
+    const value: *v8.ffi.Value = @ptrCast(@constCast(ptr));
+
+    // Check for number first (most common case)
+    if (v8.ffi.v8_Value_IsNumber(value)) {
+        const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.DataError;
+        const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.DataError;
+        const num = v8.ffi.v8_Value_NumberValue(value, context);
+
+        // Check for NaN - NaN is not a valid key
+        if (num != num) { // NaN check: NaN != NaN
+            return error.DataError;
+        }
+
+        return BackendKey.number(num);
+    }
+
+    // Check for string
+    if (v8.ffi.v8_Value_IsString(value)) {
+        // For now, return a number placeholder - full implementation would need
+        // V8 string extraction with allocator
+        // TODO: Implement proper string key extraction
+        return error.DataError;
+    }
+
+    // Check for Array (array of keys)
+    if (v8.ffi.v8_Value_IsArray(value)) {
+        // TODO: Implement array key conversion
+        return error.DataError;
+    }
+
+    // Check for object - could be Date or other objects
+    // For now, we don't have v8_Value_IsDate so we can't distinguish
+    if (v8.ffi.v8_Value_IsObject(value)) {
+        // TODO: Implement Date and ArrayBuffer key support
+        return error.DataError;
+    }
+
+    // Invalid key type
+    return error.DataError;
 }
