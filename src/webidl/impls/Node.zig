@@ -262,16 +262,16 @@ pub fn get_baseURI(instance: *runtime.Instance) anyerror!runtime.USVString {
     if (internal.owner_document) |_| {
         // TODO: Get document.baseURI from owner document
         // For now, return empty string
-        return runtime.USVString.initEmpty();
+        return "";
     }
 
     // If this is a Document node, get its own base URL
     if (internal.node_type == NodeType.DOCUMENT_NODE) {
         // TODO: Return document's base URL
-        return runtime.USVString.initEmpty();
+        return "";
     }
 
-    return runtime.USVString.initEmpty();
+    return "";
 }
 
 /// Getter for isConnected

@@ -399,6 +399,9 @@ pub extern fn v8_Object_GetPropertyNames(context: *Context, obj: *Object) ?*Arra
 pub extern fn v8_Object_SetAlignedPointerInInternalField(object: *Object, index: c_int, value: *anyopaque) void;
 pub extern fn v8_Object_InternalFieldCount(object: *Object) c_int;
 pub extern fn v8_Object_GetAlignedPointerFromInternalField(object: *Object, index: c_int) ?*anyopaque;
+// Raw versions for property interceptors (take raw Local pointers not Global handles)
+pub extern fn v8_Object_InternalFieldCount_Raw(object: *const anyopaque) c_int;
+pub extern fn v8_Object_GetAlignedPointerFromInternalField_Raw(object: *const anyopaque, index: c_int) ?*anyopaque;
 pub extern fn v8_Object_Dispose(obj: *Object) void;
 pub extern fn v8_Object_DefineProperty(object: *Object, context: *Context, key: *Value, value: *Value, writable: bool, enumerable: bool, configurable: bool) bool;
 pub extern fn v8_Object_SetPrototype(object: *Object, context: *Context, prototype: *Value) bool;

@@ -1420,27 +1420,167 @@ pub fn V8Interface(comptime Interface: type) type {
 
             const prop_name = buf[0..@intCast(utf8_length)];
 
-            // Check if this property is in our lazy_properties list
-            var found = false;
+            // FIRST: Check if this property is in our lazy_properties list
+            // We must NOT set any return value for non-lazy properties to allow V8 to continue lookup
+            var is_lazy_property = false;
             inline for (lazy_properties) |lazy_prop| {
                 const lazy_name: []const u8 = lazy_prop[0];
                 if (std.mem.eql(u8, prop_name, lazy_name)) {
-                    found = true;
+                    is_lazy_property = true;
                     break;
                 }
             }
 
-            // If not in our list, return without setting value (let V8 continue lookup)
-            if (!found) {
+            // If not a lazy property, return immediately without setting value (let V8 continue lookup)
+            if (!is_lazy_property) {
                 return;
             }
 
-            // Property IS in our list - handle it
-            // For now, just return undefined to acknowledge we handle this property
-            // TODO: Actually implement the getter logic
+            // This IS a lazy property - now handle it
             const isolate = info.getIsolate();
-            const undef = v8.v8_Undefined(isolate);
-            info.setReturnValue(@ptrCast(undef));
+
+            // Get the actual instance object (the receiver, not the prototype where the handler is)
+            // getThis() returns the actual object the property is being accessed on
+            // getHolder() returns the object that has the interceptor (the prototype)
+            const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj); // Clean up the Global handle
+
+            // CRITICAL: Check if this object has internal fields before accessing them
+            // Plain JS objects (e.g., {}) have 0 internal fields, our wrapped objects have 2
+            // Accessing internal field 0 on an object without internal fields crashes V8
+            const field_count = v8.v8_Object_InternalFieldCount(this_obj);
+            if (field_count < 1) {
+                // Not a wrapped object - return undefined for lazy properties
+                if (v8.v8_Undefined(isolate)) |undef| {
+                    info.setReturnValue(undef);
+                }
+                return;
+            }
+
+            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+
+            // If no instance, return undefined (prototype access or not properly wrapped)
+            if (instance_ptr == null) {
+                if (v8.v8_Undefined(isolate)) |undef| {
+                    info.setReturnValue(undef);
+                }
+                return;
+            }
+
+            const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+
+            // Find and call the getter for this lazy property
+            inline for (lazy_properties) |lazy_prop| {
+                const lazy_name: []const u8 = lazy_prop[0];
+                const getter_name: []const u8 = lazy_prop[1];
+
+                if (std.mem.eql(u8, prop_name, lazy_name)) {
+                    // Call the getter function
+                    const zig_getter = @field(Interface, getter_name);
+                    callLazyGetter(zig_getter, instance, isolate, info);
+                    return;
+                }
+            }
+        }
+
+        /// Helper to call a lazy property getter and convert result to V8
+        fn callLazyGetter(
+            comptime zig_getter: anytype,
+            instance: *runtime.Instance,
+            isolate: *v8.Isolate,
+            info: *const v8.PropertyCallbackInfo,
+        ) void {
+            const fn_info = @typeInfo(@TypeOf(zig_getter)).@"fn";
+            const ReturnType = fn_info.return_type.?;
+
+            // Skip void return types
+            if (ReturnType == void) {
+                conv.throwError(isolate, "Property not implemented");
+                return;
+            }
+
+            // Determine payload type from return type
+            const return_type_info = @typeInfo(ReturnType);
+            const PayloadType = if (return_type_info == .error_union)
+                return_type_info.error_union.payload
+            else
+                ReturnType;
+
+            // Call getter (handle error union)
+            const result: PayloadType = if (return_type_info == .error_union)
+                zig_getter(instance) catch |err| {
+                    conv.throwError(isolate, @errorName(err));
+                    return;
+                }
+            else
+                zig_getter(instance);
+
+            // Convert to V8 value
+            const v8_value = convertToV8Value(PayloadType, result, isolate);
+            if (v8_value) |val| {
+                info.setReturnValue(val);
+            } else {
+                // null result - return JavaScript null
+                if (v8.v8_Null(isolate)) |null_val| {
+                    info.setReturnValue(null_val);
+                }
+            }
+        }
+
+        /// Convert a Zig value to V8 value based on type
+        fn convertToV8Value(comptime PayloadType: type, result: PayloadType, isolate: *v8.Isolate) ?*v8.Value {
+            // Handle optional types
+            const payload_type_info = @typeInfo(PayloadType);
+            if (payload_type_info == .optional) {
+                const ChildType = payload_type_info.optional.child;
+                if (result) |value| {
+                    return convertToV8Value(ChildType, value, isolate);
+                } else {
+                    return null; // null will be converted to JS null by caller
+                }
+            }
+
+            // WebIDL primitive types
+            if (PayloadType == u32 or PayloadType == runtime.UnsignedLong) {
+                return @ptrCast(conv.toV8UnsignedLong(isolate, result));
+            } else if (PayloadType == u16) {
+                return @ptrCast(conv.toV8UnsignedLong(isolate, @as(u32, result)));
+            } else if (PayloadType == u8) {
+                return @ptrCast(conv.toV8UnsignedLong(isolate, @as(u32, result)));
+            } else if (PayloadType == i32 or PayloadType == runtime.Long) {
+                return @ptrCast(conv.toV8Long(isolate, result));
+            } else if (PayloadType == i16) {
+                return @ptrCast(conv.toV8Long(isolate, @as(i32, result)));
+            } else if (PayloadType == i8) {
+                return @ptrCast(conv.toV8Long(isolate, @as(i32, result)));
+            } else if (PayloadType == f64 or PayloadType == runtime.Double) {
+                return @ptrCast(v8.v8_Number_New(isolate, result));
+            } else if (PayloadType == f32) {
+                return @ptrCast(v8.v8_Number_New(isolate, @as(f64, result)));
+            } else if (PayloadType == bool) {
+                return @ptrCast(v8.v8_Boolean_New(isolate, result));
+            } else if (PayloadType == runtime.DOMString) {
+                // DOMString - convert to V8 string
+                const slice = result.asSlice();
+                if (v8.v8_String_NewFromUtf8(isolate, slice.ptr, @intCast(slice.len))) |str| {
+                    return @ptrCast(str);
+                }
+                return null;
+            } else if (PayloadType == *runtime.Instance) {
+                // Instance pointer - wrap in V8 object with correct prototype
+                const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return null;
+                const iface_name = template_registry.getInstanceInterfaceName(result);
+                const v8_obj = template_registry.wrapInstanceAsV8Object(
+                    result,
+                    iface_name,
+                    isolate,
+                    v8_context,
+                ) catch return null;
+                return @ptrCast(v8_obj);
+            } else {
+                // Unknown type - return undefined
+                return @ptrCast(v8.v8_Undefined(isolate));
+            }
         }
 
         /// Lazy property setter interceptor

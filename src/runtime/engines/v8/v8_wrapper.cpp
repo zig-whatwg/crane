@@ -1072,6 +1072,20 @@ bool v8_Name_IsString(const void* name) {
     return value->IsString();
 }
 
+// Object internal field functions for raw/local pointers (from callbacks)
+// Used in property interceptors where we have Local<Object> not Global<Object>
+int v8_Object_InternalFieldCount_Raw(const void* obj) {
+    // Cast to non-const since V8 API requires it
+    Object* object_ptr = const_cast<Object*>(reinterpret_cast<const Object*>(obj));
+    return object_ptr->InternalFieldCount();
+}
+
+void* v8_Object_GetAlignedPointerFromInternalField_Raw(const void* obj, int index) {
+    // Cast to non-const since V8 API requires it
+    Object* object_ptr = const_cast<Object*>(reinterpret_cast<const Object*>(obj));
+    return object_ptr->GetAlignedPointerFromInternalField(index);
+}
+
 // String functions for raw pointers (from callbacks)
 int v8_String_Utf8Length_Raw(const void* str) {
     Isolate* isolate = Isolate::GetCurrent();
