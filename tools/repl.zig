@@ -432,6 +432,10 @@ const Repl = struct {
             return error.RuntimeError;
         };
 
+        // Run microtasks to process any pending promises
+        // This is required because we use explicit microtask policy
+        v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
+
         // Format the result for display (REPL-only formatting, doesn't affect JS semantics)
         return self.formatValueForDisplay(result);
     }

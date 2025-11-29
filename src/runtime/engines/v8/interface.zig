@@ -379,6 +379,24 @@ pub fn V8Interface(comptime Interface: type) type {
                                     true, // configurable = true
                                 );
                             }
+
+                            // Also register "values" method with the same callback
+                            // Per WebIDL async iterable spec, values() does the same thing as [Symbol.asyncIterator]()
+                            const values_name = v8.v8_String_NewFromUtf8(isolate, "values", 6);
+                            if (values_name) |name_str| {
+                                const values_func = v8.v8_FunctionTemplate_GetFunction(tmpl, context);
+                                if (values_func) |func2| {
+                                    _ = v8.v8_Object_DefineProperty(
+                                        @ptrCast(proto),
+                                        context,
+                                        @ptrCast(name_str),
+                                        @ptrCast(func2),
+                                        true, // writable = true
+                                        false, // enumerable = false
+                                        true, // configurable = true
+                                    );
+                                }
+                            }
                         }
                     }
                 }
@@ -709,8 +727,14 @@ pub fn V8Interface(comptime Interface: type) type {
                 const zig_name: []const u8 = method[1];
                 const arity: c_int = if (method.len >= 3) method[2] else 0;
 
+                // Skip "values" for async iterable interfaces - it's registered separately
+                // with the asyncIteratorCallback which properly wraps async iterators
+                const is_async_iterable_values = comptime (@hasDecl(Meta, "async_iterable") and
+                    std.mem.eql(u8, method_name, "values"));
+
                 // If we have own_methods, check membership; otherwise register all
-                const should_register = comptime (own_method_names.len == 0 or own_method_set.has(method_name));
+                const should_register = comptime (!is_async_iterable_values and
+                    (own_method_names.len == 0 or own_method_set.has(method_name)));
 
                 if (should_register) {
                     // Pass zig_name as comptime parameter to generate proper callback
@@ -2019,10 +2043,6 @@ pub fn V8Interface(comptime Interface: type) type {
         /// in a V8 object with next() and return() methods.
         fn asyncIteratorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
             const isolate = info.getIsolate();
-            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
-                conv.throwError(isolate, "No V8 context");
-                return;
-            };
 
             // Get 'this' object (the instance)
             const this_obj = info.getThis();
@@ -2074,17 +2094,11 @@ pub fn V8Interface(comptime Interface: type) type {
                     }
                 };
 
-                // Wrap the Zig iterator in a V8 async iterator object
-                const wrapped = async_iterator.wrapAsyncIterator(
-                    isolate,
-                    v8_context,
-                    @ptrCast(@alignCast(@constCast(zig_iterator_ptr))),
-                ) catch {
-                    conv.throwError(isolate, "Failed to create async iterator");
-                    return;
-                };
-
-                info.setReturnValue(@ptrCast(wrapped));
+                // The result from call_values() is already a wrapped V8 object
+                // (call_values wraps it using engine.wrapAsyncIterator internally)
+                // So we just need to cast it to a V8 Object and return it
+                const v8_object: *v8.Object = @ptrCast(@alignCast(@constCast(zig_iterator_ptr)));
+                info.setReturnValue(@ptrCast(v8_object));
             } else {
                 conv.throwError(isolate, "Interface does not support async iteration");
             }

@@ -2033,18 +2033,19 @@ static void AsyncIteratorNextCallback(const FunctionCallbackInfo<Value>& info) {
     Isolate* isolate = info.GetIsolate();
     HandleScope handle_scope(isolate);
     
-    // Extract iterator data from 'this' object's internal field
-    Local<Object> this_obj = info.This();
-    if (this_obj->InternalFieldCount() < 1) {
+    // Extract iterator data from function's data (passed via External)
+    Local<Value> data_value = info.Data();
+    if (!data_value->IsExternal()) {
         isolate->ThrowException(Exception::TypeError(
-            String::NewFromUtf8Literal(isolate, "Invalid async iterator object")
+            String::NewFromUtf8Literal(isolate, "Invalid async iterator callback data")
         ));
         return;
     }
     
-    AsyncIteratorData* data = static_cast<AsyncIteratorData*>(
-        this_obj->GetAlignedPointerFromInternalField(0)
-    );
+    Local<External> external = Local<External>::Cast(data_value);
+    AsyncIteratorData* data = static_cast<AsyncIteratorData*>(external->Value());
+    
+
     
     if (!data || !data->next_fn) {
         isolate->ThrowException(Exception::TypeError(
@@ -2082,18 +2083,17 @@ static void AsyncIteratorReturnCallback(const FunctionCallbackInfo<Value>& info)
     Isolate* isolate = info.GetIsolate();
     HandleScope handle_scope(isolate);
     
-    // Extract iterator data from 'this' object's internal field
-    Local<Object> this_obj = info.This();
-    if (this_obj->InternalFieldCount() < 1) {
+    // Extract iterator data from function's data (passed via External)
+    Local<Value> data_value = info.Data();
+    if (!data_value->IsExternal()) {
         isolate->ThrowException(Exception::TypeError(
-            String::NewFromUtf8Literal(isolate, "Invalid async iterator object")
+            String::NewFromUtf8Literal(isolate, "Invalid async iterator callback data")
         ));
         return;
     }
     
-    AsyncIteratorData* data = static_cast<AsyncIteratorData*>(
-        this_obj->GetAlignedPointerFromInternalField(0)
-    );
+    Local<External> external = Local<External>::Cast(data_value);
+    AsyncIteratorData* data = static_cast<AsyncIteratorData*>(external->Value());
     
     if (!data || !data->return_fn) {
         isolate->ThrowException(Exception::TypeError(
@@ -2164,15 +2164,20 @@ Global<Object>* v8_AsyncIterator_New(
     };
     obj->SetAlignedPointerInInternalField(0, data);
     
-    // Create 'next' method
+
+    
+    // Wrap data pointer in External for passing to function callbacks
+    Local<External> data_external = External::New(isolate, data);
+    
+    // Create 'next' method with data passed via External
     Local<String> next_name = String::NewFromUtf8Literal(isolate, "next");
-    Local<FunctionTemplate> next_tpl = FunctionTemplate::New(isolate, AsyncIteratorNextCallback);
+    Local<FunctionTemplate> next_tpl = FunctionTemplate::New(isolate, AsyncIteratorNextCallback, data_external);
     Local<Function> next_fn_obj = next_tpl->GetFunction(ctx).ToLocalChecked();
     obj->Set(ctx, next_name, next_fn_obj).Check();
     
-    // Create 'return' method
+    // Create 'return' method with data passed via External
     Local<String> return_name = String::NewFromUtf8Literal(isolate, "return");
-    Local<FunctionTemplate> return_tpl = FunctionTemplate::New(isolate, AsyncIteratorReturnCallback);
+    Local<FunctionTemplate> return_tpl = FunctionTemplate::New(isolate, AsyncIteratorReturnCallback, data_external);
     Local<Function> return_fn_obj = return_tpl->GetFunction(ctx).ToLocalChecked();
     obj->Set(ctx, return_name, return_fn_obj).Check();
     

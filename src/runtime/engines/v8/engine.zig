@@ -63,8 +63,10 @@ fn v8WrapAsyncIterator(
     engine_ctx: *anyopaque,
     zig_iterator: *anyopaque,
 ) EngineError!*anyopaque {
-    const isolate: *ffi.Isolate = @ptrCast(@alignCast(engine_ctx));
-    const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse
+    // engine_ctx is the V8 Context (set by context_manager.zig)
+    const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    // Get current isolate - the context should be entered so this works
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse
         return EngineError.OperationFailed;
 
     // Import the ReadableStreamAsyncIterator type
@@ -187,7 +189,10 @@ fn v8CreateEventLoop(
     engine_ctx: *anyopaque,
     allocator: std.mem.Allocator,
 ) EngineError!*anyopaque {
-    const isolate: *ffi.Isolate = @ptrCast(@alignCast(engine_ctx));
+    // engine_ctx is the V8 Context, get the current isolate
+    _ = engine_ctx;
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse
+        return EngineError.OperationFailed;
 
     const v8_loop_ptr = allocator.create(event_loop_mod.V8EventLoop) catch
         return EngineError.OutOfMemory;
@@ -280,7 +285,10 @@ fn v8DestroyCallbackWrapper(
 /// Per WHATWG TestUtils spec: "Run implementation-defined steps to perform
 /// a garbage collection covering at least the entry Realm."
 fn v8RequestGarbageCollection(engine_ctx: *anyopaque) EngineError!void {
-    const isolate: *ffi.Isolate = @ptrCast(@alignCast(engine_ctx));
+    // engine_ctx is the V8 Context, get the current isolate
+    _ = engine_ctx;
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse
+        return EngineError.OperationFailed;
 
     // Use LowMemoryNotification which triggers a full GC
     // This is more reliable than RequestGarbageCollectionForTesting
