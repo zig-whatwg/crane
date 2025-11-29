@@ -122,9 +122,10 @@ pub fn call_initCustomEvent(instance: *runtime.Instance, @"type": runtime.DOMStr
 
     // Step 3: Set detail
     const state = instance.getState(State);
-    state.own.detail = detail;
-
-    if (getInternal(instance)) |internal| {
-        internal.detail = detail;
+    if (detail.was_passed) {
+        state.own.detail = detail.value;
+        if (getInternal(instance)) |internal| {
+            internal.detail = detail.value;
+        }
     }
 }

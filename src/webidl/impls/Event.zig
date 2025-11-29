@@ -130,9 +130,10 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
     internal.initialized_flag = true;
 
     // Initialize event attributes from eventInitDict
-    const bubbles = eventInitDict.bubbles orelse false;
-    const cancelable = eventInitDict.cancelable orelse false;
-    const composed = eventInitDict.composed orelse false;
+    const event_init = if (eventInitDict.was_passed) eventInitDict.value else dictionaries.EventInit{};
+    const bubbles = event_init.bubbles orelse false;
+    const cancelable = event_init.cancelable orelse false;
+    const composed = event_init.composed orelse false;
 
     // Store event type - clone the string to ensure we own it
     state.own.type = try @"type".clone(allocator);
@@ -354,7 +355,9 @@ pub fn call_initEvent(instance: *runtime.Instance, @"type": runtime.DOMString, b
     if (internal.dispatch_flag) return;
 
     // Step 2: Initialize this
-    initializeEvent(instance, @"type", bubbles, cancelable);
+    const bubbles_val = if (bubbles.was_passed) bubbles.value else false;
+    const cancelable_val = if (cancelable.was_passed) cancelable.value else false;
+    initializeEvent(instance, @"type", bubbles_val, cancelable_val);
 }
 
 /// Operation: composedPath

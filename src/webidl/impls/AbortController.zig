@@ -105,7 +105,8 @@ pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaq
 
     // Signal abort on the associated signal
     const AbortSignalImpl = @import("AbortSignal.zig");
-    AbortSignalImpl.signalAbort(internal.signal, @constCast(reason)) catch |err| {
+    const reason_ptr = if (reason.was_passed) @constCast(reason.value) else null;
+    AbortSignalImpl.signalAbort(internal.signal, reason_ptr) catch |err| {
         return switch (err) {
             error.InvalidState => error.InvalidState,
             else => error.InvalidState,

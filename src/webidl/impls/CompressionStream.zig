@@ -17,6 +17,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const infra = @import("infra");
 const CompressionStream = interfaces.CompressionStream;
 
@@ -124,9 +125,9 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, form
     const transform = try interfaces.TransformStream.call_constructor(
         allocator,
         ctx,
-        &empty_transformer,
-        writable_strategy,
-        readable_strategy,
+        webidl.Opt(*const anyopaque).passed(&empty_transformer),
+        webidl.Opt(dictionaries.QueuingStrategy).passed(writable_strategy),
+        webidl.Opt(dictionaries.QueuingStrategy).passed(readable_strategy),
     );
     errdefer interfaces.TransformStream.deinit(transform);
 
