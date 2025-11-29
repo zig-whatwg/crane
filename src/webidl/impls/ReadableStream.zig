@@ -139,12 +139,60 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
 
     // Step 1: If underlyingSource is missing, use default empty dictionary
     // Step 2: Convert to UnderlyingSource dictionary
-    // When underlyingSource is not passed, use a default empty dictionary
-    const default_source = dictionaries.UnderlyingSource{};
-    const underlying_source_dict: *const dictionaries.UnderlyingSource = if (underlyingSource.was_passed)
-        @ptrCast(@alignCast(underlyingSource.value))
-    else
-        &default_source;
+    //
+    // The underlyingSource parameter comes in as *const anyopaque because the
+    // WebIDL UnderlyingSource dictionary contains callback function members.
+    // Since the type is anyopaque, the V8 bindings pass the raw V8 object pointer.
+    // We need to extract the callback properties from the V8 object manually.
+    var underlying_source_dict_storage = dictionaries.UnderlyingSource{};
+
+    if (underlyingSource.was_passed) {
+        // underlyingSource.value is a V8 Object* (Global<Value>*)
+        // Extract callback properties using V8 FFI
+        const v8 = @import("v8").ffi;
+        const v8_obj: *v8.Object = @ptrCast(@alignCast(@constCast(underlyingSource.value)));
+
+        // Get V8 context from runtime context
+        const v8_context_ptr = ctx.getEngineContext() orelse return error.InvalidState;
+        const v8_context: *v8.Context = @ptrCast(@alignCast(v8_context_ptr));
+
+        // Get current isolate
+        const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidState;
+
+        // Extract 'start' callback property
+        const start_key = v8.v8_String_NewFromUtf8(isolate, "start", 5) orelse return error.OutOfMemory;
+        if (v8.v8_Object_Get(v8_obj, v8_context, @ptrCast(start_key))) |start_val| {
+            if (!v8.v8_Value_IsNullOrUndefined(start_val)) {
+                // Store the V8 function pointer
+                underlying_source_dict_storage.start = @ptrCast(start_val);
+            }
+        }
+
+        // Extract 'pull' callback property
+        const pull_key = v8.v8_String_NewFromUtf8(isolate, "pull", 4) orelse return error.OutOfMemory;
+        if (v8.v8_Object_Get(v8_obj, v8_context, @ptrCast(pull_key))) |pull_val| {
+            if (!v8.v8_Value_IsNullOrUndefined(pull_val)) {
+                underlying_source_dict_storage.pull = @ptrCast(pull_val);
+            }
+        }
+
+        // Extract 'cancel' callback property
+        const cancel_key = v8.v8_String_NewFromUtf8(isolate, "cancel", 6) orelse return error.OutOfMemory;
+        if (v8.v8_Object_Get(v8_obj, v8_context, @ptrCast(cancel_key))) |cancel_val| {
+            if (!v8.v8_Value_IsNullOrUndefined(cancel_val)) {
+                underlying_source_dict_storage.cancel = @ptrCast(cancel_val);
+            }
+        }
+
+        // Extract 'type' property
+        const type_key = v8.v8_String_NewFromUtf8(isolate, "type", 4) orelse return error.OutOfMemory;
+        if (v8.v8_Object_Get(v8_obj, v8_context, @ptrCast(type_key))) |type_val| {
+            if (!v8.v8_Value_IsNullOrUndefined(type_val)) {
+                underlying_source_dict_storage.type = @ptrCast(type_val);
+            }
+        }
+    }
+    const underlying_source_dict: *const dictionaries.UnderlyingSource = &underlying_source_dict_storage;
 
     // Step 3: Perform InitializeReadableStream
     const instance = try init(allocator, State, &ReadableStream.vtable, ctx);
@@ -218,6 +266,105 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
     }
 
     return instance;
+}
+
+/// Invoke the pending start callback for the stream's controller
+///
+/// This is called by the V8 bindings layer AFTER the constructor returns and
+/// the V8 wrappers for both the stream and controller have been created.
+///
+/// Per WHATWG Streams spec § 4.9.3 SetUpReadableStreamDefaultController steps 9-12:
+/// 9. Let startResult be the result of performing startAlgorithm
+/// 10. Let startPromise be a promise resolved with startResult
+/// 11. Upon fulfillment: set started = true, call pull if needed
+/// 12. Upon rejection: error the controller
+///
+/// Arguments:
+/// - instance: The ReadableStream instance
+/// - controller_v8: The V8 Object wrapper for the controller (for passing to JS callback)
+/// - v8_isolate: The V8 Isolate
+/// - v8_context: The V8 Context
+///
+/// Returns: void (errors are handled by erroring the controller)
+pub fn invokePendingStartCallback(
+    instance: *runtime.Instance,
+    controller_v8: *anyopaque,
+    v8_isolate: *anyopaque,
+    v8_context: *anyopaque,
+) void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return;
+    const controller_instance = internal.controller;
+
+    const controller_state = controller_instance.getState(interfaces.ReadableStreamDefaultController.State);
+    const controller_internal = controller_state.own._internal orelse return;
+
+    // Check if there's a pending start algorithm and controller hasn't started
+    const start_algo = controller_internal.start_algorithm orelse {
+        // No start algorithm - nothing to do (already marked as started)
+        return;
+    };
+
+    if (controller_internal.started) {
+        // Already started - nothing to do
+        return;
+    }
+
+    // Get the V8 function pointer from the algorithm's context
+    // The context contains the raw V8 Value pointer that was cast from the dictionary
+    const v8_func_ptr = start_algo.context orelse {
+        // No callback - mark as started
+        onStartFulfilledImmediate(controller_internal);
+        return;
+    };
+
+    // Import V8 FFI for direct function invocation
+    const v8 = @import("v8").ffi;
+
+    // Cast the opaque pointer to V8 types
+    const isolate: *v8.Isolate = @ptrCast(@alignCast(v8_isolate));
+    const context: *v8.Context = @ptrCast(@alignCast(v8_context));
+    const controller_obj: *v8.Object = @ptrCast(@alignCast(controller_v8));
+
+    // The stored pointer is a raw V8 Value pointer - verify it's a function
+    const v8_value: *v8.Value = @ptrCast(@alignCast(v8_func_ptr));
+
+    if (!v8.v8_Value_IsFunction(v8_value)) {
+        onStartFulfilledImmediate(controller_internal);
+        return;
+    }
+
+    const func: *v8.Function = @ptrCast(v8_value);
+
+    // Call the V8 function with the controller as argument
+    // Use 'undefined' as 'this' since start() is not called as a method
+    const undefined_recv = v8.v8_Undefined(isolate) orelse {
+        // Couldn't get undefined - mark as started and return
+        onStartFulfilledImmediate(controller_internal);
+        return;
+    };
+    var args = [_]*v8.Value{@ptrCast(controller_obj)};
+    const result = v8.v8_Function_Call(func, context, undefined_recv, 1, &args);
+
+    // Check if call succeeded
+    if (result == null) {
+        // Call threw an exception - error the controller
+        const js_error = streams_common.JSValue{ .string = "Start callback threw an exception" };
+        const ReadableStreamDefaultControllerImpl = @import("ReadableStreamDefaultController.zig");
+        ReadableStreamDefaultControllerImpl.readableStreamDefaultControllerError(controller_internal, @ptrCast(&js_error));
+        return;
+    }
+
+    // TODO: Check if result is a Promise and chain handlers
+    // For now, treat all results (including promises) as immediately fulfilled
+
+    // Mark as started and call pull if needed
+    onStartFulfilledImmediate(controller_internal);
+
+    // Clear the start algorithm since it's been invoked
+    start_algo.deinit();
+    controller_internal.allocator.destroy(start_algo);
+    controller_internal.start_algorithm = null;
 }
 
 /// Getter for locked
@@ -1607,27 +1754,19 @@ fn setUpReadableStreamDefaultController(
     // 11. Upon fulfillment of startPromise: set started = true, call pull if needed
     // 12. Upon rejection of startPromise with reason r: error the controller
     //
-    // LIMITATION: V8 callback invocation requires V8-specific API calls (invokeCallback
-    // through the EngineInterface). The current Algorithm abstraction stores the callback
-    // pointer but jsCallbackInvoke() cannot call V8 functions directly - it would require:
-    //   1. Access to V8 isolate and context
-    //   2. Conversion of the raw callback pointer to a V8::Function handle
-    //   3. Wrapping the controller as a V8::Object
-    //   4. Proper V8 scope management (HandleScope, etc.)
+    // The start algorithm is stored in controller_internal.start_algorithm.
+    // The V8 bindings layer will invoke it AFTER the constructor returns and
+    // V8 wrappers exist (see invokeReadableStreamStartCallback in interface.zig).
     //
-    // For now, we store the start algorithm for future use but immediately mark as started.
-    // This allows streams without start callbacks to work correctly.
+    // DO NOT mark as started here - that happens after start callback completes.
     //
-    // TODO: Implement proper V8 callback invocation:
-    //   - Use ctx.getEngine().invokeCallback() when available
-    //   - Or defer start callback to V8 bindings layer post-constructor
-    //   - Track issue: whatwg-h8sj
-    //
-    // NOTE: start_algo is already stored in controller_internal.start_algorithm
-    // for future use when V8 integration is complete.
-
-    // Immediately mark as started and call pull if needed
-    onStartFulfilledImmediate(controller_internal);
+    // If there's no start callback, mark as started immediately so pull can proceed.
+    if (start_algo == null) {
+        onStartFulfilledImmediate(controller_internal);
+    }
+    // If start_algo exists, invokePendingStartCallback will:
+    // 1. Call the JS callback with the controller
+    // 2. Mark as started after callback returns
 }
 
 /// Handle start promise settlement

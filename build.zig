@@ -415,6 +415,8 @@ pub fn build(b: *std.Build) void {
     v8_mod.addImport("webidl", webidl_mod);
     // V8 module needs typedefs for HeadersInit conversion
     v8_mod.addImport("typedefs", typedefs_mod);
+    // V8 module needs impls for ReadableStream start callback invocation
+    v8_mod.addImport("impls", impls_mod);
 
     // Dictionaries module needs typedefs and enums for RequestInit and other dictionaries
     dictionaries_mod.addImport("typedefs", typedefs_mod);

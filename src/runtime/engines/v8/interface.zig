@@ -1208,6 +1208,14 @@ pub fn V8Interface(comptime Interface: type) type {
                 };
             }
 
+            // ========================================
+            // POST-CONSTRUCTOR HOOKS: Interface-specific initialization
+            // ========================================
+            // For ReadableStream: invoke pending start callback now that V8 wrappers exist
+            if (comptime std.mem.eql(u8, interface_name, "ReadableStream")) {
+                invokeReadableStreamStartCallback(instance, this_obj, isolate, v8_context, allocator);
+            }
+
             // Return 'this' (V8 does this automatically for constructors)
         }
 
@@ -2428,6 +2436,55 @@ pub fn setInstanceWithTypeInfo(
         object,
         1,
         @ptrCast(@constCast(type_info)),
+    );
+}
+
+// ============================================================================
+// Post-Constructor Hooks
+// ============================================================================
+
+/// Invoke ReadableStream's pending start callback after constructor completes
+///
+/// This is a post-constructor hook that runs AFTER the V8 wrapper exists.
+/// The start callback in UnderlyingSource needs the controller V8 wrapper,
+/// which doesn't exist during the Zig constructor execution.
+///
+/// Called from constructorCallback when interface_name == "ReadableStream"
+fn invokeReadableStreamStartCallback(
+    instance: *runtime.Instance,
+    this_obj: *v8.Object,
+    isolate: *v8.Isolate,
+    v8_context: *v8.Context,
+    allocator: std.mem.Allocator,
+) void {
+    _ = allocator;
+    _ = this_obj;
+
+    // Get the ReadableStream impl module
+    const ReadableStreamImpl = @import("impls").ReadableStream;
+
+    // Get the controller from the stream's internal state
+    const State = ReadableStreamImpl.State;
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return;
+    const controller_instance = internal.controller;
+
+    // Wrap the controller as a V8 object so we can pass it to the JS callback
+    const controller_v8 = template_registry.wrapInstanceAsV8Object(
+        controller_instance,
+        "ReadableStreamDefaultController",
+        isolate,
+        v8_context,
+    ) catch {
+        return;
+    };
+
+    // Invoke the pending start callback with the controller wrapper
+    ReadableStreamImpl.invokePendingStartCallback(
+        instance,
+        @ptrCast(controller_v8),
+        @ptrCast(isolate),
+        @ptrCast(v8_context),
     );
 }
 
