@@ -218,19 +218,19 @@ pub const Response = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_blob(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_blob(instance: *runtime.Instance) anyerror!runtime.Promise(*runtime.Instance) {
         // [NewObject] - Caller owns the returned object
         return try ResponseImpl.call_blob(instance);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!runtime.Promise(runtime.ArrayBuffer) {
         // [NewObject] - Caller owns the returned object
         return try ResponseImpl.call_arrayBuffer(instance);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_formData(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_formData(instance: *runtime.Instance) anyerror!runtime.Promise(*runtime.Instance) {
         // [NewObject] - Caller owns the returned object
         return try ResponseImpl.call_formData(instance);
     }
@@ -250,7 +250,7 @@ pub const Response = struct {
 
     /// Instance method: json() from Body mixin
     /// Extended attributes: [NewObject]
-    pub fn call_json(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_json(instance: *runtime.Instance) anyerror!runtime.Promise(runtime.Any) {
         // [NewObject] - Caller owns the returned object
         return try ResponseImpl.call_json(instance);
     }
@@ -263,7 +263,7 @@ pub const Response = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.Promise(runtime.Uint8Array) {
         // [NewObject] - Caller owns the returned object
         return try ResponseImpl.call_bytes(instance);
     }

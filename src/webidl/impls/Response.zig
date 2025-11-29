@@ -366,65 +366,84 @@ pub fn call_clone(instance: *runtime.Instance) ImplError!*runtime.Instance {
 
 /// arrayBuffer() - Returns promise fulfilled with body as ArrayBuffer
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-arraybuffer
-pub fn call_arrayBuffer(instance: *runtime.Instance) ImplError!*const anyopaque {
+///
+/// Uses the engine abstraction layer for Promise and ArrayBuffer creation.
+pub fn call_arrayBuffer(instance: *runtime.Instance) ImplError!runtime.Promise(runtime.ArrayBuffer) {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
-    const event_loop = instance.ctx.getEventLoop() catch {
+    // Get the engine interface and context
+    const engine = instance.ctx.engine orelse {
+        return error.InvalidState;
+    };
+    const engine_ctx = instance.ctx.engine_ctx orelse {
         return error.InvalidState;
     };
 
-    const AsyncPromise = @import("streams_async_promise").AsyncPromise;
-    const ArrayBufferView = @import("runtime").arraybuffer_view;
-    var promise = try AsyncPromise(ArrayBufferView.ArrayBuffer).init(
-        internal.allocator,
-        event_loop,
-    );
+    // Create a Promise through the engine abstraction
+    const promise_handle = engine.createPromise(engine_ctx, internal.allocator) catch {
+        return error.InvalidState;
+    };
 
+    // Check for disturbed body
     if (internal.response.body) |body| {
         if (body.isDisturbed()) {
-            const exception = @import("webidl").errors.Exception{
-                .simple = .{ .type = .TypeError, .message = "Body is unusable (already read)" },
-            };
-            promise.reject(exception);
-        } else {
-            const bytes = body.readAllBytes() catch {
-                const exception = @import("webidl").errors.Exception{
-                    .simple = .{ .type = .TypeError, .message = "Failed to read body" },
-                };
-                promise.reject(exception);
-                return @ptrCast(promise);
-            };
-
-            const buffer = try ArrayBufferView.ArrayBuffer.init(internal.allocator, bytes.len);
-            @memcpy(buffer.data, bytes);
-            promise.fulfill(buffer);
+            engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
+            return .{ .handle = engine.getPromiseObject(promise_handle) };
         }
-    } else {
-        const buffer = try ArrayBufferView.ArrayBuffer.init(internal.allocator, 0);
-        promise.fulfill(buffer);
     }
 
-    return @ptrCast(promise);
+    // Get body bytes
+    const body_bytes: []const u8 = if (internal.response.body) |body| blk: {
+        const bytes = body.readAllBytes() catch |err| {
+            engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
+            return .{ .handle = engine.getPromiseObject(promise_handle) };
+        };
+        break :blk bytes;
+    } else "";
+
+    // Create JS ArrayBuffer through engine abstraction
+    const createArrayBuffer = engine.createArrayBuffer orelse {
+        engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
+        return .{ .handle = engine.getPromiseObject(promise_handle) };
+    };
+
+    const js_array_buffer = createArrayBuffer(engine_ctx, body_bytes) catch {
+        engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
+        return .{ .handle = engine.getPromiseObject(promise_handle) };
+    };
+
+    // Resolve with the JS ArrayBuffer
+    engine.resolvePromise(engine_ctx, promise_handle, js_array_buffer) catch {
+        return error.InvalidState;
+    };
+
+    return .{ .handle = engine.getPromiseObject(promise_handle) };
 }
 
 /// blob() - Returns promise fulfilled with body as Blob
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-blob
-pub fn call_blob(instance: *runtime.Instance) ImplError!*const anyopaque {
+///
+/// Uses the engine abstraction layer for Promise creation and instance wrapping.
+pub fn call_blob(instance: *runtime.Instance) ImplError!runtime.Promise(*runtime.Instance) {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
-    const event_loop = instance.ctx.getEventLoop() catch {
+    // Get the engine interface and context
+    const engine = instance.ctx.engine orelse {
+        return error.InvalidState;
+    };
+    const engine_ctx = instance.ctx.engine_ctx orelse {
         return error.InvalidState;
     };
 
-    const AsyncPromise = @import("streams_async_promise").AsyncPromise;
+    // Create a Promise through the engine abstraction
+    const promise_handle = engine.createPromise(engine_ctx, internal.allocator) catch {
+        return error.InvalidState;
+    };
+
     const file_mod = @import("file");
     const BlobData = file_mod.BlobData;
-    var promise = try AsyncPromise(*runtime.Instance).init(
-        internal.allocator,
-        event_loop,
-    );
 
     // Get MIME type from Content-Type header
     const mime_type = blk: {
@@ -432,167 +451,178 @@ pub fn call_blob(instance: *runtime.Instance) ImplError!*const anyopaque {
         break :blk ct orelse "";
     };
 
+    // Check for disturbed body
     if (internal.response.body) |body| {
         if (body.isDisturbed()) {
-            const exception = @import("webidl").errors.Exception{
-                .simple = .{ .type = .TypeError, .message = "Body is unusable (already read)" },
-            };
-            promise.reject(exception);
-        } else {
-            const bytes = body.readAllBytes() catch {
-                const exception = @import("webidl").errors.Exception{
-                    .simple = .{ .type = .TypeError, .message = "Failed to read body" },
-                };
-                promise.reject(exception);
-                return @ptrCast(promise);
-            };
-
-            const blob_data = try BlobData.init(internal.allocator, bytes, mime_type);
-            errdefer blob_data.deinit();
-
-            // Wrap in Blob WebIDL instance
-            const blob_instance = BlobImpl.createFromBlobData(
-                internal.allocator,
-                instance.ctx,
-                blob_data,
-            ) catch {
-                blob_data.deinit();
-                const exception = @import("webidl").errors.Exception{
-                    .simple = .{ .type = .TypeError, .message = "Failed to create Blob wrapper" },
-                };
-                promise.reject(exception);
-                return @ptrCast(promise);
-            };
-
-            // Fulfill promise with Blob instance
-            promise.fulfill(blob_instance);
+            engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
+            return .{ .handle = engine.getPromiseObject(promise_handle) };
         }
-    } else {
-        const blob_data = try BlobData.init(internal.allocator, &[_]u8{}, mime_type);
-        errdefer blob_data.deinit();
-
-        const blob_instance = BlobImpl.createFromBlobData(
-            internal.allocator,
-            instance.ctx,
-            blob_data,
-        ) catch {
-            blob_data.deinit();
-            const exception = @import("webidl").errors.Exception{
-                .simple = .{ .type = .TypeError, .message = "Failed to create Blob wrapper" },
-            };
-            promise.reject(exception);
-            return @ptrCast(promise);
-        };
-
-        // Fulfill promise with Blob instance
-        promise.fulfill(blob_instance);
     }
 
-    return @ptrCast(promise);
+    // Get body bytes
+    const body_bytes: []const u8 = if (internal.response.body) |body| blk: {
+        const bytes = body.readAllBytes() catch |err| {
+            engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
+            return .{ .handle = engine.getPromiseObject(promise_handle) };
+        };
+        break :blk bytes;
+    } else "";
+
+    // Create Blob instance
+    const blob_data = BlobData.init(internal.allocator, body_bytes, mime_type) catch {
+        engine.rejectPromise(engine_ctx, promise_handle, error.OutOfMemory) catch {};
+        return .{ .handle = engine.getPromiseObject(promise_handle) };
+    };
+
+    const blob_instance = BlobImpl.createFromBlobData(
+        internal.allocator,
+        instance.ctx,
+        blob_data,
+    ) catch {
+        blob_data.deinit();
+        engine.rejectPromise(engine_ctx, promise_handle, error.OutOfMemory) catch {};
+        return .{ .handle = engine.getPromiseObject(promise_handle) };
+    };
+
+    // Wrap the Blob instance as a V8 object
+    const wrapInstance = engine.wrapInstance orelse {
+        engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
+        return .{ .handle = engine.getPromiseObject(promise_handle) };
+    };
+
+    const js_blob = wrapInstance(engine_ctx, blob_instance) catch {
+        engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
+        return .{ .handle = engine.getPromiseObject(promise_handle) };
+    };
+
+    // Resolve with the JS Blob
+    engine.resolvePromise(engine_ctx, promise_handle, js_blob) catch {
+        return error.InvalidState;
+    };
+
+    return .{ .handle = engine.getPromiseObject(promise_handle) };
 }
 
 /// bytes() - Returns promise fulfilled with body as Uint8Array
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-bytes
-pub fn call_bytes(instance: *runtime.Instance) ImplError!*const anyopaque {
+///
+/// Uses the engine abstraction layer for Promise and Uint8Array creation.
+pub fn call_bytes(instance: *runtime.Instance) ImplError!runtime.Promise(runtime.Uint8Array) {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
-    const event_loop = instance.ctx.getEventLoop() catch {
+    // Get the engine interface and context
+    const engine = instance.ctx.engine orelse {
+        return error.InvalidState;
+    };
+    const engine_ctx = instance.ctx.engine_ctx orelse {
         return error.InvalidState;
     };
 
-    const AsyncPromise = @import("streams_async_promise").AsyncPromise;
-    var promise = try AsyncPromise([]const u8).init(
-        internal.allocator,
-        event_loop,
-    );
+    // Create a Promise through the engine abstraction
+    const promise_handle = engine.createPromise(engine_ctx, internal.allocator) catch {
+        return error.InvalidState;
+    };
 
+    // Check for disturbed body
     if (internal.response.body) |body| {
         if (body.isDisturbed()) {
-            const exception = @import("webidl").errors.Exception{
-                .simple = .{ .type = .TypeError, .message = "Body is unusable (already read)" },
-            };
-            promise.reject(exception);
-        } else {
-            const bytes = body.readAllBytes() catch {
-                const exception = @import("webidl").errors.Exception{
-                    .simple = .{ .type = .TypeError, .message = "Failed to read body" },
-                };
-                promise.reject(exception);
-                return @ptrCast(promise);
-            };
-
-            const bytes_copy = try internal.allocator.dupe(u8, bytes);
-            promise.fulfill(bytes_copy);
+            engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
+            return .{ .handle = engine.getPromiseObject(promise_handle) };
         }
-    } else {
-        const empty = try internal.allocator.alloc(u8, 0);
-        promise.fulfill(empty);
     }
 
-    return @ptrCast(promise);
+    // Get body bytes
+    const body_bytes: []const u8 = if (internal.response.body) |body| blk: {
+        const bytes = body.readAllBytes() catch |err| {
+            engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
+            return .{ .handle = engine.getPromiseObject(promise_handle) };
+        };
+        break :blk bytes;
+    } else "";
+
+    // Create JS Uint8Array through engine abstraction
+    const createUint8Array = engine.createUint8Array orelse {
+        engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
+        return .{ .handle = engine.getPromiseObject(promise_handle) };
+    };
+
+    const js_uint8_array = createUint8Array(engine_ctx, body_bytes) catch {
+        engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
+        return .{ .handle = engine.getPromiseObject(promise_handle) };
+    };
+
+    // Resolve with the JS Uint8Array
+    engine.resolvePromise(engine_ctx, promise_handle, js_uint8_array) catch {
+        return error.InvalidState;
+    };
+
+    return .{ .handle = engine.getPromiseObject(promise_handle) };
 }
 
 /// formData() - Returns promise fulfilled with body as FormData
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-formdata
-pub fn call_formData(instance: *runtime.Instance) ImplError!*const anyopaque {
+///
+/// Uses the engine abstraction layer for Promise creation and instance wrapping.
+pub fn call_formData(instance: *runtime.Instance) ImplError!runtime.Promise(*runtime.Instance) {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
-    const event_loop = instance.ctx.getEventLoop() catch {
+    // Get the engine interface and context
+    const engine = instance.ctx.engine orelse {
+        return error.InvalidState;
+    };
+    const engine_ctx = instance.ctx.engine_ctx orelse {
         return error.InvalidState;
     };
 
-    const AsyncPromise = @import("streams_async_promise").AsyncPromise;
+    // Create a Promise through the engine abstraction
+    const promise_handle = engine.createPromise(engine_ctx, internal.allocator) catch {
+        return error.InvalidState;
+    };
+
     const FormDataImpl = @import("FormData.zig");
     const xhr = @import("xhr");
     const multipart_parser = xhr.multipart_parser;
-    const url_parser = @import("form_parser"); // form_parser module from build.zig
+    const url_parser = @import("form_parser");
 
-    var promise = try AsyncPromise(*runtime.Instance).init(
-        internal.allocator,
-        event_loop,
-    );
+    // Helper to reject and return
+    const rejectAndReturn = struct {
+        fn call(eng: anytype, eng_ctx: anytype, handle: anytype, err: anyerror) runtime.Promise(*runtime.Instance) {
+            eng.rejectPromise(eng_ctx, handle, err) catch {};
+            return .{ .handle = eng.getPromiseObject(handle) };
+        }
+    }.call;
 
     // Get Content-Type header
     const content_type = internal.response.header_list.get(internal.allocator, "content-type") catch null;
 
+    // Check for disturbed body
     if (internal.response.body) |body| {
         if (body.isDisturbed()) {
-            const exception = @import("webidl").errors.Exception{
-                .simple = .{ .type = .TypeError, .message = "Body is unusable (already read)" },
-            };
-            promise.reject(exception);
-            return @ptrCast(promise);
+            return rejectAndReturn(engine, engine_ctx, promise_handle, error.TypeError);
         }
+    }
 
+    // Get body bytes
+    const body_bytes: []const u8 = if (internal.response.body) |body| blk: {
         const bytes = body.readAllBytes() catch {
-            const exception = @import("webidl").errors.Exception{
-                .simple = .{ .type = .TypeError, .message = "Failed to read body" },
-            };
-            promise.reject(exception);
-            return @ptrCast(promise);
+            return rejectAndReturn(engine, engine_ctx, promise_handle, error.TypeError);
         };
+        break :blk bytes;
+    } else "";
 
-        // Route to appropriate parser based on Content-Type
-        const form_data = if (content_type) |ct| parse_blk: {
+    // Parse body into FormData based on Content-Type
+    const form_data: *xhr.form_data.FormData = if (body_bytes.len > 0) parse_blk: {
+        if (content_type) |ct| {
             if (std.mem.indexOf(u8, ct, "multipart/form-data") != null) {
-                // Extract boundary and parse multipart
                 const boundary = multipart_parser.extractBoundary(internal.allocator, ct) catch {
-                    const exception = @import("webidl").errors.Exception{
-                        .simple = .{ .type = .TypeError, .message = "Invalid multipart Content-Type (missing boundary)" },
-                    };
-                    promise.reject(exception);
-                    return @ptrCast(promise);
+                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.TypeError);
                 };
                 defer internal.allocator.free(boundary);
 
-                const entries = multipart_parser.parseMultipartFormData(internal.allocator, bytes, boundary) catch {
-                    const exception = @import("webidl").errors.Exception{
-                        .simple = .{ .type = .TypeError, .message = "Failed to parse multipart/form-data body" },
-                    };
-                    promise.reject(exception);
-                    return @ptrCast(promise);
+                const entries = multipart_parser.parseMultipartFormData(internal.allocator, body_bytes, boundary) catch {
+                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.TypeError);
                 };
                 defer {
                     for (entries) |*entry| entry.deinit(internal.allocator);
@@ -600,30 +630,25 @@ pub fn call_formData(instance: *runtime.Instance) ImplError!*const anyopaque {
                 }
 
                 const fd = xhr.form_data.FormData.init(internal.allocator) catch {
-                    const exception = @import("webidl").errors.Exception{
-                        .simple = .{ .type = .TypeError, .message = "Failed to create FormData" },
-                    };
-                    promise.reject(exception);
-                    return @ptrCast(promise);
+                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory);
                 };
                 errdefer fd.deinit();
 
                 for (entries) |entry| {
                     switch (entry.value) {
-                        .string => |s| try fd.appendString(entry.name, s),
-                        .file => |f| try fd.appendFile(entry.name, f, entry.filename),
+                        .string => |s| fd.appendString(entry.name, s) catch {
+                            return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory);
+                        },
+                        .file => |f| fd.appendFile(entry.name, f, entry.filename) catch {
+                            return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory);
+                        },
                     }
                 }
 
                 break :parse_blk fd;
             } else if (std.mem.indexOf(u8, ct, "application/x-www-form-urlencoded") != null) {
-                // Parse URL-encoded
-                const tuples = url_parser.parse(internal.allocator, bytes) catch {
-                    const exception = @import("webidl").errors.Exception{
-                        .simple = .{ .type = .TypeError, .message = "Failed to parse URL-encoded body" },
-                    };
-                    promise.reject(exception);
-                    return @ptrCast(promise);
+                const tuples = url_parser.parse(internal.allocator, body_bytes) catch {
+                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.TypeError);
                 };
                 defer {
                     for (tuples) |tuple| tuple.deinit(internal.allocator);
@@ -631,34 +656,23 @@ pub fn call_formData(instance: *runtime.Instance) ImplError!*const anyopaque {
                 }
 
                 const fd = xhr.form_data.FormData.init(internal.allocator) catch {
-                    const exception = @import("webidl").errors.Exception{
-                        .simple = .{ .type = .TypeError, .message = "Failed to create FormData" },
-                    };
-                    promise.reject(exception);
-                    return @ptrCast(promise);
+                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory);
                 };
                 errdefer fd.deinit();
 
                 for (tuples) |tuple| {
-                    try fd.appendString(tuple.name, tuple.value);
+                    fd.appendString(tuple.name, tuple.value) catch {
+                        return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory);
+                    };
                 }
 
                 break :parse_blk fd;
             } else {
-                const exception = @import("webidl").errors.Exception{
-                    .simple = .{ .type = .TypeError, .message = "Invalid Content-Type for FormData" },
-                };
-                promise.reject(exception);
-                return @ptrCast(promise);
+                return rejectAndReturn(engine, engine_ctx, promise_handle, error.TypeError);
             }
-        } else url_blk: {
-            // No Content-Type - default to URL-encoded
-            const tuples = url_parser.parse(internal.allocator, bytes) catch {
-                const exception = @import("webidl").errors.Exception{
-                    .simple = .{ .type = .TypeError, .message = "Failed to parse body as URL-encoded" },
-                };
-                promise.reject(exception);
-                return @ptrCast(promise);
+        } else {
+            const tuples = url_parser.parse(internal.allocator, body_bytes) catch {
+                return rejectAndReturn(engine, engine_ctx, promise_handle, error.TypeError);
             };
             defer {
                 for (tuples) |tuple| tuple.deinit(internal.allocator);
@@ -666,119 +680,112 @@ pub fn call_formData(instance: *runtime.Instance) ImplError!*const anyopaque {
             }
 
             const fd = xhr.form_data.FormData.init(internal.allocator) catch {
-                const exception = @import("webidl").errors.Exception{
-                    .simple = .{ .type = .TypeError, .message = "Failed to create FormData" },
-                };
-                promise.reject(exception);
-                return @ptrCast(promise);
+                return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory);
             };
             errdefer fd.deinit();
 
             for (tuples) |tuple| {
-                try fd.appendString(tuple.name, tuple.value);
+                fd.appendString(tuple.name, tuple.value) catch {
+                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory);
+                };
             }
 
-            break :url_blk fd;
+            break :parse_blk fd;
+        }
+    } else empty_blk: {
+        break :empty_blk xhr.form_data.FormData.init(internal.allocator) catch {
+            return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory);
         };
+    };
 
-        // Wrap in WebIDL instance
-        const formdata_instance = FormDataImpl.createFromInternal(
-            internal.allocator,
-            instance.ctx,
-            form_data,
-        ) catch {
-            form_data.deinit();
-            const exception = @import("webidl").errors.Exception{
-                .simple = .{ .type = .TypeError, .message = "Failed to create FormData wrapper" },
-            };
-            promise.reject(exception);
-            return @ptrCast(promise);
-        };
+    // Create FormData WebIDL instance
+    const formdata_instance = FormDataImpl.createFromInternal(
+        internal.allocator,
+        instance.ctx,
+        form_data,
+    ) catch {
+        form_data.deinit();
+        return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory);
+    };
 
-        promise.fulfill(formdata_instance);
-    } else {
-        // Empty body - create empty FormData
-        const form_data = xhr.form_data.FormData.init(internal.allocator) catch {
-            const exception = @import("webidl").errors.Exception{
-                .simple = .{ .type = .TypeError, .message = "Failed to create FormData" },
-            };
-            promise.reject(exception);
-            return @ptrCast(promise);
-        };
+    // Wrap the FormData instance as a V8 object
+    const wrapInstance = engine.wrapInstance orelse {
+        return rejectAndReturn(engine, engine_ctx, promise_handle, error.InvalidState);
+    };
 
-        const formdata_instance = FormDataImpl.createFromInternal(
-            internal.allocator,
-            instance.ctx,
-            form_data,
-        ) catch {
-            form_data.deinit();
-            const exception = @import("webidl").errors.Exception{
-                .simple = .{ .type = .TypeError, .message = "Failed to create FormData wrapper" },
-            };
-            promise.reject(exception);
-            return @ptrCast(promise);
-        };
+    const js_formdata = wrapInstance(engine_ctx, formdata_instance) catch {
+        return rejectAndReturn(engine, engine_ctx, promise_handle, error.InvalidState);
+    };
 
-        promise.fulfill(formdata_instance);
-    }
+    // Resolve with the JS FormData
+    engine.resolvePromise(engine_ctx, promise_handle, js_formdata) catch {
+        return error.InvalidState;
+    };
 
-    return @ptrCast(promise);
+    return .{ .handle = engine.getPromiseObject(promise_handle) };
 }
 
 /// json() - Returns promise fulfilled with body parsed as JSON
 /// This is the instance method from the Body mixin
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-json
-pub fn call_json(instance: *runtime.Instance) ImplError!*const anyopaque {
+///
+/// Uses the engine abstraction layer for Promise and JSON parsing.
+pub fn call_json(instance: *runtime.Instance) ImplError!runtime.Promise(runtime.Any) {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
-    const event_loop = instance.ctx.getEventLoop() catch {
+    // Get the engine interface and context
+    const engine = instance.ctx.engine orelse {
+        return error.InvalidState;
+    };
+    const engine_ctx = instance.ctx.engine_ctx orelse {
         return error.InvalidState;
     };
 
-    const AsyncPromise = @import("streams_async_promise").AsyncPromise;
-    var promise = try AsyncPromise(std.json.Value).init(
-        internal.allocator,
-        event_loop,
-    );
+    // Create a Promise through the engine abstraction
+    const promise_handle = engine.createPromise(engine_ctx, internal.allocator) catch {
+        return error.InvalidState;
+    };
 
+    // Check for disturbed body
     if (internal.response.body) |body| {
         if (body.isDisturbed()) {
-            const exception = @import("webidl").errors.Exception{
-                .simple = .{ .type = .TypeError, .message = "Body is unusable (already read)" },
-            };
-            promise.reject(exception);
-        } else {
-            const bytes = body.readAllBytes() catch {
-                const exception = @import("webidl").errors.Exception{
-                    .simple = .{ .type = .TypeError, .message = "Failed to read body" },
-                };
-                promise.reject(exception);
-                return @ptrCast(promise);
-            };
-
-            const parsed = std.json.parseFromSlice(
-                std.json.Value,
-                internal.allocator,
-                bytes,
-                .{},
-            ) catch {
-                const exception = @import("webidl").errors.Exception{
-                    .simple = .{ .type = .SyntaxError, .message = "Invalid JSON" },
-                };
-                promise.reject(exception);
-                return @ptrCast(promise);
-            };
-            promise.fulfill(parsed.value);
+            engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
+            return .{ .handle = engine.getPromiseObject(promise_handle) };
         }
-    } else {
-        const exception = @import("webidl").errors.Exception{
-            .simple = .{ .type = .SyntaxError, .message = "Unexpected end of JSON input" },
-        };
-        promise.reject(exception);
     }
 
-    return @ptrCast(promise);
+    // Get body bytes
+    const body_bytes: []const u8 = if (internal.response.body) |body| blk: {
+        const bytes = body.readAllBytes() catch |err| {
+            engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
+            return .{ .handle = engine.getPromiseObject(promise_handle) };
+        };
+        break :blk bytes;
+    } else {
+        // Null body - reject with SyntaxError (empty JSON is invalid)
+        engine.rejectPromise(engine_ctx, promise_handle, error.SyntaxError) catch {};
+        return .{ .handle = engine.getPromiseObject(promise_handle) };
+    };
+
+    // Parse JSON through engine abstraction
+    const parseJson = engine.parseJson orelse {
+        engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
+        return .{ .handle = engine.getPromiseObject(promise_handle) };
+    };
+
+    const js_value = parseJson(engine_ctx, body_bytes) catch {
+        // JSON parse failed - reject with SyntaxError
+        engine.rejectPromise(engine_ctx, promise_handle, error.SyntaxError) catch {};
+        return .{ .handle = engine.getPromiseObject(promise_handle) };
+    };
+
+    // Resolve with the parsed JS value
+    engine.resolvePromise(engine_ctx, promise_handle, js_value) catch {
+        return error.InvalidState;
+    };
+
+    return .{ .handle = engine.getPromiseObject(promise_handle) };
 }
 
 /// text() - Returns promise fulfilled with body as string
