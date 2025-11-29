@@ -41,13 +41,13 @@ pub const Request = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "method", "get_method", null },
@@ -70,7 +70,7 @@ pub const Request = struct {
             .{ "body", "get_body", null },
             .{ "bodyUsed", "get_bodyUsed", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "clone", "call_clone", 0 },
@@ -81,7 +81,7 @@ pub const Request = struct {
             .{ "json", "call_json", 0 },
             .{ "text", "call_text", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "clone",
@@ -92,11 +92,10 @@ pub const Request = struct {
             "json",
             "text",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "method", "get_method", null },
@@ -119,11 +118,10 @@ pub const Request = struct {
             .{ "body", "get_body", null },
             .{ "bodyUsed", "get_bodyUsed", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -156,7 +154,6 @@ pub const Request = struct {
     );
 
     const delegates = .{
-
         .get_body = &get_body,
         .get_bodyUsed = &get_bodyUsed,
         .get_cache = &get_cache,
@@ -294,39 +291,38 @@ pub const Request = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_blob(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_blob(instance: *runtime.Instance) anyerror!runtime.Promise(*runtime.Instance) {
         // [NewObject] - Caller owns the returned object
         return try RequestImpl.call_blob(instance);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!runtime.Promise(runtime.ArrayBuffer) {
         // [NewObject] - Caller owns the returned object
         return try RequestImpl.call_arrayBuffer(instance);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_formData(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_formData(instance: *runtime.Instance) anyerror!runtime.Promise(*runtime.Instance) {
         // [NewObject] - Caller owns the returned object
         return try RequestImpl.call_formData(instance);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_text(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_text(instance: *runtime.Instance) anyerror!runtime.Promise(runtime.USVString) {
         // [NewObject] - Caller owns the returned object
         return try RequestImpl.call_text(instance);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_json(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_json(instance: *runtime.Instance) anyerror!runtime.Promise(runtime.Any) {
         // [NewObject] - Caller owns the returned object
         return try RequestImpl.call_json(instance);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.Promise(runtime.Uint8Array) {
         // [NewObject] - Caller owns the returned object
         return try RequestImpl.call_bytes(instance);
     }
-
 };

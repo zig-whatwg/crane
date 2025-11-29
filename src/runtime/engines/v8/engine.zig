@@ -36,6 +36,10 @@ pub const v8_engine_interface: EngineInterface = .{
     .rejectPromise = v8RejectPromise,
     .getPromiseObject = v8GetPromiseObject,
     .createString = v8CreateString,
+    .createArrayBuffer = v8CreateArrayBuffer,
+    .createUint8Array = v8CreateUint8Array,
+    .parseJson = v8ParseJson,
+    .wrapInstance = v8WrapInstance,
     .createEventLoop = v8CreateEventLoop,
     .destroyEventLoop = v8DestroyEventLoop,
     .createCallbackWrapper = v8CreateCallbackWrapper,
@@ -185,6 +189,116 @@ fn v8CreateString(
     ) orelse return EngineError.OperationFailed;
 
     return @ptrCast(v8_string);
+}
+
+/// Create a V8 ArrayBuffer from bytes
+fn v8CreateArrayBuffer(
+    engine_ctx: *anyopaque,
+    bytes: []const u8,
+) EngineError!*anyopaque {
+    _ = engine_ctx;
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse
+        return EngineError.OperationFailed;
+
+    // Create a new ArrayBuffer with the specified length
+    const array_buffer = ffi.v8_ArrayBuffer_New(isolate, bytes.len) orelse
+        return EngineError.OperationFailed;
+
+    // Copy the bytes into the ArrayBuffer's backing store
+    if (bytes.len > 0) {
+        const data = ffi.v8_ArrayBuffer_Data(array_buffer) orelse
+            return EngineError.OperationFailed;
+        const dest: [*]u8 = @ptrCast(data);
+        @memcpy(dest[0..bytes.len], bytes);
+    }
+
+    return @ptrCast(array_buffer);
+}
+
+/// Create a V8 Uint8Array from bytes
+fn v8CreateUint8Array(
+    engine_ctx: *anyopaque,
+    bytes: []const u8,
+) EngineError!*anyopaque {
+    _ = engine_ctx;
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse
+        return EngineError.OperationFailed;
+
+    // Create a backing ArrayBuffer
+    const array_buffer = ffi.v8_ArrayBuffer_New(isolate, bytes.len) orelse
+        return EngineError.OperationFailed;
+
+    // Copy the bytes into the ArrayBuffer's backing store
+    if (bytes.len > 0) {
+        const data = ffi.v8_ArrayBuffer_Data(array_buffer) orelse
+            return EngineError.OperationFailed;
+        const dest: [*]u8 = @ptrCast(data);
+        @memcpy(dest[0..bytes.len], bytes);
+    }
+
+    // Create Uint8Array view over the ArrayBuffer
+    const uint8_array = ffi.v8_Uint8Array_New(isolate, array_buffer, 0, bytes.len) orelse
+        return EngineError.OperationFailed;
+
+    return @ptrCast(uint8_array);
+}
+
+/// Parse a JSON string and return a V8 value
+fn v8ParseJson(
+    engine_ctx: *anyopaque,
+    json_str: []const u8,
+) EngineError!*anyopaque {
+    const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse
+        return EngineError.OperationFailed;
+
+    // Create V8 string from JSON
+    const v8_str = ffi.v8_String_NewFromUtf8(
+        isolate,
+        json_str.ptr,
+        @intCast(json_str.len),
+    ) orelse return EngineError.OperationFailed;
+
+    // Compile and run JSON.parse(string)
+    // We wrap in parentheses to ensure it's evaluated as expression
+    const parse_code = std.fmt.allocPrint(std.heap.c_allocator, "JSON.parse({s})", .{json_str}) catch
+        return EngineError.OutOfMemory;
+    defer std.heap.c_allocator.free(parse_code);
+
+    _ = v8_str; // We'll use eval approach instead
+
+    const parse_str = ffi.v8_String_NewFromUtf8(
+        isolate,
+        parse_code.ptr,
+        @intCast(parse_code.len),
+    ) orelse return EngineError.OperationFailed;
+
+    const script = ffi.v8_Script_Compile(context, parse_str) orelse
+        return EngineError.OperationFailed;
+    defer ffi.v8_Script_Dispose(script);
+
+    const result = ffi.v8_Script_Run(context, script) orelse
+        return EngineError.OperationFailed;
+
+    return @ptrCast(result);
+}
+
+/// Wrap a Zig runtime.Instance as a V8 object
+fn v8WrapInstance(
+    engine_ctx: *anyopaque,
+    instance_ptr: *anyopaque,
+) EngineError!*anyopaque {
+    _ = engine_ctx;
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse
+        return EngineError.OperationFailed;
+
+    const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+
+    // Use the conversions module to wrap the instance
+    const conv = @import("conversions.zig");
+    const v8_obj = conv.instanceToV8(isolate, instance);
+
+    return @ptrCast(v8_obj);
 }
 
 /// Create a V8 event loop

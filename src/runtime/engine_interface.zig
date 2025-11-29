@@ -145,6 +145,61 @@ pub const EngineInterface = struct {
         bytes: []const u8,
     ) EngineError!*anyopaque,
 
+    /// Create a JavaScript ArrayBuffer from bytes
+    ///
+    /// Arguments:
+    ///   - engine_ctx: Engine-specific context
+    ///   - bytes: Data to copy into ArrayBuffer
+    ///
+    /// Returns:
+    ///   - Opaque pointer to JS ArrayBuffer value
+    createArrayBuffer: ?*const fn (
+        engine_ctx: *anyopaque,
+        bytes: []const u8,
+    ) EngineError!*anyopaque,
+
+    /// Create a JavaScript Uint8Array from bytes
+    ///
+    /// Arguments:
+    ///   - engine_ctx: Engine-specific context
+    ///   - bytes: Data to copy into Uint8Array
+    ///
+    /// Returns:
+    ///   - Opaque pointer to JS Uint8Array value
+    createUint8Array: ?*const fn (
+        engine_ctx: *anyopaque,
+        bytes: []const u8,
+    ) EngineError!*anyopaque,
+
+    /// Parse JSON string and return JavaScript value
+    ///
+    /// Arguments:
+    ///   - engine_ctx: Engine-specific context
+    ///   - json_str: UTF-8 encoded JSON string
+    ///
+    /// Returns:
+    ///   - Opaque pointer to parsed JS value
+    parseJson: ?*const fn (
+        engine_ctx: *anyopaque,
+        json_str: []const u8,
+    ) EngineError!*anyopaque,
+
+    /// Wrap a Zig runtime.Instance as a JavaScript object
+    ///
+    /// Used to convert Zig interface instances (Blob, FormData, etc.) to
+    /// their JavaScript wrapper objects for returning to JS code.
+    ///
+    /// Arguments:
+    ///   - engine_ctx: Engine-specific context
+    ///   - instance: Pointer to runtime.Instance to wrap
+    ///
+    /// Returns:
+    ///   - Opaque pointer to JS wrapper object
+    wrapInstance: ?*const fn (
+        engine_ctx: *anyopaque,
+        instance: *anyopaque,
+    ) EngineError!*anyopaque,
+
     /// Create an event loop for async operations
     ///
     /// Arguments:
@@ -376,6 +431,10 @@ pub const stub_engine: EngineInterface = .{
     .rejectPromise = stubRejectPromise,
     .getPromiseObject = stubGetPromiseObject,
     .createString = null,
+    .createArrayBuffer = null,
+    .createUint8Array = null,
+    .parseJson = null,
+    .wrapInstance = null,
     .createEventLoop = null,
     .destroyEventLoop = null,
     .createCallbackWrapper = null,
