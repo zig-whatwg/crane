@@ -384,6 +384,12 @@ pub extern fn v8_String_WriteUtf8_Raw(str: *const String, buffer: [*]u8, length:
 // Number value extraction for raw pointers (from callbacks/anyopaque)
 pub extern fn v8_Value_NumberValue_Raw(value: *const anyopaque) f64;
 
+// String value extraction for raw pointers (from callbacks/anyopaque)
+// Returns -1 if not a string, otherwise UTF-8 byte length
+pub extern fn v8_Value_StringLength_Raw(value: *const anyopaque) c_int;
+// Writes UTF-8 to buffer, returns bytes written
+pub extern fn v8_Value_StringWriteUtf8_Raw(value: *const anyopaque, buffer: [*]u8, buffer_len: c_int) c_int;
+
 // Object operations
 pub extern fn v8_Object_New(isolate: *Isolate) ?*Object;
 pub extern fn v8_Object_Set(object: *Object, context: *Context, key: *Value, value: *Value) bool;

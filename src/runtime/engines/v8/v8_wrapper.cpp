@@ -1103,6 +1103,42 @@ double v8_Value_NumberValue_Raw(const void* value) {
     return maybe_num.FromMaybe(std::nan(""));
 }
 
+// String length extraction for raw pointers (from callbacks/anyopaque)
+// Returns -1 if not a string, otherwise returns UTF-8 byte length
+int v8_Value_StringLength_Raw(const void* value) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    const Global<Value>* global_value = reinterpret_cast<const Global<Value>*>(value);
+    Local<Value> val = global_value->Get(isolate);
+    
+    if (!val->IsString()) {
+        return -1;
+    }
+    
+    Local<String> str = val.As<String>();
+    return str->Utf8Length(isolate);
+}
+
+// String value extraction for raw pointers (from callbacks/anyopaque)
+// Writes UTF-8 to buffer, returns bytes written. buffer_len should include space for null terminator.
+int v8_Value_StringWriteUtf8_Raw(const void* value, char* buffer, int buffer_len) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    const Global<Value>* global_value = reinterpret_cast<const Global<Value>*>(value);
+    Local<Value> val = global_value->Get(isolate);
+    
+    if (!val->IsString()) {
+        if (buffer_len > 0) buffer[0] = '\0';
+        return 0;
+    }
+    
+    Local<String> str = val.As<String>();
+    int flags = String::NO_NULL_TERMINATION;
+    return str->WriteUtf8(isolate, buffer, buffer_len, nullptr, flags);
+}
+
 // ============================================================================
 // Object Property Descriptor Functions
 // ============================================================================

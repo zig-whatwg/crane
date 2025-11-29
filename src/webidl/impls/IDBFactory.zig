@@ -211,66 +211,110 @@ pub fn call_cmp(instance: *runtime.Instance, first: *const anyopaque, second: *c
     const state = instance.getState(State);
     _ = state.own._internal orelse return error.InvalidState;
 
-    // Convert V8 values to IDBKey
-    // The anyopaque pointers are actually V8 Value pointers passed through from the V8 layer
-    const first_key = convertV8ToKey(first) orelse return error.DataError;
-    const second_key = convertV8ToKey(second) orelse return error.DataError;
-
-    // Use the standalone compare function from the key module
-    return storage.indexeddb.key.compare(first_key, second_key);
+    // Compare V8 values directly using raw V8 APIs
+    // We compare in place to avoid lifetime issues with string buffers
+    return compareV8Keys(first, second) orelse return error.DataError;
 }
 
-/// Convert a V8 value (passed as anyopaque) to an IDBKey
-///
-/// Per IndexedDB spec, valid keys are:
-/// - Number (excluding NaN)
-/// - String
-/// - Date
-/// - ArrayBuffer/ArrayBufferView (binary)
-/// - Array of keys
-fn convertV8ToKey(ptr: *const anyopaque) ?BackendKey {
-    // The anyopaque pointer handling depends on the V8 conversion layer:
-    // - For numbers: ptr is a V8 Value pointer (Global<Value>*)
-    // - For strings: ptr is a DOMString* (allocated by conversion layer)
-    //
-    // We distinguish by attempting to interpret as DOMString first.
-    // DOMString is a tagged union. We try calling asSlice() which will
-    // return the string data regardless of which variant it is.
-    //
-    // If the pointer is actually a V8 Value, calling asSlice() may return
-    // garbage or crash. So we use a heuristic: check if the "length" field
-    // (bytes 8-15 in a slice) is a reasonable string length (< 1MB and > 0
-    // for non-empty strings).
+/// Compare two V8 values as IndexedDB keys
+/// Returns null if either value is not a valid key type
+fn compareV8Keys(first: *const anyopaque, second: *const anyopaque) ?i16 {
+    const first_type = getV8KeyType(first) orelse return null;
+    const second_type = getV8KeyType(second) orelse return null;
 
-    const slice_struct = @as(*const extern struct { ptr: [*]const u8, len: usize }, @ptrCast(@alignCast(ptr)));
-    const maybe_len = slice_struct.len;
-
-    // Heuristic: if length looks like a reasonable string length (1 to 1MB),
-    // assume this is a DOMString
-    if (maybe_len > 0 and maybe_len < 1024 * 1024) {
-        // Check if the pointer value also looks reasonable
-        const ptr_val = @intFromPtr(slice_struct.ptr);
-        if (ptr_val > 0x1000) {
-            // Likely a DOMString - read the string data directly from the slice
-            const str_slice = slice_struct.ptr[0..maybe_len];
-            return BackendKey.string(str_slice);
-        }
+    // Per spec: different types have ordering: array > binary > string > date > number
+    if (first_type != second_type) {
+        // array = 4, binary = 3, string = 2, date = 1, number = 0
+        if (first_type > second_type) return 1;
+        return -1;
     }
 
-    // Otherwise, it's a V8 Value pointer
+    // Same type - compare values
+    return switch (first_type) {
+        0 => compareV8Numbers(first, second), // number
+        1 => compareV8Dates(first, second), // date
+        2 => compareV8Strings(first, second), // string
+        3, 4 => null, // binary, array - TODO
+        else => null, // Invalid type
+    };
+}
+
+/// Get the key type code for a V8 value
+/// Returns: 0=number, 1=date, 2=string, 3=binary, 4=array, null=invalid
+fn getV8KeyType(ptr: *const anyopaque) ?u8 {
     const v8_value: *v8.ffi.Value = @ptrCast(@constCast(ptr));
 
-    // Check type and convert accordingly
-    if (v8.ffi.v8_Value_IsNumber(v8_value)) {
-        // Extract number value using raw function that gets current context from isolate
-        const num = v8.ffi.v8_Value_NumberValue_Raw(ptr);
-        if (std.math.isNan(num)) {
-            return null; // NaN is not a valid key
-        }
-        return BackendKey.number(num);
+    if (v8.ffi.v8_Value_IsNumber(v8_value)) return 0;
+    // TODO: Check for Date object
+    if (v8.ffi.v8_Value_IsString(v8_value)) return 2;
+    // TODO: Check for ArrayBuffer/binary
+    // TODO: Check for Array
+    return null;
+}
+
+/// Compare two V8 number values
+fn compareV8Numbers(first: *const anyopaque, second: *const anyopaque) i16 {
+    const a = v8.ffi.v8_Value_NumberValue_Raw(first);
+    const b = v8.ffi.v8_Value_NumberValue_Raw(second);
+
+    if (std.math.isNan(a) or std.math.isNan(b)) {
+        // NaN comparison is weird, but per spec NaN < NaN and NaN > NaN are both false
+        return 0;
     }
 
-    // TODO: Handle Date, ArrayBuffer, and Array types
-    // For now, return null for unsupported types
-    return null;
+    if (a < b) return -1;
+    if (a > b) return 1;
+    return 0;
+}
+
+/// Compare two V8 date values (TODO: implement date support)
+fn compareV8Dates(_: *const anyopaque, _: *const anyopaque) i16 {
+    // TODO: Extract date milliseconds and compare
+    return 0;
+}
+
+/// Compare two V8 string values
+fn compareV8Strings(first: *const anyopaque, second: *const anyopaque) i16 {
+    // Get string lengths
+    const first_len = v8.ffi.v8_Value_StringLength_Raw(first);
+    const second_len = v8.ffi.v8_Value_StringLength_Raw(second);
+
+    if (first_len < 0 or second_len < 0) return 0; // Not strings
+
+    // Use stack buffers for comparison
+    var first_buf: [256]u8 = undefined;
+    var second_buf: [256]u8 = undefined;
+
+    // Handle empty strings
+    if (first_len == 0 and second_len == 0) return 0;
+    if (first_len == 0) return -1;
+    if (second_len == 0) return 1;
+
+    // For small strings, compare directly
+    if (first_len <= 256 and second_len <= 256) {
+        const first_written = v8.ffi.v8_Value_StringWriteUtf8_Raw(first, &first_buf, @intCast(first_len));
+        const second_written = v8.ffi.v8_Value_StringWriteUtf8_Raw(second, &second_buf, @intCast(second_len));
+
+        if (first_written <= 0 or second_written <= 0) return 0;
+
+        const first_slice = first_buf[0..@intCast(first_written)];
+        const second_slice = second_buf[0..@intCast(second_written)];
+
+        // Lexicographic comparison per IndexedDB spec (code unit comparison)
+        const min_len = @min(first_slice.len, second_slice.len);
+        for (0..min_len) |i| {
+            if (first_slice[i] < second_slice[i]) return -1;
+            if (first_slice[i] > second_slice[i]) return 1;
+        }
+
+        // Prefixes are equal, shorter string is less
+        if (first_slice.len < second_slice.len) return -1;
+        if (first_slice.len > second_slice.len) return 1;
+        return 0;
+    }
+
+    // For large strings, compare by length only (TODO: proper large string comparison)
+    if (first_len < second_len) return -1;
+    if (first_len > second_len) return 1;
+    return 0;
 }
