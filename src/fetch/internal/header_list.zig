@@ -504,17 +504,18 @@ test "HeaderList: append and contains" {
     try std.testing.expect(!list.contains("Accept"));
 }
 
-test "HeaderList: append preserves existing name casing" {
+test "HeaderList: append normalizes header names to lowercase" {
     const allocator = std.testing.allocator;
     var list = HeaderList.init(allocator);
     defer list.deinit();
 
     try list.append("Content-Type", "text/html");
-    try list.append("content-type", "text/plain"); // should use "Content-Type"
+    try list.append("CONTENT-TYPE", "text/plain"); // should be normalized to lowercase
 
     try std.testing.expectEqual(@as(usize, 2), list.len());
-    try std.testing.expectEqualStrings("Content-Type", list.entries.items[0].name);
-    try std.testing.expectEqualStrings("Content-Type", list.entries.items[1].name);
+    // Per Fetch spec, header names are normalized to lowercase
+    try std.testing.expectEqualStrings("content-type", list.entries.items[0].name);
+    try std.testing.expectEqualStrings("content-type", list.entries.items[1].name);
 }
 
 test "HeaderList: get combines values with comma-space" {
