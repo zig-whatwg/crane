@@ -785,7 +785,7 @@ pub fn call_json(instance: *runtime.Instance) ImplError!*const anyopaque {
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-text
 ///
 /// Uses the engine abstraction layer for Promise creation and string creation.
-pub fn call_text(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_text(instance: *runtime.Instance) ImplError!runtime.Promise(runtime.USVString) {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -807,7 +807,7 @@ pub fn call_text(instance: *runtime.Instance) ImplError!*const anyopaque {
         if (body.isDisturbed()) {
             // Reject with TypeError per spec
             engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
-            return engine.getPromiseObject(promise_handle);
+            return .{ .handle = engine.getPromiseObject(promise_handle) };
         }
     }
 
@@ -816,7 +816,7 @@ pub fn call_text(instance: *runtime.Instance) ImplError!*const anyopaque {
         const bytes = body.readAllBytes() catch |err| {
             // Reject on read error
             engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
-            return engine.getPromiseObject(promise_handle);
+            return .{ .handle = engine.getPromiseObject(promise_handle) };
         };
         break :blk bytes;
     } else "";
@@ -825,12 +825,12 @@ pub fn call_text(instance: *runtime.Instance) ImplError!*const anyopaque {
     const createString = engine.createString orelse {
         // No createString support - resolve with null (undefined)
         engine.resolvePromise(engine_ctx, promise_handle, null) catch {};
-        return engine.getPromiseObject(promise_handle);
+        return .{ .handle = engine.getPromiseObject(promise_handle) };
     };
 
     const js_string = createString(engine_ctx, body_text) catch {
         engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return engine.getPromiseObject(promise_handle);
+        return .{ .handle = engine.getPromiseObject(promise_handle) };
     };
 
     // Resolve with the JS string
@@ -838,8 +838,8 @@ pub fn call_text(instance: *runtime.Instance) ImplError!*const anyopaque {
         return error.InvalidState;
     };
 
-    // Return the JS Promise object
-    return engine.getPromiseObject(promise_handle);
+    // Return the JS Promise object wrapped in Promise(T) type
+    return .{ .handle = engine.getPromiseObject(promise_handle) };
 }
 
 // === Helper Functions ===

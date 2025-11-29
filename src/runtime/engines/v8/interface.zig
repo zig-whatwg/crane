@@ -1095,9 +1095,17 @@ pub fn V8Interface(comptime Interface: type) type {
                 };
             }
 
+            // Handle Promise(T) types - extract the handle and return the V8 Promise
+            if (@typeInfo(ReturnType) == .@"struct") {
+                if (@hasDecl(ReturnType, "ResultType") and @hasField(ReturnType, "handle")) {
+                    // This is a Promise(T) type - extract the V8 Promise handle
+                    return @ptrCast(result.handle);
+                }
+            }
+
             // Handle *const anyopaque - ALWAYS return undefined for now.
             // This type is ambiguous (could be V8 value or Zig data).
-            // TODO: Introduce a proper type for Promise returns vs data returns.
+            // Use Promise(T) wrapper type instead for Promise returns.
             if (ReturnType == *const anyopaque) {
                 return @ptrCast(v8.v8_Undefined(isolate));
             }

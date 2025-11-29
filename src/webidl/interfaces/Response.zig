@@ -236,7 +236,7 @@ pub const Response = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_text(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_text(instance: *runtime.Instance) anyerror!runtime.Promise(runtime.USVString) {
         // [NewObject] - Caller owns the returned object
         return try ResponseImpl.call_text(instance);
     }
