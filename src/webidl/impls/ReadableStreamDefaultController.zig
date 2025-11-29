@@ -66,6 +66,10 @@ pub const InternalState = struct {
     /// [[strategyHWM]]: High water mark for backpressure
     strategy_hwm: f64,
 
+    /// [[startAlgorithm]]: Underlying source start callback
+    /// Stored for invocation after constructor returns (when V8 wrapper exists)
+    start_algorithm: ?*Algorithm,
+
     /// [[pullAlgorithm]]: Underlying source pull callback
     pull_algorithm: ?*Algorithm,
 
@@ -77,6 +81,10 @@ pub const InternalState = struct {
 
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
         // Clean up algorithms
+        if (self.start_algorithm) |algo| {
+            algo.deinit();
+            allocator.destroy(algo);
+        }
         if (self.pull_algorithm) |algo| {
             algo.deinit();
             allocator.destroy(algo);
@@ -703,6 +711,7 @@ pub fn setUpReadableStreamDefaultController(
         .pulling = false,
         .strategy_size_algorithm = null,
         .strategy_hwm = strategy_hwm,
+        .start_algorithm = null, // Already started via CreateReadableStream
         .pull_algorithm = pull_algorithm,
         .cancel_algorithm = cancel_algorithm,
         .allocator = allocator,

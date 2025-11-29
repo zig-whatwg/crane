@@ -359,6 +359,7 @@ fn createReadableStreamForTransform(
         .pulling = false,
         .strategy_size_algorithm = null,
         .strategy_hwm = readable_hwm,
+        .start_algorithm = null, // TransformStream handles start internally
         .pull_algorithm = null, // Will use transform's pull
         .cancel_algorithm = null, // Will use transform's cancel
         .allocator = allocator,

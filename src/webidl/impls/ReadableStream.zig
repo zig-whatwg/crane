@@ -1542,6 +1542,15 @@ fn setUpReadableStreamDefaultController(
     const controller_state = controller_instance.getState(interfaces.ReadableStreamDefaultController.State);
 
     // Convert callbacks to Algorithms
+    const start_algo: ?*Algorithm = if (startAlgorithm) |cb|
+        try algorithm_mod.jsCallbackAlgorithm(allocator, cb)
+    else
+        null;
+    errdefer if (start_algo) |algo| {
+        algo.deinit();
+        allocator.destroy(algo);
+    };
+
     const pull_algo: ?*Algorithm = if (pullAlgorithm) |cb|
         try algorithm_mod.jsCallbackAlgorithm(allocator, cb)
     else
@@ -1579,6 +1588,7 @@ fn setUpReadableStreamDefaultController(
         .pulling = false,
         .strategy_size_algorithm = null, // Future: Pass extracted size algorithm for chunk sizing
         .strategy_hwm = highWaterMark,
+        .start_algorithm = start_algo,
         .pull_algorithm = pull_algo,
         .cancel_algorithm = cancel_algo,
         .allocator = allocator,
@@ -1591,27 +1601,80 @@ fn setUpReadableStreamDefaultController(
 
     // Step 9-12: Perform startAlgorithm and handle promise
     //
-    // NOTE: Invoking JS callbacks from within the Zig constructor is problematic because:
-    // 1. The V8 wrapper object for the controller doesn't exist yet
-    // 2. The start callback needs the wrapped controller as an argument
-    // 3. The constructor hasn't returned yet, so V8 object isn't fully set up
+    // Per WHATWG Streams spec:
+    // 9. Let startResult be the result of performing startAlgorithm
+    // 10. Let startPromise be a promise resolved with startResult
+    // 11. Upon fulfillment of startPromise: set started = true, call pull if needed
+    // 12. Upon rejection of startPromise with reason r: error the controller
     //
-    // WORKAROUND: Mark the controller as started immediately. This allows basic
-    // streams to work. The JS start() callback will be invoked by V8 bindings
-    // after the constructor returns, if needed.
+    // LIMITATION: V8 callback invocation requires V8-specific API calls (invokeCallback
+    // through the EngineInterface). The current Algorithm abstraction stores the callback
+    // pointer but jsCallbackInvoke() cannot call V8 functions directly - it would require:
+    //   1. Access to V8 isolate and context
+    //   2. Conversion of the raw callback pointer to a V8::Function handle
+    //   3. Wrapping the controller as a V8::Object
+    //   4. Proper V8 scope management (HandleScope, etc.)
     //
-    // TODO: Implement proper start callback invocation through V8 bindings layer.
-    // The V8 interface binding should:
-    // 1. Complete the constructor (return the ReadableStream to JS)
-    // 2. Invoke the start callback with the wrapped controller
-    // 3. Handle the promise resolution to call onStartFulfilled
+    // For now, we store the start algorithm for future use but immediately mark as started.
+    // This allows streams without start callbacks to work correctly.
     //
-    // For now, we store the callback reference (if provided) for potential future use,
-    // but immediately mark the controller as started.
-    _ = startAlgorithm; // Stored in internal state for future use
+    // TODO: Implement proper V8 callback invocation:
+    //   - Use ctx.getEngine().invokeCallback() when available
+    //   - Or defer start callback to V8 bindings layer post-constructor
+    //   - Track issue: whatwg-h8sj
+    //
+    // NOTE: start_algo is already stored in controller_internal.start_algorithm
+    // for future use when V8 integration is complete.
 
     // Immediately mark as started and call pull if needed
     onStartFulfilledImmediate(controller_internal);
+}
+
+/// Handle start promise settlement
+/// Supports both synchronous (for testing) and asynchronous (with event loop) promises
+/// Spec: § 4.9.3 Steps 10-12
+fn handleStartPromise(
+    controller_internal: *@import("ReadableStreamDefaultController.zig").InternalState,
+    start_promise: *AsyncPromise(void),
+) void {
+    // Step 11: Upon fulfillment of startPromise
+    if (start_promise.isFulfilled()) {
+        onStartFulfilledImmediate(controller_internal);
+        return;
+    }
+
+    // Step 12: Upon rejection of startPromise with reason r
+    if (start_promise.isRejected()) {
+        onStartRejectedImmediate(controller_internal, start_promise.state.rejected);
+        return;
+    }
+
+    // Promise is still pending - use async handling via onSettleCtx
+    start_promise.onSettleCtx(
+        onStartFulfilled,
+        onStartRejected,
+        @ptrCast(controller_internal),
+    ) catch {
+        // If we can't attach handlers, assume immediate fulfillment
+        onStartFulfilledImmediate(controller_internal);
+    };
+}
+
+/// Handle start algorithm rejection (immediate)
+/// Spec: § 4.9.3 SetUpReadableStreamDefaultController Step 12
+fn onStartRejectedImmediate(
+    controller_internal: *@import("ReadableStreamDefaultController.zig").InternalState,
+    exception: webidl.errors.Exception,
+) void {
+    // Step 12.1: Perform ! ReadableStreamDefaultControllerError(controller, r)
+    const error_msg = switch (exception) {
+        .simple => |s| s.message,
+        else => "Start algorithm failed",
+    };
+
+    const js_error = streams_common.JSValue{ .string = error_msg };
+    const ReadableStreamDefaultControllerImpl = @import("ReadableStreamDefaultController.zig");
+    ReadableStreamDefaultControllerImpl.readableStreamDefaultControllerError(controller_internal, @ptrCast(&js_error));
 }
 
 /// Handle start algorithm fulfillment
@@ -1635,20 +1698,11 @@ fn onStartFulfilledImmediate(controller_internal: *@import("ReadableStreamDefaul
     ReadableStreamDefaultControllerImpl.readableStreamDefaultControllerCallPullIfNeeded(controller_internal);
 }
 
-/// Handle start algorithm rejection
+/// Handle start algorithm rejection (async callback version)
 /// Spec: § 4.9.3 SetUpReadableStreamDefaultController Step 12
 fn onStartRejected(ctx_ptr: *anyopaque, exception: webidl.errors.Exception) anyerror!void {
     const controller_internal: *@import("ReadableStreamDefaultController.zig").InternalState = @ptrCast(@alignCast(ctx_ptr));
-
-    // Step 12.1: Perform ! ReadableStreamDefaultControllerError(controller, r)
-    const error_msg = switch (exception) {
-        .simple => |s| s.message,
-        else => "Start algorithm failed",
-    };
-
-    const js_error = streams_common.JSValue{ .string = error_msg };
-    const ReadableStreamDefaultControllerImpl = @import("ReadableStreamDefaultController.zig");
-    ReadableStreamDefaultControllerImpl.readableStreamDefaultControllerError(controller_internal, @ptrCast(&js_error));
+    onStartRejectedImmediate(controller_internal, exception);
 }
 
 /// SetUpReadableByteStreamControllerFromUnderlyingSource
@@ -1809,16 +1863,81 @@ fn setUpReadableByteStreamController(
 
     // Step 14-17: Perform startAlgorithm and handle promise
     //
-    // NOTE: Same limitation as default controller - invoking JS callbacks from
-    // within the Zig constructor is problematic. See comments in
-    // setUpReadableStreamDefaultController for details.
+    // Per WHATWG Streams spec:
+    // 14. Let startResult be the result of performing startAlgorithm
+    // 15. Let startPromise be a promise resolved with startResult
+    // 16. Upon fulfillment of startPromise: set started = true, call pull if needed
+    // 17. Upon rejection of startPromise with reason r: error the controller
     //
-    // WORKAROUND: Mark the controller as started immediately.
-    // TODO: Implement proper start callback invocation through V8 bindings layer.
-    _ = startAlgorithm; // Stored for future use
+    // LIMITATION: Same as default controller - V8 callback invocation requires
+    // V8-specific API calls. See comments in setUpReadableStreamDefaultController.
+    //
+    // TODO: Implement proper V8 callback invocation - Track issue: whatwg-h8sj
+    _ = startAlgorithm; // Will be used when V8 integration is complete
 
     // Immediately mark as started and call pull if needed
     onByteStartFulfilledImmediate(controller_internal, controller_instance);
+}
+
+/// Handle byte stream start promise settlement
+/// Supports both synchronous (for testing) and asynchronous (with event loop) promises
+/// Spec: § 4.7.3 Steps 15-17
+fn handleByteStartPromise(
+    controller_internal: *@import("ReadableByteStreamController.zig").InternalState,
+    controller_instance: *runtime.Instance,
+    start_promise: *AsyncPromise(void),
+) void {
+    // Step 16: Upon fulfillment of startPromise
+    if (start_promise.isFulfilled()) {
+        onByteStartFulfilledImmediate(controller_internal, controller_instance);
+        return;
+    }
+
+    // Step 17: Upon rejection of startPromise with reason r
+    if (start_promise.isRejected()) {
+        onByteStartRejectedImmediate(controller_internal, start_promise.state.rejected);
+        return;
+    }
+
+    // Promise is still pending - need to allocate context for async handling
+    const allocator = controller_internal.allocator;
+    const ctx = allocator.create(ByteStartContext) catch {
+        // If we can't allocate context, assume immediate fulfillment
+        onByteStartFulfilledImmediate(controller_internal, controller_instance);
+        return;
+    };
+    ctx.* = .{
+        .controller_internal = controller_internal,
+        .controller_instance = controller_instance,
+    };
+
+    // Promise is still pending - use async handling via onSettleCtx
+    start_promise.onSettleCtx(
+        onByteStartFulfilled,
+        onByteStartRejected,
+        @ptrCast(ctx),
+    ) catch {
+        // If we can't attach handlers, assume immediate fulfillment
+        allocator.destroy(ctx);
+        onByteStartFulfilledImmediate(controller_internal, controller_instance);
+    };
+}
+
+/// Handle byte stream start algorithm rejection (immediate)
+/// Spec: § 4.7.3 SetUpReadableByteStreamController Step 17
+fn onByteStartRejectedImmediate(
+    controller_internal: *@import("ReadableByteStreamController.zig").InternalState,
+    exception: webidl.errors.Exception,
+) void {
+    // Step 17.1: Perform ! ReadableByteStreamControllerError(controller, r)
+    const error_msg = switch (exception) {
+        .simple => |s| s.message,
+        else => "Start algorithm failed",
+    };
+
+    const js_error = streams_common.JSValue{ .string = error_msg };
+    const ReadableByteStreamControllerImpl = @import("ReadableByteStreamController.zig");
+    ReadableByteStreamControllerImpl.errorInternal(controller_internal, js_error);
 }
 
 /// Context for byte stream start handlers
@@ -1852,20 +1971,11 @@ fn onByteStartFulfilledImmediate(
     ReadableByteStreamControllerImpl.callPullIfNeeded(controller_instance);
 }
 
-/// Handle byte stream start algorithm rejection
+/// Handle byte stream start algorithm rejection (async callback version)
 /// Spec: § 4.7.3 SetUpReadableByteStreamController Step 17
 fn onByteStartRejected(ctx_ptr: *anyopaque, exception: webidl.errors.Exception) anyerror!void {
     const ctx: *ByteStartContext = @ptrCast(@alignCast(ctx_ptr));
-    const ReadableByteStreamControllerImpl = @import("ReadableByteStreamController.zig");
-
-    // Step 17.1: Perform ! ReadableByteStreamControllerError(controller, r)
-    const error_msg = switch (exception) {
-        .simple => |s| s.message,
-        else => "Start algorithm failed",
-    };
-
-    const js_error = streams_common.JSValue{ .string = error_msg };
-    ReadableByteStreamControllerImpl.errorInternal(ctx.controller_internal, js_error);
+    onByteStartRejectedImmediate(ctx.controller_internal, exception);
 }
 
 /// Create a PullAlgorithm that invokes a JS callback for byte streams
