@@ -47,6 +47,38 @@ pub const ConversionError = error{
 };
 
 // ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Check if a runtime enum name matches a comptime Zig enum field name.
+/// Handles the transformation from WebIDL format ("same-origin") to Zig format ("_same_origin_"):
+/// - Hyphens in the runtime name match underscores in the field name
+/// - Leading/trailing underscores in field name are ignored
+fn enumNameMatches(comptime field_name: []const u8, runtime_name: []const u8) bool {
+    // Get the normalized field name bounds (strip leading/trailing underscores)
+    comptime var start: usize = 0;
+    comptime var end: usize = field_name.len;
+    if (field_name.len > 0 and field_name[0] == '_') start = 1;
+    if (end > start and field_name[end - 1] == '_') end -= 1;
+    const normalized_field = field_name[start..end];
+
+    // Length must match
+    if (normalized_field.len != runtime_name.len) return false;
+
+    // Compare character by character, treating hyphens as underscores
+    inline for (normalized_field, 0..) |fc, i| {
+        const rc = runtime_name[i];
+        // Field char is underscore, runtime char can be either underscore or hyphen
+        if (fc == '_') {
+            if (rc != '_' and rc != '-') return false;
+        } else {
+            if (fc != rc) return false;
+        }
+    }
+    return true;
+}
+
+// ============================================================================
 // JavaScript to Zig (V8 → Runtime)
 // ============================================================================
 
@@ -690,8 +722,12 @@ pub fn fromV8Value(
             };
 
             // Use @typeInfo to iterate enum fields and match by name
+            // WebIDL enum values like "same-origin" are stored as _same_origin_ in Zig:
+            // - Hyphens become underscores
+            // - Leading/trailing underscores wrap reserved words
             inline for (std.meta.fields(T)) |field| {
-                if (std.mem.eql(u8, field.name, enum_name)) {
+                // Try matching with WebIDL normalization (handles hyphens, underscores, etc.)
+                if (enumNameMatches(field.name, enum_name)) {
                     return @enumFromInt(field.value);
                 }
             }
