@@ -12,14 +12,16 @@ const Allocator = std.mem.Allocator;
 /// A header is a tuple that consists of a name and value.
 /// Spec: https://fetch.spec.whatwg.org/#concept-header
 pub const Header = struct {
-    /// Header name (case-preserved but case-insensitive matching)
+    /// Header name (lowercased per spec's "header name lowercasing")
     name: []const u8,
     /// Header value
     value: []const u8,
 
     /// Create a header with owned copies of name and value
+    /// Name is lowercased per Fetch spec "header name lowercasing"
     pub fn init(allocator: Allocator, name: []const u8, value: []const u8) !Header {
-        const owned_name = try allocator.dupe(u8, name);
+        // Per Fetch spec: header names must be lowercased
+        const owned_name = try std.ascii.allocLowerString(allocator, name);
         errdefer allocator.free(owned_name);
         const owned_value = try allocator.dupe(u8, value);
         return .{

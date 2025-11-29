@@ -332,8 +332,9 @@ fn convertHeadersInit(
             }
         }
 
-        // It's a plain object - get property names and values
-        const prop_names = v8.v8_Object_GetPropertyNames(context, obj) orelse {
+        // It's a plain object - get OWN property names only (not inherited)
+        // This avoids including __proto__, constructor, toString, etc.
+        const prop_names = v8.v8_Object_GetOwnPropertyNames(context, obj) orelse {
             // Empty object
             return .{ .record = &.{} };
         };

@@ -314,12 +314,13 @@ pub fn V8Interface(comptime Interface: type) type {
                                     true, // configurable = true
                                 );
 
-                                // Also add entries(), keys(), values() methods for iterable protocol
+                                // Also add entries(), keys(), values(), forEach() methods for iterable protocol
                                 // These are standard iterable methods per WHATWG WebIDL spec
-                                const iterable_methods = [_]struct { name: []const u8, cb: v8.FunctionCallback }{
-                                    .{ .name = "entries", .cb = entriesCallback },
-                                    .{ .name = "keys", .cb = keysCallback },
-                                    .{ .name = "values", .cb = valuesCallback },
+                                const iterable_methods = [_]struct { name: []const u8, cb: v8.FunctionCallback, arity: c_int }{
+                                    .{ .name = "entries", .cb = entriesCallback, .arity = 0 },
+                                    .{ .name = "keys", .cb = keysCallback, .arity = 0 },
+                                    .{ .name = "values", .cb = valuesCallback, .arity = 0 },
+                                    .{ .name = "forEach", .cb = forEachCallback, .arity = 1 },
                                 };
 
                                 for (iterable_methods) |method| {
@@ -329,7 +330,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                         null,
                                     );
                                     if (method_tmpl) |m_tmpl| {
-                                        v8.v8_FunctionTemplate_SetLength(m_tmpl, 0);
+                                        v8.v8_FunctionTemplate_SetLength(m_tmpl, method.arity);
                                         const method_func = v8.v8_FunctionTemplate_GetFunction(m_tmpl, context);
                                         if (method_func) |m_func| {
                                             const method_name = v8.v8_String_NewFromUtf8(
@@ -1890,6 +1891,68 @@ pub fn V8Interface(comptime Interface: type) type {
                 info.setReturnValue(@ptrCast(obj));
             } else {
                 conv.throwError(isolate, "Failed to create iterator");
+            }
+        }
+
+        /// forEach() callback for pair iterables - calls callback(value, key, map) for each entry
+        fn forEachCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+            const isolate = info.getIsolate();
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+                conv.throwError(isolate, "No V8 context");
+                return;
+            };
+
+            // Get 'this' object (the Headers/URLSearchParams/etc instance)
+            const this_obj = info.getThis();
+
+            // Get callback argument (required)
+            if (info.length() < 1) {
+                conv.throwTypeError(isolate, "forEach requires a callback argument");
+                return;
+            }
+
+            const callback_arg = info.get(0);
+            if (!v8.v8_Value_IsFunction(callback_arg)) {
+                conv.throwTypeError(isolate, "forEach callback must be a function");
+                return;
+            }
+            const callback_fn: *v8.Function = @ptrCast(callback_arg);
+
+            // Get optional thisArg (second argument)
+            const this_arg: *v8.Value = if (info.length() >= 2)
+                info.get(1)
+            else
+                v8.v8_Undefined(isolate) orelse return;
+
+            // Get entries using getEntriesForIterable
+            if (comptime @hasDecl(Interface, "getEntriesForIterable")) {
+                const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+                if (instance_ptr) |ptr| {
+                    const instance: *runtime.Instance = @ptrCast(@alignCast(ptr));
+
+                    if (Interface.getEntriesForIterable(instance)) |entries| {
+                        // Call callback for each entry: callback(value, key, map)
+                        for (entries) |entry| {
+                            // Create V8 strings for key and value
+                            const key_str = v8.v8_String_NewFromUtf8(isolate, entry.name.ptr, @intCast(entry.name.len)) orelse continue;
+                            const val_str = v8.v8_String_NewFromUtf8(isolate, entry.value.ptr, @intCast(entry.value.len)) orelse continue;
+
+                            // Call: callback(value, key, map)
+                            var args = [_]*v8.Value{
+                                @ptrCast(val_str),
+                                @ptrCast(key_str),
+                                @ptrCast(this_obj),
+                            };
+                            _ = v8.v8_Function_Call(
+                                callback_fn,
+                                v8_context,
+                                this_arg,
+                                3,
+                                @ptrCast(&args),
+                            );
+                        }
+                    }
+                }
             }
         }
 
