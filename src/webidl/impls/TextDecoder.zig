@@ -145,7 +145,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, labe
     const state = instance.getState(State);
 
     // Get label as UTF-8 slice
-    const label_str = label.asSlice();
+    const label_str = if (label.was_passed) label.value.asSlice() else "utf-8";
 
     // Step 1: Get encoding from label (§4.2 get an encoding)
     const enc = encoding_mod.getEncoding(label_str) orelse {
@@ -178,11 +178,14 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, labe
     // Step 3: Set this's encoding to encoding
     state.own.encoding = runtime.DOMString.initInterned(enc.whatwg_name);
 
+    // Get options value
+    const opts = if (options.was_passed) options.value else dictionaries.TextDecoderOptions{};
+
     // Step 4: If options["fatal"] is true, set error mode to "fatal"
-    state.own.fatal = options.fatal orelse false;
+    state.own.fatal = opts.fatal orelse false;
 
     // Step 5: Set this's ignore BOM to options["ignoreBOM"]
-    state.own.ignoreBOM = options.ignoreBOM orelse false;
+    state.own.ignoreBOM = opts.ignoreBOM orelse false;
 
     return instance;
 }
@@ -235,7 +238,8 @@ pub fn call_decode(instance: *runtime.Instance, input: webidl.Opt(typedefs.Allow
     const internal = state.own._internal orelse return ImplError.InvalidState;
 
     // Get streaming option
-    const stream = options.stream orelse false;
+    const opts = if (options.was_passed) options.value else dictionaries.TextDecodeOptions{};
+    const stream = opts.stream orelse false;
 
     // Step 1: If do not flush is false, reset decoder state
     if (!internal.do_not_flush) {
@@ -248,7 +252,8 @@ pub fn call_decode(instance: *runtime.Instance, input: webidl.Opt(typedefs.Allow
     internal.do_not_flush = stream;
 
     // Step 3: Get bytes from input and add to I/O queue
-    const input_bytes = extractBytesFromBufferSource(input);
+    // If input was not passed, use empty byte slice
+    const input_bytes: []const u8 = if (input.was_passed) extractBytesFromBufferSource(input.value) else &[_]u8{};
 
     // Combine pending bytes (I/O queue) with new input
     var bytes: []const u8 = input_bytes;
@@ -280,22 +285,8 @@ pub fn call_decode(instance: *runtime.Instance, input: webidl.Opt(typedefs.Allow
 
 /// Extract bytes from AllowSharedBufferSource
 fn extractBytesFromBufferSource(source: typedefs.AllowSharedBufferSource) []const u8 {
-    const source_addr = @intFromPtr(source);
-    if (source_addr == 0) {
-        return "";
-    }
-
-    const ByteSliceHeader = extern struct {
-        len: usize,
-    };
-
-    const header: *const ByteSliceHeader = @ptrCast(@alignCast(source));
-    if (header.len == 0) {
-        return "";
-    }
-
-    const data_ptr: [*]const u8 = @ptrCast(@as([*]const u8, @ptrCast(source)) + @sizeOf(ByteSliceHeader));
-    return data_ptr[0..header.len];
+    // AllowSharedBufferSource is a tagged union - use its asBytes method
+    return source.asBytes() catch return &[_]u8{};
 }
 
 /// Process bytes through decoder and run serialize I/O queue algorithm

@@ -210,12 +210,14 @@ pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, chi
     _ = internal;
 
     // Step 1: If child's parent is not this, throw NotFoundError
-    if (NodeImpl.getParent(child) != instance) {
-        return error.InvalidStateError; // NotFoundError
-    }
+    if (child) |c| {
+        if (NodeImpl.getParent(c) != instance) {
+            return error.InvalidStateError; // NotFoundError
+        }
 
-    // Step 2: If node is the same as child, return
-    if (node == child) return;
+        // Step 2: If node is the same as child, return
+        if (node == c) return;
+    }
 
     // Step 3: Remove node from its current position (if it has a parent)
     if (NodeImpl.getParent(node)) |oldParent| {

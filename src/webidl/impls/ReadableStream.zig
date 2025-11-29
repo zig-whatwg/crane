@@ -34,6 +34,8 @@ pub const ImplError = error{
     InvalidState,
     OutOfMemory,
     NoEventLoop,
+    NullValue,
+    BufferDetached,
 };
 
 /// Stream state enumeration per WHATWG spec
@@ -141,7 +143,8 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
     // Step 2: Convert to UnderlyingSource dictionary
     // For now, we'll assume underlyingSource is already a dictionary pointer
     // In real implementation, this would involve WebIDL type conversion
-    const underlying_source_dict: *const dictionaries.UnderlyingSource = @ptrCast(@alignCast(underlyingSource));
+    const underlying_source_ptr: *const anyopaque = if (underlyingSource.was_passed) underlyingSource.value else @ptrFromInt(1);
+    const underlying_source_dict: *const dictionaries.UnderlyingSource = @ptrCast(@alignCast(underlying_source_ptr));
 
     // Step 3: Perform InitializeReadableStream
     const instance = try init(allocator, State, &ReadableStream.vtable, ctx);
@@ -167,10 +170,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
 
     state.own._internal = internal;
 
+    // Get strategy value with defaults
+    const strat = if (strategy.was_passed) strategy.value else dictionaries.QueuingStrategy{};
+
     // Step 4: Check if this is a byte stream
     if (underlying_source_dict.type != null) {
         // Step 4.1: If strategy["size"] exists, throw a RangeError
-        if (strategy.size != null) {
+        if (strat.size != null) {
             allocator.destroy(internal);
             deinit(instance);
             return error.RangeError;
@@ -178,13 +184,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
 
         // Step 4.2: Let highWaterMark be ? ExtractHighWaterMark(strategy, 0)
         // Byte streams default to 0 high water mark
-        const high_water_mark = try extractHighWaterMark(&strategy, 0.0);
+        const high_water_mark = try extractHighWaterMark(&strat, 0.0);
 
         // Step 4.3: Perform ? SetUpReadableByteStreamControllerFromUnderlyingSource
         try setUpReadableByteStreamControllerFromUnderlyingSource(
             instance,
             internal,
-            underlyingSource,
+            underlying_source_ptr,
             underlying_source_dict,
             high_water_mark,
         );
@@ -193,17 +199,17 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
         // Step 5.1: Assert type does not exist (checked above)
 
         // Step 5.2: Extract size algorithm
-        const size_algorithm = extractSizeAlgorithm(&strategy);
+        const size_algorithm = extractSizeAlgorithm(&strat);
         _ = size_algorithm; // Will be passed to controller when size calculation is implemented
 
         // Step 5.3: Extract high water mark (default 1 for count-based queuing)
-        const high_water_mark = try extractHighWaterMark(&strategy, 1.0);
+        const high_water_mark = try extractHighWaterMark(&strat, 1.0);
 
         // Step 5.4: Perform SetUpReadableStreamDefaultControllerFromUnderlyingSource
         try setUpReadableStreamDefaultControllerFromUnderlyingSource(
             instance,
             internal,
-            underlyingSource,
+            underlying_source_ptr,
             underlying_source_dict,
             high_water_mark,
         );
@@ -431,7 +437,8 @@ pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(*const anyopa
     }
 
     // Step 2: Perform ReadableStreamCancel(this, reason)
-    return readableStreamCancel(instance, internal, reason);
+    const reason_ptr: *const anyopaque = if (reason.was_passed) reason.value else @ptrFromInt(1);
+    return readableStreamCancel(instance, internal, reason_ptr);
 }
 
 /// ReadableStreamCancel algorithm
@@ -597,9 +604,9 @@ pub fn call_getReader(instance: *runtime.Instance, options: webidl.Opt(dictionar
         };
     };
 
-    // Step 3: Return reader
-    // The return type is typedefs.ReadableStreamReader which is *const anyopaque
-    return @ptrCast(reader);
+    // Step 3: Return reader as union
+    // The return type is typedefs.ReadableStreamReader which is a union
+    return typedefs.ReadableStreamReader{ .variant_0 = @ptrCast(reader) };
 }
 
 /// Operation: pipeTo
@@ -642,9 +649,10 @@ pub fn call_pipeTo(instance: *runtime.Instance, destination: *runtime.Instance, 
     }
 
     // Step 3: Extract options
-    const prevent_close = options.preventClose orelse false;
-    const prevent_abort = options.preventAbort orelse false;
-    const prevent_cancel = options.preventCancel orelse false;
+    const opts = if (options.was_passed) options.value else dictionaries.StreamPipeOptions{};
+    const prevent_close = opts.preventClose orelse false;
+    const prevent_abort = opts.preventAbort orelse false;
+    const prevent_cancel = opts.preventCancel orelse false;
     // Note: signal (AbortSignal) is not yet fully implemented
 
     // Step 4: Return ReadableStreamPipeTo
@@ -1051,7 +1059,7 @@ fn teeEnqueueToBranch(branch: *runtime.Instance, chunk: ?*anyopaque) !void {
     const controller_impl = @import("ReadableStreamDefaultController.zig");
 
     if (chunk) |c| {
-        try controller_impl.call_enqueue(controller, c);
+        try controller_impl.call_enqueue(controller, webidl.Opt(*const anyopaque).passed(c));
     }
 }
 
@@ -1080,7 +1088,7 @@ fn teeErrorBothBranches(tee_state: *TeeState, reason: []const u8) void {
         if (branch_state.own._internal) |branch_internal| {
             const controller = branch_internal.controller;
             const controller_impl = @import("ReadableStreamDefaultController.zig");
-            controller_impl.call_error(controller, error_ptr) catch {};
+            controller_impl.call_error(controller, webidl.Opt(*const anyopaque).passed(error_ptr)) catch {};
         }
     }
 
@@ -1089,7 +1097,7 @@ fn teeErrorBothBranches(tee_state: *TeeState, reason: []const u8) void {
         if (branch_state.own._internal) |branch_internal| {
             const controller = branch_internal.controller;
             const controller_impl = @import("ReadableStreamDefaultController.zig");
-            controller_impl.call_error(controller, error_ptr) catch {};
+            controller_impl.call_error(controller, webidl.Opt(*const anyopaque).passed(error_ptr)) catch {};
         }
     }
 
@@ -1280,7 +1288,7 @@ fn teePerformCompositeCancel(tee_state: *TeeState) !void {
     reader_impl.call_releaseLock(tee_state.reader) catch {};
 
     // Cancel source stream
-    _ = call_cancel(tee_state.source, reason) catch {};
+    _ = call_cancel(tee_state.source, webidl.Opt(*const anyopaque).passed(reason)) catch {};
 
     _ = source_internal;
 
@@ -1360,13 +1368,14 @@ fn createTeeBranchStream(
 /// When no engine is present, returns the raw Zig iterator pointer.
 pub fn call_values(
     instance: *runtime.Instance,
-    options: dictionaries.ReadableStreamIteratorOptions,
+    options: webidl.Opt(dictionaries.ReadableStreamIteratorOptions),
 ) ImplError!*const anyopaque {
     const allocator = instance.ctx.getAllocator();
     const ctx = instance.ctx;
 
     // Extract preventCancel from options (defaults to false per WebIDL)
-    const prevent_cancel = options.preventCancel orelse false;
+    const opts = if (options.was_passed) options.value else dictionaries.ReadableStreamIteratorOptions{};
+    const prevent_cancel = opts.preventCancel orelse false;
 
     // Create Zig async iterator
     const async_iterator_mod = @import("streams_readable_stream_async_iterator");
@@ -1412,7 +1421,7 @@ pub fn call_values(
 /// 1. Return ! this.values(options)
 pub fn call_getAsyncIterator(
     instance: *runtime.Instance,
-    options: dictionaries.ReadableStreamIteratorOptions,
+    options: webidl.Opt(dictionaries.ReadableStreamIteratorOptions),
 ) ImplError!*const anyopaque {
     // Per WebIDL async iterable spec, @@asyncIterator returns the same as values()
     return call_values(instance, options);
@@ -2400,11 +2409,11 @@ fn pipeShutdownWithAction(pipe_state: *PipeState, action: ShutdownAction, error_
         .abort_dest => {
             // WritableStreamAbort
             const WritableStreamImpl = @import("WritableStream.zig");
-            _ = WritableStreamImpl.call_abort(pipe_state.dest, err_ptr) catch {};
+            _ = WritableStreamImpl.call_abort(pipe_state.dest, webidl.Opt(*const anyopaque).passed(err_ptr)) catch {};
         },
         .cancel_source => {
             // ReadableStreamCancel
-            _ = call_cancel(pipe_state.source, err_ptr) catch {};
+            _ = call_cancel(pipe_state.source, webidl.Opt(*const anyopaque).passed(err_ptr)) catch {};
         },
         .close_dest => {
             // WritableStreamDefaultWriterCloseWithErrorPropagation

@@ -124,7 +124,7 @@ pub fn call_getNamedItem(instance: *runtime.Instance, qualifiedName: runtime.DOM
 /// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-getnameditemns
 pub fn call_getNamedItemNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidState;
-    const ns = namespace.asSlice();
+    const ns = if (namespace) |n| n.asSlice() else "";
     const name = localName.asSlice();
 
     // Normalize empty namespace to null per spec
@@ -200,7 +200,7 @@ pub fn call_removeNamedItem(instance: *runtime.Instance, qualifiedName: runtime.
 /// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-removenameditemns
 pub fn call_removeNamedItemNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidState;
-    const ns = namespace.asSlice();
+    const ns = if (namespace) |n| n.asSlice() else "";
     const name = localName.asSlice();
 
     // Normalize empty namespace to null per spec

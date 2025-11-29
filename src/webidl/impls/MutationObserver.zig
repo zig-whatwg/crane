@@ -148,28 +148,32 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, call
 pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, options: webidl.Opt(dictionaries.MutationObserverInit)) anyerror!void {
     const internal = getInternal(instance);
 
+    // Get the options value, using defaults if not passed
+    const opts = if (options.was_passed) options.value else dictionaries.MutationObserverInit{};
+
     // Step 1: If either options["attributeOldValue"] or options["attributeFilter"]
     // exists, and options["attributes"] does not exist, then set
     // options["attributes"] to true.
-    var normalized_options = options;
-    if ((options.attributeOldValue != null or options.attributeFilter != null) and
-        options.attributes == null)
+    var normalized_attributes = opts.attributes;
+    if ((opts.attributeOldValue != null or opts.attributeFilter != null) and
+        opts.attributes == null)
     {
-        normalized_options.attributes = true;
+        normalized_attributes = true;
     }
 
     // Step 2: If options["characterDataOldValue"] exists and
     // options["characterData"] does not exist, then set
     // options["characterData"] to true.
-    if (options.characterDataOldValue != null and options.characterData == null) {
-        normalized_options.characterData = true;
+    var normalized_characterData = opts.characterData;
+    if (opts.characterDataOldValue != null and opts.characterData == null) {
+        normalized_characterData = true;
     }
 
     // Step 3: If none of options["childList"], options["attributes"], and
     // options["characterData"] is true, then throw a TypeError.
-    const childList = normalized_options.childList orelse false;
-    const attributes = normalized_options.attributes orelse false;
-    const characterData = normalized_options.characterData orelse false;
+    const childList = opts.childList orelse false;
+    const attributes = normalized_attributes orelse false;
+    const characterData = normalized_characterData orelse false;
 
     if (!childList and !attributes and !characterData) {
         return error.TypeError;
@@ -177,19 +181,19 @@ pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, opti
 
     // Step 4: If options["attributeOldValue"] is true and options["attributes"]
     // is false, then throw a TypeError.
-    if ((normalized_options.attributeOldValue orelse false) and !attributes) {
+    if ((opts.attributeOldValue orelse false) and !attributes) {
         return error.TypeError;
     }
 
     // Step 5: If options["attributeFilter"] is present and options["attributes"]
     // is false, then throw a TypeError.
-    if (normalized_options.attributeFilter != null and !attributes) {
+    if (opts.attributeFilter != null and !attributes) {
         return error.TypeError;
     }
 
     // Step 6: If options["characterDataOldValue"] is true and
     // options["characterData"] is false, then throw a TypeError.
-    if ((normalized_options.characterDataOldValue orelse false) and !characterData) {
+    if ((opts.characterDataOldValue orelse false) and !characterData) {
         return error.TypeError;
     }
 

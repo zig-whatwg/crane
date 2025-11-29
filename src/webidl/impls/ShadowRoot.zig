@@ -256,9 +256,8 @@ pub fn set_onslotchange(instance: *runtime.Instance, value: typedefs.EventHandle
 pub fn get_innerHTML(instance: *runtime.Instance) anyerror!runtime.DOMString {
     // TODO: Implement HTML serialization
     _ = instance;
-    // Return empty string as opaque pointer
-    const empty: []const u8 = "";
-    return @ptrCast(empty.ptr);
+    // Return empty string
+    return runtime.DOMString.initEmpty();
 }
 
 /// InnerHTML.innerHTML setter

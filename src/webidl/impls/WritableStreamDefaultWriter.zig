@@ -122,7 +122,8 @@ pub fn get_desiredSize(instance: *runtime.Instance) anyerror!?f64 {
     const stream = internal.stream orelse return error.TypeError;
 
     // 2. Return WritableStreamDefaultWriterGetDesiredSize(this)
-    return writableStreamDefaultWriterGetDesiredSize(stream);
+    const result = try writableStreamDefaultWriterGetDesiredSize(stream);
+    return result;
 }
 
 /// Getter for ready
@@ -180,7 +181,10 @@ pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaq
     const stream = internal.stream orelse return error.TypeError;
 
     // 2. Return WritableStreamDefaultWriterAbort(this, reason)
-    return writableStreamDefaultWriterAbort(instance, stream, reason);
+    // Unwrap the Opt - use a default value if not passed
+    const default_reason: u8 = 0;
+    const reason_ptr: *const anyopaque = if (reason.was_passed) reason.value else @ptrCast(&default_reason);
+    return writableStreamDefaultWriterAbort(instance, stream, reason_ptr);
 }
 
 /// Operation: write
@@ -201,7 +205,10 @@ pub fn call_write(instance: *runtime.Instance, chunk: webidl.Opt(*const anyopaqu
     const stream = internal.stream orelse return error.TypeError;
 
     // 2. Return WritableStreamDefaultWriterWrite(this, chunk)
-    return writableStreamDefaultWriterWrite(instance, stream, chunk);
+    // Unwrap the Opt - use a default value if not passed
+    const default_chunk: u8 = 0;
+    const chunk_ptr: *const anyopaque = if (chunk.was_passed) chunk.value else @ptrCast(&default_chunk);
+    return writableStreamDefaultWriterWrite(instance, stream, chunk_ptr);
 }
 
 /// Operation: close
@@ -353,7 +360,7 @@ fn writableStreamDefaultWriterClose(writer: *runtime.Instance) !*const anyopaque
 /// 3. If state is "errored" or "erroring", return null
 /// 4. If state is "closed", return 0
 /// 5. Return WritableStreamDefaultControllerGetDesiredSize(stream.[[controller]])
-fn writableStreamDefaultWriterGetDesiredSize(stream: *runtime.Instance) !f64 {
+fn writableStreamDefaultWriterGetDesiredSize(stream: *runtime.Instance) !?f64 {
     const stream_state = stream.getState(interfaces.WritableStream.State);
     const stream_internal = stream_state.own._internal orelse return error.InvalidState;
 
@@ -361,9 +368,8 @@ fn writableStreamDefaultWriterGetDesiredSize(stream: *runtime.Instance) !f64 {
     const state = stream_internal.state;
 
     // 3. If state is "errored" or "erroring", return null
-    // Note: WebIDL doesn't have nullable primitives, so we return NaN for null
     if (state == .errored or state == .erroring) {
-        return std.math.nan(f64);
+        return null;
     }
 
     // 4. If state is "closed", return 0

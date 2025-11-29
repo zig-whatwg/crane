@@ -120,7 +120,7 @@ pub fn setDocument(instance: *runtime.Instance, document: *runtime.Instance) voi
 pub fn call_createDocumentType(instance: *runtime.Instance, name: runtime.DOMString, publicId: runtime.DOMString, systemId: runtime.DOMString) anyerror!*runtime.Instance {
     const internal = getInternal(instance);
     const allocator = internal.allocator;
-    const ctx = instance.context;
+    const ctx = instance.ctx;
 
     // Step 1: Validate doctype name
     const name_slice = name.asSlice();
@@ -174,7 +174,7 @@ pub fn call_createDocumentType(instance: *runtime.Instance, name: runtime.DOMStr
 pub fn call_createDocument(instance: *runtime.Instance, namespace: ?runtime.DOMString, qualifiedName: runtime.DOMString, doctype: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
     const internal = getInternal(instance);
     const allocator = internal.allocator;
-    const ctx = instance.context;
+    const ctx = instance.ctx;
 
     // Step 1: Create new XMLDocument
     const document = try DocumentImpl.init(
@@ -193,7 +193,7 @@ pub fn call_createDocument(instance: *runtime.Instance, namespace: ?runtime.DOMS
     var element: ?*runtime.Instance = null;
 
     if (qname_slice.len > 0) {
-        const ns_slice = namespace.asSlice();
+        const ns_slice = if (namespace) |ns| ns.asSlice() else "";
 
         // Validate namespace and qualified name per WebIDL
         try validateNamespace(ns_slice, qname_slice);
@@ -203,14 +203,16 @@ pub fn call_createDocument(instance: *runtime.Instance, namespace: ?runtime.DOMS
     }
 
     // Step 4: If doctype is non-null, append doctype to document
-    if (doctype) |dt| {
-        try NodeImpl.setOwnerDocument(dt, document);
-        try NodeImpl.appendChild(document, dt);
+    if (doctype.was_passed) {
+        if (doctype.value) |dt| {
+            try NodeImpl.setOwnerDocument(dt, document);
+            _ = try NodeImpl.appendChild(document, dt);
+        }
     }
 
     // Step 5: If element is non-null, append element to document
     if (element) |elem| {
-        try NodeImpl.appendChild(document, elem);
+        _ = try NodeImpl.appendChild(document, elem);
     }
 
     // Step 6: Set document's origin from associated document
@@ -219,11 +221,11 @@ pub fn call_createDocument(instance: *runtime.Instance, namespace: ?runtime.DOMS
     }
 
     // Step 7: Set content type based on namespace
-    const ns_slice = namespace.asSlice();
-    const content_type = if (ns_slice.len > 0) blk: {
-        if (std.mem.eql(u8, ns_slice, HTML_NAMESPACE)) {
+    const ns_slice_final = if (namespace) |ns| ns.asSlice() else "";
+    const content_type = if (ns_slice_final.len > 0) blk: {
+        if (std.mem.eql(u8, ns_slice_final, HTML_NAMESPACE)) {
             break :blk "application/xhtml+xml";
-        } else if (std.mem.eql(u8, ns_slice, SVG_NAMESPACE)) {
+        } else if (std.mem.eql(u8, ns_slice_final, SVG_NAMESPACE)) {
             break :blk "image/svg+xml";
         } else {
             break :blk "application/xml";
@@ -259,7 +261,7 @@ pub fn call_createDocument(instance: *runtime.Instance, namespace: ?runtime.DOMS
 pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(runtime.DOMString)) anyerror!*runtime.Instance {
     const internal = getInternal(instance);
     const allocator = internal.allocator;
-    const ctx = instance.context;
+    const ctx = instance.ctx;
 
     // Step 1: Create new HTML document
     const doc = try DocumentImpl.init(
@@ -280,39 +282,41 @@ pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(ru
     const doctype = try DocumentTypeImpl.createDocumentType(allocator, ctx, "html", "", "");
     errdefer DocumentTypeImpl.deinit(doctype);
     try NodeImpl.setOwnerDocument(doctype, doc);
-    try NodeImpl.appendChild(doc, doctype);
+    _ = try NodeImpl.appendChild(doc, doctype);
 
     // Step 4: Create and append <html> element
     const html = try createElementNS(allocator, ctx, doc, HTML_NAMESPACE, "html");
     errdefer ElementImpl.deinit(html);
-    try NodeImpl.appendChild(doc, html);
+    _ = try NodeImpl.appendChild(doc, html);
 
     // Step 5: Create and append <head> element to html
     const head = try createElementNS(allocator, ctx, doc, HTML_NAMESPACE, "head");
     errdefer ElementImpl.deinit(head);
-    try NodeImpl.appendChild(html, head);
+    _ = try NodeImpl.appendChild(html, head);
 
     // Step 6: If title is given (non-null/non-empty check)
-    const title_slice = title.asSlice();
-    // Note: title is always given per WebIDL, but can be empty string
-    // Per spec, we create <title> element with whatever data is given (even empty)
-    if (title_slice.len > 0 or title.data != null) {
-        // Step 6.1: Create and append <title> element to head
-        const title_elem = try createElementNS(allocator, ctx, doc, HTML_NAMESPACE, "title");
-        errdefer ElementImpl.deinit(title_elem);
-        try NodeImpl.appendChild(head, title_elem);
+    if (title.was_passed) {
+        const title_val = title.value;
+        const title_slice = title_val.asSlice();
+        // Per spec, we create <title> element with whatever data is given (even empty)
+        if (title_slice.len > 0 or true) { // Always create if title param passed
+            // Step 6.1: Create and append <title> element to head
+            const title_elem = try createElementNS(allocator, ctx, doc, HTML_NAMESPACE, "title");
+            errdefer ElementImpl.deinit(title_elem);
+            _ = try NodeImpl.appendChild(head, title_elem);
 
-        // Step 6.2: Create Text node with title data and append to title element
-        const text_node = try TextImpl.call_constructor(allocator, ctx, title);
-        errdefer TextImpl.deinit(text_node);
-        try NodeImpl.setOwnerDocument(text_node, doc);
-        try NodeImpl.appendChild(title_elem, text_node);
+            // Step 6.2: Create Text node with title data and append to title element
+            const text_node = try TextImpl.call_constructor(allocator, ctx, webidl.Opt(runtime.DOMString).passed(title_val));
+            errdefer TextImpl.deinit(text_node);
+            try NodeImpl.setOwnerDocument(text_node, doc);
+            _ = try NodeImpl.appendChild(title_elem, text_node);
+        }
     }
 
     // Step 7: Create and append <body> element to html
     const body = try createElementNS(allocator, ctx, doc, HTML_NAMESPACE, "body");
     errdefer ElementImpl.deinit(body);
-    try NodeImpl.appendChild(html, body);
+    _ = try NodeImpl.appendChild(html, body);
 
     // Step 8: Set doc's origin from associated document
     if (internal.document) |assoc_doc| {

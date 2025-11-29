@@ -72,7 +72,11 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Constructor implementation
 /// Spec: https://drafts.csswg.org/geometry-1/#dom-domrect-domrect
 pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: webidl.Opt(f64), y: webidl.Opt(f64), width: webidl.Opt(f64), height: webidl.Opt(f64)) !*runtime.Instance {
-    return initWithDimensions(allocator, ctx, x, y, width, height);
+    const x_val = if (x.was_passed) x.value else 0;
+    const y_val = if (y.was_passed) y.value else 0;
+    const width_val = if (width.was_passed) width.value else 0;
+    const height_val = if (height.was_passed) height.value else 0;
+    return initWithDimensions(allocator, ctx, x_val, y_val, width_val, height_val);
 }
 
 /// Getter for x
@@ -134,10 +138,17 @@ pub fn call_fromRect(instance: *runtime.Instance, other: webidl.Opt(dictionaries
     const ctx = instance.ctx;
 
     // Extract values from dictionary with defaults
-    const x = other.x orelse 0;
-    const y = other.y orelse 0;
-    const width = other.width orelse 0;
-    const height = other.height orelse 0;
+    var x: f64 = 0;
+    var y: f64 = 0;
+    var width: f64 = 0;
+    var height: f64 = 0;
+
+    if (other.was_passed) {
+        x = other.value.x orelse 0;
+        y = other.value.y orelse 0;
+        width = other.value.width orelse 0;
+        height = other.value.height orelse 0;
+    }
 
     return initWithDimensions(std.heap.page_allocator, ctx, x, y, width, height) catch return error.OutOfMemory;
 }

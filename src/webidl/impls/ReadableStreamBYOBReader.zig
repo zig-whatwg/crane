@@ -148,14 +148,14 @@ pub fn call_read(instance: *runtime.Instance, view: typedefs.ArrayBufferView, op
     const internal = state.own._internal orelse return error.InvalidState;
 
     // Step 1: If view.[[ByteLength]] is 0, reject with TypeError
-    const view_byte_length = arraybuffer_view.getViewByteLength(view);
+    const view_byte_length = view.getByteLength();
     if (view_byte_length == 0) {
         return error.TypeError;
     }
 
     // Step 2: If buffer byte length is 0, reject with TypeError
     // Step 3: If buffer is detached, reject with TypeError
-    if (arraybuffer_view.isViewDetached(view)) {
+    if (view.isDetached()) {
         return error.TypeError;
     }
 
@@ -165,7 +165,8 @@ pub fn call_read(instance: *runtime.Instance, view: typedefs.ArrayBufferView, op
     }
 
     // Step 5: Parse options (default min = 1)
-    const min = options.min orelse 1;
+    const opts = if (options.was_passed) options.value else dictionaries.ReadableStreamBYOBReaderReadOptions{};
+    const min = opts.min orelse 1;
 
     // Step 6: Return ReadableStreamBYOBReaderRead(this, view, min)
     return try readInternal(instance, view, min);
@@ -200,7 +201,8 @@ pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(*const anyopa
     }
 
     // Step 2: Return ! ReadableStreamReaderGenericCancel(this, reason)
-    return readableStreamReaderGenericCancel(internal, reason);
+    const reason_ptr: *const anyopaque = if (reason.was_passed) reason.value else @ptrFromInt(1);
+    return readableStreamReaderGenericCancel(internal, reason_ptr);
 }
 
 // ============================================================================

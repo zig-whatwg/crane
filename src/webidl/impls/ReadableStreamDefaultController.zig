@@ -160,7 +160,8 @@ pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(*const anyopaque)) 
     const internal = state.own._internal orelse return error.InvalidState;
 
     // Step 1: Perform error
-    readableStreamDefaultControllerError(internal, e);
+    const error_ptr: *const anyopaque = if (e.was_passed) e.value else @ptrFromInt(1);
+    readableStreamDefaultControllerError(internal, error_ptr);
 }
 
 /// ReadableStreamDefaultControllerError(controller, e)
@@ -286,7 +287,8 @@ pub fn call_enqueue(instance: *runtime.Instance, chunk: webidl.Opt(*const anyopa
     }
 
     // Step 2: Perform enqueue
-    try readableStreamDefaultControllerEnqueue(internal, chunk);
+    const chunk_ptr: *const anyopaque = if (chunk.was_passed) chunk.value else @ptrFromInt(1);
+    try readableStreamDefaultControllerEnqueue(internal, chunk_ptr);
 }
 
 /// ReadableStreamDefaultControllerCanCloseOrEnqueue(controller)

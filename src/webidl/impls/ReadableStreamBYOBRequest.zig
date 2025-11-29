@@ -93,11 +93,7 @@ pub fn get_view(instance: *runtime.Instance) anyerror!?typedefs.ArrayBufferView 
     const internal = state.own._internal orelse return error.InvalidState;
 
     // Step 1: Return this.[[view]]
-    return internal.view orelse {
-        // If view is null, return a "null" view (empty opaque pointer)
-        // This matches the spec behavior when request has been responded
-        return @as(typedefs.ArrayBufferView, @ptrCast(&[_]u8{}));
-    };
+    return internal.view;
 }
 
 /// Operation: respond
@@ -112,8 +108,7 @@ pub fn call_respond(instance: *runtime.Instance, bytesWritten: u64) anyerror!voi
 
     // Step 2: If this.[[view]].[[ViewedArrayBuffer]] is detached, throw TypeError
     if (internal.view) |view| {
-        const ArrayBufferViewModule = @import("runtime").arraybuffer_view;
-        if (ArrayBufferViewModule.isViewDetached(view)) {
+        if (view.isDetached()) {
             return error.TypeError;
         }
     }
@@ -141,8 +136,7 @@ pub fn call_respondWithNewView(instance: *runtime.Instance, view: typedefs.Array
     const controller = internal.controller orelse return error.TypeError;
 
     // Step 2: If ! IsDetachedBuffer(view.[[ViewedArrayBuffer]]) is true, throw TypeError
-    const ArrayBufferViewModule = @import("runtime").arraybuffer_view;
-    if (ArrayBufferViewModule.isViewDetached(view)) {
+    if (view.isDetached()) {
         return error.TypeError;
     }
 

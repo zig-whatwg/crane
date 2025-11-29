@@ -115,31 +115,34 @@ pub fn call_encode(instance: *runtime.Instance, input: webidl.Opt(runtime.USVStr
     const internal = state.own._internal orelse return ImplError.InvalidState;
     const allocator = internal.allocator;
 
+    // Get input value - default to empty string
+    const input_slice: []const u8 = if (input.was_passed) input.value else "";
+
     // Handle empty input (common case)
-    if (input.len == 0) {
+    if (input_slice.len == 0) {
         // Return pointer to empty Uint8Array descriptor
         // The V8 bindings layer will create the actual Uint8Array object
         return createUint8ArrayDescriptor(allocator, "") catch return ImplError.OutOfMemory;
     }
 
     // ASCII FAST PATH: For ASCII-only input, copy directly
-    if (isAscii(input)) {
-        const output = allocator.dupe(u8, input) catch return ImplError.OutOfMemory;
+    if (isAscii(input_slice)) {
+        const output = allocator.dupe(u8, input_slice) catch return ImplError.OutOfMemory;
         return createUint8ArrayDescriptor(allocator, output) catch return ImplError.OutOfMemory;
     }
 
     // GENERAL PATH: Validate and encode UTF-8
     // Since input is already USVString (valid UTF-8), we can copy directly
     // USVString contains only Unicode scalar values (no surrogates)
-    if (!std.unicode.utf8ValidateSlice(input)) {
+    if (!std.unicode.utf8ValidateSlice(input_slice)) {
         // Invalid UTF-8 - replace invalid sequences with U+FFFD
         // This shouldn't happen with proper USVString input, but handle gracefully
-        const output = replaceInvalidUtf8(allocator, input) catch return ImplError.OutOfMemory;
+        const output = replaceInvalidUtf8(allocator, input_slice) catch return ImplError.OutOfMemory;
         return createUint8ArrayDescriptor(allocator, output) catch return ImplError.OutOfMemory;
     }
 
     // Valid UTF-8 - duplicate
-    const output = allocator.dupe(u8, input) catch return ImplError.OutOfMemory;
+    const output = allocator.dupe(u8, input_slice) catch return ImplError.OutOfMemory;
     return createUint8ArrayDescriptor(allocator, output) catch return ImplError.OutOfMemory;
 }
 

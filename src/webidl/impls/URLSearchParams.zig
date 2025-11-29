@@ -281,14 +281,15 @@ pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString, value: 
     const internal = state.own._internal orelse return error.InvalidState;
 
     // Determine if we should match value or just name
-    const should_match_value = value.len > 0; // If empty string, only match name
+    const value_slice = if (value.was_passed) value.value else "";
+    const should_match_value = value_slice.len > 0; // If empty string, only match name
 
     var i: usize = 0;
     while (i < internal.list.len) {
         const tuple = internal.list.get(i).?;
 
         const should_remove = if (should_match_value)
-            std.mem.eql(u8, tuple.name, name) and std.mem.eql(u8, tuple.value, value)
+            std.mem.eql(u8, tuple.name, name) and std.mem.eql(u8, tuple.value, value_slice)
         else
             std.mem.eql(u8, tuple.name, name);
 
@@ -362,13 +363,14 @@ pub fn call_has(instance: *runtime.Instance, name: runtime.USVString, value: web
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
-    const should_match_value = value.len > 0;
+    const value_slice = if (value.was_passed) value.value else "";
+    const should_match_value = value_slice.len > 0;
 
     for (0..internal.list.len) |i| {
         const tuple = internal.list.get(i).?;
 
         const matches = if (should_match_value)
-            std.mem.eql(u8, tuple.name, name) and std.mem.eql(u8, tuple.value, value)
+            std.mem.eql(u8, tuple.name, name) and std.mem.eql(u8, tuple.value, value_slice)
         else
             std.mem.eql(u8, tuple.name, name);
 

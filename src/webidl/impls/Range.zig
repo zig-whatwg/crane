@@ -530,7 +530,8 @@ pub fn call_setEndAfter(instance: *runtime.Instance, node: *runtime.Instance) an
 pub fn call_collapse(instance: *runtime.Instance, toStart: webidl.Opt(bool)) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    if (toStart) {
+    const collapse_to_start = if (toStart.was_passed) toStart.value else false;
+    if (collapse_to_start) {
         internal.end_container = internal.start_container;
         internal.end_offset = internal.start_offset;
     } else {
@@ -747,7 +748,7 @@ pub fn call_extractContents(instance: *runtime.Instance) anyerror!*runtime.Insta
         start_type == NodeImpl.NodeType.COMMENT_NODE))
     {
         // Clone the node, set its data to the substring, append to fragment
-        const clone = NodeImpl.call_cloneNode(start, false) catch return error.OutOfMemory;
+        const clone = NodeImpl.call_cloneNode(start, webidl.Opt(bool).passed(false)) catch return error.OutOfMemory;
         const CharacterDataImpl = @import("CharacterData.zig");
 
         // Get substring and set on clone
@@ -820,7 +821,7 @@ pub fn call_cloneContents(instance: *runtime.Instance) anyerror!*runtime.Instanc
         start_type == NodeImpl.NodeType.COMMENT_NODE))
     {
         // Clone the node, set its data to the substring, append to fragment
-        const clone = NodeImpl.call_cloneNode(start, false) catch return error.OutOfMemory;
+        const clone = NodeImpl.call_cloneNode(start, webidl.Opt(bool).passed(false)) catch return error.OutOfMemory;
         const CharacterDataImpl = @import("CharacterData.zig");
 
         // Get substring and set on clone
@@ -850,7 +851,7 @@ pub fn call_cloneContents(instance: *runtime.Instance) anyerror!*runtime.Instanc
             }
 
             // Deep clone and append to fragment
-            const clone = try NodeImpl.call_cloneNode(c, true);
+            const clone = try NodeImpl.call_cloneNode(c, webidl.Opt(bool).passed(true));
             _ = try NodeImpl.call_appendChild(fragment, clone);
         }
         child = next;

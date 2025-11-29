@@ -164,10 +164,12 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
     // Get event loop from context
     const loop = try ctx.getEventLoop();
 
-    // Step 1: If underlyingSink is missing, it would be null (handled by caller)
+    // Step 1: If underlyingSink is missing, use default
+    const underlying_sink_ptr = if (underlyingSink.was_passed) underlyingSink.value else null;
 
-    // Step 2: Convert to UnderlyingSink dictionary
-    const underlying_sink_dict: *const dictionaries.UnderlyingSink = @ptrCast(@alignCast(underlyingSink));
+    // Step 2: Convert to UnderlyingSink dictionary (if provided)
+    const default_sink = dictionaries.UnderlyingSink{};
+    const underlying_sink_dict: *const dictionaries.UnderlyingSink = if (underlying_sink_ptr) |ptr| @ptrCast(@alignCast(ptr)) else &default_sink;
 
     // Step 3: If type exists, throw RangeError (reserved for future use)
     if (underlying_sink_dict.type != null) {
@@ -206,16 +208,17 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
     state.own._internal = internal;
 
     // Step 5: Extract size algorithm
-    const size_algorithm = extractSizeAlgorithm(&strategy);
+    const strategy_value = if (strategy.was_passed) strategy.value else dictionaries.QueuingStrategy{};
+    const size_algorithm = extractSizeAlgorithm(&strategy_value);
 
     // Step 6: Extract high water mark (default 1 for writable)
-    const high_water_mark = try extractHighWaterMark(&strategy, 1.0);
+    const high_water_mark = try extractHighWaterMark(&strategy_value, 1.0);
 
     // Step 7: SetUpWritableStreamDefaultControllerFromUnderlyingSink
     try setUpWritableStreamDefaultControllerFromUnderlyingSink(
         instance,
         internal,
-        underlyingSink,
+        underlying_sink_ptr orelse @as(*const anyopaque, @ptrCast(&default_sink)),
         underlying_sink_dict,
         high_water_mark,
         size_algorithm,
@@ -284,7 +287,10 @@ pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaq
     }
 
     // Step 2: Return WritableStreamAbort(this, reason)
-    return writableStreamAbort(instance, internal, reason);
+    // If reason is not passed, use a default undefined-like value
+    const default_reason: u8 = 0;
+    const reason_ptr: *const anyopaque = if (reason.was_passed) reason.value else @ptrCast(&default_reason);
+    return writableStreamAbort(instance, internal, reason_ptr);
 }
 
 /// WritableStreamStartErroring - Begin error process
@@ -427,11 +433,11 @@ pub fn writableStreamFinishErroring(instance: *runtime.Instance, internal: *Inte
             if (controller_internal.abort_algorithm) |abort_fn| {
                 // Create abort reason - use provided reason or undefined
                 const abort_callback: callbacks.UnderlyingSinkAbortCallback = @ptrCast(@alignCast(abort_fn));
-                // Use reason if provided, or pass a placeholder pointer (for undefined)
-                const reason_to_pass: *const anyopaque = abort_request.reason orelse @as(*const anyopaque, @ptrFromInt(1));
+                // Use reason if provided, wrapped in Opt
+                const reason_opt = if (abort_request.reason) |r| webidl.Opt(*const anyopaque).passed(r) else webidl.Opt(*const anyopaque).notPassed();
                 // Call the abort callback - it returns a promise result
                 // The callback should return a valid pointer (representing a promise)
-                _ = abort_callback(reason_to_pass);
+                _ = abort_callback(reason_opt);
                 // Callback invoked successfully
                 abort_succeeded = true;
             }
@@ -731,7 +737,7 @@ fn writableStreamAbort(
             const controller_internal: *WritableStreamDefaultControllerImpl.InternalState = @ptrCast(@alignCast(controller_internal_ptr));
             if (controller_internal.abort_controller) |abort_controller| {
                 // Signal abort on the AbortController
-                interfaces.AbortController.call_abort(abort_controller, reason) catch {};
+                interfaces.AbortController.call_abort(abort_controller, webidl.Opt(*const anyopaque).passed(reason)) catch {};
             }
         }
     }

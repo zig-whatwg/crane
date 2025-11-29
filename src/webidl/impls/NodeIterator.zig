@@ -203,12 +203,13 @@ pub fn get_whatToShow(instance: *runtime.Instance) anyerror!u32 {
 /// Note: WebIDL says nullable NodeFilter, returns null if no filter
 pub fn get_filter(instance: *runtime.Instance) anyerror!??*runtime.CallbackWrapper {
     const internal = getInternal(instance);
-    // If filter is null, return NotImplemented (signals null in WebIDL)
+    // If filter is null, return null (outer optional)
     if (internal.filter) |filter_ptr| {
-        // Cast opaque pointer back to Instance
-        return @ptrCast(@alignCast(filter_ptr));
+        // Cast opaque pointer back to CallbackWrapper
+        const callback: *runtime.CallbackWrapper = @ptrCast(@alignCast(filter_ptr));
+        return callback; // ??*CallbackWrapper - inner optional with value
     }
-    return error.NotImplemented; // null
+    return null; // null for outer optional
 }
 
 // ============================================================================

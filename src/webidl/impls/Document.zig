@@ -2785,7 +2785,7 @@ pub fn call_createEvent(instance: *runtime.Instance, interface: runtime.DOMStrin
         .cancelable = false,
         .composed = false,
     };
-    const event = try EventImpl.call_constructor(internal.allocator, instance.ctx, runtime.DOMString.initEmpty(), event_init);
+    const event = try EventImpl.call_constructor(internal.allocator, instance.ctx, runtime.DOMString.initEmpty(), webidl.Opt(dictionaries.EventInit).passed(event_init));
 
     return event;
 }
@@ -3108,14 +3108,14 @@ fn cloneNode(doc: *runtime.Instance, node: *runtime.Instance, deep: bool) ImplEr
             // Clone text data
             const CharacterDataImpl = @import("CharacterData.zig");
             const src_data = CharacterDataImpl.getData(node) orelse "";
-            const text = try TextImpl.call_constructor(internal.allocator, doc.ctx, runtime.DOMString.initInterned(src_data));
+            const text = try TextImpl.call_constructor(internal.allocator, doc.ctx, webidl.Opt(runtime.DOMString).passed(runtime.DOMString.initInterned(src_data)));
             break :blk text;
         },
         NodeImpl.NodeType.COMMENT_NODE => blk: {
             // Clone comment data
             const CharacterDataImpl = @import("CharacterData.zig");
             const src_data = CharacterDataImpl.getData(node) orelse "";
-            const comment = try CommentImpl.call_constructor(internal.allocator, doc.ctx, runtime.DOMString.initInterned(src_data));
+            const comment = try CommentImpl.call_constructor(internal.allocator, doc.ctx, webidl.Opt(runtime.DOMString).passed(runtime.DOMString.initInterned(src_data)));
             break :blk comment;
         },
         NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE => blk: {
@@ -3327,7 +3327,7 @@ fn findElementById(node: *runtime.Instance, target_id: []const u8) ?*runtime.Ins
 /// 2. Return a new Attr with namespace, prefix, localName, and empty value
 pub fn call_createAttributeNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, qualifiedName: runtime.DOMString) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const ns_slice = namespace.asSlice();
+    const ns_slice = if (namespace) |ns| ns.asSlice() else "";
     const qname_slice = qualifiedName.asSlice();
 
     // Parse qualified name for prefix and local name
@@ -3450,7 +3450,7 @@ pub fn call_createTextNode(instance: *runtime.Instance, data: runtime.DOMString)
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Create Text node via Text impl constructor
-    const text = try TextImpl.call_constructor(internal.allocator, instance.ctx, data);
+    const text = try TextImpl.call_constructor(internal.allocator, instance.ctx, webidl.Opt(runtime.DOMString).passed(data));
     errdefer TextImpl.deinit(text);
 
     // Set owner document
@@ -3489,7 +3489,7 @@ pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instanc
         const walker_internal: *TreeWalkerImpl.InternalState = @ptrCast(@alignCast(walker_internal_ptr));
         walker_internal.root = root;
         walker_internal.current = root;
-        walker_internal.what_to_show = whatToShow;
+        walker_internal.what_to_show = if (whatToShow.was_passed) whatToShow.value else 0xFFFFFFFF;
         // walker_internal.filter = filter; // TODO: Handle filter properly
     }
 
@@ -3636,7 +3636,7 @@ pub fn call_createComment(instance: *runtime.Instance, data: runtime.DOMString) 
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Create Comment node via Comment impl constructor
-    const comment = try CommentImpl.call_constructor(internal.allocator, instance.ctx, data);
+    const comment = try CommentImpl.call_constructor(internal.allocator, instance.ctx, webidl.Opt(runtime.DOMString).passed(data));
     errdefer CommentImpl.deinit(comment);
 
     // Set owner document
@@ -3703,7 +3703,7 @@ pub fn call_createElementNS(instance: *runtime.Instance, namespace: ?runtime.DOM
     _ = options; // TODO: Handle ElementCreationOptions (custom elements)
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    const ns_slice = namespace.asSlice();
+    const ns_slice = if (namespace) |ns| ns.asSlice() else "";
     const qname_slice = qualifiedName.asSlice();
 
     // Parse qualified name for prefix and local name
@@ -3812,7 +3812,7 @@ pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Insta
         iter_internal.root = root;
         iter_internal.reference = root;
         iter_internal.pointer_before_reference = true;
-        iter_internal.what_to_show = whatToShow;
+        iter_internal.what_to_show = if (whatToShow.was_passed) whatToShow.value else 0xFFFFFFFF;
         // iter_internal.filter = filter; // TODO: Handle filter properly
     }
 

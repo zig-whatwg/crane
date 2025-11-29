@@ -520,7 +520,7 @@ pub fn get_innerHTML(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const str = internal.allocator.create(runtime.DOMString) catch return error.OutOfMemory;
     const owned = result.toOwnedSlice() catch return error.OutOfMemory;
     str.* = runtime.DOMString.initOwned(owned);
-    return @ptrCast(str);
+    return str.*;
 }
 
 /// Getter for outerHTML
@@ -542,7 +542,7 @@ pub fn get_outerHTML(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const str = internal.allocator.create(runtime.DOMString) catch return error.OutOfMemory;
     const owned = result.toOwnedSlice() catch return error.OutOfMemory;
     str.* = runtime.DOMString.initOwned(owned);
-    return @ptrCast(str);
+    return str.*;
 }
 
 /// Internal helper to serialize a node to HTML
@@ -2051,7 +2051,7 @@ pub fn set_ariaValueText(instance: *runtime.Instance, value: runtime.DOMString) 
 /// Spec: https://dom.spec.whatwg.org/#dom-element-getattributens
 pub fn call_getAttributeNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const ns_slice = namespace.asSlice();
+    const ns_slice = if (namespace) |ns| ns.asSlice() else "";
     const name_slice = localName.asSlice();
 
     // Get attribute by namespace and local name
@@ -2252,7 +2252,7 @@ pub fn call_setAttributeNodeNS(instance: *runtime.Instance, attr: *runtime.Insta
 /// Spec: https://dom.spec.whatwg.org/#dom-element-getattributenodens
 pub fn call_getAttributeNodeNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const ns_slice = namespace.asSlice();
+    const ns_slice = if (namespace) |ns| ns.asSlice() else "";
     const name_slice = localName.asSlice();
 
     // Get attribute by namespace and local name
@@ -2282,12 +2282,11 @@ pub fn call_getAttributeNodeNS(instance: *runtime.Instance, namespace: ?runtime.
 /// Spec: https://dom.spec.whatwg.org/#dom-element-setattributens
 pub fn call_setAttributeNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, qualifiedName: runtime.DOMString, value: runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const ns_slice = namespace.asSlice();
+    const ns_slice = if (namespace) |ns| ns.asSlice() else "";
     const qname_slice = qualifiedName.asSlice();
 
-    // Cast value - it should be a DOMString
-    const value_str: *const runtime.DOMString = @ptrCast(@alignCast(value));
-    const val = value_str.asSlice();
+    // Get value as slice
+    const val = value.asSlice();
 
     // Parse qualified name for prefix and local name
     var prefix: ?[]const u8 = null;
@@ -2363,7 +2362,7 @@ pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(dictionari
 /// Spec: https://dom.spec.whatwg.org/#dom-element-getelementsbytagnamens
 pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const ns_slice = namespace.asSlice();
+    const ns_slice = if (namespace) |ns| ns.asSlice() else "";
     const name_slice = localName.asSlice();
 
     // Create HTMLCollection
@@ -2733,7 +2732,7 @@ pub fn call_removeAttributeNode(instance: *runtime.Instance, attr: *runtime.Inst
 /// Spec: https://dom.spec.whatwg.org/#dom-element-removeattributens
 pub fn call_removeAttributeNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const ns_slice = namespace.asSlice();
+    const ns_slice = if (namespace) |ns| ns.asSlice() else "";
     const name_slice = localName.asSlice();
 
     // Remove by namespace and local name
@@ -2751,7 +2750,7 @@ pub fn call_insertAdjacentText(instance: *runtime.Instance, where: runtime.DOMSt
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Step 1: Create a new Text node with the given data
-    const text_node = TextImpl.call_constructor(internal.allocator, instance.ctx, data) catch return error.OutOfMemory;
+    const text_node = TextImpl.call_constructor(internal.allocator, instance.ctx, webidl.Opt(runtime.DOMString).passed(data)) catch return error.OutOfMemory;
     errdefer TextImpl.deinit(text_node);
 
     // Step 2: Run insert adjacent algorithm
@@ -2972,37 +2971,42 @@ pub fn call_toggleAttribute(instance: *runtime.Instance, qualifiedName: runtime.
         }
     }
 
+    // Handle force parameter
+    const force_value: ?bool = if (force.was_passed) force.value else null;
+
     if (attr_index != null) {
         // Attribute exists
-        if (!force) {
-            // Remove it
-            const entry = internal.attributes.items[attr_index.?];
-            if (entry.namespace_uri) |ns| internal.allocator.free(ns);
-            if (entry.prefix) |p| internal.allocator.free(p);
-            internal.allocator.free(entry.local_name);
-            internal.allocator.free(entry.value);
-            _ = internal.attributes.orderedRemove(attr_index.?);
+        if (force_value == null or force_value == false) {
+            // Remove it (when force not passed or force is false)
+            if (force_value == null or force_value == false) {
+                const entry = internal.attributes.items[attr_index.?];
+                if (entry.namespace_uri) |ns| internal.allocator.free(ns);
+                if (entry.prefix) |p| internal.allocator.free(p);
+                internal.allocator.free(entry.local_name);
+                internal.allocator.free(entry.value);
+                _ = internal.attributes.orderedRemove(attr_index.?);
 
-            // Clear cached values if applicable
-            if (std.mem.eql(u8, name, "id")) {
-                internal.id.deinit(internal.allocator);
-                internal.id = runtime.DOMString.initEmpty();
-            } else if (std.mem.eql(u8, name, "class")) {
-                internal.class_name.deinit(internal.allocator);
-                internal.class_name = runtime.DOMString.initEmpty();
-            } else if (std.mem.eql(u8, name, "slot")) {
-                internal.slot.deinit(internal.allocator);
-                internal.slot = runtime.DOMString.initEmpty();
+                // Clear cached values if applicable
+                if (std.mem.eql(u8, name, "id")) {
+                    internal.id.deinit(internal.allocator);
+                    internal.id = runtime.DOMString.initEmpty();
+                } else if (std.mem.eql(u8, name, "class")) {
+                    internal.class_name.deinit(internal.allocator);
+                    internal.class_name = runtime.DOMString.initEmpty();
+                } else if (std.mem.eql(u8, name, "slot")) {
+                    internal.slot.deinit(internal.allocator);
+                    internal.slot = runtime.DOMString.initEmpty();
+                }
+
+                return false;
             }
-
-            return false;
         }
         // force is true, attribute exists - return true
         return true;
     } else {
         // Attribute doesn't exist
-        if (force) {
-            // Add it with empty value
+        if (force_value == null or force_value == true) {
+            // Add it with empty value (when force not passed or force is true)
             try setAttributeInternal(internal, null, null, name, "");
             return true;
         }
@@ -3080,9 +3084,8 @@ pub fn call_setAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOM
 
     // TODO: Validate qualifiedName per https://dom.spec.whatwg.org/#validate
 
-    // Cast value - it should be a DOMString
-    const value_str: *const runtime.DOMString = @ptrCast(@alignCast(value));
-    const val = value_str.asSlice();
+    // Get value as slice
+    const val = value.asSlice();
 
     // TODO: Lowercase name for HTML elements in HTML documents
 
@@ -3244,7 +3247,7 @@ pub fn call_requestPointerLock(instance: *runtime.Instance, options: webidl.Opt(
 /// Spec: https://dom.spec.whatwg.org/#dom-element-hasattributens
 pub fn call_hasAttributeNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const ns_slice = namespace.asSlice();
+    const ns_slice = if (namespace) |ns| ns.asSlice() else "";
     const name_slice = localName.asSlice();
 
     return getAttributeByNS(internal, if (ns_slice.len > 0) ns_slice else null, name_slice) != null;

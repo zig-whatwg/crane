@@ -107,7 +107,8 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, data
     try NodeImpl.setNodeType(instance, NodeImpl.NodeType.TEXT_NODE);
 
     // Set the text data via CharacterData
-    try CharacterDataImpl.setData(instance, data.asSlice());
+    const data_slice = if (data.was_passed) data.value.asSlice() else "";
+    try CharacterDataImpl.setData(instance, data_slice);
 
     return instance;
 }

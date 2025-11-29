@@ -197,25 +197,33 @@ pub fn call_contains(instance: *runtime.Instance, token: runtime.DOMString) anye
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-add
 pub fn call_add(instance: *runtime.Instance, tokens: []const runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return;
-    const token_slice = tokens.asSlice();
 
-    // Validate token
-    if (token_slice.len == 0) return error.SyntaxError;
-    if (std.mem.indexOfAny(u8, token_slice, " \t\n\r\x0c")) |_| {
-        return error.InvalidCharacterError;
-    }
+    // Process each token in the variadic list
+    for (tokens) |token| {
+        const token_slice = token.asSlice();
 
-    // Check if already present
-    const existing = internal.tokens.toSlice();
-    for (existing) |t| {
-        if (std.mem.eql(u8, t.asSlice(), token_slice)) {
-            return; // Already exists
+        // Validate token
+        if (token_slice.len == 0) return error.SyntaxError;
+        if (std.mem.indexOfAny(u8, token_slice, " \t\n\r\x0c")) |_| {
+            return error.InvalidCharacterError;
+        }
+
+        // Check if already present
+        var already_present = false;
+        const existing = internal.tokens.toSlice();
+        for (existing) |t| {
+            if (std.mem.eql(u8, t.asSlice(), token_slice)) {
+                already_present = true;
+                break;
+            }
+        }
+
+        if (!already_present) {
+            // Add the token
+            const owned = try runtime.DOMString.initDupe(internal.allocator, token_slice);
+            try internal.tokens.append(owned);
         }
     }
-
-    // Add the token
-    const owned = try runtime.DOMString.initDupe(internal.allocator, token_slice);
-    try internal.tokens.append(owned);
 
     // Update length
     const state = instance.getState(State);
@@ -226,23 +234,27 @@ pub fn call_add(instance: *runtime.Instance, tokens: []const runtime.DOMString) 
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-remove
 pub fn call_remove(instance: *runtime.Instance, tokens: []const runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return;
-    const token_slice = tokens.asSlice();
 
-    // Validate token
-    if (token_slice.len == 0) return error.SyntaxError;
-    if (std.mem.indexOfAny(u8, token_slice, " \t\n\r\x0c")) |_| {
-        return error.InvalidCharacterError;
-    }
+    // Process each token in the variadic list
+    for (tokens) |token_to_remove| {
+        const token_slice = token_to_remove.asSlice();
 
-    // Find and remove
-    const slice = internal.tokens.toSliceMut();
-    var i: usize = 0;
-    while (i < internal.tokens.len) {
-        if (std.mem.eql(u8, slice[i].asSlice(), token_slice)) {
-            var token = internal.tokens.remove(i) catch continue;
-            token.deinit(internal.allocator);
-        } else {
-            i += 1;
+        // Validate token
+        if (token_slice.len == 0) return error.SyntaxError;
+        if (std.mem.indexOfAny(u8, token_slice, " \t\n\r\x0c")) |_| {
+            return error.InvalidCharacterError;
+        }
+
+        // Find and remove
+        const slice = internal.tokens.toSliceMut();
+        var i: usize = 0;
+        while (i < internal.tokens.len) {
+            if (std.mem.eql(u8, slice[i].asSlice(), token_slice)) {
+                var removed_token = internal.tokens.remove(i) catch continue;
+                removed_token.deinit(internal.allocator);
+            } else {
+                i += 1;
+            }
         }
     }
 
@@ -256,18 +268,34 @@ pub fn call_remove(instance: *runtime.Instance, tokens: []const runtime.DOMStrin
 pub fn call_toggle(instance: *runtime.Instance, token: runtime.DOMString, force: webidl.Opt(bool)) anyerror!bool {
     const contains = try call_contains(instance, token);
 
-    if (contains) {
-        if (!force) {
-            try call_remove(instance, token);
+    // If force was passed, use it to decide action
+    if (force.was_passed) {
+        if (force.value) {
+            // force=true: add if not present
+            if (!contains) {
+                const tokens = [_]runtime.DOMString{token};
+                try call_add(instance, &tokens);
+            }
+            return true;
+        } else {
+            // force=false: remove if present
+            if (contains) {
+                const tokens = [_]runtime.DOMString{token};
+                try call_remove(instance, &tokens);
+            }
             return false;
         }
-        return true;
-    } else {
-        if (force) {
-            try call_add(instance, token);
-            return true;
-        }
+    }
+
+    // No force: toggle based on current state
+    if (contains) {
+        const tokens = [_]runtime.DOMString{token};
+        try call_remove(instance, &tokens);
         return false;
+    } else {
+        const tokens = [_]runtime.DOMString{token};
+        try call_add(instance, &tokens);
+        return true;
     }
 }
 

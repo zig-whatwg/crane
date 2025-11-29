@@ -119,7 +119,8 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, tran
     // (Reserved for future use - not implemented yet)
 
     // Spec step 5: Let readableHighWaterMark be ? ExtractHighWaterMark(readableStrategy, 0)
-    const readable_hwm = extractHighWaterMark(&readableStrategy, 0.0) catch {
+    const readable_strategy = if (readableStrategy.was_passed) readableStrategy.value else dictionaries.QueuingStrategy{};
+    const readable_hwm = extractHighWaterMark(&readable_strategy, 0.0) catch {
         allocator.destroy(internal);
         deinit(instance);
         return error.RangeError;
@@ -129,7 +130,8 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, tran
     // (Using default for now)
 
     // Spec step 7: Let writableHighWaterMark be ? ExtractHighWaterMark(writableStrategy, 1)
-    const writable_hwm = extractHighWaterMark(&writableStrategy, 1.0) catch {
+    const writable_strategy = if (writableStrategy.was_passed) writableStrategy.value else dictionaries.QueuingStrategy{};
+    const writable_hwm = extractHighWaterMark(&writable_strategy, 1.0) catch {
         allocator.destroy(internal);
         deinit(instance);
         return error.RangeError;
@@ -145,7 +147,10 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, tran
     try initializeTransformStream(instance, internal, allocator, ctx, start_promise, writable_hwm, readable_hwm);
 
     // Spec step 11: Perform ? SetUpTransformStreamDefaultControllerFromTransformer(this, transformer, transformerDict)
-    try setUpTransformStreamDefaultControllerFromTransformer(instance, internal, allocator, ctx, transformer);
+    const transformer_ptr = if (transformer.was_passed) transformer.value else null;
+    if (transformer_ptr) |ptr| {
+        try setUpTransformStreamDefaultControllerFromTransformer(instance, internal, allocator, ctx, ptr);
+    }
 
     // Spec step 12-13: If transformerDict["start"] exists, resolve startPromise with result of invoking it
     // Otherwise, resolve startPromise with undefined

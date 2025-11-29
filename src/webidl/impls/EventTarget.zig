@@ -26,7 +26,7 @@ pub const ImplError = error{
 /// An event listener can be used to observe a specific event and consists of:
 pub const EventListenerRecord = struct {
     /// type (a string)
-    @"type": runtime.DOMString,
+    type: runtime.DOMString,
 
     /// callback (null or an EventListener callback)
     callback: ?*runtime.Instance,
@@ -81,7 +81,7 @@ pub const InternalState = struct {
             // Free any owned DOMStrings in event listeners
             const slice = list.toSliceMut();
             for (slice) |*listener| {
-                var @"type" = listener.@"type";
+                var @"type" = listener.type;
                 @"type".deinit(self.allocator);
             }
             list.deinit();
@@ -240,7 +240,7 @@ fn addAnEventListener(internal: *InternalState, instance: *runtime.Instance, lis
     // Step 4: If listener's passive is null, set it to default passive value
     var updated_listener = listener;
     if (updated_listener.passive == null) {
-        updated_listener.passive = defaultPassiveValue(listener.@"type".asSlice(), instance);
+        updated_listener.passive = defaultPassiveValue(listener.type.asSlice(), instance);
     }
 
     // Step 5: If event listener list does not contain matching listener, append it
@@ -249,7 +249,7 @@ fn addAnEventListener(internal: *InternalState, instance: *runtime.Instance, lis
 
     var already_exists = false;
     for (slice) |existing| {
-        if (std.mem.eql(u8, existing.@"type".asSlice(), listener.@"type".asSlice()) and
+        if (std.mem.eql(u8, existing.type.asSlice(), listener.type.asSlice()) and
             existing.capture == listener.capture and
             callbackEquals(existing.callback, listener.callback))
         {
@@ -282,7 +282,7 @@ fn removeAnEventListener(internal: *InternalState, listener: EventListenerRecord
         const existing = &slice[i];
 
         // Match on type, callback, and capture
-        if (std.mem.eql(u8, existing.@"type".asSlice(), listener.@"type".asSlice()) and
+        if (std.mem.eql(u8, existing.type.asSlice(), listener.type.asSlice()) and
             existing.capture == listener.capture and
             callbackEquals(existing.callback, listener.callback))
         {
@@ -316,10 +316,21 @@ pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMSt
     const once = false;
     const signal: ?*runtime.Instance = null;
 
+    // Convert callback wrapper to Instance pointer if present
+    // The callback comes as ??*runtime.CallbackWrapper but we store ?*runtime.Instance
+    const callback_instance: ?*runtime.Instance = if (callback) |cb_opt| blk: {
+        if (cb_opt) |cb| {
+            // Cast CallbackWrapper pointer to Instance pointer
+            // This is safe because CallbackWrapper wraps an Instance
+            break :blk @ptrCast(cb);
+        }
+        break :blk null;
+    } else null;
+
     // Create listener record
     const listener = EventListenerRecord{
-        .@"type" = @"type",
-        .callback = callback,
+        .type = @"type",
+        .callback = callback_instance,
         .capture = capture,
         .passive = passive,
         .once = once,
@@ -338,10 +349,18 @@ pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DO
     _ = options;
     const capture = false; // Default
 
+    // Convert callback wrapper to Instance pointer if present
+    const callback_instance: ?*runtime.Instance = if (callback) |cb_opt| blk: {
+        if (cb_opt) |cb| {
+            break :blk @ptrCast(cb);
+        }
+        break :blk null;
+    } else null;
+
     // Create listener record for matching
     const listener = EventListenerRecord{
-        .@"type" = @"type",
-        .callback = callback,
+        .type = @"type",
+        .callback = callback_instance,
         .capture = capture,
     };
 
@@ -382,7 +401,7 @@ pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance)
 
         // Invoke matching listeners
         for (listeners) |listener| {
-            if (std.mem.eql(u8, listener.@"type".asSlice(), @"type".asSlice()) and
+            if (std.mem.eql(u8, listener.type.asSlice(), @"type".asSlice()) and
                 !listener.removed)
             {
                 // TODO: Actually invoke the callback

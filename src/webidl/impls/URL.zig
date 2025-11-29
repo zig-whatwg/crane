@@ -70,8 +70,9 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url:
 
     // Step 1: Parse base URL if provided
     var base_record: ?URLRecord = null;
-    if (base.len > 0) {
-        base_record = api_parser.parseURL(allocator, base, null) catch {
+    const base_slice = if (base.was_passed) base.value else "";
+    if (base_slice.len > 0) {
+        base_record = api_parser.parseURL(allocator, base_slice, null) catch {
             return error.TypeError; // Base URL parse failed
         };
     }
@@ -105,11 +106,10 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url:
     const URLSearchParamsInterface = interfaces.URLSearchParams;
 
     // Create URLSearchParams instance - pass empty init_data for now
-    const empty_init: u8 = 0;
     const query_params_instance = try URLSearchParamsInterface.call_constructor(
         allocator,
         ctx,
-        @ptrCast(&empty_init),
+        webidl.Opt(*const anyopaque).notPassed(),
     );
     errdefer URLSearchParamsInterface.deinit(query_params_instance);
 
@@ -645,8 +645,9 @@ pub fn call_canParse(instance: *runtime.Instance, url: runtime.USVString, base: 
 
     // Parse base URL if provided
     var base_record: ?URLRecord = null;
-    if (base.len > 0) {
-        base_record = api_parser.parseURL(allocator, base, null) catch return false;
+    const base_slice = if (base.was_passed) base.value else "";
+    if (base_slice.len > 0) {
+        base_record = api_parser.parseURL(allocator, base_slice, null) catch return false;
     }
     defer if (base_record) |*br| br.deinit();
 

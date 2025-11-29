@@ -861,7 +861,7 @@ pub fn respond(instance: *runtime.Instance, bytesWritten: u64) ImplError!void {
     }
 
     // Step 2: Let firstDescriptor be controller.[[pendingPullIntos]][0]
-    const firstDescriptor = internal.pending_pull_intos.items[0];
+    const firstDescriptor = internal.pending_pull_intos.get(0) orelse return error.InvalidState;
 
     // Step 3: Let state be controller.[[stream]].[[state]]
     const stream = internal.stream orelse return error.InvalidState;
@@ -913,7 +913,7 @@ pub fn respondWithNewView(instance: *runtime.Instance, view: typedefs.ArrayBuffe
     const internal = state.own._internal orelse return error.InvalidState;
 
     // Step 1: Assert: controller.[[pendingPullIntos]] is not empty
-    if (internal.pending_pull_intos.items.len == 0) {
+    if (internal.pending_pull_intos.isEmpty()) {
         return error.InvalidState;
     }
 
@@ -923,7 +923,7 @@ pub fn respondWithNewView(instance: *runtime.Instance, view: typedefs.ArrayBuffe
     }
 
     // Step 3: Let firstDescriptor be controller.[[pendingPullIntos]][0]
-    const firstDescriptor = internal.pending_pull_intos.items[0];
+    const firstDescriptor = internal.pending_pull_intos.get(0) orelse return error.InvalidState;
 
     // Step 4: Let state be controller.[[stream]].[[state]]
     const stream = internal.stream orelse return error.InvalidState;
@@ -960,7 +960,7 @@ pub fn respondWithNewView(instance: *runtime.Instance, view: typedefs.ArrayBuffe
     }
 
     // Step 8: If firstDescriptor's buffer byte length is not view.[[ViewedArrayBuffer]].[[ByteLength]], throw RangeError
-    const view_buffer_byte_length = ArrayBufferViewModule.getViewBufferByteLength(view);
+    const view_buffer_byte_length = view.getViewedArrayBuffer().byteLength();
     if (firstDescriptor.buffer.byte_length != view_buffer_byte_length) {
         return error.RangeError;
     }
@@ -990,7 +990,7 @@ fn respondInternal(instance: *runtime.Instance, bytesWritten: u64) ImplError!voi
     const internal = state.own._internal orelse return error.InvalidState;
 
     // Step 1: Let firstDescriptor be controller.[[pendingPullIntos]][0]
-    const firstDescriptor = internal.pending_pull_intos.items[0];
+    const firstDescriptor = internal.pending_pull_intos.get(0) orelse return error.InvalidState;
 
     // Step 2: Assert: ! CanTransferArrayBuffer(firstDescriptor's buffer) is true
     // (Already transferred in respond())
@@ -1118,18 +1118,17 @@ fn respondInReadableState(
         const end = pullIntoDescriptor.byte_offset + pullIntoDescriptor.bytes_filled;
         const start = end - remainder_size;
 
-        // Create a cloned buffer for the remainder
-        const remainder_buffer = try ArrayBuffer.init(internal.allocator, remainder_size);
-        errdefer {
-            remainder_buffer.deinit(internal.allocator);
-            internal.allocator.destroy(remainder_buffer);
-        }
+        // Create a cloned buffer for the remainder (heap-allocated)
+        const remainder_buffer_ptr = try internal.allocator.create(ArrayBuffer);
+        errdefer internal.allocator.destroy(remainder_buffer_ptr);
+        remainder_buffer_ptr.* = try ArrayBuffer.init(internal.allocator, remainder_size);
+        errdefer remainder_buffer_ptr.deinit(internal.allocator);
 
         // Copy remainder bytes
-        @memcpy(remainder_buffer.data[0..remainder_size], pullIntoDescriptor.buffer.data[start..end]);
+        @memcpy(remainder_buffer_ptr.data[0..remainder_size], pullIntoDescriptor.buffer.data[start..end]);
 
         // Enqueue the remainder
-        try enqueueChunkToQueue(internal, remainder_buffer, 0, remainder_size);
+        try enqueueChunkToQueue(internal, remainder_buffer_ptr, 0, remainder_size);
 
         // Step 8: Adjust bytes filled
         pullIntoDescriptor.bytes_filled -= remainder_size;
@@ -1246,7 +1245,8 @@ fn commitPullIntoDescriptor(
     const filled_view: *anyopaque = blk: {
         // If we have V8 context, create a proper V8 TypedArray
         if (internal.isolate != null and internal.v8_context != null) {
-            const v8_ffi = runtime.engines.v8.ffi;
+            const v8_engine = @import("v8");
+            const v8_ffi = v8_engine.ffi;
             const isolate: *v8_ffi.Isolate = @ptrCast(@alignCast(internal.isolate.?));
 
             // Create V8 ArrayBuffer from descriptor's buffer
@@ -1268,6 +1268,7 @@ fn commitPullIntoDescriptor(
 
             const view = switch (pullIntoDescriptor.view_constructor) {
                 .uint8_array => v8_ffi.v8_Uint8Array_New(isolate, v8_buffer, byte_offset, element_count),
+                .uint8_clamped_array => v8_ffi.v8_Uint8ClampedArray_New(isolate, v8_buffer, byte_offset, element_count),
                 .int8_array => v8_ffi.v8_Int8Array_New(isolate, v8_buffer, byte_offset, element_count),
                 .uint16_array => v8_ffi.v8_Uint16Array_New(isolate, v8_buffer, byte_offset, element_count),
                 .int16_array => v8_ffi.v8_Int16Array_New(isolate, v8_buffer, byte_offset, element_count),
@@ -1462,9 +1463,12 @@ fn fillPullIntoDescriptorFromQueue(
     // Step 8: Let queue be controller.[[queue]]
     // Step 9: While totalBytesToCopyRemaining > 0
     var bytes_copied: u64 = 0;
-    while (total_bytes_to_copy_remaining > 0 and internal.byte_queue.items.len > 0) {
+    while (total_bytes_to_copy_remaining > 0 and internal.byte_queue.len > 0) {
         // Step 9.1: Let headOfQueue be queue[0]
-        const head = &internal.byte_queue.items[0];
+        // Get a mutable slice to access the first element
+        const queue_slice = internal.byte_queue.toSliceMut();
+        if (queue_slice.len == 0) break;
+        const head = &queue_slice[0];
 
         // Step 9.2: Let bytesToCopy = min(totalBytesToCopyRemaining, headOfQueue.byteLength)
         const bytes_to_copy = @min(total_bytes_to_copy_remaining, head.byteLength);
@@ -1480,7 +1484,7 @@ fn fillPullIntoDescriptorFromQueue(
         // Step 9.5: If headOfQueue.byteLength is bytesToCopy
         if (head.byteLength == bytes_to_copy) {
             // Step 9.5.1: Remove queue[0]
-            const removed = internal.byte_queue.orderedRemove(0);
+            const removed = internal.byte_queue.remove(0) catch break;
             removed.buffer.deinit(internal.allocator);
             internal.allocator.destroy(removed.buffer);
         } else {
@@ -1724,30 +1728,28 @@ pub fn pullSteps(
 ///
 /// Returns 1 for Uint8Array/Int8Array, 2 for Uint16Array/Int16Array, etc.
 fn getViewElementSize(view: typedefs.ArrayBufferView) u64 {
-    return ArrayBufferViewModule.getViewElementSize(view);
+    return view.getElementSize();
 }
 
 /// Get the byte offset of the view into its underlying ArrayBuffer
 fn getViewByteOffset(view: typedefs.ArrayBufferView) u64 {
-    return ArrayBufferViewModule.getViewByteOffset(view);
+    return view.getByteOffset();
 }
 
 /// Get the byte length of the view
 fn getViewByteLength(view: typedefs.ArrayBufferView) u64 {
-    return ArrayBufferViewModule.getViewByteLength(view);
+    return view.getByteLength();
 }
 
 /// Check if the view's underlying ArrayBuffer is detached
 fn isViewDetached(view: typedefs.ArrayBufferView) bool {
-    return ArrayBufferViewModule.isViewDetached(view);
+    return view.isDetached();
 }
 
 /// Get the ViewConstructor type for a TypedArray view
 fn getViewConstructor(view: typedefs.ArrayBufferView) ViewConstructor {
-    const view_type = ArrayBufferViewModule.getViewConstructor(view);
-
-    // Convert ViewType to ViewConstructor
-    return switch (view_type) {
+    // Get the view type from the union tag
+    return switch (view) {
         .int8_array => ViewConstructor.int8_array,
         .uint8_array => ViewConstructor.uint8_array,
         .uint8_clamped_array => ViewConstructor.uint8_clamped_array,
@@ -1755,6 +1757,8 @@ fn getViewConstructor(view: typedefs.ArrayBufferView) ViewConstructor {
         .uint16_array => ViewConstructor.uint16_array,
         .int32_array => ViewConstructor.int32_array,
         .uint32_array => ViewConstructor.uint32_array,
+        .int64_array => ViewConstructor.bigint64_array, // Map int64 to bigint64
+        .uint64_array => ViewConstructor.biguint64_array, // Map uint64 to biguint64
         .float32_array => ViewConstructor.float32_array,
         .float64_array => ViewConstructor.float64_array,
         .bigint64_array => ViewConstructor.bigint64_array,
@@ -1770,10 +1774,9 @@ fn extractViewBuffer(
     allocator: std.mem.Allocator,
     view: typedefs.ArrayBufferView,
 ) !*ArrayBuffer {
-    // Get the metadata from the runtime module
-    const runtime_buffer = try ArrayBufferViewModule.extractViewBuffer(allocator, view);
-
-    // Convert to pull_into_descriptor.ArrayBuffer
-    // Both types have the same memory layout, so we can cast the pointer
-    return @ptrCast(runtime_buffer);
+    _ = allocator;
+    // Get the viewed array buffer directly from the view
+    // Cast the buffer types which have compatible layouts
+    const buffer = view.getViewedArrayBuffer();
+    return @ptrCast(buffer);
 }

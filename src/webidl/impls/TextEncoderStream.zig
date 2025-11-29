@@ -26,6 +26,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const infra = @import("infra");
 const TextEncoderStream = interfaces.TextEncoderStream;
 
@@ -123,9 +124,9 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
     const transform = try interfaces.TransformStream.call_constructor(
         allocator,
         ctx,
-        empty_ptr, // transformer placeholder
-        .{}, // writableStrategy (default)
-        .{}, // readableStrategy (default)
+        webidl.Opt(*const anyopaque).passed(empty_ptr),
+        webidl.Opt(dictionaries.QueuingStrategy).notPassed(),
+        webidl.Opt(dictionaries.QueuingStrategy).notPassed(),
     );
     errdefer interfaces.TransformStream.deinit(transform);
 

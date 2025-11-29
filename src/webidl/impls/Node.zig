@@ -471,7 +471,9 @@ pub fn call_getRootNode(instance: *runtime.Instance, options: webidl.Opt(diction
 
     // If composed is true and this is in a shadow tree, get the composed root
     // TODO: Handle shadow DOM composed root when ShadowRoot is implemented
-    _ = options.composed;
+    if (options.was_passed) {
+        _ = options.value.composed;
+    }
 
     // Walk up the tree to find the root
     while (current_internal.parent) |parent| {
@@ -560,7 +562,8 @@ pub fn call_isSameNode(instance: *runtime.Instance, otherNode: ?*runtime.Instanc
 /// Returns true if nodes are equal (same type, attributes, children)
 pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: ?*runtime.Instance) anyerror!bool {
     const self_internal = getInternal(instance) orelse return false;
-    const other_internal = getInternal(otherNode) orelse return false;
+    const other_node = otherNode orelse return false;
+    const other_internal = getInternal(other_node) orelse return false;
 
     // Must be same node type
     if (self_internal.node_type != other_internal.node_type) return false;
@@ -655,7 +658,8 @@ pub fn call_cloneNode(instance: *runtime.Instance, subtree: webidl.Opt(bool)) an
     // For now, we don't have full shadow DOM so skip this check
 
     // Step 2: Clone this node
-    return cloneNodeInternal(instance, internal.owner_document, subtree);
+    const deep = if (subtree.was_passed) subtree.value else false;
+    return cloneNodeInternal(instance, internal.owner_document, deep);
 }
 
 /// Internal clone algorithm
@@ -985,7 +989,8 @@ pub fn call_replaceChild(instance: *runtime.Instance, node: *runtime.Instance, c
 pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: ?runtime.DOMString) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    if (namespace.len() == 0) {
+    const ns_slice = if (namespace) |ns| ns.asSlice() else "";
+    if (ns_slice.len == 0) {
         return runtime.DOMString.initEmpty();
     }
 
@@ -993,7 +998,7 @@ pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: ?runtime.DOMStr
         NodeType.ELEMENT_NODE => {
             // Check this element's namespace
             if (internal.namespace_uri) |ns| {
-                if (std.mem.eql(u8, ns.asSlice(), namespace.asSlice())) {
+                if (std.mem.eql(u8, ns.asSlice(), ns_slice)) {
                     if (internal.prefix) |prefix| {
                         return prefix;
                     }
@@ -1033,20 +1038,22 @@ pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: ?runtime.DOMStr
 pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: ?runtime.DOMString) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
+    const prefix_slice = if (prefix) |p| p.asSlice() else "";
+
     switch (internal.node_type) {
         NodeType.ELEMENT_NODE => {
             // Check this element's namespace
             if (internal.namespace_uri) |ns| {
                 const has_prefix = internal.prefix != null;
                 const prefix_matches = if (internal.prefix) |p|
-                    std.mem.eql(u8, p.asSlice(), prefix.asSlice())
+                    std.mem.eql(u8, p.asSlice(), prefix_slice)
                 else
                     false;
 
                 if (has_prefix and prefix_matches) {
                     return ns;
                 }
-                if (!has_prefix and prefix.len() == 0) {
+                if (!has_prefix and prefix_slice.len == 0) {
                     return ns;
                 }
             }
@@ -1081,11 +1088,14 @@ pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: ?runtime.DOM
 pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: ?runtime.DOMString) anyerror!bool {
     const default_ns = try call_lookupNamespaceURI(instance, runtime.DOMString.initEmpty());
 
-    if (namespace.len() == 0) {
-        return default_ns.len() == 0;
+    const ns_slice = if (namespace) |ns| ns.asSlice() else "";
+    if (ns_slice.len == 0) {
+        const default_slice = if (default_ns) |dns| dns.asSlice() else "";
+        return default_slice.len == 0;
     }
 
-    return std.mem.eql(u8, default_ns.asSlice(), namespace.asSlice());
+    const default_slice = if (default_ns) |dns| dns.asSlice() else "";
+    return std.mem.eql(u8, default_slice, ns_slice);
 }
 
 // =============================================================================

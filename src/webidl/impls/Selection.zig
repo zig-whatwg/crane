@@ -338,9 +338,9 @@ pub fn call_collapse(instance: *runtime.Instance, node: ?*runtime.Instance, offs
 
     // Collapse to the specified point
     internal.anchor_node = node;
-    internal.anchor_offset = offset;
+    internal.anchor_offset = if (offset.was_passed) offset.value else 0;
     internal.focus_node = node;
-    internal.focus_offset = offset;
+    internal.focus_offset = if (offset.was_passed) offset.value else 0;
     internal.direction = .none;
     internal.range = null; // Invalidate cached range
 }
@@ -424,7 +424,7 @@ pub fn call_extend(instance: *runtime.Instance, node: *runtime.Instance, offset:
 
     // Set the focus point
     internal.focus_node = node;
-    internal.focus_offset = offset;
+    internal.focus_offset = if (offset.was_passed) offset.value else 0;
 
     // Determine direction based on position comparison
     // TODO: Implement proper document position comparison
@@ -545,7 +545,8 @@ pub fn call_containsNode(instance: *runtime.Instance, node: *runtime.Instance, a
         break :blk r;
     };
 
-    if (allowPartialContainment) {
+    const allow_partial = if (allowPartialContainment.was_passed) allowPartialContainment.value else false;
+    if (allow_partial) {
         // Check if node intersects with the selection range
         return RangeImpl.intersectsNode(range, node) catch false;
     } else {
@@ -577,7 +578,8 @@ fn createRangeFromSelection(internal: *InternalState) !*runtime.Instance {
     const focus = internal.focus_node orelse return error.InvalidStateError;
 
     // Create a new Range
-    const range = try RangeImpl.call_constructor(internal.allocator, .{});
+    // Note: We need a context here - get it from anchor node
+    const range = try RangeImpl.call_constructor(internal.allocator, anchor.ctx);
 
     // Set the range boundaries based on direction
     switch (internal.direction) {

@@ -149,7 +149,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, labe
     const internal = state.own._internal.?;
 
     // Step 1: Get encoding from label
-    const label_str = label.asSlice();
+    const label_str = if (label.was_passed) label.value.asSlice() else "utf-8";
     const enc = encoding_mod.getEncoding(label_str) orelse {
         // Step 2: If encoding is failure, throw RangeError
         return error.RangeError;
@@ -163,11 +163,14 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, labe
     // Step 3: Set this's encoding to encoding
     internal.enc = enc;
 
+    // Get options value
+    const opts = if (options.was_passed) options.value else dictionaries.TextDecoderOptions{};
+
     // Step 4: If options["fatal"] is true, set error mode to "fatal"
-    internal.fatal = options.fatal orelse false;
+    internal.fatal = opts.fatal orelse false;
 
     // Step 5: Set this's ignore BOM to options["ignoreBOM"]
-    internal.ignore_bom = options.ignoreBOM orelse false;
+    internal.ignore_bom = opts.ignoreBOM orelse false;
 
     // Step 6: Set this's decoder to a new instance of encoding's decoder
     internal.decoder = enc.newDecoder();
@@ -175,14 +178,12 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, labe
     // Step 7-11: Create the underlying transform stream
     // The transform and flush algorithms are implemented in decodeChunk and flush
     var empty_transformer: u8 = 0; // Placeholder for null transformer
-    const writable_strategy = dictionaries.QueuingStrategy{};
-    const readable_strategy = dictionaries.QueuingStrategy{};
     const transform = try interfaces.TransformStream.call_constructor(
         allocator,
         ctx,
-        &empty_transformer,
-        writable_strategy,
-        readable_strategy,
+        webidl.Opt(*const anyopaque).passed(&empty_transformer),
+        webidl.Opt(dictionaries.QueuingStrategy).notPassed(),
+        webidl.Opt(dictionaries.QueuingStrategy).notPassed(),
     );
     errdefer interfaces.TransformStream.deinit(transform);
 

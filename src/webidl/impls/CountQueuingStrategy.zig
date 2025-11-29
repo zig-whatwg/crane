@@ -106,7 +106,7 @@ pub fn get_highWaterMark(instance: *runtime.Instance) anyerror!f64 {
 /// Spec: https://streams.spec.whatwg.org/#count-queuing-strategy-size-function
 /// Steps (given chunk):
 /// 1. Return 1.
-fn countSizeFunction(arguments: *const anyopaque) *const anyopaque {
+fn countSizeFunction(arguments: []const *const anyopaque) *const anyopaque {
     _ = arguments;
     // Count strategy always returns 1 per chunk
     // Return as opaque pointer (in real impl, would be JS Number object)
