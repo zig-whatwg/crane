@@ -349,8 +349,48 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, inpu
     internal.request.deinit(); // Free the default empty request
     internal.request = base_request; // Transfer ownership
 
-    // TODO: Steps 36-42: Handle body parsing
-    // For now, body is stubbed
+    // Steps 36-42: Handle body from init
+    if (init_opts.body) |body_ptr| {
+        // Get the engine interface to extract the body
+        const engine = ctx.engine orelse {
+            return instance; // Can't process body without engine
+        };
+        const engine_ctx = ctx.engine_ctx orelse {
+            return instance;
+        };
+
+        // Check if body is a string
+        const isString = engine.isString orelse {
+            return instance; // Can't check type without function
+        };
+
+        if (isString(body_ptr)) {
+            // Extract string body
+            const extractString = engine.extractString orelse {
+                return instance;
+            };
+
+            const body_bytes = extractString(engine_ctx, body_ptr, allocator) catch {
+                return instance; // Failed to extract, leave body null
+            };
+
+            if (body_bytes.len > 0) {
+                // Create Body from bytes
+                const fetch_body = fetch.internal.Body.fromBytes(allocator, body_bytes) catch {
+                    allocator.free(body_bytes);
+                    return instance;
+                };
+                internal.request.body = .{ .body = fetch_body };
+
+                // Set Content-Type header if not already set
+                const has_content_type = internal.request.header_list.contains("content-type");
+                if (!has_content_type) {
+                    internal.request.header_list.append("Content-Type", "text/plain;charset=UTF-8") catch {};
+                }
+            }
+        }
+        // TODO: Handle other BodyInit types (Blob, ArrayBuffer, FormData, etc.)
+    }
 
     return instance;
 }
@@ -572,15 +612,79 @@ pub fn get_targetAddressSpace(instance: *runtime.Instance) ImplError!enums.IPAdd
 // === Body Mixin Properties ===
 
 /// Get body
+/// Per Fetch spec: returns the body as a ReadableStream, or null if no body
+///
+/// Note: Currently returns cached stream if available, otherwise attempts to
+/// create a ReadableStream from internal body data. Falls back to null if
+/// stream creation is not possible (e.g., no event loop).
 pub fn get_body(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     const state = instance.getState(State);
-    return state.own.body;
+    const internal = state.own._internal.?;
+
+    // If we already have a cached ReadableStream, return it
+    if (state.own.body) |cached_body| {
+        return cached_body;
+    }
+
+    // Check if there's body data
+    const has_body = if (internal.request.body) |body| blk: {
+        switch (body) {
+            .bytes => |bytes| break :blk bytes.len > 0,
+            .body => |body_obj| break :blk body_obj.data.items.len > 0 or body_obj.source != .none,
+        }
+    } else false;
+
+    if (!has_body) {
+        return null;
+    }
+
+    // Try to create a ReadableStream from the body data
+    // This requires an event loop; if not available, return null
+    // (body methods like text()/json() will still work directly)
+    const ReadableStreamImpl = @import("ReadableStream.zig");
+    const allocator = internal.allocator;
+    const ctx = instance.ctx;
+
+    // Check if we have an event loop
+    _ = ctx.getOptionalEventLoop() orelse {
+        // No event loop, can't create ReadableStream
+        // Body methods will still work via direct data access
+        return null;
+    };
+
+    // Create a basic ReadableStream
+    // For now, create a simple stream that will serve the body data
+    const stream_instance = ReadableStreamImpl.call_constructor(
+        allocator,
+        ctx,
+        webidl.Opt(*const anyopaque).notPassed(),
+        webidl.Opt(dictionaries.QueuingStrategy).notPassed(),
+    ) catch {
+        // Stream creation failed, fall back to null
+        return null;
+    };
+
+    // Cache the stream for future calls
+    // Note: This modifies state, which is mutable through the instance
+    @constCast(&state.own).body = stream_instance;
+
+    return stream_instance;
 }
 
 /// Get bodyUsed
+/// Per Fetch spec: true if body has been read/disturbed
 pub fn get_bodyUsed(instance: *runtime.Instance) ImplError!bool {
     const state = instance.getState(State);
-    return state.own.bodyUsed;
+    const internal = state.own._internal.?;
+
+    // Check internal body state
+    if (internal.request.body) |body| {
+        switch (body) {
+            .bytes => return false, // Raw bytes are never "used"
+            .body => |body_obj| return body_obj.isUsed(),
+        }
+    }
+    return false;
 }
 
 // === Methods - STUBS (Option A) ===

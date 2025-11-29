@@ -40,6 +40,8 @@ pub const v8_engine_interface: EngineInterface = .{
     .createUint8Array = v8CreateUint8Array,
     .parseJson = v8ParseJson,
     .wrapInstance = v8WrapInstance,
+    .isString = v8IsString,
+    .extractString = v8ExtractString,
     .createEventLoop = v8CreateEventLoop,
     .destroyEventLoop = v8DestroyEventLoop,
     .createCallbackWrapper = v8CreateCallbackWrapper,
@@ -259,18 +261,36 @@ fn v8ParseJson(
         @intCast(json_str.len),
     ) orelse return EngineError.OperationFailed;
 
-    // Compile and run JSON.parse(string)
-    // We wrap in parentheses to ensure it's evaluated as expression
-    const parse_code = std.fmt.allocPrint(std.heap.c_allocator, "JSON.parse({s})", .{json_str}) catch
-        return EngineError.OutOfMemory;
-    defer std.heap.c_allocator.free(parse_code);
+    // JSON.parse needs the string as a JavaScript string literal
+    // Build: JSON.parse('...escaped json...')
 
-    _ = v8_str; // We'll use eval approach instead
+    // Escape the JSON for JavaScript string literal (escape backslashes and quotes)
+    var escaped: std.ArrayListUnmanaged(u8) = .{};
+    defer escaped.deinit(std.heap.c_allocator);
+
+    // Start with JSON.parse('
+    escaped.appendSlice(std.heap.c_allocator, "JSON.parse('") catch return EngineError.OutOfMemory;
+
+    for (json_str) |c| {
+        switch (c) {
+            '\\' => escaped.appendSlice(std.heap.c_allocator, "\\\\") catch return EngineError.OutOfMemory,
+            '\'' => escaped.appendSlice(std.heap.c_allocator, "\\'") catch return EngineError.OutOfMemory,
+            '\n' => escaped.appendSlice(std.heap.c_allocator, "\\n") catch return EngineError.OutOfMemory,
+            '\r' => escaped.appendSlice(std.heap.c_allocator, "\\r") catch return EngineError.OutOfMemory,
+            '\t' => escaped.appendSlice(std.heap.c_allocator, "\\t") catch return EngineError.OutOfMemory,
+            else => escaped.append(std.heap.c_allocator, c) catch return EngineError.OutOfMemory,
+        }
+    }
+
+    // End with ')
+    escaped.appendSlice(std.heap.c_allocator, "')") catch return EngineError.OutOfMemory;
+
+    _ = v8_str; // Not used - we build the script directly
 
     const parse_str = ffi.v8_String_NewFromUtf8(
         isolate,
-        parse_code.ptr,
-        @intCast(parse_code.len),
+        escaped.items.ptr,
+        @intCast(escaped.items.len),
     ) orelse return EngineError.OperationFailed;
 
     const script = ffi.v8_Script_Compile(context, parse_str) orelse
@@ -299,6 +319,41 @@ fn v8WrapInstance(
     const v8_obj = conv.instanceToV8(isolate, instance);
 
     return @ptrCast(v8_obj);
+}
+
+/// Check if a V8 value is a string
+fn v8IsString(
+    js_value: *const anyopaque,
+) bool {
+    const value: *ffi.Value = @ptrCast(@alignCast(@constCast(js_value)));
+    return ffi.v8_Value_IsString(value);
+}
+
+/// Extract a string from a V8 value
+fn v8ExtractString(
+    engine_ctx: *anyopaque,
+    js_value: *const anyopaque,
+    allocator: std.mem.Allocator,
+) EngineError![]const u8 {
+    const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse
+        return EngineError.OperationFailed;
+
+    const value: *ffi.Value = @ptrCast(@alignCast(@constCast(js_value)));
+
+    // Use the conversions module to extract the string
+    const conv = @import("conversions.zig");
+    const dom_string = conv.fromV8String(allocator, isolate, context, @ptrCast(value)) catch
+        return EngineError.OperationFailed;
+
+    // Extract the slice from DOMString
+    // Note: DOMString.asSlice() returns a slice, but the memory is managed by DOMString
+    // We need to dupe the bytes to give caller ownership
+    const slice = dom_string.asSlice();
+    const owned_slice = allocator.dupe(u8, slice) catch
+        return EngineError.OutOfMemory;
+
+    return owned_slice;
 }
 
 /// Create a V8 event loop

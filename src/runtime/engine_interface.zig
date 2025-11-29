@@ -200,6 +200,32 @@ pub const EngineInterface = struct {
         instance: *anyopaque,
     ) EngineError!*anyopaque,
 
+    /// Check if a JavaScript value is a string
+    ///
+    /// Arguments:
+    ///   - js_value: Opaque pointer to JS value
+    ///
+    /// Returns:
+    ///   - true if the value is a string
+    isString: ?*const fn (
+        js_value: *const anyopaque,
+    ) bool,
+
+    /// Extract a string from a JavaScript value
+    ///
+    /// Arguments:
+    ///   - engine_ctx: Engine-specific context
+    ///   - js_value: Opaque pointer to JS string value
+    ///   - allocator: Allocator for the resulting string
+    ///
+    /// Returns:
+    ///   - Zig slice containing the string data
+    extractString: ?*const fn (
+        engine_ctx: *anyopaque,
+        js_value: *const anyopaque,
+        allocator: std.mem.Allocator,
+    ) EngineError![]const u8,
+
     /// Create an event loop for async operations
     ///
     /// Arguments:
@@ -435,6 +461,8 @@ pub const stub_engine: EngineInterface = .{
     .createUint8Array = null,
     .parseJson = null,
     .wrapInstance = null,
+    .isString = null,
+    .extractString = null,
     .createEventLoop = null,
     .destroyEventLoop = null,
     .createCallbackWrapper = null,
