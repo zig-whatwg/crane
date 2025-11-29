@@ -1,4 +1,9 @@
 //! Implementation for Response interface
+//!
+//! Wraps Fetch internal InternalResponse to provide WebIDL interface.
+//! Spec: https://fetch.spec.whatwg.org/#response-class
+//!
+//! NOTE: This is Option A (minimal but compiling) - constructors/body methods are stubbed.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -7,22 +12,34 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+
+// Import Fetch internal structures
+const fetch = @import("fetch");
+const InternalResponse = fetch.internal.InternalResponse;
+
+// Import Blob WebIDL wrapper
+const BlobImpl = @import("Blob.zig");
 const webidl = @import("webidl");
+
 const Response = interfaces.Response;
 
 pub const State = Response.State;
 
 pub const ImplError = error{
-    NotImplemented,
+    OutOfMemory,
+    TypeError,
+    InvalidState,
+    RangeError,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Internal state wraps Fetch InternalResponse
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+    response: *InternalResponse,
+    headers_cache: ?*runtime.Instance = null, // Cached Headers instance
+};
 
-/// Initialize instance (creates the instance)
+/// Initialize instance
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
@@ -30,139 +47,700 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    errdefer runtime.Instance.deinit(instance);
+
+    const internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(internal);
+
+    const response = try InternalResponse.init(allocator);
+    errdefer response.deinit();
+
+    internal.* = .{
+        .allocator = allocator,
+        .response = response,
+        .headers_cache = null,
+    };
+
+    const state = instance.getState(StateType);
+    state.own._internal = internal;
+
     return instance;
 }
 
-/// Deinitialize instance
+/// Deinitialize
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        const allocator = internal.allocator;
+        // Clean up cached headers if exists
+        if (internal.headers_cache) |headers| {
+            const Headers = @import("Headers.zig");
+            Headers.deinit(headers);
+        }
+        internal.response.deinit();
+        allocator.destroy(internal);
+    }
     runtime.Instance.deinit(instance);
 }
 
-/// Constructor implementation
-/// This is called when the interface is constructed from JavaScript
+/// Constructor - STUB: Does not parse body/init properly (Option A)
 pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, body: webidl.Opt(?typedefs.BodyInit), init_data: webidl.Opt(dictionaries.ResponseInit)) !*runtime.Instance {
-    // Create instance through init()
     const instance = try init(allocator, State, &Response.vtable, ctx);
     errdefer deinit(instance);
 
-    _ = body;
-    _ = init_data;
-    // TODO: Implement constructor logic with parameters
+    const state = instance.getState(State);
+    const internal = state.own._internal.?;
+
+    _ = body; // TODO: Handle body parameter
+
+    if (init_data.wasPassed()) {
+        if (init_data.value.status) |status| {
+            if (status < 200 or status > 599) {
+                return error.RangeError;
+            }
+            internal.response.status = status;
+        }
+
+        if (init_data.value.statusText) |status_text| {
+            internal.response.status_message = status_text;
+        }
+    }
 
     return instance;
 }
 
-/// Getter for type
-pub fn get_type(instance: *runtime.Instance) anyerror!enums.ResponseType {
-    _ = instance;
-    return error.NotImplemented;
+// === Static Methods ===
+
+pub fn call_error(instance: *runtime.Instance) ImplError!*runtime.Instance {
+    // Static method - use context directly, not instance state
+    // (instance is just a template for context/allocator access)
+    const allocator = instance.ctx.allocator;
+    const ctx = instance.ctx;
+
+    const error_instance = try init(allocator, State, &Response.vtable, ctx);
+    const error_state = error_instance.getState(State);
+    const internal = error_state.own._internal.?;
+
+    internal.response.response_type = .@"error";
+    internal.response.status = 0;
+
+    return error_instance;
 }
 
-/// Getter for url
-pub fn get_url(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+pub fn call_redirect(instance: *runtime.Instance, url: runtime.USVString, status: webidl.Opt(u16)) ImplError!*runtime.Instance {
+    // Unwrap Opt for status (default to 302 per spec)
+    const status_val = if (status.wasPassed()) status.value else 302;
+    if (status_val != 301 and status_val != 302 and status_val != 303 and status_val != 307 and status_val != 308) {
+        return error.RangeError;
+    }
+
+    // Static method - use context directly, not instance state
+    const allocator = instance.ctx.allocator;
+    const ctx = instance.ctx;
+
+    const redirect_instance = try init(allocator, State, &Response.vtable, ctx);
+    const redirect_state = redirect_instance.getState(State);
+    const internal = redirect_state.own._internal.?;
+
+    internal.response.status = status_val;
+    try internal.response.header_list.append("Location", url);
+
+    return redirect_instance;
 }
 
-/// Getter for redirected
-pub fn get_redirected(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for status
-pub fn get_status(instance: *runtime.Instance) anyerror!u16 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for ok
-pub fn get_ok(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for statusText
-pub fn get_statusText(instance: *runtime.Instance) anyerror!runtime.ByteString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for headers
-pub fn get_headers(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for body
-pub fn get_body(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
-}
-
-/// Getter for bodyUsed
-pub fn get_bodyUsed(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: error
-pub fn call_error(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: clone
-pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: blob
-pub fn call_blob(instance: *runtime.Instance) anyerror!*const anyopaque {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: arrayBuffer
-pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: formData
-pub fn call_formData(instance: *runtime.Instance) anyerror!*const anyopaque {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: text
-pub fn call_text(instance: *runtime.Instance) anyerror!*const anyopaque {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: redirect
-pub fn call_redirect(instance: *runtime.Instance, url: runtime.USVString, status: webidl.Opt(u16)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = url;
-    _ = status;
-    return error.NotImplemented;
-}
-
-/// Operation: json
-pub fn call_json(instance: *runtime.Instance, data: *const anyopaque, init_data: webidl.Opt(dictionaries.ResponseInit)) anyerror!*runtime.Instance {
-    _ = instance;
+pub fn call_json(instance: *runtime.Instance, data: *const anyopaque, init_data: webidl.Opt(dictionaries.ResponseInit)) ImplError!*runtime.Instance {
     _ = data;
-    _ = init_data;
-    return error.NotImplemented;
+
+    // Static method - use context directly, not instance state
+    const allocator = instance.ctx.allocator;
+    const ctx = instance.ctx;
+
+    const dummy: u8 = 0;
+    const empty_body = typedefs.BodyInit{ .variant_0 = @as(*const anyopaque, @ptrCast(&dummy)) };
+    // Wrap body in Opt for call_constructor which expects Opt(?BodyInit)
+    const body_opt = webidl.Opt(?typedefs.BodyInit).passed(empty_body);
+    const json_instance = try call_constructor(allocator, ctx, body_opt, init_data);
+    const json_state = json_instance.getState(State);
+    const internal = json_state.own._internal.?;
+
+    try internal.response.header_list.set("Content-Type", "application/json");
+
+    return json_instance;
 }
 
-/// Operation: bytes
-pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
-    _ = instance;
-    return error.NotImplemented;
+// === Property Getters ===
+
+pub fn get_type(instance: *runtime.Instance) ImplError!enums.ResponseType {
+    const state = instance.getState(State);
+    const internal = state.own._internal.?;
+
+    return switch (internal.response.response_type) {
+        .basic => ._basic_,
+        .cors => ._cors_,
+        .default => ._default_,
+        .@"error" => ._error_,
+        .@"opaque" => ._opaque_,
+        .opaqueredirect => ._opaqueredirect_,
+    };
 }
 
+pub fn get_url(instance: *runtime.Instance) ImplError!runtime.USVString {
+    const state = instance.getState(State);
+    const internal = state.own._internal.?;
+
+    // Return last URL in URL list (for redirects)
+    if (internal.response.url_list.items.len > 0) {
+        return internal.response.url_list.items[internal.response.url_list.items.len - 1];
+    }
+
+    return "";
+}
+
+pub fn get_redirected(instance: *runtime.Instance) ImplError!bool {
+    const state = instance.getState(State);
+    const internal = state.own._internal.?;
+    return internal.response.url_list.items.len > 1;
+}
+
+pub fn get_status(instance: *runtime.Instance) ImplError!u16 {
+    const state = instance.getState(State);
+    const internal = state.own._internal.?;
+    return internal.response.status;
+}
+
+pub fn get_ok(instance: *runtime.Instance) ImplError!bool {
+    const state = instance.getState(State);
+    const internal = state.own._internal.?;
+    return internal.response.status >= 200 and internal.response.status <= 299;
+}
+
+pub fn get_statusText(instance: *runtime.Instance) ImplError!runtime.ByteString {
+    const state = instance.getState(State);
+    const internal = state.own._internal.?;
+    return internal.response.status_message;
+}
+
+pub fn get_headers(instance: *runtime.Instance) ImplError!*runtime.Instance {
+    const state = instance.getState(State);
+    const internal = state.own._internal.?;
+
+    // Return cached instance if exists
+    if (internal.headers_cache) |headers| {
+        return headers;
+    }
+
+    // Create Headers instance wrapping our header_list with "response" guard
+    const Headers = @import("Headers.zig");
+    const headers = try Headers.initWithHeaderList(
+        internal.allocator,
+        instance.ctx,
+        &internal.response.header_list,
+        .response,
+    );
+
+    // Cache it
+    internal.headers_cache = headers;
+
+    return headers;
+}
+
+pub fn get_body(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+    const state = instance.getState(State);
+    return state.own.body;
+}
+
+pub fn get_bodyUsed(instance: *runtime.Instance) ImplError!bool {
+    const state = instance.getState(State);
+    return state.own.bodyUsed;
+}
+
+// === Methods - STUBS (Option A) ===
+
+/// clone() - Clones the Response
+/// Spec: https://fetch.spec.whatwg.org/#dom-response-clone
+pub fn call_clone(instance: *runtime.Instance) ImplError!*runtime.Instance {
+    const state = instance.getState(State);
+    const internal = state.own._internal.?;
+
+    // Step 1: If this is unusable, throw TypeError
+    if (internal.response.body) |body| {
+        if (body.isDisturbed()) {
+            return error.TypeError;
+        }
+    }
+
+    // Step 2: Clone the internal response
+    const cloned_response = try internal.response.clone();
+    errdefer cloned_response.deinit();
+
+    // Step 3: Create new Response instance with cloned response
+    const cloned_instance = try init(internal.allocator, State, &Response.vtable, instance.ctx);
+    errdefer deinit(cloned_instance);
+
+    const cloned_state = cloned_instance.getState(State);
+    const cloned_internal = cloned_state.own._internal.?;
+
+    // Replace default response with cloned one
+    cloned_internal.response.deinit();
+    cloned_internal.response = cloned_response;
+
+    return cloned_instance;
+}
+
+/// arrayBuffer() - Returns promise fulfilled with body as ArrayBuffer
+/// Spec: https://fetch.spec.whatwg.org/#dom-body-arraybuffer
+pub fn call_arrayBuffer(instance: *runtime.Instance) ImplError!*const anyopaque {
+    const state = instance.getState(State);
+    const internal = state.own._internal.?;
+
+    const event_loop = instance.ctx.getEventLoop() catch {
+        return error.InvalidState;
+    };
+
+    const AsyncPromise = @import("streams_async_promise").AsyncPromise;
+    const ArrayBufferView = @import("runtime").arraybuffer_view;
+    var promise = try AsyncPromise(ArrayBufferView.ArrayBuffer).init(
+        internal.allocator,
+        event_loop,
+    );
+
+    if (internal.response.body) |body| {
+        if (body.isDisturbed()) {
+            const exception = @import("webidl").errors.Exception{
+                .simple = .{ .type = .TypeError, .message = "Body is unusable (already read)" },
+            };
+            promise.reject(exception);
+        } else {
+            const bytes = body.readAllBytes() catch {
+                const exception = @import("webidl").errors.Exception{
+                    .simple = .{ .type = .TypeError, .message = "Failed to read body" },
+                };
+                promise.reject(exception);
+                return @ptrCast(promise);
+            };
+
+            const buffer = try ArrayBufferView.ArrayBuffer.init(internal.allocator, bytes.len);
+            @memcpy(buffer.data, bytes);
+            promise.fulfill(buffer);
+        }
+    } else {
+        const buffer = try ArrayBufferView.ArrayBuffer.init(internal.allocator, 0);
+        promise.fulfill(buffer);
+    }
+
+    return @ptrCast(promise);
+}
+
+/// blob() - Returns promise fulfilled with body as Blob
+/// Spec: https://fetch.spec.whatwg.org/#dom-body-blob
+pub fn call_blob(instance: *runtime.Instance) ImplError!*const anyopaque {
+    const state = instance.getState(State);
+    const internal = state.own._internal.?;
+
+    const event_loop = instance.ctx.getEventLoop() catch {
+        return error.InvalidState;
+    };
+
+    const AsyncPromise = @import("streams_async_promise").AsyncPromise;
+    const file_mod = @import("file");
+    const BlobData = file_mod.BlobData;
+    var promise = try AsyncPromise(*runtime.Instance).init(
+        internal.allocator,
+        event_loop,
+    );
+
+    // Get MIME type from Content-Type header
+    const mime_type = blk: {
+        const ct = internal.response.header_list.get(internal.allocator, "content-type") catch null;
+        break :blk ct orelse "";
+    };
+
+    if (internal.response.body) |body| {
+        if (body.isDisturbed()) {
+            const exception = @import("webidl").errors.Exception{
+                .simple = .{ .type = .TypeError, .message = "Body is unusable (already read)" },
+            };
+            promise.reject(exception);
+        } else {
+            const bytes = body.readAllBytes() catch {
+                const exception = @import("webidl").errors.Exception{
+                    .simple = .{ .type = .TypeError, .message = "Failed to read body" },
+                };
+                promise.reject(exception);
+                return @ptrCast(promise);
+            };
+
+            const blob_data = try BlobData.init(internal.allocator, bytes, mime_type);
+            errdefer blob_data.deinit();
+
+            // Wrap in Blob WebIDL instance
+            const blob_instance = BlobImpl.createFromBlobData(
+                internal.allocator,
+                instance.ctx,
+                blob_data,
+            ) catch {
+                blob_data.deinit();
+                const exception = @import("webidl").errors.Exception{
+                    .simple = .{ .type = .TypeError, .message = "Failed to create Blob wrapper" },
+                };
+                promise.reject(exception);
+                return @ptrCast(promise);
+            };
+
+            // Fulfill promise with Blob instance
+            promise.fulfill(blob_instance);
+        }
+    } else {
+        const blob_data = try BlobData.init(internal.allocator, &[_]u8{}, mime_type);
+        errdefer blob_data.deinit();
+
+        const blob_instance = BlobImpl.createFromBlobData(
+            internal.allocator,
+            instance.ctx,
+            blob_data,
+        ) catch {
+            blob_data.deinit();
+            const exception = @import("webidl").errors.Exception{
+                .simple = .{ .type = .TypeError, .message = "Failed to create Blob wrapper" },
+            };
+            promise.reject(exception);
+            return @ptrCast(promise);
+        };
+
+        // Fulfill promise with Blob instance
+        promise.fulfill(blob_instance);
+    }
+
+    return @ptrCast(promise);
+}
+
+/// bytes() - Returns promise fulfilled with body as Uint8Array
+/// Spec: https://fetch.spec.whatwg.org/#dom-body-bytes
+pub fn call_bytes(instance: *runtime.Instance) ImplError!*const anyopaque {
+    const state = instance.getState(State);
+    const internal = state.own._internal.?;
+
+    const event_loop = instance.ctx.getEventLoop() catch {
+        return error.InvalidState;
+    };
+
+    const AsyncPromise = @import("streams_async_promise").AsyncPromise;
+    var promise = try AsyncPromise([]const u8).init(
+        internal.allocator,
+        event_loop,
+    );
+
+    if (internal.response.body) |body| {
+        if (body.isDisturbed()) {
+            const exception = @import("webidl").errors.Exception{
+                .simple = .{ .type = .TypeError, .message = "Body is unusable (already read)" },
+            };
+            promise.reject(exception);
+        } else {
+            const bytes = body.readAllBytes() catch {
+                const exception = @import("webidl").errors.Exception{
+                    .simple = .{ .type = .TypeError, .message = "Failed to read body" },
+                };
+                promise.reject(exception);
+                return @ptrCast(promise);
+            };
+
+            const bytes_copy = try internal.allocator.dupe(u8, bytes);
+            promise.fulfill(bytes_copy);
+        }
+    } else {
+        const empty = try internal.allocator.alloc(u8, 0);
+        promise.fulfill(empty);
+    }
+
+    return @ptrCast(promise);
+}
+
+/// formData() - Returns promise fulfilled with body as FormData
+/// Spec: https://fetch.spec.whatwg.org/#dom-body-formdata
+pub fn call_formData(instance: *runtime.Instance) ImplError!*const anyopaque {
+    const state = instance.getState(State);
+    const internal = state.own._internal.?;
+
+    const event_loop = instance.ctx.getEventLoop() catch {
+        return error.InvalidState;
+    };
+
+    const AsyncPromise = @import("streams_async_promise").AsyncPromise;
+    const FormDataImpl = @import("FormData.zig");
+    const xhr = @import("xhr");
+    const multipart_parser = xhr.multipart_parser;
+    const url_parser = @import("form_parser"); // form_parser module from build.zig
+
+    var promise = try AsyncPromise(*runtime.Instance).init(
+        internal.allocator,
+        event_loop,
+    );
+
+    // Get Content-Type header
+    const content_type = internal.response.header_list.get(internal.allocator, "content-type") catch null;
+
+    if (internal.response.body) |body| {
+        if (body.isDisturbed()) {
+            const exception = @import("webidl").errors.Exception{
+                .simple = .{ .type = .TypeError, .message = "Body is unusable (already read)" },
+            };
+            promise.reject(exception);
+            return @ptrCast(promise);
+        }
+
+        const bytes = body.readAllBytes() catch {
+            const exception = @import("webidl").errors.Exception{
+                .simple = .{ .type = .TypeError, .message = "Failed to read body" },
+            };
+            promise.reject(exception);
+            return @ptrCast(promise);
+        };
+
+        // Route to appropriate parser based on Content-Type
+        const form_data = if (content_type) |ct| parse_blk: {
+            if (std.mem.indexOf(u8, ct, "multipart/form-data") != null) {
+                // Extract boundary and parse multipart
+                const boundary = multipart_parser.extractBoundary(internal.allocator, ct) catch {
+                    const exception = @import("webidl").errors.Exception{
+                        .simple = .{ .type = .TypeError, .message = "Invalid multipart Content-Type (missing boundary)" },
+                    };
+                    promise.reject(exception);
+                    return @ptrCast(promise);
+                };
+                defer internal.allocator.free(boundary);
+
+                const entries = multipart_parser.parseMultipartFormData(internal.allocator, bytes, boundary) catch {
+                    const exception = @import("webidl").errors.Exception{
+                        .simple = .{ .type = .TypeError, .message = "Failed to parse multipart/form-data body" },
+                    };
+                    promise.reject(exception);
+                    return @ptrCast(promise);
+                };
+                defer {
+                    for (entries) |*entry| entry.deinit(internal.allocator);
+                    internal.allocator.free(entries);
+                }
+
+                const fd = xhr.form_data.FormData.init(internal.allocator) catch {
+                    const exception = @import("webidl").errors.Exception{
+                        .simple = .{ .type = .TypeError, .message = "Failed to create FormData" },
+                    };
+                    promise.reject(exception);
+                    return @ptrCast(promise);
+                };
+                errdefer fd.deinit();
+
+                for (entries) |entry| {
+                    switch (entry.value) {
+                        .string => |s| try fd.appendString(entry.name, s),
+                        .file => |f| try fd.appendFile(entry.name, f, entry.filename),
+                    }
+                }
+
+                break :parse_blk fd;
+            } else if (std.mem.indexOf(u8, ct, "application/x-www-form-urlencoded") != null) {
+                // Parse URL-encoded
+                const tuples = url_parser.parse(internal.allocator, bytes) catch {
+                    const exception = @import("webidl").errors.Exception{
+                        .simple = .{ .type = .TypeError, .message = "Failed to parse URL-encoded body" },
+                    };
+                    promise.reject(exception);
+                    return @ptrCast(promise);
+                };
+                defer {
+                    for (tuples) |tuple| tuple.deinit(internal.allocator);
+                    internal.allocator.free(tuples);
+                }
+
+                const fd = xhr.form_data.FormData.init(internal.allocator) catch {
+                    const exception = @import("webidl").errors.Exception{
+                        .simple = .{ .type = .TypeError, .message = "Failed to create FormData" },
+                    };
+                    promise.reject(exception);
+                    return @ptrCast(promise);
+                };
+                errdefer fd.deinit();
+
+                for (tuples) |tuple| {
+                    try fd.appendString(tuple.name, tuple.value);
+                }
+
+                break :parse_blk fd;
+            } else {
+                const exception = @import("webidl").errors.Exception{
+                    .simple = .{ .type = .TypeError, .message = "Invalid Content-Type for FormData" },
+                };
+                promise.reject(exception);
+                return @ptrCast(promise);
+            }
+        } else url_blk: {
+            // No Content-Type - default to URL-encoded
+            const tuples = url_parser.parse(internal.allocator, bytes) catch {
+                const exception = @import("webidl").errors.Exception{
+                    .simple = .{ .type = .TypeError, .message = "Failed to parse body as URL-encoded" },
+                };
+                promise.reject(exception);
+                return @ptrCast(promise);
+            };
+            defer {
+                for (tuples) |tuple| tuple.deinit(internal.allocator);
+                internal.allocator.free(tuples);
+            }
+
+            const fd = xhr.form_data.FormData.init(internal.allocator) catch {
+                const exception = @import("webidl").errors.Exception{
+                    .simple = .{ .type = .TypeError, .message = "Failed to create FormData" },
+                };
+                promise.reject(exception);
+                return @ptrCast(promise);
+            };
+            errdefer fd.deinit();
+
+            for (tuples) |tuple| {
+                try fd.appendString(tuple.name, tuple.value);
+            }
+
+            break :url_blk fd;
+        };
+
+        // Wrap in WebIDL instance
+        const formdata_instance = FormDataImpl.createFromInternal(
+            internal.allocator,
+            instance.ctx,
+            form_data,
+        ) catch {
+            form_data.deinit();
+            const exception = @import("webidl").errors.Exception{
+                .simple = .{ .type = .TypeError, .message = "Failed to create FormData wrapper" },
+            };
+            promise.reject(exception);
+            return @ptrCast(promise);
+        };
+
+        promise.fulfill(formdata_instance);
+    } else {
+        // Empty body - create empty FormData
+        const form_data = xhr.form_data.FormData.init(internal.allocator) catch {
+            const exception = @import("webidl").errors.Exception{
+                .simple = .{ .type = .TypeError, .message = "Failed to create FormData" },
+            };
+            promise.reject(exception);
+            return @ptrCast(promise);
+        };
+
+        const formdata_instance = FormDataImpl.createFromInternal(
+            internal.allocator,
+            instance.ctx,
+            form_data,
+        ) catch {
+            form_data.deinit();
+            const exception = @import("webidl").errors.Exception{
+                .simple = .{ .type = .TypeError, .message = "Failed to create FormData wrapper" },
+            };
+            promise.reject(exception);
+            return @ptrCast(promise);
+        };
+
+        promise.fulfill(formdata_instance);
+    }
+
+    return @ptrCast(promise);
+}
+
+/// json() - Returns promise fulfilled with body parsed as JSON
+/// Spec: https://fetch.spec.whatwg.org/#dom-body-json
+pub fn call_json_read(instance: *runtime.Instance) ImplError!*const anyopaque {
+    const state = instance.getState(State);
+    const internal = state.own._internal.?;
+
+    const event_loop = instance.ctx.getEventLoop() catch {
+        return error.InvalidState;
+    };
+
+    const AsyncPromise = @import("streams_async_promise").AsyncPromise;
+    var promise = try AsyncPromise(std.json.Value).init(
+        internal.allocator,
+        event_loop,
+    );
+
+    if (internal.response.body) |body| {
+        if (body.isDisturbed()) {
+            const exception = @import("webidl").errors.Exception{
+                .simple = .{ .type = .TypeError, .message = "Body is unusable (already read)" },
+            };
+            promise.reject(exception);
+        } else {
+            const bytes = body.readAllBytes() catch {
+                const exception = @import("webidl").errors.Exception{
+                    .simple = .{ .type = .TypeError, .message = "Failed to read body" },
+                };
+                promise.reject(exception);
+                return @ptrCast(promise);
+            };
+
+            const parsed = std.json.parseFromSlice(
+                std.json.Value,
+                internal.allocator,
+                bytes,
+                .{},
+            ) catch {
+                const exception = @import("webidl").errors.Exception{
+                    .simple = .{ .type = .SyntaxError, .message = "Invalid JSON" },
+                };
+                promise.reject(exception);
+                return @ptrCast(promise);
+            };
+            promise.fulfill(parsed.value);
+        }
+    } else {
+        const exception = @import("webidl").errors.Exception{
+            .simple = .{ .type = .SyntaxError, .message = "Unexpected end of JSON input" },
+        };
+        promise.reject(exception);
+    }
+
+    return @ptrCast(promise);
+}
+
+/// text() - Returns promise fulfilled with body as string
+/// Spec: https://fetch.spec.whatwg.org/#dom-body-text
+pub fn call_text(instance: *runtime.Instance) ImplError!*const anyopaque {
+    const state = instance.getState(State);
+    const internal = state.own._internal.?;
+
+    const event_loop = instance.ctx.getEventLoop() catch {
+        return error.InvalidState;
+    };
+
+    const AsyncPromise = @import("streams_async_promise").AsyncPromise;
+    var promise = try AsyncPromise(runtime.USVString).init(
+        internal.allocator,
+        event_loop,
+    );
+
+    if (internal.response.body) |body| {
+        if (body.isDisturbed()) {
+            const exception = @import("webidl").errors.Exception{
+                .simple = .{ .type = .TypeError, .message = "Body is unusable (already read)" },
+            };
+            promise.reject(exception);
+        } else {
+            const bytes = body.readAllBytes() catch {
+                const exception = @import("webidl").errors.Exception{
+                    .simple = .{ .type = .TypeError, .message = "Failed to read body" },
+                };
+                promise.reject(exception);
+                return @ptrCast(promise);
+            };
+
+            const text = try internal.allocator.dupe(u8, bytes);
+            promise.fulfill(text);
+        }
+    } else {
+        const empty = try internal.allocator.alloc(u8, 0);
+        promise.fulfill(empty);
+    }
+
+    return @ptrCast(promise);
+}
