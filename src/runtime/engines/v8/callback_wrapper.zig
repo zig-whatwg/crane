@@ -114,23 +114,37 @@ pub const CallbackWrapper = struct {
             // Direct function call
             const func = self.callback_function orelse return null;
             const global = v8.v8_Context_Global(context);
-            return v8.v8_Function_Call(
-                func,
-                context,
-                @ptrCast(global), // 'this' is global
-                @intCast(args.len),
-                if (args.len > 0) @ptrCast(args.ptr) else null,
-            );
+            // FFI expects [*]*Value which can't be null - use empty args case specially
+            if (args.len > 0) {
+                return v8.v8_Function_Call(
+                    func,
+                    context,
+                    @ptrCast(global), // 'this' is global
+                    @intCast(args.len),
+                    @ptrCast(@constCast(args.ptr)),
+                );
+            } else {
+                // No args - use call0 pattern with undefined as placeholder
+                // The FFI requires a valid pointer even with argc=0
+                var empty_args: [1]*v8.Value = undefined;
+                return v8.v8_Function_Call(
+                    func,
+                    context,
+                    @ptrCast(global),
+                    0,
+                    &empty_args,
+                );
+            }
         } else {
             // Object method call
             const obj = self.callback_object orelse return null;
-            const method_name = self.method_name orelse return null;
+            const method_name_str = self.method_name orelse return null;
 
             // Get the method from the object
             const name_str = v8.v8_String_NewFromUtf8(
                 self.isolate,
-                method_name,
-                @intCast(std.mem.len(method_name)),
+                method_name_str,
+                @intCast(std.mem.len(method_name_str)),
             ) orelse return null;
 
             const method_value = v8.v8_Object_Get(obj, context, @ptrCast(name_str)) orelse return null;
@@ -140,13 +154,25 @@ pub const CallbackWrapper = struct {
             }
 
             const method_func: *v8.Function = @ptrCast(method_value);
-            return v8.v8_Function_Call(
-                method_func,
-                context,
-                @ptrCast(obj), // 'this' is the callback object
-                @intCast(args.len),
-                if (args.len > 0) @ptrCast(args.ptr) else null,
-            );
+            // FFI expects [*]*Value which can't be null - use empty args case specially
+            if (args.len > 0) {
+                return v8.v8_Function_Call(
+                    method_func,
+                    context,
+                    @ptrCast(obj), // 'this' is the callback object
+                    @intCast(args.len),
+                    @ptrCast(@constCast(args.ptr)),
+                );
+            } else {
+                var empty_args: [1]*v8.Value = undefined;
+                return v8.v8_Function_Call(
+                    method_func,
+                    context,
+                    @ptrCast(obj),
+                    0,
+                    &empty_args,
+                );
+            }
         }
     }
 };

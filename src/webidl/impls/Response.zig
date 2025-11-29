@@ -83,7 +83,8 @@ pub fn deinit(instance: *runtime.Instance) void {
     runtime.Instance.deinit(instance);
 }
 
-/// Constructor - STUB: Does not parse body/init properly (Option A)
+/// Constructor - Creates a Response with optional body and init
+/// Spec: https://fetch.spec.whatwg.org/#dom-response
 pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, body: webidl.Opt(?typedefs.BodyInit), init_data: webidl.Opt(dictionaries.ResponseInit)) !*runtime.Instance {
     const instance = try init(allocator, State, &Response.vtable, ctx);
     errdefer deinit(instance);
@@ -91,8 +92,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, body
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
-    _ = body; // TODO: Handle body parameter
-
+    // Handle init options first (status, statusText, headers)
     if (init_data.wasPassed()) {
         if (init_data.value.status) |status| {
             if (status < 200 or status > 599) {
@@ -103,6 +103,38 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, body
 
         if (init_data.value.statusText) |status_text| {
             internal.response.status_message = status_text;
+        }
+    }
+
+    // Handle body parameter
+    if (body.wasPassed()) {
+        if (body.value) |body_init| {
+            // Extract body bytes based on BodyInit variant
+            const body_bytes: ?[]const u8 = switch (body_init) {
+                .string => |s| s,
+                .buffer => |b| b,
+                // For opaque types, we can't extract bytes yet
+                .blob_ptr, .form_data_ptr, .url_search_params_ptr, .readable_stream_ptr, .v8_value => null,
+            };
+
+            if (body_bytes) |bytes| {
+                if (bytes.len > 0) {
+                    // Create Body from bytes
+                    const fetch_body = fetch.internal.Body.fromBytes(allocator, bytes) catch {
+                        return error.OutOfMemory;
+                    };
+                    internal.response.body = fetch_body;
+
+                    // Set Content-Type header if not already set and body is string
+                    if (body_init == .string) {
+                        // Per spec: if body is USVString, set Content-Type to text/plain;charset=UTF-8
+                        const has_content_type = internal.response.header_list.contains("content-type");
+                        if (!has_content_type) {
+                            internal.response.header_list.append("Content-Type", "text/plain;charset=UTF-8") catch {};
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -158,8 +190,8 @@ pub fn call_json_static(instance: *runtime.Instance, data: *const anyopaque, ini
     const allocator = instance.ctx.allocator;
     const ctx = instance.ctx;
 
-    const dummy: u8 = 0;
-    const empty_body = typedefs.BodyInit{ .variant_0 = @as(*const anyopaque, @ptrCast(&dummy)) };
+    // Create an empty body (TODO: serialize data to JSON)
+    const empty_body = typedefs.BodyInit{ .string = "" };
     // Wrap body in Opt for call_constructor which expects Opt(?BodyInit)
     const body_opt = webidl.Opt(?typedefs.BodyInit).passed(empty_body);
     const json_instance = try call_constructor(allocator, ctx, body_opt, init_data);
@@ -709,42 +741,61 @@ pub fn call_json(instance: *runtime.Instance) ImplError!*const anyopaque {
 
 /// text() - Returns promise fulfilled with body as string
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-text
+///
+/// Uses the engine abstraction layer for Promise creation and string creation.
 pub fn call_text(instance: *runtime.Instance) ImplError!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
-    const event_loop = instance.ctx.getEventLoop() catch {
+    // Get the engine interface and context
+    const engine = instance.ctx.engine orelse {
+        return error.InvalidState;
+    };
+    const engine_ctx = instance.ctx.engine_ctx orelse {
         return error.InvalidState;
     };
 
-    const AsyncPromise = @import("streams_async_promise").AsyncPromise;
-    var promise = try AsyncPromise(runtime.USVString).init(
-        internal.allocator,
-        event_loop,
-    );
+    // Create a Promise through the engine abstraction
+    const promise_handle = engine.createPromise(engine_ctx, internal.allocator) catch {
+        return error.InvalidState;
+    };
 
+    // Check for disturbed body (already read)
     if (internal.response.body) |body| {
         if (body.isDisturbed()) {
-            const exception = @import("webidl").errors.Exception{
-                .simple = .{ .type = .TypeError, .message = "Body is unusable (already read)" },
-            };
-            promise.reject(exception);
-        } else {
-            const bytes = body.readAllBytes() catch {
-                const exception = @import("webidl").errors.Exception{
-                    .simple = .{ .type = .TypeError, .message = "Failed to read body" },
-                };
-                promise.reject(exception);
-                return @ptrCast(promise);
-            };
-
-            const text = try internal.allocator.dupe(u8, bytes);
-            promise.fulfill(text);
+            // Reject with TypeError per spec
+            engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
+            return engine.getPromiseObject(promise_handle);
         }
-    } else {
-        const empty = try internal.allocator.alloc(u8, 0);
-        promise.fulfill(empty);
     }
 
-    return @ptrCast(promise);
+    // Get body text
+    const body_text: []const u8 = if (internal.response.body) |body| blk: {
+        const bytes = body.readAllBytes() catch |err| {
+            // Reject on read error
+            engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
+            return engine.getPromiseObject(promise_handle);
+        };
+        break :blk bytes;
+    } else "";
+
+    // Create JS string through engine abstraction
+    const createString = engine.createString orelse {
+        // No createString support - resolve with null (undefined)
+        engine.resolvePromise(engine_ctx, promise_handle, null) catch {};
+        return engine.getPromiseObject(promise_handle);
+    };
+
+    const js_string = createString(engine_ctx, body_text) catch {
+        engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
+        return engine.getPromiseObject(promise_handle);
+    };
+
+    // Resolve with the JS string
+    engine.resolvePromise(engine_ctx, promise_handle, js_string) catch {
+        return error.InvalidState;
+    };
+
+    // Return the JS Promise object
+    return engine.getPromiseObject(promise_handle);
 }

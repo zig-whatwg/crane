@@ -35,6 +35,7 @@ pub const v8_engine_interface: EngineInterface = .{
     .resolvePromise = v8ResolvePromise,
     .rejectPromise = v8RejectPromise,
     .getPromiseObject = v8GetPromiseObject,
+    .createString = v8CreateString,
     .createEventLoop = v8CreateEventLoop,
     .destroyEventLoop = v8DestroyEventLoop,
     .createCallbackWrapper = v8CreateCallbackWrapper,
@@ -83,8 +84,10 @@ fn v8CreatePromise(
     engine_ctx: *anyopaque,
     allocator: std.mem.Allocator,
 ) EngineError!*anyopaque {
-    const isolate: *ffi.Isolate = @ptrCast(@alignCast(engine_ctx));
-    const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse
+    // engine_ctx is the V8 Context (set by context_manager.zig)
+    const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    // Get current isolate - the context should be entered so this works
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse
         return EngineError.OperationFailed;
 
     const resolver = ffi.v8_PromiseResolver_New(context) orelse
@@ -161,6 +164,24 @@ fn v8GetPromiseObject(promise_handle: *anyopaque) *anyopaque {
     return @ptrCast(handle.promise);
 }
 
+/// Create a V8 String from UTF-8 bytes
+fn v8CreateString(
+    engine_ctx: *anyopaque,
+    bytes: []const u8,
+) EngineError!*anyopaque {
+    _ = engine_ctx;
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse
+        return EngineError.OperationFailed;
+
+    const v8_string = ffi.v8_String_NewFromUtf8(
+        isolate,
+        bytes.ptr,
+        @intCast(bytes.len),
+    ) orelse return EngineError.OperationFailed;
+
+    return @ptrCast(v8_string);
+}
+
 /// Create a V8 event loop
 fn v8CreateEventLoop(
     engine_ctx: *anyopaque,
@@ -171,7 +192,8 @@ fn v8CreateEventLoop(
     const v8_loop_ptr = allocator.create(event_loop_mod.V8EventLoop) catch
         return EngineError.OutOfMemory;
 
-    v8_loop_ptr.* = event_loop_mod.V8EventLoop.init(isolate, allocator);
+    v8_loop_ptr.* = event_loop_mod.V8EventLoop.init(isolate, allocator) catch
+        return EngineError.OperationFailed;
 
     return @ptrCast(v8_loop_ptr);
 }
@@ -201,7 +223,7 @@ fn v8CreateCallbackWrapper(
     allocator: std.mem.Allocator,
 ) EngineError!?*anyopaque {
     const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
-    const isolate = ffi.v8_Context_GetIsolate(context) orelse
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse
         return EngineError.OperationFailed;
     const value: *ffi.Value = @ptrCast(@alignCast(js_value));
 
@@ -277,7 +299,7 @@ fn v8RequestGarbageCollection(engine_ctx: *anyopaque) EngineError!void {
 /// platform->GetForegroundTaskRunner(isolate)->PostTask().
 fn v8ScheduleOnMainThread(
     _: *anyopaque,
-    callback: EngineInterface.MainThreadCallback,
+    callback: runtime.MainThreadCallback,
     user_data: *anyopaque,
 ) EngineError!void {
     // For now, execute immediately (assumes we're on main thread)

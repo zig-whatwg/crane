@@ -46,6 +46,7 @@ const std = @import("std");
 const v8 = @import("ffi.zig");
 const runtime = @import("runtime");
 const V8EventLoop = @import("event_loop.zig").V8EventLoop;
+const v8_engine = @import("engine.zig");
 
 /// Context mapping entry
 const ContextEntry = struct {
@@ -204,11 +205,14 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
         event_loop_interface = ev_loop.eventLoop();
     }
 
-    // Create new runtime context
+    // Create new runtime context with V8 engine interface
+    // The engine interface provides Promise creation, async iterators, and other
+    // engine-agnostic operations that body methods (text(), json(), etc.) need.
     var ctx_data = try runtime.ContextData.init(allocator, .{
         .colored = false, // V8 callbacks shouldn't use colored output
         .show_timestamp = false,
         .show_labels = false,
+        .engine = &v8_engine.v8_engine_interface, // V8 engine interface for Promises etc.
         .engine_ctx = @ptrCast(v8_ctx), // Store V8 context as engine context
         .timer = timer_interface,
         .event_loop = event_loop_interface,

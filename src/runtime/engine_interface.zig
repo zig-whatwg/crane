@@ -132,6 +132,19 @@ pub const EngineInterface = struct {
         promise_handle: *anyopaque,
     ) *anyopaque,
 
+    /// Create a JavaScript string from UTF-8 bytes
+    ///
+    /// Arguments:
+    ///   - engine_ctx: Engine-specific context
+    ///   - bytes: UTF-8 encoded string data
+    ///
+    /// Returns:
+    ///   - Opaque pointer to JS string value
+    createString: ?*const fn (
+        engine_ctx: *anyopaque,
+        bytes: []const u8,
+    ) EngineError!*anyopaque,
+
     /// Create an event loop for async operations
     ///
     /// Arguments:
@@ -296,6 +309,7 @@ pub const stub_engine: EngineInterface = .{
     .resolvePromise = stubResolvePromise,
     .rejectPromise = stubRejectPromise,
     .getPromiseObject = stubGetPromiseObject,
+    .createString = null,
     .createEventLoop = null,
     .destroyEventLoop = null,
     .createCallbackWrapper = null,

@@ -386,6 +386,71 @@ fn convertHeadersInit(
     return .{ .v8_value = @ptrCast(value) };
 }
 
+/// Convert V8 value to BodyInit union
+/// Handles: USVString, TypedArray (Uint8Array, etc.)
+/// TODO: Add support for Blob, FormData, URLSearchParams, ReadableStream
+fn convertBodyInit(
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    value: *v8.Value,
+) ConversionError!typedefs.BodyInit {
+    _ = isolate; // Used only for potential future error reporting
+
+    // Check for null/undefined - return empty string
+    if (v8.v8_Value_IsNullOrUndefined(value)) {
+        return .{ .string = "" };
+    }
+
+    // Check if it's a string (most common case: USVString)
+    if (v8.v8_Value_IsString(value)) {
+        const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
+        const length = v8.v8_String_Utf8Length(string);
+        if (length <= 0) {
+            return .{ .string = "" };
+        }
+
+        const buffer = try allocator.alloc(u8, @intCast(length));
+        errdefer allocator.free(buffer);
+        const written = v8.v8_String_WriteUtf8(string, buffer.ptr, @intCast(length));
+        if (written != length) {
+            allocator.free(buffer);
+            return ConversionError.StringError;
+        }
+        return .{ .string = buffer };
+    }
+
+    // Check if it's a TypedArray (Uint8Array, etc.)
+    if (v8.v8_Value_IsTypedArray(value)) {
+        const byte_length = v8.v8_TypedArray_ByteLength(value);
+
+        if (byte_length == 0) {
+            return .{ .buffer = "" };
+        }
+
+        // Get the underlying ArrayBuffer and offset
+        const ab = v8.v8_TypedArray_Buffer(value) orelse return .{ .buffer = "" };
+        const byte_offset = v8.v8_TypedArray_ByteOffset(value);
+        const data = v8.v8_ArrayBuffer_Data(ab);
+
+        if (data == null) {
+            return .{ .buffer = "" };
+        }
+
+        // Copy the data from the correct offset
+        const buffer = try allocator.alloc(u8, byte_length);
+        const src_ptr = @as([*]const u8, @ptrCast(data.?)) + byte_offset;
+        @memcpy(buffer, src_ptr[0..byte_length]);
+        return .{ .buffer = buffer };
+    }
+
+    // TODO: Check for Blob, FormData, URLSearchParams, ReadableStream instances
+    // These require checking the object's constructor name or internal state
+
+    // Fallback - pass V8 value as opaque for later processing
+    return .{ .v8_value = @ptrCast(value) };
+}
+
 /// Generic V8 Value to Zig type conversion
 ///
 /// Dispatches to the appropriate conversion function based on target type.
@@ -452,6 +517,11 @@ pub fn fromV8Value(
     // Handle HeadersInit specially - parse V8 value to appropriate variant
     if (T == @import("typedefs").HeadersInit) {
         return try convertHeadersInit(allocator, isolate, context, value);
+    }
+
+    // Handle BodyInit specially - parse V8 value to appropriate variant
+    if (T == @import("typedefs").BodyInit) {
+        return try convertBodyInit(allocator, isolate, context, value);
     }
 
     // Handle unions (for constructor overloading and type unions)
