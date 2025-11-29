@@ -1,5 +1,5 @@
 //! Generated from: fetch.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-11-29T20:47:53Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -145,6 +145,12 @@ pub const Headers = struct {
 
     pub fn call_getSetCookie(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try HeadersImpl.call_getSetCookie(instance);
+    }
+
+    /// Get entries for pair iterable support (used by V8 for iteration)
+    /// Returns slice of entries with .name and .value fields
+    pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const HeadersImpl.IterableEntry {
+        return HeadersImpl.getEntriesInternal(instance);
     }
 
 };

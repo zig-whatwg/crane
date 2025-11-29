@@ -2640,6 +2640,37 @@ pub fn writeDelegateFunctions(
     }
 }
 
+/// Write the getEntriesForIterable function for pair iterable interfaces
+///
+/// This function is used by V8Interface to get entries for iteration.
+/// It delegates to the Impl's getEntriesInternal function.
+///
+/// Example output:
+/// ```zig
+/// /// Get entries for pair iterable support (used by V8 for iteration)
+/// pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const @import("fetch").internal.header_list.Header {
+///     return HeadersImpl.getEntriesInternal(instance);
+/// }
+/// ```
+pub fn writeIterableSupport(
+    writer: anytype,
+    impl_name: []const u8,
+    iterable: types.Iterable,
+) !void {
+    // Only generate for pair iterables (have both key and value types)
+    if (iterable.valueType == null) {
+        // Value-only iterable - different pattern needed
+        return;
+    }
+
+    // For pair iterables, generate getEntriesForIterable that delegates to Impl.getEntriesInternal
+    try writer.writeAll("    /// Get entries for pair iterable support (used by V8 for iteration)\n");
+    try writer.writeAll("    /// Returns slice of entries with .name and .value fields\n");
+    try writer.print("    pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const {s}.IterableEntry {{\n", .{impl_name});
+    try writer.print("        return {s}.getEntriesInternal(instance);\n", .{impl_name});
+    try writer.writeAll("    }\n\n");
+}
+
 /// Escape Zig reserved keywords by appending underscore
 fn escapeKeyword(name: []const u8) []const u8 {
     // List of Zig reserved keywords that might appear as WebIDL parameter names

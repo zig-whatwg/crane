@@ -1807,7 +1807,8 @@ pub fn V8Interface(comptime Interface: type) type {
         }
 
         /// Iterator callback for Symbol.iterator
-        /// Returns an iterator that yields [index, value] pairs (same as entries())
+        /// For pair iterables (Headers, URLSearchParams, etc.) returns [key, value] pairs
+        /// For indexed iterables (NodeList, etc.) returns values
         fn iteratorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
             const isolate = info.getIsolate();
             const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
@@ -1818,8 +1819,22 @@ pub fn V8Interface(comptime Interface: type) type {
             // Get 'this' object
             const this_obj = info.getThis();
 
+            // Determine default iterator kind based on iterable type:
+            // - Pair iterables (key_type defined): default to entries per WebIDL spec
+            // - Indexed iterables: default to values
+            const default_kind: IteratorKind = comptime blk: {
+                if (@hasDecl(Meta, "iterable")) {
+                    const iterable = Meta.iterable;
+                    // Check if this is a pair iterable (has key_type field)
+                    if (@hasField(@TypeOf(iterable), "key_type")) {
+                        break :blk .entries;
+                    }
+                }
+                break :blk .values;
+            };
+
             // Create an iterator object with next() method
-            const iterator_obj = createValueIterator(isolate, v8_context, this_obj, .values);
+            const iterator_obj = createValueIterator(isolate, v8_context, this_obj, default_kind);
             if (iterator_obj) |obj| {
                 info.setReturnValue(@ptrCast(obj));
             } else {

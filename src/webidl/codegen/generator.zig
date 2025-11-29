@@ -1382,6 +1382,11 @@ fn generateInterfaceFile(
     const type_reg = if (ir) |ir_ptr| &ir_ptr.type_registry else null;
     try writer.writeDelegateFunctions(w, impl_name, type_reg, own_attrs.items, own_ops.items);
 
+    // Generate iterable support if interface has iterable declaration
+    if (iterable_member) |iterable| {
+        try writer.writeIterableSupport(w, impl_name, iterable);
+    }
+
     // Close struct
     try writer.writeStructEnd(w);
 

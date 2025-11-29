@@ -19,6 +19,10 @@ const Headers = interfaces.Headers;
 
 pub const State = Headers.State;
 
+/// Entry type for pair iterable support
+/// Must have .name and .value fields as []const u8 for V8 iteration
+pub const IterableEntry = fetch.internal.header_list.Header;
+
 pub const ImplError = error{
     OutOfMemory,
     TypeError,
@@ -276,7 +280,7 @@ pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) Imp
 /// Internal method to get all entries for pair iterable support
 /// Returns the raw entries slice from the HeaderList
 /// This is used by V8Interface for entries(), keys(), values() iteration
-pub fn getEntriesInternal(instance: *runtime.Instance) ?[]const fetch.internal.header_list.Header {
+pub fn getEntriesInternal(instance: *runtime.Instance) ?[]const IterableEntry {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return null;
     return internal.header_list.entries.items;
