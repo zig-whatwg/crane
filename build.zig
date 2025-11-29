@@ -416,6 +416,10 @@ pub fn build(b: *std.Build) void {
     // V8 module needs typedefs for HeadersInit conversion
     v8_mod.addImport("typedefs", typedefs_mod);
 
+    // Dictionaries module needs typedefs and enums for RequestInit and other dictionaries
+    dictionaries_mod.addImport("typedefs", typedefs_mod);
+    dictionaries_mod.addImport("enums", enums_mod);
+
     // DOM module
     const dom_mod = b.addModule("dom", .{
         .root_source_file = b.path("src/dom/root.zig"),

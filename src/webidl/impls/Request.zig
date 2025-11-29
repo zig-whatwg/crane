@@ -25,26 +25,7 @@ const BlobData = file.BlobData;
 const BlobImpl = @import("Blob.zig");
 const webidl = @import("webidl");
 
-// WORKAROUND: RequestInit codegen is incomplete (only has privateToken field)
-// This temporary struct has all the fields from the Fetch spec
-// TODO: Remove this when codegen properly handles partial dictionaries
-const RequestInitFull = struct {
-    method: ?runtime.ByteString = null,
-    headers: ?*const anyopaque = null, // HeadersInit (union)
-    body: ?*const anyopaque = null, // BodyInit? (union)
-    referrer: ?runtime.USVString = null,
-    referrerPolicy: ?enums.ReferrerPolicy = null,
-    mode: ?enums.RequestMode = null,
-    credentials: ?enums.RequestCredentials = null,
-    cache: ?enums.RequestCache = null,
-    redirect: ?enums.RequestRedirect = null,
-    integrity: ?runtime.DOMString = null,
-    keepalive: ?bool = null,
-    signal: ?*runtime.Instance = null, // AbortSignal
-    duplex: ?enums.RequestDuplex = null,
-    priority: ?enums.RequestPriority = null,
-    window: ?*const anyopaque = null, // can only be null
-};
+// RequestInit is now properly defined in dictionaries with all Fetch spec fields
 
 const Request = interfaces.Request;
 
@@ -164,13 +145,11 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Constructor - implements full Request(input, init) constructor algorithm
 /// Spec: https://fetch.spec.whatwg.org/#dom-request
 pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) !*runtime.Instance {
-    // NOTE: The generated RequestInit dictionary only has 'privateToken' field.
-    // The full Fetch spec RequestInit has many more fields (method, headers, body, etc.)
-    // Until codegen is fixed, we can't properly parse the init object.
-    // For now, just use defaults regardless of whether init was passed.
-    // TODO: Fix codegen to generate complete RequestInit dictionary
-    _ = init_data;
-    const init_opts = RequestInitFull{};
+    // Get the RequestInit options if passed
+    const init_opts: dictionaries.RequestInit = if (init_data.wasPassed())
+        init_data.getValue()
+    else
+        .{};
 
     // Step 1: Let request be null (will be InternalRequest)
     var base_request: *InternalRequest = undefined;
@@ -309,27 +288,61 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, inpu
         base_request.keepalive = keepalive;
     }
 
-    // Now create the instance with the configured request
-    const instance = try init(allocator, State, &Request.vtable, ctx);
-    errdefer deinit(instance);
+    // Step 31-34: Handle headers from init BEFORE creating instance
+    // This ensures all headers are added while base_request is still the owner
+    if (init_opts.headers) |headers_init| {
+        // Fill the request's headers with headers_init
+        switch (headers_init) {
+            .pairs => |pairs| {
+                // Array of [name, value] pairs
+                for (pairs) |pair| {
+                    try base_request.header_list.append(pair[0], pair[1]);
+                }
+            },
+            .record => |entries| {
+                // Object with header entries
+                for (entries) |entry| {
+                    try base_request.header_list.append(entry.name, entry.value);
+                }
+            },
+            .headers_ptr => |ptr| {
+                // Existing Headers object - copy its entries
+                const Headers = @import("Headers.zig");
+                const other_instance: *runtime.Instance = @ptrCast(@alignCast(@constCast(ptr)));
+                if (Headers.getEntriesInternal(other_instance)) |entries| {
+                    for (entries) |entry| {
+                        try base_request.header_list.append(entry.name, entry.value);
+                    }
+                }
+            },
+            .v8_value => {
+                // V8 value fallback - should be handled by V8 layer before reaching here
+                // If we get here, we can't parse it
+            },
+        }
+    }
 
-    // Replace the default request with our configured one
-    const state = instance.getState(State);
-    const internal = state.own._internal.?;
-    internal.request.deinit();
-    internal.request = base_request;
-
-    // Step 35: Validate GET/HEAD don't have body
+    // Step 35: Validate GET/HEAD don't have body BEFORE creating instance
     const has_init_body = init_opts.body != null;
-    const method_is_get_or_head = std.mem.eql(u8, internal.request.method, "GET") or
-        std.mem.eql(u8, internal.request.method, "HEAD");
+    const method_is_get_or_head = std.mem.eql(u8, base_request.method, "GET") or
+        std.mem.eql(u8, base_request.method, "HEAD");
 
     if (has_init_body and method_is_get_or_head) {
         return error.TypeError;
     }
 
-    // TODO: Steps 31-42: Handle headers and body parsing
-    // For now, these are stubbed
+    // Now create the instance with the configured request
+    const instance = try init(allocator, State, &Request.vtable, ctx);
+    // Note: After this point, instance.deinit will clean up on error
+
+    // Replace the default request with our configured one
+    const state = instance.getState(State);
+    const internal = state.own._internal.?;
+    internal.request.deinit(); // Free the default empty request
+    internal.request = base_request; // Transfer ownership
+
+    // TODO: Steps 36-42: Handle body parsing
+    // For now, body is stubbed
 
     return instance;
 }
