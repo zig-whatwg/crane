@@ -45,6 +45,30 @@
         return assert(value, message);
     };
 
+    assert.isTrue = function(value, message) {
+        if (value !== true) {
+            throw new AssertionError(
+                message || `Expected true, got ${formatValue(value)}`,
+                value,
+                true,
+                '=== true'
+            );
+        }
+        return true;
+    };
+
+    assert.isFalse = function(value, message) {
+        if (value !== false) {
+            throw new AssertionError(
+                message || `Expected false, got ${formatValue(value)}`,
+                value,
+                false,
+                '=== false'
+            );
+        }
+        return true;
+    };
+
     assert.equal = function(actual, expected, message) {
         if (actual != expected) {
             throw new AssertionError(
