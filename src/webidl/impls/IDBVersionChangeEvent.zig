@@ -80,14 +80,20 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
-    // Initialize from eventInitDict
-    _ = @"type"; // Event type is handled by V8 Event prototype chain
+    // Initialize Event base - set the type on the event base state
+    // The Event's type field is stored in state.base.own (Event.State's own fields)
+    state.base.own.type = try @"type".clone(allocator);
 
-    // Get values from eventInitDict if passed
+    // Initialize Event properties from eventInitDict
+    // IDBVersionChangeEventInit inherits from EventInit (bubbles, cancelable are in .base)
     if (eventInitDict.wasPassed()) {
+        state.base.own.bubbles = eventInitDict.value.base.bubbles orelse false;
+        state.base.own.cancelable = eventInitDict.value.base.cancelable orelse false;
         internal.old_version = eventInitDict.value.oldVersion orelse 0;
         internal.new_version = eventInitDict.value.newVersion;
     } else {
+        state.base.own.bubbles = false;
+        state.base.own.cancelable = false;
         internal.old_version = 0;
         internal.new_version = null;
     }

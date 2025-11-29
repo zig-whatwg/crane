@@ -89,13 +89,13 @@ pub fn get_lower(instance: *runtime.Instance) ImplError!*const anyopaque {
     const internal = state.own._internal orelse return error.InvalidState;
 
     if (internal.range.lower) |lower| {
-        // TODO: Convert IDBKey to JS value
-        _ = lower;
-        return error.InvalidState; // Placeholder - need key-to-JS conversion
+        return convertKeyToV8(lower);
     }
 
-    // Return undefined for no lower bound
-    return error.InvalidState; // Placeholder
+    // Return undefined for no lower bound - use V8 undefined
+    const v8 = @import("v8");
+    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.InvalidState;
+    return @ptrCast(v8.ffi.v8_Undefined(isolate));
 }
 
 /// Getter for upper
@@ -106,13 +106,13 @@ pub fn get_upper(instance: *runtime.Instance) ImplError!*const anyopaque {
     const internal = state.own._internal orelse return error.InvalidState;
 
     if (internal.range.upper) |upper| {
-        // TODO: Convert IDBKey to JS value
-        _ = upper;
-        return error.InvalidState; // Placeholder - need key-to-JS conversion
+        return convertKeyToV8(upper);
     }
 
-    // Return undefined for no upper bound
-    return error.InvalidState; // Placeholder
+    // Return undefined for no upper bound - use V8 undefined
+    const v8 = @import("v8");
+    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.InvalidState;
+    return @ptrCast(v8.ffi.v8_Undefined(isolate));
 }
 
 /// Getter for lowerOpen
@@ -260,6 +260,49 @@ pub fn call_lowerBound(instance: *runtime.Instance, lower: *const anyopaque, ope
     }
 
     return new_instance;
+}
+
+/// Convert IDBKey to V8 value (anyopaque pointer)
+///
+/// This handles the conversion from backend IDBKey type to V8 values.
+/// Returns an opaque pointer that can be returned directly to JavaScript.
+fn convertKeyToV8(key: BackendKey) !*const anyopaque {
+    const v8 = @import("v8");
+    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.InvalidState;
+
+    switch (key.key_type) {
+        .number => {
+            // Convert number key to V8 Number
+            const num = v8.ffi.v8_Number_New(isolate, key.value.number);
+            return @ptrCast(num);
+        },
+        .date => {
+            // Convert date key to V8 Date (milliseconds since epoch)
+            // For now, return as a number (Date support requires context)
+            const ms_as_f64: f64 = @floatFromInt(key.value.date);
+            const num = v8.ffi.v8_Number_New(isolate, ms_as_f64);
+            return @ptrCast(num);
+        },
+        .string => {
+            // Convert string key to V8 String
+            const str = key.value.string;
+            const v8_str = v8.ffi.v8_String_NewFromUtf8(isolate, str.ptr, @intCast(str.len));
+            if (v8_str) |s| {
+                return @ptrCast(s);
+            }
+            return error.InvalidState;
+        },
+        .binary => {
+            // Binary data - would need ArrayBuffer support
+            // For now, return undefined
+            return @ptrCast(v8.ffi.v8_Undefined(isolate));
+        },
+        .array => {
+            // Array of keys - would need Array support with recursive conversion
+            // For now, return undefined
+            return @ptrCast(v8.ffi.v8_Undefined(isolate));
+        },
+    }
 }
 
 /// Convert anyopaque to IDBKey

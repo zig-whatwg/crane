@@ -161,6 +161,22 @@ pub fn fromV8LongLong(
     return v8.v8_Value_IntegerValue(value, context);
 }
 
+/// Convert V8 Value to Zig u64 (unsigned long long)
+pub fn fromV8UnsignedLongLong(
+    context: *v8.Context,
+    value: *v8.Value,
+) ConversionError!runtime.UnsignedLongLong {
+    if (!v8.v8_Value_IsNumber(value)) {
+        return ConversionError.TypeError;
+    }
+    const int_val = v8.v8_Value_IntegerValue(value, context);
+    // JavaScript numbers can be negative, but unsigned long long should be >= 0
+    if (int_val < 0) {
+        return ConversionError.TypeError;
+    }
+    return @intCast(int_val);
+}
+
 /// Convert V8 Value to Zig f64 (double)
 pub fn fromV8Double(
     context: *v8.Context,
@@ -845,6 +861,24 @@ pub fn fromV8Value(
 
         var result: T = undefined;
         inline for (std.meta.fields(T)) |field| {
+            // Special handling for 'base' field in dictionary inheritance
+            // In WebIDL, child dictionaries inherit parent fields directly on the object
+            // e.g., { bubbles: true, oldVersion: 1 } not { base: { bubbles: true }, oldVersion: 1 }
+            if (comptime std.mem.eql(u8, field.name, "base")) {
+                const field_type_info = @typeInfo(field.type);
+                if (field_type_info == .@"struct") {
+                    // Recursively extract parent dictionary fields from the same object
+                    @field(result, field.name) = try fromV8Value(
+                        field.type,
+                        allocator,
+                        isolate,
+                        context,
+                        value, // Pass the same object, not a nested property
+                    );
+                    continue;
+                }
+            }
+
             // Get property name
             const field_name_str = v8.v8_String_NewFromUtf8(
                 isolate,
@@ -887,6 +921,8 @@ pub fn fromV8Value(
     if (T == runtime.Long) return try fromV8Long(context, value);
     if (T == runtime.UnsignedLong) return try fromV8UnsignedLong(context, value);
     if (T == runtime.LongLong) return try fromV8LongLong(context, value);
+    if (T == runtime.UnsignedLongLong) return try fromV8UnsignedLongLong(context, value);
+    if (T == u64) return try fromV8UnsignedLongLong(context, value);
     if (T == runtime.Double) return try fromV8Double(context, value);
     if (T == runtime.Float) return try fromV8Float(context, value);
     if (T == runtime.DOMString) {
@@ -1027,6 +1063,14 @@ pub fn toV8UnsignedLong(
 pub fn toV8LongLong(
     isolate: *v8.Isolate,
     value: runtime.LongLong,
+) *v8.Number {
+    return v8.v8_Number_New(isolate, @floatFromInt(value));
+}
+
+/// Convert Zig u64 (unsigned long long) to V8 Number
+pub fn toV8UnsignedLongLong(
+    isolate: *v8.Isolate,
+    value: runtime.UnsignedLongLong,
 ) *v8.Number {
     return v8.v8_Number_New(isolate, @floatFromInt(value));
 }
@@ -1294,6 +1338,8 @@ pub fn toV8Value(
     if (T == runtime.Long) return @ptrCast(toV8Long(isolate, value));
     if (T == runtime.UnsignedLong) return @ptrCast(toV8UnsignedLong(isolate, value));
     if (T == runtime.LongLong) return @ptrCast(toV8LongLong(isolate, value));
+    if (T == runtime.UnsignedLongLong) return @ptrCast(toV8UnsignedLongLong(isolate, value));
+    if (T == u64) return @ptrCast(toV8UnsignedLongLong(isolate, value));
     if (T == runtime.Double) return @ptrCast(toV8Double(isolate, value));
     if (T == runtime.Float) return @ptrCast(toV8Float(isolate, value));
     if (T == runtime.DOMString) return @ptrCast(toV8String(isolate, value));

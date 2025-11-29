@@ -623,9 +623,25 @@ pub fn V8Interface(comptime Interface: type) type {
                                 } else if (PayloadType == u64 or PayloadType == runtime.UnsignedLongLong) {
                                     const val: f64 = @floatFromInt(result);
                                     break :comptime_convert @ptrCast(v8.v8_Number_New(isolate_inner, val));
+                                } else if (PayloadType == ?u64) {
+                                    // Optional u64 - null or number
+                                    if (result) |num| {
+                                        const val: f64 = @floatFromInt(num);
+                                        break :comptime_convert @ptrCast(v8.v8_Number_New(isolate_inner, val));
+                                    } else {
+                                        break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
+                                    }
                                 } else if (PayloadType == i64 or PayloadType == runtime.LongLong) {
                                     const val: f64 = @floatFromInt(result);
                                     break :comptime_convert @ptrCast(v8.v8_Number_New(isolate_inner, val));
+                                } else if (PayloadType == ?i64) {
+                                    // Optional i64 - null or number
+                                    if (result) |num| {
+                                        const val: f64 = @floatFromInt(num);
+                                        break :comptime_convert @ptrCast(v8.v8_Number_New(isolate_inner, val));
+                                    } else {
+                                        break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
+                                    }
                                 } else if (PayloadType == f64 or PayloadType == runtime.Double) {
                                     break :comptime_convert @ptrCast(v8.v8_Number_New(isolate_inner, result));
                                 } else if (PayloadType == f32 or PayloadType == runtime.Float) {
@@ -662,6 +678,10 @@ pub fn V8Interface(comptime Interface: type) type {
                                     } else {
                                         break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
                                     }
+                                } else if (PayloadType == *const anyopaque) {
+                                    // Opaque pointer is already a V8 value - just cast it
+                                    // This is used for WebIDL 'any' type and pre-converted values
+                                    break :comptime_convert @ptrCast(@constCast(result));
                                 } else {
                                     // For complex types (interfaces, objects, etc.), return undefined for now
                                     // TODO: Implement proper object/interface conversions
@@ -1586,6 +1606,10 @@ pub fn V8Interface(comptime Interface: type) type {
                 return @ptrCast(conv.toV8Long(isolate, @as(i32, result)));
             } else if (PayloadType == i8) {
                 return @ptrCast(conv.toV8Long(isolate, @as(i32, result)));
+            } else if (PayloadType == u64 or PayloadType == runtime.UnsignedLongLong) {
+                return @ptrCast(conv.toV8UnsignedLongLong(isolate, result));
+            } else if (PayloadType == i64 or PayloadType == runtime.LongLong) {
+                return @ptrCast(conv.toV8LongLong(isolate, result));
             } else if (PayloadType == f64 or PayloadType == runtime.Double) {
                 return @ptrCast(v8.v8_Number_New(isolate, result));
             } else if (PayloadType == f32) {
