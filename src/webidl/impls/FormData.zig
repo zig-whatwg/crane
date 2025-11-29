@@ -151,8 +151,40 @@ pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) ImplErr
 
     const values = try internal.form_data.getAll(internal.allocator, name);
 
-    // Return as opaque pointer (V8 binding will convert to JS array)
-    return @ptrCast(values.ptr);
+    // Convert FormDataEntryValue to strings
+    var string_values: std.ArrayListUnmanaged([]const u8) = .{};
+    defer string_values.deinit(internal.allocator);
+
+    for (values) |entry_value| {
+        switch (entry_value) {
+            .string => |s| {
+                string_values.append(internal.allocator, s) catch continue;
+            },
+            .file => {
+                // For files, return "[object File]" as the string representation
+                string_values.append(internal.allocator, "[object File]") catch continue;
+            },
+        }
+    }
+
+    // Get the engine interface to create JS array
+    const engine = instance.ctx.engine orelse {
+        return error.InvalidState;
+    };
+    const engine_ctx = instance.ctx.engine_ctx orelse {
+        return error.InvalidState;
+    };
+
+    // Create JS array through engine abstraction
+    const createStringArray = engine.createStringArray orelse {
+        return error.InvalidState;
+    };
+
+    const js_array = createStringArray(engine_ctx, string_values.items) catch {
+        return error.InvalidState;
+    };
+
+    return js_array;
 }
 
 /// Operation: has

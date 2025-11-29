@@ -226,6 +226,19 @@ pub const EngineInterface = struct {
         allocator: std.mem.Allocator,
     ) EngineError![]const u8,
 
+    /// Create a JavaScript array from a slice of strings
+    ///
+    /// Arguments:
+    ///   - engine_ctx: Engine-specific context
+    ///   - strings: Slice of string slices to convert
+    ///
+    /// Returns:
+    ///   - Opaque pointer to JS array
+    createStringArray: ?*const fn (
+        engine_ctx: *anyopaque,
+        strings: []const []const u8,
+    ) EngineError!*anyopaque,
+
     /// Create an event loop for async operations
     ///
     /// Arguments:
@@ -463,6 +476,7 @@ pub const stub_engine: EngineInterface = .{
     .wrapInstance = null,
     .isString = null,
     .extractString = null,
+    .createStringArray = null,
     .createEventLoop = null,
     .destroyEventLoop = null,
     .createCallbackWrapper = null,

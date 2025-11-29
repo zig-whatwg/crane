@@ -1103,11 +1103,11 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
             }
 
-            // Handle *const anyopaque - ALWAYS return undefined for now.
-            // This type is ambiguous (could be V8 value or Zig data).
-            // Use Promise(T) wrapper type instead for Promise returns.
+            // Handle *const anyopaque - treat as V8 Value pointer
+            // The caller is expected to return a V8 Value directly (e.g., from createStringArray)
             if (ReturnType == *const anyopaque) {
-                return @ptrCast(v8.v8_Undefined(isolate));
+                // Cast the anyopaque directly to V8 Value
+                return @ptrCast(@constCast(result));
             }
 
             // For other types, return undefined as fallback

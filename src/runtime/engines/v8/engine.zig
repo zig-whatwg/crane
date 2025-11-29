@@ -42,6 +42,7 @@ pub const v8_engine_interface: EngineInterface = .{
     .wrapInstance = v8WrapInstance,
     .isString = v8IsString,
     .extractString = v8ExtractString,
+    .createStringArray = v8CreateStringArray,
     .createEventLoop = v8CreateEventLoop,
     .destroyEventLoop = v8DestroyEventLoop,
     .createCallbackWrapper = v8CreateCallbackWrapper,
@@ -354,6 +355,28 @@ fn v8ExtractString(
         return EngineError.OutOfMemory;
 
     return owned_slice;
+}
+
+/// Create a V8 array from a slice of strings
+fn v8CreateStringArray(
+    engine_ctx: *anyopaque,
+    strings: []const []const u8,
+) EngineError!*anyopaque {
+    const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse
+        return EngineError.OperationFailed;
+
+    // Create a new V8 array with the given length
+    const array = ffi.v8_Array_New(isolate, @intCast(strings.len));
+
+    // Add each string to the array
+    for (strings, 0..) |str, i| {
+        const v8_str = ffi.v8_String_NewFromUtf8(isolate, str.ptr, @intCast(str.len)) orelse
+            continue; // Skip on error
+        _ = ffi.v8_Array_Set(array, context, @intCast(i), @ptrCast(v8_str));
+    }
+
+    return @ptrCast(array);
 }
 
 /// Create a V8 event loop
