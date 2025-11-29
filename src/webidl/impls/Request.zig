@@ -243,7 +243,10 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, inpu
 
         // Step 25.3: Normalize method (uppercase standard methods)
         // Step 25.4: Set request's method to method
-        base_request.method = normalizeMethod(method);
+        const normalized = normalizeMethod(method);
+        // Free the old method and allocate new one
+        allocator.free(base_request.method);
+        base_request.method = try allocator.dupe(u8, normalized);
     }
 
     // Step 16-18: Handle mode
