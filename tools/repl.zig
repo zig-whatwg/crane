@@ -12,6 +12,75 @@ const v8 = @import("v8");
 const context_manager = @import("v8").context_manager;
 const runtime = @import("runtime");
 
+/// Stub callback for fetch() global function
+/// This is a temporary implementation until Window is properly implemented.
+/// Returns a Promise that resolves to a Response object.
+fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+
+    // Get allocator from runtime context
+    const runtime_ctx = context_manager.getOrCreate(context, std.heap.page_allocator) catch {
+        // Return undefined on error
+        info.setReturnValue(@ptrCast(v8.ffi.v8_Undefined(isolate)));
+        return;
+    };
+    const allocator = runtime_ctx.allocator;
+
+    // Get the first argument (input: RequestInfo)
+    const argc = info.v8_FunctionCallbackInfo_Length();
+    if (argc < 1) {
+        // TypeError: Failed to execute 'fetch': 1 argument required
+        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'fetch': 1 argument required", 47) orelse return;
+        const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
+        v8.ffi.v8_Isolate_ThrowException(isolate, err);
+        return;
+    }
+
+    // We ignore the input argument for now - this is a simple stub
+    _ = info.v8_FunctionCallbackInfo_GetArgument(0);
+
+    // Create a Response object (stub - returns empty response with status 200)
+    const Response = @import("interfaces").Response;
+    const response_instance = Response.init(allocator, runtime_ctx) catch {
+        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to create Response", 25) orelse return;
+        const err = v8.ffi.v8_Exception_Error(@ptrCast(err_msg)) orelse return;
+        v8.ffi.v8_Isolate_ThrowException(isolate, err);
+        return;
+    };
+
+    // Wrap the Response as a V8 object
+    const v8_response = v8.template_registry.wrapInstanceAsV8Object(
+        response_instance,
+        "Response",
+        isolate,
+        context,
+    ) catch {
+        Response.deinit(response_instance);
+        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to wrap Response", 23) orelse return;
+        const err = v8.ffi.v8_Exception_Error(@ptrCast(err_msg)) orelse return;
+        v8.ffi.v8_Isolate_ThrowException(isolate, err);
+        return;
+    };
+
+    // Create a resolved Promise with the Response
+    const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse {
+        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to create Promise", 24) orelse return;
+        const err = v8.ffi.v8_Exception_Error(@ptrCast(err_msg)) orelse return;
+        v8.ffi.v8_Isolate_ThrowException(isolate, err);
+        return;
+    };
+
+    // Resolve the promise with the response
+    _ = v8.ffi.v8_PromiseResolver_Resolve(resolver, context, @ptrCast(v8_response));
+
+    // Get the promise from the resolver
+    const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
+
+    // Return the promise
+    info.setReturnValue(@ptrCast(promise));
+}
+
 /// REPL state
 const Repl = struct {
     allocator: std.mem.Allocator,
@@ -276,6 +345,26 @@ const Repl = struct {
             const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "indexedDB", 9) orelse return error.StringCreateFailed;
             _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(v8_idb_factory));
         }
+
+        // Register fetch stub (normally on WindowOrWorkerGlobalScope, but Window not implemented)
+        // This is a temporary stub until Window is properly implemented
+        try self.registerFetchStub(global_obj);
+    }
+
+    /// Register fetch as a global function stub
+    /// Per spec, fetch is defined on WindowOrWorkerGlobalScope mixin.
+    /// Since Window is not yet implemented, we register it directly on global.
+    fn registerFetchStub(self: *Self, global_obj: *v8.ffi.Object) !void {
+        // Create function template for fetch
+        const fetch_template = v8.ffi.v8_FunctionTemplate_New(self.isolate, fetchCallback, null) orelse return error.FunctionTemplateCreateFailed;
+        v8.ffi.v8_FunctionTemplate_SetLength(fetch_template, 1); // fetch(input, init?)
+
+        // Get the function from template
+        const fetch_fn = v8.ffi.v8_FunctionTemplate_GetFunction(fetch_template, self.context) orelse return error.FunctionCreateFailed;
+
+        // Set it as 'fetch' property on the global object
+        const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "fetch", 5) orelse return error.StringCreateFailed;
+        _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(fetch_fn));
     }
 
     pub fn deinit(self: *Self) void {
