@@ -634,6 +634,13 @@ pub fn V8Interface(comptime Interface: type) type {
                                     break :comptime_convert v8.v8_Boolean_New(isolate_inner, result) orelse unreachable;
                                 } else if (PayloadType == runtime.DOMString) {
                                     break :comptime_convert @ptrCast(conv.toV8String(isolate_inner, result));
+                                } else if (PayloadType == ?runtime.DOMString) {
+                                    // Optional DOMString - null or convert to string
+                                    if (result) |str| {
+                                        break :comptime_convert @ptrCast(conv.toV8String(isolate_inner, str));
+                                    } else {
+                                        break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
+                                    }
                                 } else if (PayloadType == runtime.USVString or PayloadType == []const u8) {
                                     // USVString is []const u8 - convert to V8 string
                                     if (v8.v8_String_NewFromUtf8(isolate_inner, result.ptr, @intCast(result.len))) |str| {

@@ -19,6 +19,8 @@ const Node = interfaces.Node;
 
 // Import parent class impl for initialization chain
 const EventTargetImpl = @import("EventTarget.zig");
+const TextImpl = @import("Text.zig");
+const CharacterDataImpl = @import("CharacterData.zig");
 
 pub const State = Node.State;
 
@@ -370,12 +372,19 @@ pub fn get_nodeValue(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     return switch (internal.node_type) {
-        NodeType.ATTRIBUTE_NODE,
         NodeType.TEXT_NODE,
         NodeType.CDATA_SECTION_NODE,
         NodeType.PROCESSING_INSTRUCTION_NODE,
         NodeType.COMMENT_NODE,
         => blk: {
+            // For CharacterData nodes, the data is stored in CharacterData's internal state
+            const data_slice = CharacterDataImpl.getData(instance) orelse {
+                break :blk runtime.DOMString.initEmpty();
+            };
+            break :blk runtime.DOMString.initInterned(data_slice);
+        },
+        NodeType.ATTRIBUTE_NODE => blk: {
+            // For Attr nodes, use Node's node_value
             if (internal.node_value) |val| {
                 break :blk val;
             }
@@ -384,6 +393,29 @@ pub fn get_nodeValue(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         // For Element, Document, DocumentType, DocumentFragment: null
         else => runtime.DOMString.initEmpty(),
     };
+}
+
+/// Helper to recursively collect text content from descendants
+fn collectTextContent(node: *runtime.Instance, allocator: std.mem.Allocator, result: *std.ArrayListUnmanaged(u8)) !void {
+    const node_internal = getInternal(node) orelse return;
+
+    // If this is a text node, add its content from CharacterData storage
+    if (node_internal.node_type == NodeType.TEXT_NODE or
+        node_internal.node_type == NodeType.CDATA_SECTION_NODE)
+    {
+        if (CharacterDataImpl.getData(node)) |data_slice| {
+            try result.appendSlice(allocator, data_slice);
+        }
+        return;
+    }
+
+    // Otherwise, recursively collect from children
+    var child = node_internal.first_child;
+    while (child) |c| {
+        const c_internal = getInternal(c) orelse continue;
+        try collectTextContent(c, allocator, result);
+        child = c_internal.next_sibling;
+    }
 }
 
 /// Getter for textContent
@@ -411,8 +443,18 @@ pub fn get_textContent(instance: *runtime.Instance) anyerror!?runtime.DOMString 
         },
         NodeType.ELEMENT_NODE, NodeType.DOCUMENT_FRAGMENT_NODE => {
             // Returns concatenation of descendant text content
-            // TODO: Implement tree traversal to collect text
-            return error.NotImplemented;
+            var result = std.ArrayListUnmanaged(u8){};
+            errdefer result.deinit(internal.allocator);
+
+            // Recursively collect text from all descendants
+            try collectTextContent(instance, internal.allocator, &result);
+
+            if (result.items.len == 0) {
+                return runtime.DOMString.initEmpty();
+            }
+
+            // Create DOMString from collected text - take ownership of the array
+            return runtime.DOMString.initOwned(result.toOwnedSlice(internal.allocator) catch return runtime.DOMString.initEmpty());
         },
         else => runtime.DOMString.initEmpty(),
     };
@@ -468,9 +510,30 @@ pub fn set_textContent(instance: *runtime.Instance, value: runtime.DOMString) an
             internal.node_value = try value.clone(internal.allocator);
         },
         NodeType.ELEMENT_NODE, NodeType.DOCUMENT_FRAGMENT_NODE => {
-            // Remove all children, then append a Text node with value
-            // TODO: Implement removeAllChildren and createTextNode
-            return error.NotImplemented;
+            // Remove all children
+            while (internal.first_child) |child| {
+                try removeNodeFromParent(child, instance);
+            }
+
+            // If value is not empty, create and append a Text node
+            const slice = value.asSlice();
+            if (slice.len > 0) {
+                // Create Text node with the value
+                const text_node = try TextImpl.call_constructor(
+                    internal.allocator,
+                    instance.ctx,
+                    webidl.Opt(runtime.DOMString).passed(value),
+                );
+                errdefer TextImpl.deinit(text_node);
+
+                // Set owner document for the text node
+                if (internal.owner_document) |owner_doc| {
+                    try setOwnerDocument(text_node, owner_doc);
+                }
+
+                // Append the text node
+                try insertNode(text_node, instance, null);
+            }
         },
         else => {},
     }
