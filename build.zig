@@ -1571,6 +1571,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "v8", .module = v8_mod },
                 .{ .name = "interfaces", .module = interfaces_mod },
                 .{ .name = "namespaces", .module = namespaces_mod },
+                .{ .name = "fetch", .module = fetch_mod },
             },
         }),
     });

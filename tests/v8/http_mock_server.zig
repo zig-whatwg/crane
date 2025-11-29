@@ -104,7 +104,8 @@ pub const HttpMockServer = struct {
         const status_codes = [_]u16{ 200, 201, 204, 400, 401, 403, 404, 500, 503 };
         for (status_codes) |code| {
             const path = try std.fmt.allocPrint(self.allocator, "/status/{d}", .{code});
-            defer self.allocator.free(path);
+            // NOTE: Do NOT free path here - the mock server stores a reference to it
+            // The path will be cleaned up when the server is deinitialized
 
             const status_text = getStatusText(code);
             const body = if (code == 204) null else status_text;
@@ -300,19 +301,22 @@ pub const HttpMockServer = struct {
             };
         } else if (std.mem.eql(u8, parsed.path, "/echo/body")) {
             // Echo body back
-            const content_type = blk: {
-                for (parsed.headers) |h| {
-                    if (std.ascii.eqlIgnoreCase(h[0], "content-type")) {
-                        break :blk h[1];
-                    }
+            // Find content-type from request headers
+            var req_content_type: []const u8 = "text/plain";
+            for (parsed.headers) |h| {
+                if (std.ascii.eqlIgnoreCase(h[0], "content-type")) {
+                    req_content_type = h[1];
+                    break;
                 }
-                break :blk "text/plain";
-            };
+            }
+
+            // Dupe the content-type so it lives long enough
+            const content_type_copy = try self.allocator.dupe(u8, req_content_type);
 
             return .{
                 .status = 200,
                 .body = if (parsed.body) |b| try self.allocator.dupe(u8, b) else "",
-                .headers = &.{.{ "Content-Type", content_type }},
+                .headers = &.{.{ "Content-Type", content_type_copy }},
             };
         } else if (std.mem.eql(u8, parsed.path, "/echo/formdata")) {
             return .{

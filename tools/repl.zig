@@ -12,8 +12,7 @@ const v8 = @import("v8");
 const context_manager = @import("v8").context_manager;
 const runtime = @import("runtime");
 
-/// Stub callback for fetch() global function
-/// This is a temporary implementation until Window is properly implemented.
+/// Fetch callback that makes real HTTP requests using std.http.Client.
 /// Returns a Promise that resolves to a Response object.
 fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
@@ -21,26 +20,114 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
 
     // Get allocator from runtime context
     const runtime_ctx = context_manager.getOrCreate(context, std.heap.page_allocator) catch {
-        // Return undefined on error
         info.setReturnValue(@ptrCast(v8.ffi.v8_Undefined(isolate)));
         return;
     };
     const allocator = runtime_ctx.allocator;
 
-    // Get the first argument (input: RequestInfo)
+    // Get the first argument (input: RequestInfo - URL string or Request object)
     const argc = info.v8_FunctionCallbackInfo_Length();
     if (argc < 1) {
-        // TypeError: Failed to execute 'fetch': 1 argument required
         const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'fetch': 1 argument required", 47) orelse return;
         const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
         v8.ffi.v8_Isolate_ThrowException(isolate, err);
         return;
     }
 
-    // We ignore the input argument for now - this is a simple stub
-    _ = info.v8_FunctionCallbackInfo_GetArgument(0);
+    const arg0 = info.v8_FunctionCallbackInfo_GetArgument(0);
 
-    // Create a Response object (stub - returns empty response with status 200)
+    // Extract URL string from the argument
+    var url_buf: [4096]u8 = undefined;
+    var url_len: usize = 0;
+
+    if (v8.ffi.v8_Value_IsString(arg0)) {
+        const str = v8.ffi.v8_Value_ToString(arg0, context) orelse {
+            const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Invalid URL", 11) orelse return;
+            const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
+            v8.ffi.v8_Isolate_ThrowException(isolate, err);
+            return;
+        };
+        // Get the actual string length first (without null terminator)
+        url_len = @intCast(v8.ffi.v8_String_Utf8Length(str));
+        if (url_len > url_buf.len) url_len = url_buf.len;
+        _ = v8.ffi.v8_String_WriteUtf8(str, &url_buf, @intCast(url_buf.len));
+    } else {
+        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "fetch() requires a URL string", 29) orelse return;
+        const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
+        v8.ffi.v8_Isolate_ThrowException(isolate, err);
+        return;
+    }
+
+    const url_str = url_buf[0..url_len];
+
+    // Parse URL
+    const uri = std.Uri.parse(url_str) catch {
+        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Invalid URL", 11) orelse return;
+        const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
+        v8.ffi.v8_Isolate_ThrowException(isolate, err);
+        return;
+    };
+
+    // Create HTTP client and make request
+    var client = std.http.Client{ .allocator = allocator };
+    defer client.deinit();
+
+    // Make the request using low-level API but with proper buffer management
+    var req = client.request(.GET, uri, .{}) catch {
+        // Return rejected promise with network error
+        const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
+        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Network error: connection failed", 33) orelse return;
+        const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
+        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
+        const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
+        info.setReturnValue(@ptrCast(promise));
+        return;
+    };
+    defer req.deinit();
+
+    // Send the request
+    req.sendBodiless() catch {
+        const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
+        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Network error: send failed", 26) orelse return;
+        const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
+        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
+        const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
+        info.setReturnValue(@ptrCast(promise));
+        return;
+    };
+
+    // Receive response headers
+    var redirect_buffer: [4096]u8 = undefined;
+    var http_response = req.receiveHead(&redirect_buffer) catch {
+        const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
+        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Network error: receive failed", 30) orelse return;
+        const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
+        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
+        const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
+        info.setReturnValue(@ptrCast(promise));
+        return;
+    };
+
+    // Extract status and headers BEFORE reading body (body read invalidates head.bytes)
+    const status = @intFromEnum(http_response.head.status);
+    const content_type = http_response.head.content_type;
+    const location = http_response.head.location;
+
+    // Read response body
+    var transfer_buffer: [4096]u8 = undefined;
+    const reader = http_response.reader(&transfer_buffer);
+    const body = reader.allocRemaining(allocator, std.Io.Limit.unlimited) catch {
+        const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
+        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Network error: body read failed", 31) orelse return;
+        const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
+        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
+        const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
+        info.setReturnValue(@ptrCast(promise));
+        return;
+    };
+    defer allocator.free(body);
+
+    // Create Response object
     const Response = @import("interfaces").Response;
     const response_instance = Response.init(allocator, runtime_ctx) catch {
         const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to create Response", 25) orelse return;
@@ -48,6 +135,37 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
         v8.ffi.v8_Isolate_ThrowException(isolate, err);
         return;
     };
+
+    // Set response properties via the internal state
+    // The Response interface stores internal state in state.own._internal
+    const state = response_instance.getState(Response.State);
+    if (state.own._internal) |internal| {
+        // Set status from HTTP response
+        internal.response.status = status;
+
+        // Set URL in URL list
+        const url_copy = allocator.dupe(u8, url_str) catch null;
+        if (url_copy) |u| {
+            internal.response.url_list.append(allocator, u) catch {};
+        }
+
+        // Set body from response data
+        if (body.len > 0) {
+            const fetch = @import("fetch");
+            const body_obj = fetch.internal.Body.fromBytes(allocator, body) catch null;
+            if (body_obj) |b| {
+                internal.response.body = b;
+            }
+        }
+
+        // Set known headers from the parsed head (content_type and location are parsed fields)
+        if (content_type) |ct| {
+            internal.response.header_list.append("Content-Type", ct) catch {};
+        }
+        if (location) |loc| {
+            internal.response.header_list.append("Location", loc) catch {};
+        }
+    }
 
     // Wrap the Response as a V8 object
     const v8_response = v8.template_registry.wrapInstanceAsV8Object(
@@ -71,13 +189,9 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
         return;
     };
 
-    // Resolve the promise with the response
     _ = v8.ffi.v8_PromiseResolver_Resolve(resolver, context, @ptrCast(v8_response));
 
-    // Get the promise from the resolver
     const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
-
-    // Return the promise
     info.setReturnValue(@ptrCast(promise));
 }
 
