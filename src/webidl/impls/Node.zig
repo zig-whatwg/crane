@@ -17,6 +17,9 @@ const webidl = @import("webidl");
 const infra = @import("infra");
 const Node = interfaces.Node;
 
+// Import parent class impl for initialization chain
+const EventTargetImpl = @import("EventTarget.zig");
+
 pub const State = Node.State;
 
 pub const ImplError = error{
@@ -123,52 +126,73 @@ pub const InternalState = struct {
 
 /// Get the internal state from an instance
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    const state = instance.getState(State);
-    return state.own._internal;
+    return getInternalFromRegistry(instance);
 }
 
 /// Get or create the EventTarget internal state (for event handling)
-/// Note: In the runtime system, EventTarget state access depends on how
-/// inheritance is flattened. For now, return null as this needs proper
-/// integration with the codegen's inheritance model.
-fn getEventTargetInternal(instance: *runtime.Instance) ?*@import("EventTarget.zig").InternalState {
-    _ = instance;
-    // TODO: Access EventTarget's internal state via proper inheritance mechanism
-    return null;
+fn getEventTargetInternal(instance: *runtime.Instance) ?*EventTargetImpl.InternalState {
+    // Access EventTarget's internal state via its registry
+    return EventTargetImpl.getInternalState(instance);
 }
 
 /// Initialize instance (creates the instance)
+/// Chains to parent class initialization: EventTarget
+///
+/// IMPORTANT: Due to state hierarchy complexity, internal state is stored
+/// in a global registry rather than in the State struct. This allows
+/// proper inheritance without type conflicts.
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
+    // Chain to parent class (EventTarget)
+    const instance = try EventTargetImpl.init(allocator, StateType, vtable, ctx);
+    errdefer EventTargetImpl.deinit(instance);
 
-    // Initialize internal state
-    const state = instance.getState(StateType);
+    // Initialize Node internal state in global registry
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
-    state.own._internal = internal;
-
-    // Note: EventTarget's internal state initialization is handled by the
-    // codegen's inheritance mechanism. Each interface in the chain initializes
-    // its own _internal state.
+    try setInternalInRegistry(instance, internal);
 
     return instance;
 }
 
+/// Global registry for Node internal state (workaround for state type hierarchy issues)
+var node_internal_registry: std.AutoHashMap(usize, *InternalState) = undefined;
+var node_registry_initialized: bool = false;
+
+fn ensureNodeRegistry() void {
+    if (!node_registry_initialized) {
+        node_internal_registry = std.AutoHashMap(usize, *InternalState).init(std.heap.page_allocator);
+        node_registry_initialized = true;
+    }
+}
+
+fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) !void {
+    ensureNodeRegistry();
+    try node_internal_registry.put(@intFromPtr(instance), internal);
+}
+
+fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
+    ensureNodeRegistry();
+    return node_internal_registry.get(@intFromPtr(instance));
+}
+
+/// Get Node's internal state from the registry
+pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
+    return getInternalFromRegistry(instance);
+}
+
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        internal.deinit();
-    }
+    // Clean up from registry
+    ensureNodeRegistry();
+    _ = node_internal_registry.remove(@intFromPtr(instance));
     // EventTarget cleanup happens via inheritance chain
-    runtime.Instance.deinit(instance);
+    EventTargetImpl.deinit(instance);
 }
 
 // =============================================================================

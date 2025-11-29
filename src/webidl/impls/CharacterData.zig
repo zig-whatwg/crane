@@ -19,6 +19,9 @@ const callbacks = @import("callbacks");
 const infra = @import("infra");
 const CharacterData = interfaces.CharacterData;
 
+// Import parent class impl for initialization chain
+const NodeImpl = @import("Node.zig");
+
 // Import DOM algorithms from src/dom/
 const dom = @import("dom");
 
@@ -59,37 +62,69 @@ pub const InternalState = struct {
 
 /// Get the internal state from an instance
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    const state = instance.getState(State);
-    return state.own._internal;
+    return getInternalFromRegistry(instance);
 }
 
 /// Initialize instance (creates the instance)
+/// Chains to parent class initialization: Node -> EventTarget
+///
+/// IMPORTANT: Due to state hierarchy complexity, internal state is stored
+/// in a global registry rather than in the State struct.
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
+    // Chain to parent class (Node) which chains to EventTarget
+    const instance = try NodeImpl.init(allocator, StateType, vtable, ctx);
+    errdefer NodeImpl.deinit(instance);
 
-    // Initialize CharacterData internal state
-    const state = instance.getState(StateType);
+    // Initialize CharacterData internal state in global registry
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = try InternalState.init(allocator);
-    state.own._internal = internal;
+    try setInternalInRegistry(instance, internal);
 
     return instance;
 }
 
+/// Global registry for CharacterData internal state
+var char_data_registry: std.AutoHashMap(usize, *InternalState) = undefined;
+var char_registry_initialized: bool = false;
+
+fn ensureCharRegistry() void {
+    if (!char_registry_initialized) {
+        char_data_registry = std.AutoHashMap(usize, *InternalState).init(std.heap.page_allocator);
+        char_registry_initialized = true;
+    }
+}
+
+fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) !void {
+    ensureCharRegistry();
+    try char_data_registry.put(@intFromPtr(instance), internal);
+}
+
+fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
+    ensureCharRegistry();
+    return char_data_registry.get(@intFromPtr(instance));
+}
+
+/// Get CharacterData's internal state from the registry
+pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
+    return getInternalFromRegistry(instance);
+}
+
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
+    // Clean up from registry
+    ensureCharRegistry();
+    if (char_data_registry.get(@intFromPtr(instance))) |internal| {
         internal.deinit();
     }
-    runtime.Instance.deinit(instance);
+    _ = char_data_registry.remove(@intFromPtr(instance));
+    // Node cleanup happens via inheritance chain
+    NodeImpl.deinit(instance);
 }
 
 // =============================================================================

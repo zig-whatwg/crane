@@ -120,6 +120,8 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 }
 
 /// Initialize instance (creates the instance)
+/// This is the root of the DOM inheritance chain - creates the Instance and
+/// initializes EventTarget's internal state.
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
@@ -127,16 +129,20 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // Internal state will be initialized in call_constructor
+    errdefer runtime.Instance.deinit(instance);
+
+    // Initialize EventTarget internal state in registry
+    _ = try initInternal(instance, allocator);
+
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // Clean up internal state
-    if (getInternal(instance)) |internal| {
+    // Clean up internal state from registry
+    if (getInternalFromRegistry(instance)) |internal| {
         internal.deinit();
-        // Note: Internal state memory is managed by arena allocator
+        removeFromRegistry(instance);
     }
     runtime.Instance.deinit(instance);
 }
@@ -162,9 +168,8 @@ pub fn initInternal(instance: *runtime.Instance, allocator: std.mem.Allocator) !
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
 
-    // Store internal state in a separate registry or use State._internal if available
-    // For now, we use a global registry keyed by instance pointer
-    try internal_state_registry.put(@intFromPtr(instance), internal);
+    // Store internal state in registry (ensure it's initialized first)
+    try setInternalInRegistry(instance, internal);
 
     return internal;
 }
