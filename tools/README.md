@@ -48,12 +48,15 @@ zig build sync-impl-signatures -- Document.zig
 ```
 
 **How it works**:
-1. Parses both stub (`impls_tmp/`) and impl (`impls/`) files using Zig AST
-2. For each top-level function in the stub:
+1. Iterates over all files in `impls_tmp/` (source of truth)
+2. For each file:
+   - If impl doesn't exist: copies entire stub file (NEW interface)
+   - If impl exists: parses both using Zig AST
+3. For each top-level function in the stub:
    - If function exists in impl: updates signature, preserves body
    - If function is new: adds stub with NotImplemented body
-3. Preserves all other code (imports, types, nested functions, helpers)
-4. Only processes top-level functions (not nested in structs)
+4. Preserves all other code (imports, types, nested functions, helpers)
+5. Only processes top-level functions (not nested in structs)
 
 **Safety features**:
 - Uses Zig's built-in AST parser for accurate parsing

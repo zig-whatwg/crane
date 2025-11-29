@@ -298,7 +298,7 @@ fn processFile(allocator: Allocator, filename: []const u8, dry_run: bool, verbos
     const stub_path = try std.fs.path.join(allocator, &.{ IMPLS_TMP_DIR, filename });
     defer allocator.free(stub_path);
 
-    // Check if stub exists
+    // Read stub file (must exist since we iterate over impls_tmp/)
     const stub_file = std.fs.cwd().openFile(stub_path, .{}) catch |err| {
         if (err == error.FileNotFound) {
             return false; // No stub, nothing to do
@@ -307,85 +307,102 @@ fn processFile(allocator: Allocator, filename: []const u8, dry_run: bool, verbos
     };
     defer stub_file.close();
 
-    // Read files
-    const impl_file = try std.fs.cwd().openFile(impl_path, .{});
-    defer impl_file.close();
-
-    const impl_bytes = try impl_file.readToEndAlloc(allocator, 10 * 1024 * 1024);
-    defer allocator.free(impl_bytes);
-
     const stub_bytes = try stub_file.readToEndAlloc(allocator, 10 * 1024 * 1024);
     defer allocator.free(stub_bytes);
-
-    // Convert to sentinel-terminated slices for AST parser
-    const impl_source = try allocator.dupeZ(u8, impl_bytes);
-    defer allocator.free(impl_source);
 
     const stub_source = try allocator.dupeZ(u8, stub_bytes);
     defer allocator.free(stub_source);
 
-    // Extract functions from both files
-    var stub_functions = try extractFunctions(allocator, stub_source);
-    defer stub_functions.deinit();
+    // Check if impl file exists
+    const impl_file_result = std.fs.cwd().openFile(impl_path, .{});
 
-    var impl_functions = try extractFunctions(allocator, impl_source);
-    defer impl_functions.deinit();
+    if (impl_file_result) |impl_file| {
+        defer impl_file.close();
 
-    // Count changes
-    var changes: usize = 0;
-    var new_functions: usize = 0;
+        const impl_bytes = try impl_file.readToEndAlloc(allocator, 10 * 1024 * 1024);
+        defer allocator.free(impl_bytes);
 
-    var stub_iter = stub_functions.iterator();
-    while (stub_iter.next()) |entry| {
-        const fn_name = entry.key_ptr.*;
-        const stub_fn = entry.value_ptr.*;
+        const impl_source = try allocator.dupeZ(u8, impl_bytes);
+        defer allocator.free(impl_source);
 
-        if (impl_functions.get(fn_name)) |impl_fn| {
-            if (!std.mem.eql(u8, stub_fn.signature, impl_fn.signature)) {
-                changes += 1;
-            }
-        } else {
-            new_functions += 1;
-        }
-    }
+        // Extract functions from both files
+        var stub_functions = try extractFunctions(allocator, stub_source);
+        defer stub_functions.deinit();
 
-    if (changes == 0 and new_functions == 0) {
-        return false;
-    }
+        var impl_functions = try extractFunctions(allocator, impl_source);
+        defer impl_functions.deinit();
 
-    std.debug.print("{s}: {d} signature(s) to update, {d} new function(s)\n", .{ filename, changes, new_functions });
+        // Count changes
+        var changes: usize = 0;
+        var new_functions: usize = 0;
 
-    if (dry_run) {
-        // Show details in dry run mode
-        stub_iter = stub_functions.iterator();
+        var stub_iter = stub_functions.iterator();
         while (stub_iter.next()) |entry| {
             const fn_name = entry.key_ptr.*;
             const stub_fn = entry.value_ptr.*;
 
             if (impl_functions.get(fn_name)) |impl_fn| {
                 if (!std.mem.eql(u8, stub_fn.signature, impl_fn.signature)) {
-                    std.debug.print("  ~ {s}\n", .{fn_name});
-                    if (verbose) {
-                        std.debug.print("    OLD: {s}\n", .{impl_fn.signature});
-                        std.debug.print("    NEW: {s}\n", .{stub_fn.signature});
-                    }
+                    changes += 1;
                 }
             } else {
-                std.debug.print("  + {s} (new)\n", .{fn_name});
+                new_functions += 1;
             }
         }
+
+        if (changes == 0 and new_functions == 0) {
+            return false;
+        }
+
+        std.debug.print("{s}: {d} signature(s) to update, {d} new function(s)\n", .{ filename, changes, new_functions });
+
+        if (dry_run) {
+            // Show details in dry run mode
+            stub_iter = stub_functions.iterator();
+            while (stub_iter.next()) |entry| {
+                const fn_name = entry.key_ptr.*;
+                const stub_fn = entry.value_ptr.*;
+
+                if (impl_functions.get(fn_name)) |impl_fn| {
+                    if (!std.mem.eql(u8, stub_fn.signature, impl_fn.signature)) {
+                        std.debug.print("  ~ {s}\n", .{fn_name});
+                        if (verbose) {
+                            std.debug.print("    OLD: {s}\n", .{impl_fn.signature});
+                            std.debug.print("    NEW: {s}\n", .{stub_fn.signature});
+                        }
+                    }
+                } else {
+                    std.debug.print("  + {s} (new)\n", .{fn_name});
+                }
+            }
+            return true;
+        }
+
+        // Merge and write
+        const merged = try mergeSignatures(allocator, impl_source, &stub_functions, &impl_functions, verbose);
+        defer allocator.free(merged);
+
+        const out_file = try std.fs.cwd().createFile(impl_path, .{});
+        defer out_file.close();
+        try out_file.writeAll(merged);
+
+        return true;
+    } else |_| {
+        // Impl file doesn't exist - this is a NEW interface
+        // Copy the entire stub file
+        std.debug.print("{s}: NEW FILE (copying from stub)\n", .{filename});
+
+        if (dry_run) {
+            return true;
+        }
+
+        // Just copy the stub file to impls/
+        const out_file = try std.fs.cwd().createFile(impl_path, .{});
+        defer out_file.close();
+        try out_file.writeAll(stub_bytes);
+
         return true;
     }
-
-    // Merge and write
-    const merged = try mergeSignatures(allocator, impl_source, &stub_functions, &impl_functions, verbose);
-    defer allocator.free(merged);
-
-    const out_file = try std.fs.cwd().createFile(impl_path, .{});
-    defer out_file.close();
-    try out_file.writeAll(merged);
-
-    return true;
 }
 
 pub fn main() !void {
@@ -440,8 +457,8 @@ pub fn main() !void {
             files_changed += 1;
         }
     } else {
-        // Process all files
-        var dir = try std.fs.cwd().openDir(IMPLS_DIR, .{ .iterate = true });
+        // Process all files in impls_tmp/ (source of truth for what should exist)
+        var dir = try std.fs.cwd().openDir(IMPLS_TMP_DIR, .{ .iterate = true });
         defer dir.close();
 
         var iter = dir.iterate();
