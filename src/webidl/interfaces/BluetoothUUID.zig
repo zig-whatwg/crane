@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-29T05:01:35Z
+//! Generated at: 2025-11-29T11:15:58Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -74,11 +74,6 @@ pub const BluetoothUUID = struct {
     );
 
     const delegates = .{
-
-        .call_canonicalUUID = &call_canonicalUUID,
-        .call_getCharacteristic = &call_getCharacteristic,
-        .call_getDescriptor = &call_getDescriptor,
-        .call_getService = &call_getService,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 

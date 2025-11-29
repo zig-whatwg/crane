@@ -1,5 +1,5 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-29T05:01:34Z
+//! Generated at: 2025-11-29T11:15:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -95,11 +95,7 @@ pub const IDBKeyRange = struct {
         .get_upper = &get_upper,
         .get_upperOpen = &get_upperOpen,
 
-        .call_bound = &call_bound,
         .call_includes = &call_includes,
-        .call_lowerBound = &call_lowerBound,
-        .call_only = &call_only,
-        .call_upperBound = &call_upperBound,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 

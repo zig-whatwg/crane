@@ -1,5 +1,5 @@
 //! Generated from: webauthn.idl
-//! Generated at: 2025-11-29T05:01:34Z
+//! Generated at: 2025-11-29T11:15:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -117,15 +117,7 @@ pub const PublicKeyCredential = struct {
         .get_rawId = &get_rawId,
         .get_response = &get_response,
 
-        .call_getClientCapabilities = &call_getClientCapabilities,
         .call_getClientExtensionResults = &call_getClientExtensionResults,
-        .call_isConditionalMediationAvailable = &call_isConditionalMediationAvailable,
-        .call_isUserVerifyingPlatformAuthenticatorAvailable = &call_isUserVerifyingPlatformAuthenticatorAvailable,
-        .call_parseCreationOptionsFromJSON = &call_parseCreationOptionsFromJSON,
-        .call_parseRequestOptionsFromJSON = &call_parseRequestOptionsFromJSON,
-        .call_signalAllAcceptedCredentials = &call_signalAllAcceptedCredentials,
-        .call_signalCurrentUserDetails = &call_signalCurrentUserDetails,
-        .call_signalUnknownCredential = &call_signalUnknownCredential,
         .call_toJSON = &call_toJSON,
     };
     pub const vtable = runtime.buildVTable(&delegates);

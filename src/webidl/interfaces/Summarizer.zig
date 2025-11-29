@@ -1,5 +1,5 @@
 //! Generated from: writing-assistance-apis.idl
-//! Generated at: 2025-11-29T05:01:35Z
+//! Generated at: 2025-11-29T11:15:58Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -123,8 +123,6 @@ pub const Summarizer = struct {
         .get_sharedContext = &get_sharedContext,
         .get_type = &get_type,
 
-        .call_availability = &call_availability,
-        .call_create = &call_create,
         .call_destroy = &call_destroy,
         .call_measureInputUsage = &call_measureInputUsage,
         .call_summarize = &call_summarize,

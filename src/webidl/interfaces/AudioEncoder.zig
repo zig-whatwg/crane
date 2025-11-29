@@ -1,5 +1,5 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-29T05:01:33Z
+//! Generated at: 2025-11-29T11:15:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -119,7 +119,6 @@ pub const AudioEncoder = struct {
         .call_configure = &call_configure,
         .call_encode = &call_encode,
         .call_flush = &call_flush,
-        .call_isConfigSupported = &call_isConfigSupported,
         .call_reset = &call_reset,
     };
     pub const vtable = runtime.buildVTable(&delegates);

@@ -1,5 +1,5 @@
 //! Generated from: observable.idl
-//! Generated at: 2025-11-29T05:01:33Z
+//! Generated at: 2025-11-29T11:15:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -124,7 +124,6 @@ pub const Observable = struct {
         .call_first = &call_first,
         .call_flatMap = &call_flatMap,
         .call_forEach = &call_forEach,
-        .call_from = &call_from,
         .call_inspect = &call_inspect,
         .call_last = &call_last,
         .call_map = &call_map,

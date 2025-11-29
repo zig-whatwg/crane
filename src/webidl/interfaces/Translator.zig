@@ -1,5 +1,5 @@
 //! Generated from: translation-api.idl
-//! Generated at: 2025-11-29T05:01:34Z
+//! Generated at: 2025-11-29T11:15:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -100,8 +100,6 @@ pub const Translator = struct {
         .get_sourceLanguage = &get_sourceLanguage,
         .get_targetLanguage = &get_targetLanguage,
 
-        .call_availability = &call_availability,
-        .call_create = &call_create,
         .call_destroy = &call_destroy,
         .call_measureInputUsage = &call_measureInputUsage,
         .call_translate = &call_translate,

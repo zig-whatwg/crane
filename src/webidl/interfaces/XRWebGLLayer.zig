@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-29T05:01:35Z
+//! Generated at: 2025-11-29T11:15:58Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -117,7 +117,6 @@ pub const XRWebGLLayer = struct {
 
         .set_fixedFoveation = &set_fixedFoveation,
 
-        .call_getNativeFramebufferScaleFactor = &call_getNativeFramebufferScaleFactor,
         .call_getViewport = &call_getViewport,
     };
     pub const vtable = runtime.buildVTable(&delegates);

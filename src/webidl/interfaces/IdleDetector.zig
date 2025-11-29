@@ -1,5 +1,5 @@
 //! Generated from: idle-detection.idl
-//! Generated at: 2025-11-29T05:01:34Z
+//! Generated at: 2025-11-29T11:15:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -106,7 +106,6 @@ pub const IdleDetector = struct {
 
         .set_onchange = &set_onchange,
 
-        .call_requestPermission = &call_requestPermission,
         .call_start = &call_start,
     };
     pub const vtable = runtime.buildVTable(&delegates);

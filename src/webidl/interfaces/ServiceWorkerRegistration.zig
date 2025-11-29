@@ -1,5 +1,5 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-11-29T05:01:34Z
+//! Generated at: 2025-11-29T11:15:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 

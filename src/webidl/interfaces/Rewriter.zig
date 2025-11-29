@@ -1,5 +1,5 @@
 //! Generated from: writing-assistance-apis.idl
-//! Generated at: 2025-11-29T05:01:32Z
+//! Generated at: 2025-11-29T11:15:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -123,8 +123,6 @@ pub const Rewriter = struct {
         .get_sharedContext = &get_sharedContext,
         .get_tone = &get_tone,
 
-        .call_availability = &call_availability,
-        .call_create = &call_create,
         .call_destroy = &call_destroy,
         .call_measureInputUsage = &call_measureInputUsage,
         .call_rewrite = &call_rewrite,

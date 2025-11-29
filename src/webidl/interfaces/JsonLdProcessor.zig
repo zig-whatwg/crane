@@ -1,5 +1,5 @@
 //! Generated from: json-ld-api.idl
-//! Generated at: 2025-11-29T05:01:35Z
+//! Generated at: 2025-11-29T11:15:58Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -81,13 +81,6 @@ pub const JsonLdProcessor = struct {
     );
 
     const delegates = .{
-
-        .call_compact = &call_compact,
-        .call_expand = &call_expand,
-        .call_flatten = &call_flatten,
-        .call_frame = &call_frame,
-        .call_fromRdf = &call_fromRdf,
-        .call_toRdf = &call_toRdf,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 

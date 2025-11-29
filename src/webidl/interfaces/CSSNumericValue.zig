@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-29T05:01:34Z
+//! Generated at: 2025-11-29T11:15:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -107,7 +107,6 @@ pub const CSSNumericValue = struct {
         .call_max = &call_max,
         .call_min = &call_min,
         .call_mul = &call_mul,
-        .call_parse = &call_parse,
         .call_sub = &call_sub,
         .call_to = &call_to,
         .call_toSum = &call_toSum,

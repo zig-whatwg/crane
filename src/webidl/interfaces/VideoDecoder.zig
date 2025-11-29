@@ -1,5 +1,5 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-29T05:01:34Z
+//! Generated at: 2025-11-29T11:15:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -119,7 +119,6 @@ pub const VideoDecoder = struct {
         .call_configure = &call_configure,
         .call_decode = &call_decode,
         .call_flush = &call_flush,
-        .call_isConfigSupported = &call_isConfigSupported,
         .call_reset = &call_reset,
     };
     pub const vtable = runtime.buildVTable(&delegates);

@@ -1,5 +1,5 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-29T05:01:35Z
+//! Generated at: 2025-11-29T11:15:58Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -101,7 +101,6 @@ pub const ImageDecoder = struct {
 
         .call_close = &call_close,
         .call_decode = &call_decode,
-        .call_isTypeSupported = &call_isTypeSupported,
         .call_reset = &call_reset,
     };
     pub const vtable = runtime.buildVTable(&delegates);

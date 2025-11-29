@@ -1,5 +1,5 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-11-29T05:01:33Z
+//! Generated at: 2025-11-29T11:15:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -214,9 +214,6 @@ pub const DOMMatrixReadOnly = struct {
 
         .call_flipX = &call_flipX,
         .call_flipY = &call_flipY,
-        .call_fromFloat32Array = &call_fromFloat32Array,
-        .call_fromFloat64Array = &call_fromFloat64Array,
-        .call_fromMatrix = &call_fromMatrix,
         .call_inverse = &call_inverse,
         .call_multiply = &call_multiply,
         .call_rotate = &call_rotate,

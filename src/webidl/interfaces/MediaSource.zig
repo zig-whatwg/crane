@@ -1,5 +1,5 @@
 //! Generated from: media-source.idl
-//! Generated at: 2025-11-29T05:01:33Z
+//! Generated at: 2025-11-29T11:15:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -144,7 +144,6 @@ pub const MediaSource = struct {
         .call_addSourceBuffer = &call_addSourceBuffer,
         .call_clearLiveSeekableRange = &call_clearLiveSeekableRange,
         .call_endOfStream = &call_endOfStream,
-        .call_isTypeSupported = &call_isTypeSupported,
         .call_removeSourceBuffer = &call_removeSourceBuffer,
         .call_setLiveSeekableRange = &call_setLiveSeekableRange,
     };

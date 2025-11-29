@@ -1,5 +1,5 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-11-29T05:01:35Z
+//! Generated at: 2025-11-29T11:15:58Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -92,8 +92,6 @@ pub const DOMRect = struct {
         .get_width = &get_width,
         .get_x = &get_x,
         .get_y = &get_y,
-
-        .call_fromRect = &call_fromRect,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 

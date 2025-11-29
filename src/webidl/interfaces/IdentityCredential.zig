@@ -1,5 +1,5 @@
 //! Generated from: fedcm.idl
-//! Generated at: 2025-11-29T05:01:33Z
+//! Generated at: 2025-11-29T11:15:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -87,8 +87,6 @@ pub const IdentityCredential = struct {
         .get_configURL = &get_configURL,
         .get_isAutoSelected = &get_isAutoSelected,
         .get_token = &get_token,
-
-        .call_disconnect = &call_disconnect,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 

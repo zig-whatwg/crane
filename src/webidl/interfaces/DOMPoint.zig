@@ -1,5 +1,5 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-11-29T05:01:33Z
+//! Generated at: 2025-11-29T11:15:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -94,8 +94,6 @@ pub const DOMPoint = struct {
         .get_x = &get_x,
         .get_y = &get_y,
         .get_z = &get_z,
-
-        .call_fromPoint = &call_fromPoint,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 

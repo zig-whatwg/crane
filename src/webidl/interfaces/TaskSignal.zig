@@ -1,5 +1,5 @@
 //! Generated from: scheduling-apis.idl
-//! Generated at: 2025-11-29T05:01:33Z
+//! Generated at: 2025-11-29T11:15:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -99,8 +99,6 @@ pub const TaskSignal = struct {
         .get_priority = &get_priority,
 
         .set_onprioritychange = &set_onprioritychange,
-
-        .call__any = &call__any,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 

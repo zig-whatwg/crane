@@ -1,5 +1,5 @@
 //! Generated from: speech-api.idl
-//! Generated at: 2025-11-29T05:01:32Z
+//! Generated at: 2025-11-29T11:15:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -190,8 +190,6 @@ pub const SpeechRecognition = struct {
         .set_processLocally = &set_processLocally,
 
         .call_abort = &call_abort,
-        .call_available = &call_available,
-        .call_install = &call_install,
         .call_start = &call_start,
         .call_stop = &call_stop,
     };

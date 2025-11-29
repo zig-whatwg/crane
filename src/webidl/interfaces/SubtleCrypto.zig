@@ -1,5 +1,5 @@
 //! Generated from: webcrypto.idl
-//! Generated at: 2025-11-29T05:01:33Z
+//! Generated at: 2025-11-29T11:15:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -130,7 +130,6 @@ pub const SubtleCrypto = struct {
         .call_getPublicKey = &call_getPublicKey,
         .call_importKey = &call_importKey,
         .call_sign = &call_sign,
-        .call_supports = &call_supports,
         .call_unwrapKey = &call_unwrapKey,
         .call_verify = &call_verify,
         .call_wrapKey = &call_wrapKey,

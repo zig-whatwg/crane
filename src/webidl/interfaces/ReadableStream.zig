@@ -1,5 +1,5 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-29T05:01:34Z
+//! Generated at: 2025-11-29T11:15:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -102,7 +102,6 @@ pub const ReadableStream = struct {
         .get_locked = &get_locked,
 
         .call_cancel = &call_cancel,
-        .call_from = &call_from,
         .call_getAsyncIterator = &call_getAsyncIterator,
         .call_getReader = &call_getReader,
         .call_pipeThrough = &call_pipeThrough,

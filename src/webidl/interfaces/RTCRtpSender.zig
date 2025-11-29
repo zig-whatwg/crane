@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-29T05:01:35Z
+//! Generated at: 2025-11-29T11:15:58Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -106,7 +106,6 @@ pub const RTCRtpSender = struct {
 
         .set_transform = &set_transform,
 
-        .call_getCapabilities = &call_getCapabilities,
         .call_getParameters = &call_getParameters,
         .call_getStats = &call_getStats,
         .call_replaceTrack = &call_replaceTrack,

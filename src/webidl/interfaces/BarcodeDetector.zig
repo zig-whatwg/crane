@@ -1,5 +1,5 @@
 //! Generated from: shape-detection-api.idl
-//! Generated at: 2025-11-29T05:01:33Z
+//! Generated at: 2025-11-29T11:15:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -76,7 +76,6 @@ pub const BarcodeDetector = struct {
     const delegates = .{
 
         .call_detect = &call_detect,
-        .call_getSupportedFormats = &call_getSupportedFormats,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 

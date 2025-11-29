@@ -1,5 +1,5 @@
 //! Generated from: translation-api.idl
-//! Generated at: 2025-11-29T05:01:32Z
+//! Generated at: 2025-11-29T11:15:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -93,8 +93,6 @@ pub const LanguageDetector = struct {
         .get_expectedInputLanguages = &get_expectedInputLanguages,
         .get_inputQuota = &get_inputQuota,
 
-        .call_availability = &call_availability,
-        .call_create = &call_create,
         .call_destroy = &call_destroy,
         .call_detect = &call_detect,
         .call_measureInputUsage = &call_measureInputUsage,

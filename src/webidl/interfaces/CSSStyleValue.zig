@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-29T05:01:34Z
+//! Generated at: 2025-11-29T11:15:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -75,9 +75,6 @@ pub const CSSStyleValue = struct {
     );
 
     const delegates = .{
-
-        .call_parse = &call_parse,
-        .call_parseAll = &call_parseAll,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 

@@ -1,5 +1,5 @@
 //! Generated from: privacy-preserving-attribution.idl
-//! Generated at: 2025-11-29T05:01:32Z
+//! Generated at: 2025-11-29T11:15:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 

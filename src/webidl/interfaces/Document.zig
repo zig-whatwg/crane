@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-29T05:01:34Z
+//! Generated at: 2025-11-29T11:15:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -1207,7 +1207,6 @@ pub const Document = struct {
         .call_measureText = &call_measureText,
         .call_moveBefore = &call_moveBefore,
         .call_open = &call_open,
-        .call_parseHTMLUnsafe = &call_parseHTMLUnsafe,
         .call_prepend = &call_prepend,
         .call_queryCommandEnabled = &call_queryCommandEnabled,
         .call_queryCommandIndeterm = &call_queryCommandIndeterm,

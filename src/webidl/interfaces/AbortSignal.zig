@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-29T05:01:34Z
+//! Generated at: 2025-11-29T11:15:56Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -102,10 +102,7 @@ pub const AbortSignal = struct {
 
         .set_onabort = &set_onabort,
 
-        .call__any = &call__any,
-        .call_abort = &call_abort,
         .call_throwIfAborted = &call_throwIfAborted,
-        .call_timeout = &call_timeout,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 

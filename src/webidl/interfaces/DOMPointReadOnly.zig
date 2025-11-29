@@ -1,5 +1,5 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-11-29T05:01:32Z
+//! Generated at: 2025-11-29T11:15:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -95,7 +95,6 @@ pub const DOMPointReadOnly = struct {
         .get_y = &get_y,
         .get_z = &get_z,
 
-        .call_fromPoint = &call_fromPoint,
         .call_matrixTransform = &call_matrixTransform,
         .call_toJSON = &call_toJSON,
     };

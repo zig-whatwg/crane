@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-29T05:01:32Z
+//! Generated at: 2025-11-29T11:15:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -272,7 +272,6 @@ pub const RTCPeerConnection = struct {
         .call_createAnswer = &call_createAnswer,
         .call_createDataChannel = &call_createDataChannel,
         .call_createOffer = &call_createOffer,
-        .call_generateCertificate = &call_generateCertificate,
         .call_getConfiguration = &call_getConfiguration,
         .call_getIdentityAssertion = &call_getIdentityAssertion,
         .call_getReceivers = &call_getReceivers,

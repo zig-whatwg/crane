@@ -1,5 +1,5 @@
 //! Generated from: clipboard-apis.idl
-//! Generated at: 2025-11-29T05:01:32Z
+//! Generated at: 2025-11-29T11:15:55Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -84,7 +84,6 @@ pub const ClipboardItem = struct {
         .get_types = &get_types,
 
         .call_getType = &call_getType,
-        .call_supports = &call_supports,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 

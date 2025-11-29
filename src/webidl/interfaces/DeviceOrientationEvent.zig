@@ -1,5 +1,5 @@
 //! Generated from: orientation-event.idl
-//! Generated at: 2025-11-29T05:01:34Z
+//! Generated at: 2025-11-29T11:15:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -97,8 +97,6 @@ pub const DeviceOrientationEvent = struct {
         .get_alpha = &get_alpha,
         .get_beta = &get_beta,
         .get_gamma = &get_gamma,
-
-        .call_requestPermission = &call_requestPermission,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
