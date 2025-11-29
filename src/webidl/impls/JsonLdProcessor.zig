@@ -1,33 +1,12 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for JsonLdProcessor interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for JsonLdProcessor interface
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const JsonLdProcessor = interfaces.JsonLdProcessor;
 
 pub const State = JsonLdProcessor.State;
@@ -73,7 +52,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Operation: toRdf
-pub fn call_toRdf(instance: *runtime.Instance, input: typedefs.JsonLdInput, options: webidl.Opt(dictionaries.JsonLdOptions)) ImplError!*const anyopaque {
+pub fn call_toRdf(instance: *runtime.Instance, input: typedefs.JsonLdInput, options: dictionaries.JsonLdOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = options;
@@ -81,7 +60,7 @@ pub fn call_toRdf(instance: *runtime.Instance, input: typedefs.JsonLdInput, opti
 }
 
 /// Operation: flatten
-pub fn call_flatten(instance: *runtime.Instance, input: typedefs.JsonLdInput, context: webidl.Opt(typedefs.JsonLdContext), options: webidl.Opt(dictionaries.JsonLdOptions)) ImplError!*const anyopaque {
+pub fn call_flatten(instance: *runtime.Instance, input: typedefs.JsonLdInput, context: typedefs.JsonLdContext, options: dictionaries.JsonLdOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = context;
@@ -90,7 +69,7 @@ pub fn call_flatten(instance: *runtime.Instance, input: typedefs.JsonLdInput, co
 }
 
 /// Operation: fromRdf
-pub fn call_fromRdf(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.JsonLdOptions)) ImplError!*const anyopaque {
+pub fn call_fromRdf(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.JsonLdOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = options;
@@ -98,7 +77,7 @@ pub fn call_fromRdf(instance: *runtime.Instance, input: *runtime.Instance, optio
 }
 
 /// Operation: expand
-pub fn call_expand(instance: *runtime.Instance, input: typedefs.JsonLdInput, options: webidl.Opt(dictionaries.JsonLdOptions)) ImplError!*const anyopaque {
+pub fn call_expand(instance: *runtime.Instance, input: typedefs.JsonLdInput, options: dictionaries.JsonLdOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = options;
@@ -106,7 +85,7 @@ pub fn call_expand(instance: *runtime.Instance, input: typedefs.JsonLdInput, opt
 }
 
 /// Operation: compact
-pub fn call_compact(instance: *runtime.Instance, input: typedefs.JsonLdInput, context: webidl.Opt(typedefs.JsonLdContext), options: webidl.Opt(dictionaries.JsonLdOptions)) ImplError!*const anyopaque {
+pub fn call_compact(instance: *runtime.Instance, input: typedefs.JsonLdInput, context: typedefs.JsonLdContext, options: dictionaries.JsonLdOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = context;
@@ -115,7 +94,7 @@ pub fn call_compact(instance: *runtime.Instance, input: typedefs.JsonLdInput, co
 }
 
 /// Operation: frame
-pub fn call_frame(instance: *runtime.Instance, input: typedefs.JsonLdInput, frame: typedefs.JsonLdInput, options: webidl.Opt(dictionaries.JsonLdOptions)) ImplError!*const anyopaque {
+pub fn call_frame(instance: *runtime.Instance, input: typedefs.JsonLdInput, frame: typedefs.JsonLdInput, options: dictionaries.JsonLdOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = frame;

@@ -15,7 +15,6 @@ const callbacks = @import("callbacks");
 const CustomEvent = interfaces.CustomEvent;
 const Event = interfaces.Event;
 const EventImpl = @import("Event.zig");
-const webidl = @import("webidl");
 
 pub const State = CustomEvent.State;
 
@@ -60,9 +59,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// The CustomEvent(type, eventInitDict) constructor steps are:
 /// 1. Run the Event constructor steps (inherited)
 /// 2. Set this's detail attribute to eventInitDict["detail"]
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.CustomEventInit)) !*runtime.Instance {
-    _ = @"type"; // Event type is handled by V8 Event prototype chain
-
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, _: runtime.DOMString, eventInitDict: dictionaries.CustomEventInit) !*runtime.Instance {
     // Create instance
     const instance = try init(allocator, State, &CustomEvent.vtable, ctx);
     errdefer deinit(instance);
@@ -73,21 +70,14 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
     // Create internal state for CustomEvent
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
-
-    // Get detail from eventInitDict if passed
-    const detail: ?*const anyopaque = if (eventInitDict.wasPassed())
-        eventInitDict.value.detail
-    else
-        null;
-
     internal.* = InternalState{
-        .detail = detail,
+        .detail = eventInitDict.detail,
     };
     state.own._internal = internal;
 
     // Store detail in state (for direct access)
-    if (detail) |d| {
-        state.own.detail = d;
+    if (eventInitDict.detail) |detail| {
+        state.own.detail = detail;
     }
 
     // Note: CustomEvent inherits from Event via prototype chain
@@ -104,7 +94,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 /// Getter for detail
 /// Spec: https://dom.spec.whatwg.org/#dom-customevent-detail
 /// Returns the value it was initialized with.
-pub fn get_detail(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_detail(instance: *runtime.Instance) !*const anyopaque {
     const state = instance.getState(State);
     return state.own.detail;
 }
@@ -116,7 +106,7 @@ pub fn get_detail(instance: *runtime.Instance) ImplError!*const anyopaque {
 /// 1. If this's dispatch flag is set, then return.
 /// 2. Initialize this with type, bubbles, and cancelable.
 /// 3. Set this's detail attribute to detail.
-pub fn call_initCustomEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), detail: webidl.Opt(*const anyopaque)) ImplError!void {
+pub fn call_initCustomEvent(instance: *runtime.Instance, event_type: runtime.DOMString, bubbles: bool, cancelable: bool, detail: *const anyopaque) !void {
     // Step 1: Check dispatch flag
     // Note: Would check via Event's dispatch flag, but we don't have direct access
     // For now, proceed with initialization
@@ -124,20 +114,15 @@ pub fn call_initCustomEvent(instance: *runtime.Instance, @"type": runtime.DOMStr
     // Step 2: Initialize event (would call parent's initEvent logic)
     // Since Event state is accessed via prototype chain in JS, we can't directly call it here
     // The JS runtime handles inheritance
-    _ = @"type";
+    _ = event_type;
     _ = bubbles;
     _ = cancelable;
 
-    // Step 3: Set detail (unwrap Opt)
-    // Note: state.own.detail is non-optional, use undefined if not passed
+    // Step 3: Set detail
     const state = instance.getState(State);
-    if (detail.wasPassed()) {
-        state.own.detail = detail.value;
-    }
+    state.own.detail = detail;
 
     if (getInternal(instance)) |internal| {
-        if (detail.wasPassed()) {
-            internal.detail = detail.value;
-        }
+        internal.detail = detail;
     }
 }

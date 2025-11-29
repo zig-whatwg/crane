@@ -7,7 +7,6 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const webidl = @import("webidl");
 const ProximitySensor = interfaces.ProximitySensor;
 
 pub const State = ProximitySensor.State;
@@ -42,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, sensorOptions: webidl.Opt(dictionaries.SensorOptions)) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, sensorOptions: dictionaries.SensorOptions) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &ProximitySensor.vtable, ctx);
     errdefer deinit(instance);

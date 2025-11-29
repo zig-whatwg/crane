@@ -22,7 +22,6 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const infra = @import("infra");
 const encoding_mod = @import("encoding");
-const webidl = @import("webidl");
 const TextDecoderStream = interfaces.TextDecoderStream;
 
 pub const State = TextDecoderStream.State;
@@ -141,15 +140,20 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 10. Set up transformStream with transformAlgorithm set to transformAlgorithm
 ///     and flushAlgorithm set to flushAlgorithm.
 /// 11. Set this's transform to transformStream.
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, label: webidl.Opt(runtime.DOMString), options: webidl.Opt(dictionaries.TextDecoderOptions)) !*runtime.Instance {
+pub fn call_constructor(
+    allocator: std.mem.Allocator,
+    ctx: runtime.Context,
+    label: runtime.DOMString,
+    options: dictionaries.TextDecoderOptions,
+) !*runtime.Instance {
     const instance = try init(allocator, State, &TextDecoderStream.vtable, ctx);
     errdefer deinit(instance);
 
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
-    // Step 1: Get encoding from label (default to "utf-8" per spec if not passed)
-    const label_str = if (label.wasPassed()) label.value.asSlice() else "utf-8";
+    // Step 1: Get encoding from label
+    const label_str = label.asSlice();
     const enc = encoding_mod.getEncoding(label_str) orelse {
         // Step 2: If encoding is failure, throw RangeError
         return error.RangeError;
@@ -163,11 +167,11 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, labe
     // Step 3: Set this's encoding to encoding
     internal.enc = enc;
 
-    // Step 4: If options["fatal"] is true, set error mode to "fatal" - unwrap Opt
-    internal.fatal = if (options.wasPassed()) options.value.fatal orelse false else false;
+    // Step 4: If options["fatal"] is true, set error mode to "fatal"
+    internal.fatal = options.fatal orelse false;
 
-    // Step 5: Set this's ignore BOM to options["ignoreBOM"] - unwrap Opt
-    internal.ignore_bom = if (options.wasPassed()) options.value.ignoreBOM orelse false else false;
+    // Step 5: Set this's ignore BOM to options["ignoreBOM"]
+    internal.ignore_bom = options.ignoreBOM orelse false;
 
     // Step 6: Set this's decoder to a new instance of encoding's decoder
     internal.decoder = enc.newDecoder();
@@ -175,18 +179,14 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, labe
     // Step 7-11: Create the underlying transform stream
     // The transform and flush algorithms are implemented in decodeChunk and flush
     var empty_transformer: u8 = 0; // Placeholder for null transformer
-    const transformer_ptr: *const anyopaque = &empty_transformer;
-    const opt_transformer = webidl.Opt(*const anyopaque).passed(transformer_ptr);
     const writable_strategy = dictionaries.QueuingStrategy{};
     const readable_strategy = dictionaries.QueuingStrategy{};
-    const opt_writable_strategy = webidl.Opt(dictionaries.QueuingStrategy).passed(writable_strategy);
-    const opt_readable_strategy = webidl.Opt(dictionaries.QueuingStrategy).passed(readable_strategy);
     const transform = try interfaces.TransformStream.call_constructor(
         allocator,
         ctx,
-        opt_transformer,
-        opt_writable_strategy,
-        opt_readable_strategy,
+        &empty_transformer,
+        writable_strategy,
+        readable_strategy,
     );
     errdefer interfaces.TransformStream.deinit(transform);
 

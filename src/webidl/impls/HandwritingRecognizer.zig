@@ -1,33 +1,12 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for HandwritingRecognizer interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for HandwritingRecognizer interface
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const HandwritingRecognizer = interfaces.HandwritingRecognizer;
 
 pub const State = HandwritingRecognizer.State;
@@ -67,7 +46,7 @@ pub fn call_finish(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: startDrawing
-pub fn call_startDrawing(instance: *runtime.Instance, hints: webidl.Opt(dictionaries.HandwritingHints)) ImplError!*runtime.Instance {
+pub fn call_startDrawing(instance: *runtime.Instance, hints: dictionaries.HandwritingHints) ImplError!*runtime.Instance {
     _ = instance;
     _ = hints;
     return error.NotImplemented;

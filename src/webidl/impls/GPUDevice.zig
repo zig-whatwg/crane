@@ -1,33 +1,12 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for GPUDevice interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for GPUDevice interface
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const GPUDevice = interfaces.GPUDevice;
 
 pub const State = GPUDevice.State;
@@ -159,7 +138,7 @@ pub fn call_createShaderModule(instance: *runtime.Instance, descriptor: dictiona
 }
 
 /// Operation: createCommandEncoder
-pub fn call_createCommandEncoder(instance: *runtime.Instance, descriptor: webidl.Opt(dictionaries.GPUCommandEncoderDescriptor)) ImplError!*runtime.Instance {
+pub fn call_createCommandEncoder(instance: *runtime.Instance, descriptor: dictionaries.GPUCommandEncoderDescriptor) ImplError!*runtime.Instance {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
@@ -180,7 +159,7 @@ pub fn call_createBindGroupLayout(instance: *runtime.Instance, descriptor: dicti
 }
 
 /// Operation: createSampler
-pub fn call_createSampler(instance: *runtime.Instance, descriptor: webidl.Opt(dictionaries.GPUSamplerDescriptor)) ImplError!*runtime.Instance {
+pub fn call_createSampler(instance: *runtime.Instance, descriptor: dictionaries.GPUSamplerDescriptor) ImplError!*runtime.Instance {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;

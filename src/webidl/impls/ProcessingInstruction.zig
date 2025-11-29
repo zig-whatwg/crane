@@ -1,23 +1,13 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
+//! Implementation for ProcessingInstruction interface
 //!
-//! Implementation stub for ProcessingInstruction interface
+//! Spec: https://dom.spec.whatwg.org/#interface-processinginstruction
+//! WHATWG DOM Standard §4.13
 //!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
+//! ProcessingInstruction nodes represent processing instructions in XML.
+//! They extend CharacterData and have an associated target.
+//! Node type is PROCESSING_INSTRUCTION_NODE (7).
 //!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Migrated from: webidl/src/dom/ProcessingInstruction.zig
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -26,20 +16,44 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const ProcessingInstruction = interfaces.ProcessingInstruction;
+
+// Import related impls
+const CharacterDataImpl = @import("CharacterData.zig");
+const NodeImpl = @import("Node.zig");
 
 pub const State = ProcessingInstruction.State;
 
 pub const ImplError = error{
     NotImplemented,
+    InvalidStateError,
+    OutOfMemory,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Internal state for ProcessingInstruction implementation
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+
+    /// The target of this processing instruction (e.g., "xml-stylesheet")
+    target: []const u8,
+
+    pub fn init(allocator: std.mem.Allocator) InternalState {
+        return .{
+            .allocator = allocator,
+            .target = "",
+        };
+    }
+
+    pub fn deinit(self: *InternalState) void {
+        if (self.target.len > 0) self.allocator.free(self.target);
+    }
+};
+
+/// Get the internal state from an instance
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    const state = instance.getState(State);
+    return state.own._internal;
+}
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -49,25 +63,77 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    errdefer runtime.Instance.deinit(instance);
+
+    // Initialize ProcessingInstruction internal state
+    const state = instance.getState(StateType);
+    const ArenaAllocator = @import("runtime").ArenaAllocator;
+    const internal = try ArenaAllocator.get().create(InternalState);
+    internal.* = InternalState.init(allocator);
+    state.own._internal = internal;
+
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.deinit();
+    }
     runtime.Instance.deinit(instance);
 }
 
+// =============================================================================
+// Getters - DOM §4.13
+// =============================================================================
+
 /// Getter for target
-pub fn get_target(instance: *runtime.Instance) ImplError!runtime.DOMString {
+/// DOM §4.13 - Returns this's target.
+pub fn get_target(instance: *runtime.Instance) !runtime.DOMString {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return runtime.DOMString.initInterned(internal.target);
+}
+
+/// Getter for sheet (from LinkStyle mixin - CSSOM)
+/// Returns the associated stylesheet, if any
+pub fn get_sheet(instance: *runtime.Instance) !*runtime.Instance {
     _ = instance;
+    // TODO: Return associated CSSStyleSheet if this is <?xml-stylesheet?>
+    // Requires CSSOM integration
     return error.NotImplemented;
 }
 
-/// Getter for sheet
-pub fn get_sheet(instance: *runtime.Instance) ImplError!?*runtime.Instance {
-    _ = instance;
-    return null;
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+/// Get the target string directly (for cloning)
+pub fn getTarget(instance: *runtime.Instance) ?[]const u8 {
+    const internal = getInternal(instance) orelse return null;
+    return internal.target;
 }
 
+/// Create a ProcessingInstruction with the given target and data
+pub fn createProcessingInstruction(
+    allocator: std.mem.Allocator,
+    ctx: runtime.Context,
+    target: []const u8,
+    data: []const u8,
+) !*runtime.Instance {
+    const instance = try init(allocator, State, &ProcessingInstruction.vtable, ctx);
+    errdefer deinit(instance);
+
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Set node type to PROCESSING_INSTRUCTION_NODE (7)
+    try NodeImpl.setNodeType(instance, NodeImpl.NodeType.PROCESSING_INSTRUCTION_NODE);
+
+    // Set the target
+    internal.target = try allocator.dupe(u8, target);
+
+    // Set the data via CharacterData
+    try CharacterDataImpl.setData(instance, data);
+
+    return instance;
+}

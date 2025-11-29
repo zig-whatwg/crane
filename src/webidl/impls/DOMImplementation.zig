@@ -9,7 +9,6 @@
 //! Migrated from: webidl/src/dom/DOMImplementation.zig
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -29,11 +28,8 @@ pub const State = DOMImplementation.State;
 
 pub const ImplError = error{
     NotImplemented,
-    HierarchyRequestError,
     InvalidCharacterError,
-    InvalidStateError,
     NamespaceError,
-    NotFoundError,
     OutOfMemory,
 };
 
@@ -123,7 +119,7 @@ pub fn setDocument(instance: *runtime.Instance, document: *runtime.Instance) voi
 pub fn call_createDocumentType(instance: *runtime.Instance, name: runtime.DOMString, publicId: runtime.DOMString, systemId: runtime.DOMString) ImplError!*runtime.Instance {
     const internal = getInternal(instance);
     const allocator = internal.allocator;
-    const ctx = instance.ctx;
+    const ctx = instance.context;
 
     // Step 1: Validate doctype name
     const name_slice = name.asSlice();
@@ -174,10 +170,10 @@ pub fn call_createDocumentType(instance: *runtime.Instance, name: runtime.DOMStr
 ///    - SVG namespace: "image/svg+xml"
 ///    - Any other namespace: "application/xml"
 /// 8. Return document.
-pub fn call_createDocument(instance: *runtime.Instance, namespace: ?runtime.DOMString, qualifiedName: runtime.DOMString, doctype: webidl.Opt(?*runtime.Instance)) ImplError!*runtime.Instance {
+pub fn call_createDocument(instance: *runtime.Instance, namespace: runtime.DOMString, qualifiedName: runtime.DOMString, doctype: ?*runtime.Instance) ImplError!*runtime.Instance {
     const internal = getInternal(instance);
     const allocator = internal.allocator;
-    const ctx = instance.ctx;
+    const ctx = instance.context;
 
     // Step 1: Create new XMLDocument
     const document = try DocumentImpl.init(
@@ -196,7 +192,7 @@ pub fn call_createDocument(instance: *runtime.Instance, namespace: ?runtime.DOMS
     var element: ?*runtime.Instance = null;
 
     if (qname_slice.len > 0) {
-        const ns_slice = if (namespace) |ns| ns.asSlice() else "";
+        const ns_slice = namespace.asSlice();
 
         // Validate namespace and qualified name per WebIDL
         try validateNamespace(ns_slice, qname_slice);
@@ -206,17 +202,14 @@ pub fn call_createDocument(instance: *runtime.Instance, namespace: ?runtime.DOMS
     }
 
     // Step 4: If doctype is non-null, append doctype to document
-    // Unwrap Opt - doctype is webidl.Opt(?*runtime.Instance)
-    if (doctype.wasPassed()) {
-        if (doctype.value) |dt| {
-            try NodeImpl.setOwnerDocument(dt, document);
-            _ = try NodeImpl.appendChild(document, dt);
-        }
+    if (doctype) |dt| {
+        try NodeImpl.setOwnerDocument(dt, document);
+        try NodeImpl.appendChild(document, dt);
     }
 
     // Step 5: If element is non-null, append element to document
     if (element) |elem| {
-        _ = try NodeImpl.appendChild(document, elem);
+        try NodeImpl.appendChild(document, elem);
     }
 
     // Step 6: Set document's origin from associated document
@@ -225,7 +218,7 @@ pub fn call_createDocument(instance: *runtime.Instance, namespace: ?runtime.DOMS
     }
 
     // Step 7: Set content type based on namespace
-    const ns_slice = if (namespace) |ns| ns.asSlice() else "";
+    const ns_slice = namespace.asSlice();
     const content_type = if (ns_slice.len > 0) blk: {
         if (std.mem.eql(u8, ns_slice, HTML_NAMESPACE)) {
             break :blk "application/xhtml+xml";
@@ -262,10 +255,10 @@ pub fn call_createDocument(instance: *runtime.Instance, namespace: ?runtime.DOMS
 /// 7. Append the result of creating an element given doc, "body", and the HTML namespace, to the html element created earlier.
 /// 8. doc's origin is this's associated document's origin.
 /// 9. Return doc.
-pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(runtime.DOMString)) ImplError!*runtime.Instance {
+pub fn call_createHTMLDocument(instance: *runtime.Instance, title: runtime.DOMString) ImplError!*runtime.Instance {
     const internal = getInternal(instance);
     const allocator = internal.allocator;
-    const ctx = instance.ctx;
+    const ctx = instance.context;
 
     // Step 1: Create new HTML document
     const doc = try DocumentImpl.init(
@@ -286,43 +279,39 @@ pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(ru
     const doctype = try DocumentTypeImpl.createDocumentType(allocator, ctx, "html", "", "");
     errdefer DocumentTypeImpl.deinit(doctype);
     try NodeImpl.setOwnerDocument(doctype, doc);
-    _ = try NodeImpl.appendChild(doc, doctype);
+    try NodeImpl.appendChild(doc, doctype);
 
     // Step 4: Create and append <html> element
     const html = try createElementNS(allocator, ctx, doc, HTML_NAMESPACE, "html");
     errdefer ElementImpl.deinit(html);
-    _ = try NodeImpl.appendChild(doc, html);
+    try NodeImpl.appendChild(doc, html);
 
     // Step 5: Create and append <head> element to html
     const head = try createElementNS(allocator, ctx, doc, HTML_NAMESPACE, "head");
     errdefer ElementImpl.deinit(head);
-    _ = try NodeImpl.appendChild(html, head);
+    try NodeImpl.appendChild(html, head);
 
     // Step 6: If title is given (non-null/non-empty check)
-    // Unwrap Opt - title is webidl.Opt(runtime.DOMString)
-    if (title.wasPassed()) {
-        const title_slice = title.value.asSlice();
-        // Note: title is always given per WebIDL, but can be empty string
-        // Per spec, we create <title> element with whatever data is given (even empty)
-        // DOMString union: .empty, .interned, .owned - check if not empty
-        if (title_slice.len > 0 or !title.value.isEmpty()) {
-            // Step 6.1: Create and append <title> element to head
-            const title_elem = try createElementNS(allocator, ctx, doc, HTML_NAMESPACE, "title");
-            errdefer ElementImpl.deinit(title_elem);
-            _ = try NodeImpl.appendChild(head, title_elem);
+    const title_slice = title.asSlice();
+    // Note: title is always given per WebIDL, but can be empty string
+    // Per spec, we create <title> element with whatever data is given (even empty)
+    if (title_slice.len > 0 or title.data != null) {
+        // Step 6.1: Create and append <title> element to head
+        const title_elem = try createElementNS(allocator, ctx, doc, HTML_NAMESPACE, "title");
+        errdefer ElementImpl.deinit(title_elem);
+        try NodeImpl.appendChild(head, title_elem);
 
-            // Step 6.2: Create Text node with title data and append to title element
-            const text_node = try TextImpl.call_constructor(allocator, ctx, title);
-            errdefer TextImpl.deinit(text_node);
-            try NodeImpl.setOwnerDocument(text_node, doc);
-            _ = try NodeImpl.appendChild(title_elem, text_node);
-        }
+        // Step 6.2: Create Text node with title data and append to title element
+        const text_node = try TextImpl.call_constructor(allocator, ctx, title);
+        errdefer TextImpl.deinit(text_node);
+        try NodeImpl.setOwnerDocument(text_node, doc);
+        try NodeImpl.appendChild(title_elem, text_node);
     }
 
     // Step 7: Create and append <body> element to html
     const body = try createElementNS(allocator, ctx, doc, HTML_NAMESPACE, "body");
     errdefer ElementImpl.deinit(body);
-    _ = try NodeImpl.appendChild(html, body);
+    try NodeImpl.appendChild(html, body);
 
     // Step 8: Set doc's origin from associated document
     if (internal.document) |assoc_doc| {
@@ -346,7 +335,7 @@ pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(ru
 /// as simply checking whether the desired objects, attributes, or methods existed.
 /// As such, it is no longer to be used, but continues to exist (and simply returns true)
 /// so that old pages don't stop working.
-pub fn call_hasFeature(instance: *runtime.Instance) ImplError!bool {
+pub fn call_hasFeature(instance: *runtime.Instance) bool {
     _ = instance;
     return true;
 }

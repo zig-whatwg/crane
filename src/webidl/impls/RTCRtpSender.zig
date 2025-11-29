@@ -1,33 +1,12 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for RTCRtpSender interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for RTCRtpSender interface
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const RTCRtpSender = interfaces.RTCRtpSender;
 
 pub const State = RTCRtpSender.State;
@@ -92,7 +71,7 @@ pub fn set_transform(instance: *runtime.Instance, value: typedefs.RTCRtpTransfor
 }
 
 /// Operation: replaceTrack
-pub fn call_replaceTrack(instance: *runtime.Instance, withTrack: ?*runtime.Instance) ImplError!*const anyopaque {
+pub fn call_replaceTrack(instance: *runtime.Instance, withTrack: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     _ = withTrack;
     return error.NotImplemented;
@@ -118,14 +97,14 @@ pub fn call_getParameters(instance: *runtime.Instance) ImplError!dictionaries.RT
 }
 
 /// Operation: setStreams
-pub fn call_setStreams(instance: *runtime.Instance, streams: []const *runtime.Instance) ImplError!void {
+pub fn call_setStreams(instance: *runtime.Instance, streams: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = streams;
     return error.NotImplemented;
 }
 
 /// Operation: setParameters
-pub fn call_setParameters(instance: *runtime.Instance, parameters: dictionaries.RTCRtpSendParameters, setParameterOptions: webidl.Opt(dictionaries.RTCSetParameterOptions)) ImplError!*const anyopaque {
+pub fn call_setParameters(instance: *runtime.Instance, parameters: dictionaries.RTCRtpSendParameters, setParameterOptions: dictionaries.RTCSetParameterOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = parameters;
     _ = setParameterOptions;

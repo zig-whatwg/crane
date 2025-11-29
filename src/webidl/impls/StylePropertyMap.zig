@@ -1,23 +1,4 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for StylePropertyMap interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for StylePropertyMap interface
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -26,7 +7,6 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const StylePropertyMap = interfaces.StylePropertyMap;
 
 pub const State = StylePropertyMap.State;
@@ -67,7 +47,7 @@ pub fn call_delete(instance: *runtime.Instance, property: runtime.USVString) Imp
 }
 
 /// Operation: append
-pub fn call_append(instance: *runtime.Instance, property: runtime.USVString, values: []const *const anyopaque) ImplError!void {
+pub fn call_append(instance: *runtime.Instance, property: runtime.USVString, values: *const anyopaque) ImplError!void {
     _ = instance;
     _ = property;
     _ = values;
@@ -81,7 +61,7 @@ pub fn call_clear(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: set
-pub fn call_set(instance: *runtime.Instance, property: runtime.USVString, values: []const *const anyopaque) ImplError!void {
+pub fn call_set(instance: *runtime.Instance, property: runtime.USVString, values: *const anyopaque) ImplError!void {
     _ = instance;
     _ = property;
     _ = values;

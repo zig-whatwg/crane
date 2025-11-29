@@ -1,33 +1,12 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for FileSystemDirectoryEntry interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for FileSystemDirectoryEntry interface
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const FileSystemDirectoryEntry = interfaces.FileSystemDirectoryEntry;
 
 pub const State = FileSystemDirectoryEntry.State;
@@ -61,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getDirectory
-pub fn call_getDirectory(instance: *runtime.Instance, path: webidl.Opt(?runtime.USVString), options: webidl.Opt(dictionaries.FileSystemFlags), successCallback: webidl.Opt(callbacks.FileSystemEntryCallback), errorCallback: webidl.Opt(callbacks.ErrorCallback)) ImplError!void {
+pub fn call_getDirectory(instance: *runtime.Instance, path: runtime.USVString, options: dictionaries.FileSystemFlags, successCallback: callbacks.FileSystemEntryCallback, errorCallback: callbacks.ErrorCallback) ImplError!void {
     _ = instance;
     _ = path;
     _ = options;
@@ -71,7 +50,7 @@ pub fn call_getDirectory(instance: *runtime.Instance, path: webidl.Opt(?runtime.
 }
 
 /// Operation: getFile
-pub fn call_getFile(instance: *runtime.Instance, path: webidl.Opt(?runtime.USVString), options: webidl.Opt(dictionaries.FileSystemFlags), successCallback: webidl.Opt(callbacks.FileSystemEntryCallback), errorCallback: webidl.Opt(callbacks.ErrorCallback)) ImplError!void {
+pub fn call_getFile(instance: *runtime.Instance, path: runtime.USVString, options: dictionaries.FileSystemFlags, successCallback: callbacks.FileSystemEntryCallback, errorCallback: callbacks.ErrorCallback) ImplError!void {
     _ = instance;
     _ = path;
     _ = options;

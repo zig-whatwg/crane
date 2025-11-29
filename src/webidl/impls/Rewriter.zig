@@ -1,33 +1,12 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for Rewriter interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for Rewriter interface
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const Rewriter = interfaces.Rewriter;
 
 pub const State = Rewriter.State;
@@ -109,14 +88,14 @@ pub fn get_inputQuota(instance: *runtime.Instance) ImplError!f64 {
 }
 
 /// Operation: availability
-pub fn call_availability(instance: *runtime.Instance, options: webidl.Opt(dictionaries.RewriterCreateCoreOptions)) ImplError!*const anyopaque {
+pub fn call_availability(instance: *runtime.Instance, options: dictionaries.RewriterCreateCoreOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: rewrite
-pub fn call_rewrite(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(dictionaries.RewriterRewriteOptions)) ImplError!*const anyopaque {
+pub fn call_rewrite(instance: *runtime.Instance, input: runtime.DOMString, options: dictionaries.RewriterRewriteOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = options;
@@ -124,7 +103,7 @@ pub fn call_rewrite(instance: *runtime.Instance, input: runtime.DOMString, optio
 }
 
 /// Operation: rewriteStreaming
-pub fn call_rewriteStreaming(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(dictionaries.RewriterRewriteOptions)) ImplError!*runtime.Instance {
+pub fn call_rewriteStreaming(instance: *runtime.Instance, input: runtime.DOMString, options: dictionaries.RewriterRewriteOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -132,7 +111,7 @@ pub fn call_rewriteStreaming(instance: *runtime.Instance, input: runtime.DOMStri
 }
 
 /// Operation: measureInputUsage
-pub fn call_measureInputUsage(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(dictionaries.RewriterRewriteOptions)) ImplError!*const anyopaque {
+pub fn call_measureInputUsage(instance: *runtime.Instance, input: runtime.DOMString, options: dictionaries.RewriterRewriteOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = options;
@@ -146,7 +125,7 @@ pub fn call_destroy(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: create
-pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(dictionaries.RewriterCreateOptions)) ImplError!*const anyopaque {
+pub fn call_create(instance: *runtime.Instance, options: dictionaries.RewriterCreateOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

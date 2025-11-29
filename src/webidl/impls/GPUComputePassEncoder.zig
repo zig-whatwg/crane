@@ -1,33 +1,12 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for GPUComputePassEncoder interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for GPUComputePassEncoder interface
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const GPUComputePassEncoder = interfaces.GPUComputePassEncoder;
 
 pub const State = GPUComputePassEncoder.State;
@@ -74,7 +53,7 @@ pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) ImplErro
 }
 
 /// Operation: dispatchWorkgroups
-pub fn call_dispatchWorkgroups(instance: *runtime.Instance, workgroupCountX: typedefs.GPUSize32, workgroupCountY: webidl.Opt(typedefs.GPUSize32), workgroupCountZ: webidl.Opt(typedefs.GPUSize32)) ImplError!void {
+pub fn call_dispatchWorkgroups(instance: *runtime.Instance, workgroupCountX: typedefs.GPUSize32, workgroupCountY: typedefs.GPUSize32, workgroupCountZ: typedefs.GPUSize32) ImplError!void {
     _ = instance;
     _ = workgroupCountX;
     _ = workgroupCountY;
@@ -89,7 +68,7 @@ pub fn call_popDebugGroup(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: setBindGroup
-pub fn call_setBindGroup(instance: *runtime.Instance, index: typedefs.GPUIndex32, bindGroup: ?*runtime.Instance, dynamicOffsets: webidl.Opt(*const anyopaque)) ImplError!void {
+pub fn call_setBindGroup(instance: *runtime.Instance, index: typedefs.GPUIndex32, bindGroup: *runtime.Instance, dynamicOffsets: *const anyopaque) ImplError!void {
     _ = instance;
     _ = index;
     _ = bindGroup;

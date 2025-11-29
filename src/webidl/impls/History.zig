@@ -1,33 +1,12 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for History interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for History interface
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const History = interfaces.History;
 
 pub const State = History.State;
@@ -92,7 +71,7 @@ pub fn call_forward(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: pushState
-pub fn call_pushState(instance: *runtime.Instance, data: *const anyopaque, unused: runtime.DOMString, url: webidl.Opt(?runtime.USVString)) ImplError!void {
+pub fn call_pushState(instance: *runtime.Instance, data: *const anyopaque, unused: runtime.DOMString, url: runtime.USVString) ImplError!void {
     _ = instance;
     _ = data;
     _ = unused;
@@ -101,7 +80,7 @@ pub fn call_pushState(instance: *runtime.Instance, data: *const anyopaque, unuse
 }
 
 /// Operation: go
-pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) ImplError!void {
+pub fn call_go(instance: *runtime.Instance, delta: i32) ImplError!void {
     _ = instance;
     _ = delta;
     return error.NotImplemented;
@@ -114,7 +93,7 @@ pub fn call_back(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: replaceState
-pub fn call_replaceState(instance: *runtime.Instance, data: *const anyopaque, unused: runtime.DOMString, url: webidl.Opt(?runtime.USVString)) ImplError!void {
+pub fn call_replaceState(instance: *runtime.Instance, data: *const anyopaque, unused: runtime.DOMString, url: runtime.USVString) ImplError!void {
     _ = instance;
     _ = data;
     _ = unused;

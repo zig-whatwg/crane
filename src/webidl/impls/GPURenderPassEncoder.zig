@@ -1,33 +1,12 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for GPURenderPassEncoder interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for GPURenderPassEncoder interface
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const GPURenderPassEncoder = interfaces.GPURenderPassEncoder;
 
 pub const State = GPURenderPassEncoder.State;
@@ -89,7 +68,7 @@ pub fn call_setBlendConstant(instance: *runtime.Instance, color: typedefs.GPUCol
 }
 
 /// Operation: setBindGroup
-pub fn call_setBindGroup(instance: *runtime.Instance, index: typedefs.GPUIndex32, bindGroup: ?*runtime.Instance, dynamicOffsets: webidl.Opt(*const anyopaque)) ImplError!void {
+pub fn call_setBindGroup(instance: *runtime.Instance, index: typedefs.GPUIndex32, bindGroup: *runtime.Instance, dynamicOffsets: *const anyopaque) ImplError!void {
     _ = instance;
     _ = index;
     _ = bindGroup;
@@ -104,7 +83,7 @@ pub fn call_endOcclusionQuery(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: setVertexBuffer
-pub fn call_setVertexBuffer(instance: *runtime.Instance, slot: typedefs.GPUIndex32, buffer: ?*runtime.Instance, offset: webidl.Opt(typedefs.GPUSize64), size: webidl.Opt(typedefs.GPUSize64)) ImplError!void {
+pub fn call_setVertexBuffer(instance: *runtime.Instance, slot: typedefs.GPUIndex32, buffer: *runtime.Instance, offset: typedefs.GPUSize64, size: typedefs.GPUSize64) ImplError!void {
     _ = instance;
     _ = slot;
     _ = buffer;
@@ -130,7 +109,7 @@ pub fn call_end(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: drawIndexed
-pub fn call_drawIndexed(instance: *runtime.Instance, indexCount: typedefs.GPUSize32, instanceCount: webidl.Opt(typedefs.GPUSize32), firstIndex: webidl.Opt(typedefs.GPUSize32), baseVertex: webidl.Opt(typedefs.GPUSignedOffset32), firstInstance: webidl.Opt(typedefs.GPUSize32)) ImplError!void {
+pub fn call_drawIndexed(instance: *runtime.Instance, indexCount: typedefs.GPUSize32, instanceCount: typedefs.GPUSize32, firstIndex: typedefs.GPUSize32, baseVertex: typedefs.GPUSignedOffset32, firstInstance: typedefs.GPUSize32) ImplError!void {
     _ = instance;
     _ = indexCount;
     _ = instanceCount;
@@ -148,7 +127,7 @@ pub fn call_executeBundles(instance: *runtime.Instance, bundles: *const anyopaqu
 }
 
 /// Operation: draw
-pub fn call_draw(instance: *runtime.Instance, vertexCount: typedefs.GPUSize32, instanceCount: webidl.Opt(typedefs.GPUSize32), firstVertex: webidl.Opt(typedefs.GPUSize32), firstInstance: webidl.Opt(typedefs.GPUSize32)) ImplError!void {
+pub fn call_draw(instance: *runtime.Instance, vertexCount: typedefs.GPUSize32, instanceCount: typedefs.GPUSize32, firstVertex: typedefs.GPUSize32, firstInstance: typedefs.GPUSize32) ImplError!void {
     _ = instance;
     _ = vertexCount;
     _ = instanceCount;
@@ -178,7 +157,7 @@ pub fn call_insertDebugMarker(instance: *runtime.Instance, markerLabel: runtime.
 }
 
 /// Operation: setIndexBuffer
-pub fn call_setIndexBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, indexFormat: enums.GPUIndexFormat, offset: webidl.Opt(typedefs.GPUSize64), size: webidl.Opt(typedefs.GPUSize64)) ImplError!void {
+pub fn call_setIndexBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, indexFormat: enums.GPUIndexFormat, offset: typedefs.GPUSize64, size: typedefs.GPUSize64) ImplError!void {
     _ = instance;
     _ = buffer;
     _ = indexFormat;

@@ -1,33 +1,12 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for SVGGeometryElement interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for SVGGeometryElement interface
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const SVGGeometryElement = interfaces.SVGGeometryElement;
 
 pub const State = SVGGeometryElement.State;
@@ -67,7 +46,7 @@ pub fn get_pathLength(instance: *runtime.Instance) ImplError!*runtime.Instance {
 }
 
 /// Operation: isPointInStroke
-pub fn call_isPointInStroke(instance: *runtime.Instance, point: webidl.Opt(dictionaries.DOMPointInit)) ImplError!bool {
+pub fn call_isPointInStroke(instance: *runtime.Instance, point: dictionaries.DOMPointInit) ImplError!bool {
     _ = instance;
     _ = point;
     return error.NotImplemented;
@@ -87,7 +66,7 @@ pub fn call_getPointAtLength(instance: *runtime.Instance, distance: f32) ImplErr
 }
 
 /// Operation: isPointInFill
-pub fn call_isPointInFill(instance: *runtime.Instance, point: webidl.Opt(dictionaries.DOMPointInit)) ImplError!bool {
+pub fn call_isPointInFill(instance: *runtime.Instance, point: dictionaries.DOMPointInit) ImplError!bool {
     _ = instance;
     _ = point;
     return error.NotImplemented;

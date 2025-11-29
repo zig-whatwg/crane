@@ -22,6 +22,7 @@ const AsyncPromise = @import("streams_async_promise").AsyncPromise;
 pub const State = WritableStreamDefaultController.State;
 
 pub const ImplError = error{
+    NotImplemented,
     TypeError,
     OutOfMemory,
     InvalidState,
@@ -216,7 +217,7 @@ pub fn get_signal(instance: *runtime.Instance) ImplError!*runtime.Instance {
 /// 1. Let state = this.[[stream]].[[state]]
 /// 2. If state is not "writable", return
 /// 3. Perform WritableStreamDefaultControllerError(this, e)
-pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(*const anyopaque)) ImplError!void {
+pub fn call_error(instance: *runtime.Instance, e: *const anyopaque) ImplError!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -234,10 +235,7 @@ pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(*const anyopaque)) 
     }
 
     // 3. Perform WritableStreamDefaultControllerError(this, e)
-    // Unwrap Opt - use undefined as placeholder if not passed
-    const undefined_ptr: *const anyopaque = @ptrCast(&@as(u8, 0));
-    const actual_error: *const anyopaque = if (e.wasPassed()) e.value else undefined_ptr;
-    writableStreamDefaultControllerError(instance, actual_error);
+    writableStreamDefaultControllerError(instance, e);
 }
 
 // ============================================================================

@@ -1,33 +1,12 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for Navigation interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for Navigation interface
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const Navigation = interfaces.Navigation;
 
 pub const State = Navigation.State;
@@ -143,14 +122,14 @@ pub fn set_oncurrententrychange(instance: *runtime.Instance, value: typedefs.Eve
 }
 
 /// Operation: reload
-pub fn call_reload(instance: *runtime.Instance, options: webidl.Opt(dictionaries.NavigationReloadOptions)) ImplError!dictionaries.NavigationResult {
+pub fn call_reload(instance: *runtime.Instance, options: dictionaries.NavigationReloadOptions) ImplError!dictionaries.NavigationResult {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: back
-pub fn call_back(instance: *runtime.Instance, options: webidl.Opt(dictionaries.NavigationOptions)) ImplError!dictionaries.NavigationResult {
+pub fn call_back(instance: *runtime.Instance, options: dictionaries.NavigationOptions) ImplError!dictionaries.NavigationResult {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -163,7 +142,7 @@ pub fn call_entries(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Operation: navigate
-pub fn call_navigate(instance: *runtime.Instance, url: runtime.USVString, options: webidl.Opt(dictionaries.NavigationNavigateOptions)) ImplError!dictionaries.NavigationResult {
+pub fn call_navigate(instance: *runtime.Instance, url: runtime.USVString, options: dictionaries.NavigationNavigateOptions) ImplError!dictionaries.NavigationResult {
     _ = instance;
     _ = url;
     _ = options;
@@ -171,7 +150,7 @@ pub fn call_navigate(instance: *runtime.Instance, url: runtime.USVString, option
 }
 
 /// Operation: traverseTo
-pub fn call_traverseTo(instance: *runtime.Instance, key: runtime.DOMString, options: webidl.Opt(dictionaries.NavigationOptions)) ImplError!dictionaries.NavigationResult {
+pub fn call_traverseTo(instance: *runtime.Instance, key: runtime.DOMString, options: dictionaries.NavigationOptions) ImplError!dictionaries.NavigationResult {
     _ = instance;
     _ = key;
     _ = options;
@@ -179,7 +158,7 @@ pub fn call_traverseTo(instance: *runtime.Instance, key: runtime.DOMString, opti
 }
 
 /// Operation: forward
-pub fn call_forward(instance: *runtime.Instance, options: webidl.Opt(dictionaries.NavigationOptions)) ImplError!dictionaries.NavigationResult {
+pub fn call_forward(instance: *runtime.Instance, options: dictionaries.NavigationOptions) ImplError!dictionaries.NavigationResult {
     _ = instance;
     _ = options;
     return error.NotImplemented;

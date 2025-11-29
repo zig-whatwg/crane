@@ -1,33 +1,12 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for FileSystemDirectoryHandle interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for FileSystemDirectoryHandle interface
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const FileSystemDirectoryHandle = interfaces.FileSystemDirectoryHandle;
 
 pub const State = FileSystemDirectoryHandle.State;
@@ -61,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getFileHandle
-pub fn call_getFileHandle(instance: *runtime.Instance, name: runtime.USVString, options: webidl.Opt(dictionaries.FileSystemGetFileOptions)) ImplError!*const anyopaque {
+pub fn call_getFileHandle(instance: *runtime.Instance, name: runtime.USVString, options: dictionaries.FileSystemGetFileOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = name;
     _ = options;
@@ -76,7 +55,7 @@ pub fn call_resolve(instance: *runtime.Instance, possibleDescendant: *runtime.In
 }
 
 /// Operation: getDirectoryHandle
-pub fn call_getDirectoryHandle(instance: *runtime.Instance, name: runtime.USVString, options: webidl.Opt(dictionaries.FileSystemGetDirectoryOptions)) ImplError!*const anyopaque {
+pub fn call_getDirectoryHandle(instance: *runtime.Instance, name: runtime.USVString, options: dictionaries.FileSystemGetDirectoryOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = name;
     _ = options;
@@ -84,22 +63,20 @@ pub fn call_getDirectoryHandle(instance: *runtime.Instance, name: runtime.USVStr
 }
 
 /// Operation: removeEntry
-pub fn call_removeEntry(instance: *runtime.Instance, name: runtime.USVString, options: webidl.Opt(dictionaries.FileSystemRemoveOptions)) ImplError!*const anyopaque {
+pub fn call_removeEntry(instance: *runtime.Instance, name: runtime.USVString, options: dictionaries.FileSystemRemoveOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = name;
     _ = options;
     return error.NotImplemented;
 }
 
-/// Async iterator: values
-/// Returns an async iterator over directory entry values
+/// Operation: values (iterable)
 pub fn call_values(instance: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
-/// Async iterator: getAsyncIterator
-/// Returns an async iterator over directory entries
+/// Operation: getAsyncIterator (iterable)
 pub fn call_getAsyncIterator(instance: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     return error.NotImplemented;

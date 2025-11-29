@@ -1,33 +1,12 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for Window interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for Window interface
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const Window = interfaces.Window;
 
 pub const State = Window.State;
@@ -2188,14 +2167,14 @@ pub fn call_print(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: confirm
-pub fn call_confirm(instance: *runtime.Instance, message: webidl.Opt(runtime.DOMString)) ImplError!bool {
+pub fn call_confirm(instance: *runtime.Instance, message: runtime.DOMString) ImplError!bool {
     _ = instance;
     _ = message;
     return error.NotImplemented;
 }
 
 /// Operation: postMessage
-pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, targetOrigin: runtime.USVString, transfer: webidl.Opt(*const anyopaque)) ImplError!void {
+pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, targetOrigin: runtime.USVString, transfer: *const anyopaque) ImplError!void {
     _ = instance;
     _ = message;
     _ = targetOrigin;
@@ -2204,7 +2183,7 @@ pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, 
 }
 
 /// Operation: showDirectoryPicker
-pub fn call_showDirectoryPicker(instance: *runtime.Instance, options: webidl.Opt(dictionaries.DirectoryPickerOptions)) ImplError!*const anyopaque {
+pub fn call_showDirectoryPicker(instance: *runtime.Instance, options: dictionaries.DirectoryPickerOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -2218,7 +2197,7 @@ pub fn call_matchMedia(instance: *runtime.Instance, query: typedefs.CSSOMString)
 }
 
 /// Operation: scroll
-pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) ImplError!*const anyopaque {
+pub fn call_scroll(instance: *runtime.Instance, options: dictionaries.ScrollToOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -2233,14 +2212,14 @@ pub fn call_resizeTo(instance: *runtime.Instance, width: i32, height: i32) ImplE
 }
 
 /// Operation: showSaveFilePicker
-pub fn call_showSaveFilePicker(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SaveFilePickerOptions)) ImplError!*const anyopaque {
+pub fn call_showSaveFilePicker(instance: *runtime.Instance, options: dictionaries.SaveFilePickerOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: setTimeout
-pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const *const anyopaque) ImplError!i32 {
+pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: i32, arguments: *const anyopaque) ImplError!i32 {
     _ = instance;
     _ = handler;
     _ = timeout;
@@ -2249,14 +2228,14 @@ pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandl
 }
 
 /// Operation: clearInterval
-pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) ImplError!void {
+pub fn call_clearInterval(instance: *runtime.Instance, id: i32) ImplError!void {
     _ = instance;
     _ = id;
     return error.NotImplemented;
 }
 
 /// Operation: fetch
-pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) ImplError!*const anyopaque {
+pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: dictionaries.RequestInit) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = init_data;
@@ -2270,14 +2249,14 @@ pub fn call_blur(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: showOpenFilePicker
-pub fn call_showOpenFilePicker(instance: *runtime.Instance, options: webidl.Opt(dictionaries.OpenFilePickerOptions)) ImplError!*const anyopaque {
+pub fn call_showOpenFilePicker(instance: *runtime.Instance, options: dictionaries.OpenFilePickerOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: scrollBy
-pub fn call_scrollBy(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) ImplError!*const anyopaque {
+pub fn call_scrollBy(instance: *runtime.Instance, options: dictionaries.ScrollToOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -2316,7 +2295,7 @@ pub fn call_focus(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: requestIdleCallback
-pub fn call_requestIdleCallback(instance: *runtime.Instance, callback: callbacks.IdleRequestCallback, options: webidl.Opt(dictionaries.IdleRequestOptions)) ImplError!u32 {
+pub fn call_requestIdleCallback(instance: *runtime.Instance, callback: callbacks.IdleRequestCallback, options: dictionaries.IdleRequestOptions) ImplError!u32 {
     _ = instance;
     _ = callback;
     _ = options;
@@ -2331,7 +2310,7 @@ pub fn call_queueMicrotask(instance: *runtime.Instance, callback: callbacks.Void
 }
 
 /// Operation: structuredClone
-pub fn call_structuredClone(instance: *runtime.Instance, value: *const anyopaque, options: webidl.Opt(dictionaries.StructuredSerializeOptions)) ImplError!*const anyopaque {
+pub fn call_structuredClone(instance: *runtime.Instance, value: *const anyopaque, options: dictionaries.StructuredSerializeOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = value;
     _ = options;
@@ -2380,7 +2359,7 @@ pub fn call_resizeBy(instance: *runtime.Instance, x: i32, y: i32) ImplError!void
 }
 
 /// Operation: open
-pub fn call_open(instance: *runtime.Instance, url: webidl.Opt(runtime.USVString), target: webidl.Opt(runtime.DOMString), features: webidl.Opt(runtime.DOMString)) ImplError!?typedefs.WindowProxy {
+pub fn call_open(instance: *runtime.Instance, url: runtime.USVString, target: runtime.DOMString, features: runtime.DOMString) ImplError!?typedefs.WindowProxy {
     _ = instance;
     _ = url;
     _ = target;
@@ -2397,14 +2376,14 @@ pub fn call_moveTo(instance: *runtime.Instance, x: i32, y: i32) ImplError!void {
 }
 
 /// Operation: scrollTo
-pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) ImplError!*const anyopaque {
+pub fn call_scrollTo(instance: *runtime.Instance, options: dictionaries.ScrollToOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: prompt
-pub fn call_prompt(instance: *runtime.Instance, message: webidl.Opt(runtime.DOMString), default: webidl.Opt(runtime.DOMString)) ImplError!?runtime.DOMString {
+pub fn call_prompt(instance: *runtime.Instance, message: runtime.DOMString, default: runtime.DOMString) ImplError!?runtime.DOMString {
     _ = instance;
     _ = message;
     _ = default;
@@ -2419,14 +2398,14 @@ pub fn call_reportError(instance: *runtime.Instance, e: *const anyopaque) ImplEr
 }
 
 /// Operation: clearTimeout
-pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) ImplError!void {
+pub fn call_clearTimeout(instance: *runtime.Instance, id: i32) ImplError!void {
     _ = instance;
     _ = id;
     return error.NotImplemented;
 }
 
 /// Operation: getComputedStyle
-pub fn call_getComputedStyle(instance: *runtime.Instance, elt: *runtime.Instance, pseudoElt: webidl.Opt(?typedefs.CSSOMString)) ImplError!*runtime.Instance {
+pub fn call_getComputedStyle(instance: *runtime.Instance, elt: *runtime.Instance, pseudoElt: typedefs.CSSOMString) ImplError!*runtime.Instance {
     _ = instance;
     _ = elt;
     _ = pseudoElt;
@@ -2434,7 +2413,7 @@ pub fn call_getComputedStyle(instance: *runtime.Instance, elt: *runtime.Instance
 }
 
 /// Operation: setInterval
-pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const *const anyopaque) ImplError!i32 {
+pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: i32, arguments: *const anyopaque) ImplError!i32 {
     _ = instance;
     _ = handler;
     _ = timeout;
@@ -2450,7 +2429,7 @@ pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) ImplE
 }
 
 /// Operation: fetchLater
-pub fn call_fetchLater(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.DeferredRequestInit)) ImplError!*runtime.Instance {
+pub fn call_fetchLater(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: dictionaries.DeferredRequestInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = init_data;
@@ -2465,7 +2444,7 @@ pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: callbac
 }
 
 /// Operation: createImageBitmap
-pub fn call_createImageBitmap(instance: *runtime.Instance, image: typedefs.ImageBitmapSource, options: webidl.Opt(dictionaries.ImageBitmapOptions)) ImplError!*const anyopaque {
+pub fn call_createImageBitmap(instance: *runtime.Instance, image: typedefs.ImageBitmapSource, options: dictionaries.ImageBitmapOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = image;
     _ = options;
@@ -2486,7 +2465,7 @@ pub fn call_captureEvents(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: queryLocalFonts
-pub fn call_queryLocalFonts(instance: *runtime.Instance, options: webidl.Opt(dictionaries.QueryOptions)) ImplError!*const anyopaque {
+pub fn call_queryLocalFonts(instance: *runtime.Instance, options: dictionaries.QueryOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

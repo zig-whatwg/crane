@@ -1,23 +1,4 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for StorageEvent interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for StorageEvent interface
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -26,8 +7,6 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
-const webidl = @import("webidl");
 const StorageEvent = interfaces.StorageEvent;
 
 pub const State = StorageEvent.State;
@@ -62,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.StorageEventInit)) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.StorageEventInit) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &StorageEvent.vtable, ctx);
     errdefer deinit(instance);
@@ -105,7 +84,7 @@ pub fn get_storageArea(instance: *runtime.Instance) ImplError!?*runtime.Instance
 }
 
 /// Operation: initStorageEvent
-pub fn call_initStorageEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), key: webidl.Opt(?runtime.DOMString), oldValue: webidl.Opt(?runtime.DOMString), newValue: webidl.Opt(?runtime.DOMString), url: webidl.Opt(runtime.USVString), storageArea: webidl.Opt(?*runtime.Instance)) ImplError!void {
+pub fn call_initStorageEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: bool, cancelable: bool, key: runtime.DOMString, oldValue: runtime.DOMString, newValue: runtime.DOMString, url: runtime.USVString, storageArea: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = @"type";
     _ = bubbles;

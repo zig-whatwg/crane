@@ -23,6 +23,7 @@ const WriteRequest = @import("streams_write_request").WriteRequest;
 pub const State = WritableStream.State;
 
 pub const ImplError = error{
+    NotImplemented,
     TypeError,
     RangeError,
     InvalidState,
@@ -159,21 +160,23 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 5. Let sizeAlgorithm be ! ExtractSizeAlgorithm(strategy)
 /// 6. Let highWaterMark be ? ExtractHighWaterMark(strategy, 1)
 /// 7. Perform ? SetUpWritableStreamDefaultControllerFromUnderlyingSink(...)
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, underlyingSink: webidl.Opt(*const anyopaque), strategy: webidl.Opt(dictionaries.QueuingStrategy)) !*runtime.Instance {
+pub fn call_constructor(
+    allocator: std.mem.Allocator,
+    ctx: runtime.Context,
+    underlyingSink: *const anyopaque,
+    strategy: dictionaries.QueuingStrategy,
+) !*runtime.Instance {
     // Get event loop from context
     const loop = try ctx.getEventLoop();
 
     // Step 1: If underlyingSink is missing, it would be null (handled by caller)
 
     // Step 2: Convert to UnderlyingSink dictionary
-    const underlying_sink_ptr: ?*const anyopaque = if (underlyingSink.wasPassed()) underlyingSink.value else null;
-    const underlying_sink_dict: ?*const dictionaries.UnderlyingSink = if (underlying_sink_ptr) |ptr| @ptrCast(@alignCast(ptr)) else null;
+    const underlying_sink_dict: *const dictionaries.UnderlyingSink = @ptrCast(@alignCast(underlyingSink));
 
     // Step 3: If type exists, throw RangeError (reserved for future use)
-    if (underlying_sink_dict) |dict| {
-        if (dict.type != null) {
-            return error.RangeError;
-        }
+    if (underlying_sink_dict.type != null) {
+        return error.RangeError;
     }
 
     // Step 4: Perform InitializeWritableStream
@@ -208,25 +211,17 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
     state.own._internal = internal;
 
     // Step 5: Extract size algorithm
-    // Unwrap Opt to get actual strategy value, use default if not passed
-    const default_strategy = dictionaries.QueuingStrategy{};
-    const actual_strategy: *const dictionaries.QueuingStrategy = if (strategy.wasPassed()) &strategy.value else &default_strategy;
-    const size_algorithm = extractSizeAlgorithm(actual_strategy);
+    const size_algorithm = extractSizeAlgorithm(&strategy);
 
     // Step 6: Extract high water mark (default 1 for writable)
-    const high_water_mark = try extractHighWaterMark(actual_strategy, 1.0);
+    const high_water_mark = try extractHighWaterMark(&strategy, 1.0);
 
     // Step 7: SetUpWritableStreamDefaultControllerFromUnderlyingSink
-    // Unwrap underlyingSink from Opt
-    const actual_underlying_sink: *const anyopaque = if (underlyingSink.wasPassed()) underlyingSink.value else @ptrCast(&@as(u8, 0));
-    // Use a default empty underlying sink if not provided
-    const default_underlying_sink = dictionaries.UnderlyingSink{};
-    const actual_underlying_sink_dict: *const dictionaries.UnderlyingSink = underlying_sink_dict orelse &default_underlying_sink;
     try setUpWritableStreamDefaultControllerFromUnderlyingSink(
         instance,
         internal,
-        actual_underlying_sink,
-        actual_underlying_sink_dict,
+        underlyingSink,
+        underlying_sink_dict,
         high_water_mark,
         size_algorithm,
     );
@@ -278,7 +273,7 @@ pub fn call_getWriter(instance: *runtime.Instance) ImplError!*runtime.Instance {
 /// Steps:
 /// 1. If ! IsWritableStreamLocked(this) is true, return rejected promise
 /// 2. Return ! WritableStreamAbort(this, reason)
-pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) ImplError!*const anyopaque {
+pub fn call_abort(instance: *runtime.Instance, reason: *const anyopaque) ImplError!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -294,10 +289,7 @@ pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaq
     }
 
     // Step 2: Return WritableStreamAbort(this, reason)
-    // Unwrap Opt - use undefined as placeholder if not passed
-    const undefined_ptr: *const anyopaque = @ptrCast(&@as(u8, 0));
-    const actual_reason: *const anyopaque = if (reason.wasPassed()) reason.value else undefined_ptr;
-    return writableStreamAbort(instance, internal, actual_reason);
+    return writableStreamAbort(instance, internal, reason);
 }
 
 /// WritableStreamStartErroring - Begin error process
@@ -442,10 +434,9 @@ pub fn writableStreamFinishErroring(instance: *runtime.Instance, internal: *Inte
                 const abort_callback: callbacks.UnderlyingSinkAbortCallback = @ptrCast(@alignCast(abort_fn));
                 // Use reason if provided, or pass a placeholder pointer (for undefined)
                 const reason_to_pass: *const anyopaque = abort_request.reason orelse @as(*const anyopaque, @ptrFromInt(1));
-                const opt_reason = webidl.Opt(*const anyopaque).passed(reason_to_pass);
                 // Call the abort callback - it returns a promise result
                 // The callback should return a valid pointer (representing a promise)
-                _ = abort_callback(opt_reason);
+                _ = abort_callback(reason_to_pass);
                 // Callback invoked successfully
                 abort_succeeded = true;
             }
@@ -745,8 +736,7 @@ fn writableStreamAbort(
             const controller_internal: *WritableStreamDefaultControllerImpl.InternalState = @ptrCast(@alignCast(controller_internal_ptr));
             if (controller_internal.abort_controller) |abort_controller| {
                 // Signal abort on the AbortController
-                const opt_reason = webidl.Opt(*const anyopaque).passed(reason);
-                interfaces.AbortController.call_abort(abort_controller, opt_reason) catch {};
+                interfaces.AbortController.call_abort(abort_controller, reason) catch {};
             }
         }
     }

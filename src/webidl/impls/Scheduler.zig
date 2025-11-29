@@ -1,33 +1,12 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for Scheduler interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for Scheduler interface
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const Scheduler = interfaces.Scheduler;
 
 pub const State = Scheduler.State;
@@ -61,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: postTask
-pub fn call_postTask(instance: *runtime.Instance, callback: callbacks.SchedulerPostTaskCallback, options: webidl.Opt(dictionaries.SchedulerPostTaskOptions)) ImplError!*const anyopaque {
+pub fn call_postTask(instance: *runtime.Instance, callback: callbacks.SchedulerPostTaskCallback, options: dictionaries.SchedulerPostTaskOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = callback;
     _ = options;

@@ -1,23 +1,4 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for OES_vertex_array_object interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for OES_vertex_array_object interface
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -26,7 +7,6 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const OES_vertex_array_object = interfaces.OES_vertex_array_object;
 
 pub const State = OES_vertex_array_object.State;
@@ -60,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: bindVertexArrayOES
-pub fn call_bindVertexArrayOES(instance: *runtime.Instance, arrayObject: ?*runtime.Instance) ImplError!void {
+pub fn call_bindVertexArrayOES(instance: *runtime.Instance, arrayObject: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = arrayObject;
     return error.NotImplemented;
@@ -73,14 +53,14 @@ pub fn call_createVertexArrayOES(instance: *runtime.Instance) ImplError!*runtime
 }
 
 /// Operation: deleteVertexArrayOES
-pub fn call_deleteVertexArrayOES(instance: *runtime.Instance, arrayObject: ?*runtime.Instance) ImplError!void {
+pub fn call_deleteVertexArrayOES(instance: *runtime.Instance, arrayObject: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = arrayObject;
     return error.NotImplemented;
 }
 
 /// Operation: isVertexArrayOES
-pub fn call_isVertexArrayOES(instance: *runtime.Instance, arrayObject: ?*runtime.Instance) ImplError!typedefs.GLboolean {
+pub fn call_isVertexArrayOES(instance: *runtime.Instance, arrayObject: *runtime.Instance) ImplError!typedefs.GLboolean {
     _ = instance;
     _ = arrayObject;
     return error.NotImplemented;

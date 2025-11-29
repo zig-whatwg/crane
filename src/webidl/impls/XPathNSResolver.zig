@@ -40,8 +40,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: lookupNamespaceURI
-pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: ?runtime.DOMString) ImplError!?runtime.DOMString {
+pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: runtime.DOMString) ImplError!?runtime.DOMString {
     _ = instance;
     _ = prefix;
     return null;
 }
+

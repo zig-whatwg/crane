@@ -22,6 +22,7 @@ const Promise = streams_common.Promise;
 pub const State = TransformStream.State;
 
 pub const ImplError = error{
+    NotImplemented,
     TypeError,
     RangeError,
     OutOfMemory,
@@ -86,7 +87,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Spec: § 6.1 "The new TransformStream(transformer, writableStrategy, readableStrategy) constructor steps"
 ///
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, transformer: webidl.Opt(*const anyopaque), writableStrategy: webidl.Opt(dictionaries.QueuingStrategy), readableStrategy: webidl.Opt(dictionaries.QueuingStrategy)) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, transformer: *const anyopaque, writableStrategy: dictionaries.QueuingStrategy, readableStrategy: dictionaries.QueuingStrategy) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &TransformStream.vtable, ctx);
     errdefer deinit(instance);
@@ -118,30 +119,20 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, tran
     // (Reserved for future use - not implemented yet)
 
     // Spec step 5: Let readableHighWaterMark be ? ExtractHighWaterMark(readableStrategy, 0)
-    const readable_hwm = blk: {
-        if (readableStrategy.wasPassed()) {
-            break :blk extractHighWaterMark(&readableStrategy.value, 0.0) catch {
-                allocator.destroy(internal);
-                deinit(instance);
-                return error.RangeError;
-            };
-        }
-        break :blk 0.0;
+    const readable_hwm = extractHighWaterMark(&readableStrategy, 0.0) catch {
+        allocator.destroy(internal);
+        deinit(instance);
+        return error.RangeError;
     };
 
     // Spec step 6: Let readableSizeAlgorithm be ! ExtractSizeAlgorithm(readableStrategy)
     // (Using default for now)
 
     // Spec step 7: Let writableHighWaterMark be ? ExtractHighWaterMark(writableStrategy, 1)
-    const writable_hwm = blk: {
-        if (writableStrategy.wasPassed()) {
-            break :blk extractHighWaterMark(&writableStrategy.value, 1.0) catch {
-                allocator.destroy(internal);
-                deinit(instance);
-                return error.RangeError;
-            };
-        }
-        break :blk 1.0;
+    const writable_hwm = extractHighWaterMark(&writableStrategy, 1.0) catch {
+        allocator.destroy(internal);
+        deinit(instance);
+        return error.RangeError;
     };
 
     // Spec step 8: Let writableSizeAlgorithm be ! ExtractSizeAlgorithm(writableStrategy)
@@ -154,10 +145,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, tran
     try initializeTransformStream(instance, internal, allocator, ctx, start_promise, writable_hwm, readable_hwm);
 
     // Spec step 11: Perform ? SetUpTransformStreamDefaultControllerFromTransformer(this, transformer, transformerDict)
-    // Unwrap Opt - use dummy if not passed
-    var dummy_transformer: u8 = 0;
-    const transformer_ptr = if (transformer.wasPassed()) transformer.value else @as(*const anyopaque, @ptrCast(&dummy_transformer));
-    try setUpTransformStreamDefaultControllerFromTransformer(instance, internal, allocator, ctx, transformer_ptr);
+    try setUpTransformStreamDefaultControllerFromTransformer(instance, internal, allocator, ctx, transformer);
 
     // Spec step 12-13: If transformerDict["start"] exists, resolve startPromise with result of invoking it
     // Otherwise, resolve startPromise with undefined

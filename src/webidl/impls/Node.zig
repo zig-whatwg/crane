@@ -8,7 +8,6 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
-const webidl = @import("webidl");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -16,9 +15,6 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const infra = @import("infra");
 const Node = interfaces.Node;
-
-// Import parent class impl for initialization chain
-const EventTargetImpl = @import("EventTarget.zig");
 
 pub const State = Node.State;
 
@@ -126,7 +122,8 @@ pub const InternalState = struct {
 
 /// Get the internal state from an instance
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    return getInternalFromRegistry(instance);
+    const state = instance.getState(State);
+    return state.own._internal;
 }
 
 /// Get or create the EventTarget internal state (for event handling)
@@ -134,59 +131,33 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// inheritance is flattened. For now, return null as this needs proper
 /// integration with the codegen's inheritance model.
 fn getEventTargetInternal(instance: *runtime.Instance) ?*@import("EventTarget.zig").InternalState {
-    // Access EventTarget's internal state via its registry
-    return EventTargetImpl.getInternalState(instance);
+    _ = instance;
+    // TODO: Access EventTarget's internal state via proper inheritance mechanism
+    return null;
 }
 
 /// Initialize instance (creates the instance)
-/// Chains to parent class initialization: EventTarget
-///
-/// IMPORTANT: Due to state hierarchy complexity, internal state is stored
-/// in a global registry rather than in the State struct. This allows
-/// proper inheritance without type conflicts.
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    // Chain to parent class (EventTarget)
-    const instance = try EventTargetImpl.init(allocator, StateType, vtable, ctx);
-    errdefer EventTargetImpl.deinit(instance);
+    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    errdefer runtime.Instance.deinit(instance);
 
-    // Initialize Node internal state in global registry
+    // Initialize internal state
+    const state = instance.getState(StateType);
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
-    try setInternalInRegistry(instance, internal);
+    state.own._internal = internal;
+
+    // Note: EventTarget's internal state initialization is handled by the
+    // codegen's inheritance mechanism. Each interface in the chain initializes
+    // its own _internal state.
 
     return instance;
-}
-
-/// Global registry for Node internal state (workaround for state type hierarchy issues)
-var node_internal_registry: std.AutoHashMap(usize, *InternalState) = undefined;
-var node_registry_initialized: bool = false;
-
-fn ensureNodeRegistry() void {
-    if (!node_registry_initialized) {
-        node_internal_registry = std.AutoHashMap(usize, *InternalState).init(std.heap.page_allocator);
-        node_registry_initialized = true;
-    }
-}
-
-fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) !void {
-    ensureNodeRegistry();
-    try node_internal_registry.put(@intFromPtr(instance), internal);
-}
-
-fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
-    ensureNodeRegistry();
-    return node_internal_registry.get(@intFromPtr(instance));
-}
-
-/// Get Node's internal state from the registry
-pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
-    return getInternalFromRegistry(instance);
 }
 
 /// Deinitialize instance
@@ -206,7 +177,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Getter for nodeType
 /// https://dom.spec.whatwg.org/#dom-node-nodetype
 /// Returns an integer corresponding to the type of the node
-pub fn get_nodeType(instance: *runtime.Instance) ImplError!u16 {
+pub fn get_nodeType(instance: *runtime.Instance) !u16 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.node_type;
 }
@@ -214,7 +185,7 @@ pub fn get_nodeType(instance: *runtime.Instance) ImplError!u16 {
 /// Getter for nodeName
 /// https://dom.spec.whatwg.org/#dom-node-nodename
 /// Returns a string appropriate for the type of node
-pub fn get_nodeName(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_nodeName(instance: *runtime.Instance) !runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     return switch (internal.node_type) {
@@ -259,7 +230,7 @@ pub fn get_nodeName(instance: *runtime.Instance) ImplError!runtime.DOMString {
 /// Getter for baseURI
 /// https://dom.spec.whatwg.org/#dom-node-baseuri
 /// Returns the node's document's document base URL, serialized
-pub fn get_baseURI(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_baseURI(instance: *runtime.Instance) !runtime.USVString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Get the owner document and its base URL
@@ -281,7 +252,7 @@ pub fn get_baseURI(instance: *runtime.Instance) ImplError!runtime.USVString {
 /// Getter for isConnected
 /// https://dom.spec.whatwg.org/#dom-node-isconnected
 /// Returns true if the node is connected (its root is a document)
-pub fn get_isConnected(instance: *runtime.Instance) ImplError!bool {
+pub fn get_isConnected(instance: *runtime.Instance) !bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.is_connected;
 }
@@ -289,7 +260,7 @@ pub fn get_isConnected(instance: *runtime.Instance) ImplError!bool {
 /// Getter for ownerDocument
 /// https://dom.spec.whatwg.org/#dom-node-ownerdocument
 /// Returns the document that the node belongs to, or null for Document nodes
-pub fn get_ownerDocument(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_ownerDocument(instance: *runtime.Instance) !?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Document nodes return null
@@ -302,7 +273,7 @@ pub fn get_ownerDocument(instance: *runtime.Instance) ImplError!?*runtime.Instan
 
 /// Getter for parentNode
 /// https://dom.spec.whatwg.org/#dom-node-parentnode
-pub fn get_parentNode(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_parentNode(instance: *runtime.Instance) !?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.parent;
 }
@@ -310,7 +281,7 @@ pub fn get_parentNode(instance: *runtime.Instance) ImplError!?*runtime.Instance 
 /// Getter for parentElement
 /// https://dom.spec.whatwg.org/#dom-node-parentelement
 /// Returns parent if parent is an Element, otherwise null
-pub fn get_parentElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_parentElement(instance: *runtime.Instance) !?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     if (internal.parent) |parent| {
@@ -326,7 +297,7 @@ pub fn get_parentElement(instance: *runtime.Instance) ImplError!?*runtime.Instan
 /// Getter for childNodes
 /// https://dom.spec.whatwg.org/#dom-node-childnodes
 /// Returns a live NodeList of child nodes
-pub fn get_childNodes(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_childNodes(instance: *runtime.Instance) !*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Return cached NodeList if it exists
@@ -334,57 +305,35 @@ pub fn get_childNodes(instance: *runtime.Instance) ImplError!*runtime.Instance {
         return list;
     }
 
-    // Create a new NodeList for this node's children
-    const NodeListImpl = @import("NodeList.zig");
-    const list = try NodeListImpl.init(
-        internal.allocator,
-        interfaces.NodeList.State,
-        &interfaces.NodeList.vtable,
-        instance.ctx,
-    );
-    errdefer NodeListImpl.deinit(list);
-
-    // Populate with current children
-    var child = internal.first_child;
-    while (child) |c| {
-        NodeListImpl.addNode(list, c) catch |err| switch (err) {
-            error.InvalidState => return error.InvalidStateError,
-            error.OutOfMemory => return error.OutOfMemory,
-        };
-        const child_internal = getInternal(c) orelse break;
-        child = child_internal.next_sibling;
-    }
-
-    // Cache the NodeList (per [SameObject] semantics)
-    internal.child_nodes_list = list;
-
-    return list;
+    // TODO: Create a live NodeList for this node's children
+    // This requires NodeList implementation with live collection support
+    return error.NotImplemented;
 }
 
 /// Getter for firstChild
 /// https://dom.spec.whatwg.org/#dom-node-firstchild
-pub fn get_firstChild(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_firstChild(instance: *runtime.Instance) !?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.first_child;
 }
 
 /// Getter for lastChild
 /// https://dom.spec.whatwg.org/#dom-node-lastchild
-pub fn get_lastChild(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_lastChild(instance: *runtime.Instance) !?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.last_child;
 }
 
 /// Getter for previousSibling
 /// https://dom.spec.whatwg.org/#dom-node-previoussibling
-pub fn get_previousSibling(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_previousSibling(instance: *runtime.Instance) !?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.previous_sibling;
 }
 
 /// Getter for nextSibling
 /// https://dom.spec.whatwg.org/#dom-node-nextsibling
-pub fn get_nextSibling(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_nextSibling(instance: *runtime.Instance) !?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.next_sibling;
 }
@@ -392,7 +341,7 @@ pub fn get_nextSibling(instance: *runtime.Instance) ImplError!?*runtime.Instance
 /// Getter for nodeValue
 /// https://dom.spec.whatwg.org/#dom-node-nodevalue
 /// Returns/sets the value of the node depending on node type
-pub fn get_nodeValue(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_nodeValue(instance: *runtime.Instance) !runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     return switch (internal.node_type) {
@@ -415,12 +364,12 @@ pub fn get_nodeValue(instance: *runtime.Instance) ImplError!?runtime.DOMString {
 /// Getter for textContent
 /// https://dom.spec.whatwg.org/#dom-node-textcontent
 /// Returns the text content of the node and its descendants
-pub fn get_textContent(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_textContent(instance: *runtime.Instance) !runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     return switch (internal.node_type) {
         NodeType.DOCUMENT_NODE, NodeType.DOCUMENT_TYPE_NODE => {
-            // Returns null (represented as empty string for DOMString)
+            // Returns null
             return runtime.DOMString.initEmpty();
         },
         NodeType.ATTRIBUTE_NODE,
@@ -436,42 +385,12 @@ pub fn get_textContent(instance: *runtime.Instance) ImplError!?runtime.DOMString
             break :blk runtime.DOMString.initEmpty();
         },
         NodeType.ELEMENT_NODE, NodeType.DOCUMENT_FRAGMENT_NODE => {
-            // Returns concatenation of descendant text content (DOM §4.4.3)
-            var result = infra.List(u8).init(internal.allocator);
-            errdefer result.deinit();
-
-            try collectDescendantTextContent(instance, &result);
-
-            const slice = result.toOwnedSlice() catch return error.OutOfMemory;
-            if (slice.len == 0) {
-                return runtime.DOMString.initEmpty();
-            }
-            return runtime.DOMString.initOwned(slice);
+            // Returns concatenation of descendant text content
+            // TODO: Implement tree traversal to collect text
+            return error.NotImplemented;
         },
         else => runtime.DOMString.initEmpty(),
     };
-}
-
-/// Helper: Collect all descendant text content in tree order
-/// DOM §4.4.3 - The descendant text content of a node is the concatenation of
-/// the data of all the Text node descendants of node, in tree order.
-fn collectDescendantTextContent(node: *runtime.Instance, result: *infra.List(u8)) !void {
-    const internal = getInternal(node) orelse return;
-
-    // If this is a Text node, collect its data
-    if (internal.node_type == NodeType.TEXT_NODE) {
-        if (internal.node_value) |val| {
-            try result.appendSlice(val.asSlice());
-        }
-    }
-
-    // Recursively process all children
-    var child = internal.first_child;
-    while (child) |c| {
-        try collectDescendantTextContent(c, result);
-        const child_internal = getInternal(c) orelse break;
-        child = child_internal.next_sibling;
-    }
 }
 
 // =============================================================================
@@ -480,7 +399,7 @@ fn collectDescendantTextContent(node: *runtime.Instance, result: *infra.List(u8)
 
 /// Setter for nodeValue
 /// https://dom.spec.whatwg.org/#dom-node-nodevalue
-pub fn set_nodeValue(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_nodeValue(instance: *runtime.Instance, value: runtime.DOMString) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     switch (internal.node_type) {
@@ -504,7 +423,7 @@ pub fn set_nodeValue(instance: *runtime.Instance, value: runtime.DOMString) Impl
 
 /// Setter for textContent
 /// https://dom.spec.whatwg.org/#dom-node-textcontent
-pub fn set_textContent(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_textContent(instance: *runtime.Instance, value: runtime.DOMString) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     switch (internal.node_type) {
@@ -524,71 +443,9 @@ pub fn set_textContent(instance: *runtime.Instance, value: runtime.DOMString) Im
             internal.node_value = try value.clone(internal.allocator);
         },
         NodeType.ELEMENT_NODE, NodeType.DOCUMENT_FRAGMENT_NODE => {
-            // DOM §4.4.3 - String replace all with value within node
-            // 1. Let node be null
-            // 2. If string is not empty, set node to a new Text node with data string
-            // 3. Replace all with node within parent
-
-            // Step 1-2: Create text node only if value is not empty
-            var new_text_node: ?*runtime.Instance = null;
-            const value_slice = value.asSlice();
-
-            if (value_slice.len > 0) {
-                // Create a new Text node
-                const TextImpl = @import("Text.zig");
-                // Wrap in Opt since Text constructor now expects webidl.Opt(DOMString)
-                const text_node = try TextImpl.call_constructor(internal.allocator, instance.ctx, webidl.Opt(runtime.DOMString).passed(value));
-                new_text_node = text_node;
-            }
-
-            // Step 3: Replace all children with the new node (or remove all if null)
-            // First, remove all existing children
-            var child = internal.first_child;
-            while (child) |c| {
-                const child_internal = getInternal(c) orelse break;
-                const next = child_internal.next_sibling;
-
-                // Clear child's parent reference
-                child_internal.parent = null;
-                child_internal.previous_sibling = null;
-                child_internal.next_sibling = null;
-                child_internal.is_connected = false;
-
-                child = next;
-            }
-
-            // Clear parent's child pointers
-            internal.first_child = null;
-            internal.last_child = null;
-
-            // Invalidate cached childNodes if it exists
-            if (internal.child_nodes_list) |list| {
-                const NodeListImpl = @import("NodeList.zig");
-                NodeListImpl.clear(list);
-            }
-
-            // If we have a new text node, append it
-            if (new_text_node) |text_node| {
-                const text_internal = getInternal(text_node) orelse return error.OutOfMemory;
-
-                // Set up parent relationship
-                text_internal.parent = instance;
-                text_internal.owner_document = internal.owner_document;
-                text_internal.is_connected = internal.is_connected;
-
-                // Set as only child
-                internal.first_child = text_node;
-                internal.last_child = text_node;
-
-                // Add to cached childNodes if it exists
-                if (internal.child_nodes_list) |list| {
-                    const NodeListImpl = @import("NodeList.zig");
-                    NodeListImpl.addNode(list, text_node) catch |err| switch (err) {
-                        error.InvalidState => return error.InvalidStateError,
-                        error.OutOfMemory => return error.OutOfMemory,
-                    };
-                }
-            }
+            // Remove all children, then append a Text node with value
+            // TODO: Implement removeAllChildren and createTextNode
+            return error.NotImplemented;
         },
         else => {},
     }
@@ -600,22 +457,20 @@ pub fn set_textContent(instance: *runtime.Instance, value: runtime.DOMString) Im
 
 /// Operation: hasChildNodes
 /// https://dom.spec.whatwg.org/#dom-node-haschildnodes
-pub fn call_hasChildNodes(instance: *runtime.Instance) ImplError!bool {
+pub fn call_hasChildNodes(instance: *runtime.Instance) !bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.first_child != null;
 }
 
 /// Operation: getRootNode
 /// https://dom.spec.whatwg.org/#dom-node-getrootnode
-pub fn call_getRootNode(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GetRootNodeOptions)) ImplError!*runtime.Instance {
+pub fn call_getRootNode(instance: *runtime.Instance, options: dictionaries.GetRootNodeOptions) !*runtime.Instance {
     var current = instance;
     var current_internal = getInternal(current) orelse return error.InvalidStateError;
 
     // If composed is true and this is in a shadow tree, get the composed root
     // TODO: Handle shadow DOM composed root when ShadowRoot is implemented
-    // Unwrap Opt for composed field
-    const composed = if (options.wasPassed()) options.value.composed orelse false else false;
-    _ = composed;
+    _ = options.composed;
 
     // Walk up the tree to find the root
     while (current_internal.parent) |parent| {
@@ -629,14 +484,12 @@ pub fn call_getRootNode(instance: *runtime.Instance, options: webidl.Opt(diction
 /// Operation: contains
 /// https://dom.spec.whatwg.org/#dom-node-contains
 /// Returns true if other is an inclusive descendant of this node
-pub fn call_contains(instance: *runtime.Instance, other: ?*runtime.Instance) ImplError!bool {
-    const other_node = other orelse return false;
-
+pub fn call_contains(instance: *runtime.Instance, other: *runtime.Instance) !bool {
     // A node contains itself
-    if (instance == other_node) return true;
+    if (instance == other) return true;
 
     // Walk up from other to see if we find instance
-    var current: ?*runtime.Instance = other_node;
+    var current: ?*runtime.Instance = other;
     while (current) |curr| {
         if (curr == instance) return true;
         const curr_internal = getInternal(curr) orelse break;
@@ -648,7 +501,7 @@ pub fn call_contains(instance: *runtime.Instance, other: ?*runtime.Instance) Imp
 
 /// Operation: compareDocumentPosition
 /// https://dom.spec.whatwg.org/#dom-node-comparedocumentposition
-pub fn call_compareDocumentPosition(instance: *runtime.Instance, other: *runtime.Instance) ImplError!u16 {
+pub fn call_compareDocumentPosition(instance: *runtime.Instance, other: *runtime.Instance) !u16 {
     // Same node
     if (instance == other) return 0;
 
@@ -697,18 +550,16 @@ pub fn call_compareDocumentPosition(instance: *runtime.Instance, other: *runtime
 /// Operation: isSameNode
 /// https://dom.spec.whatwg.org/#dom-node-issamenode
 /// Returns true if other is the same node (reference equality)
-pub fn call_isSameNode(instance: *runtime.Instance, otherNode: ?*runtime.Instance) ImplError!bool {
-    const other = otherNode orelse return false;
-    return instance == other;
+pub fn call_isSameNode(instance: *runtime.Instance, otherNode: *runtime.Instance) !bool {
+    return instance == otherNode;
 }
 
 /// Operation: isEqualNode
 /// https://dom.spec.whatwg.org/#dom-node-isequalnode
 /// Returns true if nodes are equal (same type, attributes, children)
-pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: ?*runtime.Instance) ImplError!bool {
-    const other = otherNode orelse return false;
+pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: *runtime.Instance) !bool {
     const self_internal = getInternal(instance) orelse return false;
-    const other_internal = getInternal(other) orelse return false;
+    const other_internal = getInternal(otherNode) orelse return false;
 
     // Must be same node type
     if (self_internal.node_type != other_internal.node_type) return false;
@@ -795,16 +646,15 @@ pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: ?*runtime.Instan
 /// Spec steps:
 /// 1. If this is a shadow root, throw NotSupportedError
 /// 2. Return clone of this with subtree set to deep
-pub fn call_cloneNode(instance: *runtime.Instance, subtree: webidl.Opt(bool)) ImplError!*runtime.Instance {
+pub fn call_cloneNode(instance: *runtime.Instance, subtree: bool) !*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Step 1: If this is a shadow root, throw NotSupportedError
     // Shadow roots have DOCUMENT_FRAGMENT_NODE type but also have a host
     // For now, we don't have full shadow DOM so skip this check
 
-    // Step 2: Clone this node - unwrap Opt (default false per spec)
-    const deep = if (subtree.wasPassed()) subtree.value else false;
-    return cloneNodeInternal(instance, internal.owner_document, deep);
+    // Step 2: Clone this node
+    return cloneNodeInternal(instance, internal.owner_document, subtree);
 }
 
 /// Internal clone algorithm
@@ -891,7 +741,7 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance) !*runt
 /// Operation: normalize
 /// https://dom.spec.whatwg.org/#dom-node-normalize
 /// Removes empty text nodes and merges adjacent text nodes
-pub fn call_normalize(instance: *runtime.Instance) ImplError!void {
+pub fn call_normalize(instance: *runtime.Instance) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     var child = internal.first_child;
@@ -1073,7 +923,7 @@ fn updateConnectedStatus(node: *runtime.Instance, connected: bool) !void {
 
 /// Operation: appendChild
 /// https://dom.spec.whatwg.org/#dom-node-appendchild
-pub fn call_appendChild(instance: *runtime.Instance, node: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_appendChild(instance: *runtime.Instance, node: *runtime.Instance) !*runtime.Instance {
     try preInsertValidation(instance, node, null);
     try insertNode(node, instance, null);
     return node;
@@ -1081,20 +931,15 @@ pub fn call_appendChild(instance: *runtime.Instance, node: *runtime.Instance) Im
 
 /// Operation: insertBefore
 /// https://dom.spec.whatwg.org/#dom-node-insertbefore
-pub fn call_insertBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) ImplError!*runtime.Instance {
-    const child_node = child orelse {
-        // If child is null, insert at the end
-        _ = try appendChild(instance, node);
-        return node;
-    };
-    try preInsertValidation(instance, node, child_node);
-    try insertNode(node, instance, child_node);
+pub fn call_insertBefore(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) !*runtime.Instance {
+    try preInsertValidation(instance, node, child);
+    try insertNode(node, instance, child);
     return node;
 }
 
 /// Operation: removeChild
 /// https://dom.spec.whatwg.org/#dom-node-removechild
-pub fn call_removeChild(instance: *runtime.Instance, child: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_removeChild(instance: *runtime.Instance, child: *runtime.Instance) !*runtime.Instance {
     const child_internal = getInternal(child) orelse return error.InvalidStateError;
 
     // Child must be a child of this node
@@ -1108,7 +953,7 @@ pub fn call_removeChild(instance: *runtime.Instance, child: *runtime.Instance) I
 
 /// Operation: replaceChild
 /// https://dom.spec.whatwg.org/#dom-node-replacechild
-pub fn call_replaceChild(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_replaceChild(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) !*runtime.Instance {
     try preInsertValidation(instance, node, child);
 
     const child_internal = getInternal(child) orelse return error.InvalidStateError;
@@ -1136,20 +981,18 @@ pub fn call_replaceChild(instance: *runtime.Instance, node: *runtime.Instance, c
 
 /// Operation: lookupPrefix
 /// https://dom.spec.whatwg.org/#dom-node-lookupprefix
-pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: ?runtime.DOMString) ImplError!?runtime.DOMString {
+pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: runtime.DOMString) !runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    const ns = namespace orelse return null;
-
-    if (ns.len() == 0) {
-        return null;
+    if (namespace.len() == 0) {
+        return runtime.DOMString.initEmpty();
     }
 
     switch (internal.node_type) {
         NodeType.ELEMENT_NODE => {
             // Check this element's namespace
-            if (internal.namespace_uri) |elem_ns| {
-                if (std.mem.eql(u8, elem_ns.asSlice(), ns.asSlice())) {
+            if (internal.namespace_uri) |ns| {
+                if (std.mem.eql(u8, ns.asSlice(), namespace.asSlice())) {
                     if (internal.prefix) |prefix| {
                         return prefix;
                     }
@@ -1164,7 +1007,7 @@ pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: ?runtime.DOMStr
             }
         },
         NodeType.DOCUMENT_TYPE_NODE, NodeType.DOCUMENT_FRAGMENT_NODE => {
-            return null;
+            return runtime.DOMString.initEmpty();
         },
         NodeType.ATTRIBUTE_NODE => {
             // Lookup on owner element
@@ -1173,7 +1016,7 @@ pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: ?runtime.DOMStr
         else => {
             // Lookup on parent element
             if (internal.parent) |parent| {
-                const parent_internal = getInternal(parent) orelse return null;
+                const parent_internal = getInternal(parent) orelse return runtime.DOMString.initEmpty();
                 if (parent_internal.node_type == NodeType.ELEMENT_NODE) {
                     return call_lookupPrefix(parent, namespace);
                 }
@@ -1181,12 +1024,12 @@ pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: ?runtime.DOMStr
         },
     }
 
-    return null;
+    return runtime.DOMString.initEmpty();
 }
 
 /// Operation: lookupNamespaceURI
 /// https://dom.spec.whatwg.org/#dom-node-lookupnamespaceuri
-pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: ?runtime.DOMString) ImplError!?runtime.DOMString {
+pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: runtime.DOMString) !runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     switch (internal.node_type) {
@@ -1194,18 +1037,15 @@ pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: ?runtime.DOM
             // Check this element's namespace
             if (internal.namespace_uri) |ns| {
                 const has_prefix = internal.prefix != null;
-                const prefix_matches = if (internal.prefix) |p| blk: {
-                    if (prefix) |pfx| {
-                        break :blk std.mem.eql(u8, p.asSlice(), pfx.asSlice());
-                    }
-                    break :blk false;
-                } else false;
+                const prefix_matches = if (internal.prefix) |p|
+                    std.mem.eql(u8, p.asSlice(), prefix.asSlice())
+                else
+                    false;
 
                 if (has_prefix and prefix_matches) {
                     return ns;
                 }
-                const is_empty_prefix = if (prefix) |p| p.len() == 0 else true;
-                if (!has_prefix and is_empty_prefix) {
+                if (!has_prefix and prefix.len() == 0) {
                     return ns;
                 }
             }
@@ -1218,7 +1058,7 @@ pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: ?runtime.DOM
             }
         },
         NodeType.DOCUMENT_TYPE_NODE, NodeType.DOCUMENT_FRAGMENT_NODE => {
-            return null;
+            return runtime.DOMString.initEmpty();
         },
         NodeType.ATTRIBUTE_NODE => {
             // Lookup on owner element
@@ -1232,18 +1072,19 @@ pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: ?runtime.DOM
         },
     }
 
-    return null;
+    return runtime.DOMString.initEmpty();
 }
 
 /// Operation: isDefaultNamespace
 /// https://dom.spec.whatwg.org/#dom-node-isdefaultnamespace
-pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: ?runtime.DOMString) ImplError!bool {
-    const default_ns = try call_lookupNamespaceURI(instance, null);
+pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: runtime.DOMString) !bool {
+    const default_ns = try call_lookupNamespaceURI(instance, runtime.DOMString.initEmpty());
 
-    const ns = namespace orelse return (default_ns == null or default_ns.?.len() == 0);
-    const def_ns = default_ns orelse return ns.len() == 0;
+    if (namespace.len() == 0) {
+        return default_ns.len() == 0;
+    }
 
-    return std.mem.eql(u8, def_ns.asSlice(), ns.asSlice());
+    return std.mem.eql(u8, default_ns.asSlice(), namespace.asSlice());
 }
 
 // =============================================================================
@@ -1351,11 +1192,4 @@ pub fn getChildCount(instance: *runtime.Instance) u32 {
 /// This is a public helper for DOMImplementation and other impls
 pub fn appendChild(parent: *runtime.Instance, node: *runtime.Instance) !*runtime.Instance {
     return call_appendChild(parent, node);
-}
-
-/// Get the owner document (returns null if not set or instance has no state)
-/// This is a convenience helper for mutation algorithms
-pub fn getOwnerDocument(instance: *runtime.Instance) ?*runtime.Instance {
-    const internal = getInternal(instance) orelse return null;
-    return internal.owner_document;
 }

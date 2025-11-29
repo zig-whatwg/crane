@@ -20,11 +20,10 @@ pub const ImplError = error{
     InvalidState,
     OutOfMemory,
     BufferDetached, // From ReadableByteStreamController
+    NotImplemented, // From ReadableByteStreamController
     RangeError, // From ReadableByteStreamController
     NullValue, // From ReadableByteStreamController
     NoEventLoop,
-    IndexOutOfBounds,
-    EmptyQueue,
 };
 
 /// Internal state for ReadableStreamBYOBRequest
@@ -89,13 +88,16 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Getter for view
 ///
 /// Spec: § 4.8.2 "The view getter steps are:"
-pub fn get_view(instance: *runtime.Instance) ImplError!?typedefs.ArrayBufferView {
+pub fn get_view(instance: *runtime.Instance) ImplError!typedefs.ArrayBufferView {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
     // Step 1: Return this.[[view]]
-    // Per spec, returns null if the request has been responded to
-    return internal.view;
+    return internal.view orelse {
+        // If view is null, return a "null" view (empty opaque pointer)
+        // This matches the spec behavior when request has been responded
+        return @as(typedefs.ArrayBufferView, @ptrCast(&[_]u8{}));
+    };
 }
 
 /// Operation: respond
@@ -110,7 +112,8 @@ pub fn call_respond(instance: *runtime.Instance, bytesWritten: u64) ImplError!vo
 
     // Step 2: If this.[[view]].[[ViewedArrayBuffer]] is detached, throw TypeError
     if (internal.view) |view| {
-        if (view.isDetached()) {
+        const ArrayBufferViewModule = @import("runtime").arraybuffer_view;
+        if (ArrayBufferViewModule.isViewDetached(view)) {
             return error.TypeError;
         }
     }
@@ -138,8 +141,10 @@ pub fn call_respondWithNewView(instance: *runtime.Instance, view: typedefs.Array
     const controller = internal.controller orelse return error.TypeError;
 
     // Step 2: If ! IsDetachedBuffer(view.[[ViewedArrayBuffer]]) is true, throw TypeError
-    // TODO: Implement IsDetachedBuffer check when ArrayBufferView type is fully supported
-    // Currently skipping this validation step
+    const ArrayBufferViewModule = @import("runtime").arraybuffer_view;
+    if (ArrayBufferViewModule.isViewDetached(view)) {
+        return error.TypeError;
+    }
 
     // Step 3: Return ? ReadableByteStreamControllerRespondWithNewView(this.[[controller]], view)
     const ReadableByteStreamControllerImpl = @import("ReadableByteStreamController.zig");

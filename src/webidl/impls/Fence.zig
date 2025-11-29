@@ -1,33 +1,12 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for Fence interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for Fence interface
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const Fence = interfaces.Fence;
 
 pub const State = Fence.State;
@@ -61,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: reportEvent
-pub fn call_reportEvent(instance: *runtime.Instance, event: webidl.Opt(typedefs.ReportEventType)) ImplError!void {
+pub fn call_reportEvent(instance: *runtime.Instance, event: typedefs.ReportEventType) ImplError!void {
     _ = instance;
     _ = event;
     return error.NotImplemented;
@@ -74,7 +53,7 @@ pub fn call_getNestedConfigs(instance: *runtime.Instance) ImplError!*const anyop
 }
 
 /// Operation: setReportEventDataForAutomaticBeacons
-pub fn call_setReportEventDataForAutomaticBeacons(instance: *runtime.Instance, event: webidl.Opt(dictionaries.FenceEvent)) ImplError!void {
+pub fn call_setReportEventDataForAutomaticBeacons(instance: *runtime.Instance, event: dictionaries.FenceEvent) ImplError!void {
     _ = instance;
     _ = event;
     return error.NotImplemented;

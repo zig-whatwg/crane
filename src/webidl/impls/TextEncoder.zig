@@ -13,7 +13,6 @@
 //! - **Performance**: ASCII fast path for common cases
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dictionaries = @import("dictionaries");
@@ -110,39 +109,36 @@ pub fn get_encoding(instance: *runtime.Instance) ImplError!runtime.DOMString {
 /// 2. Let output be the I/O queue of bytes
 /// 3. Process with UTF-8 encoder
 /// 4. Return Uint8Array
-pub fn call_encode(instance: *runtime.Instance, input: webidl.Opt(runtime.USVString)) ImplError!*const anyopaque {
+pub fn call_encode(instance: *runtime.Instance, input: runtime.USVString) ImplError!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return ImplError.InvalidState;
     const allocator = internal.allocator;
 
-    // Unwrap Opt for input (default to empty string)
-    const input_str = if (input.wasPassed()) input.value else "";
-
     // Handle empty input (common case)
-    if (input_str.len == 0) {
+    if (input.len == 0) {
         // Return pointer to empty Uint8Array descriptor
         // The V8 bindings layer will create the actual Uint8Array object
         return createUint8ArrayDescriptor(allocator, "") catch return ImplError.OutOfMemory;
     }
 
     // ASCII FAST PATH: For ASCII-only input, copy directly
-    if (isAscii(input_str)) {
-        const output = allocator.dupe(u8, input_str) catch return ImplError.OutOfMemory;
+    if (isAscii(input)) {
+        const output = allocator.dupe(u8, input) catch return ImplError.OutOfMemory;
         return createUint8ArrayDescriptor(allocator, output) catch return ImplError.OutOfMemory;
     }
 
     // GENERAL PATH: Validate and encode UTF-8
     // Since input is already USVString (valid UTF-8), we can copy directly
     // USVString contains only Unicode scalar values (no surrogates)
-    if (!std.unicode.utf8ValidateSlice(input_str)) {
+    if (!std.unicode.utf8ValidateSlice(input)) {
         // Invalid UTF-8 - replace invalid sequences with U+FFFD
         // This shouldn't happen with proper USVString input, but handle gracefully
-        const output = replaceInvalidUtf8(allocator, input_str) catch return ImplError.OutOfMemory;
+        const output = replaceInvalidUtf8(allocator, input) catch return ImplError.OutOfMemory;
         return createUint8ArrayDescriptor(allocator, output) catch return ImplError.OutOfMemory;
     }
 
     // Valid UTF-8 - duplicate
-    const output = allocator.dupe(u8, input_str) catch return ImplError.OutOfMemory;
+    const output = allocator.dupe(u8, input) catch return ImplError.OutOfMemory;
     return createUint8ArrayDescriptor(allocator, output) catch return ImplError.OutOfMemory;
 }
 
@@ -174,7 +170,11 @@ pub fn call_encode(instance: *runtime.Instance, input: webidl.Opt(runtime.USVStr
 ///            4. Increment written by the number of bytes in result.
 ///       ii.  Otherwise, break.
 /// 7. Return «[ "read" → read, "written" → written ]».
-pub fn call_encodeInto(instance: *runtime.Instance, source: runtime.USVString, destination: *const anyopaque) ImplError!dictionaries.TextEncoderEncodeIntoResult {
+pub fn call_encodeInto(
+    instance: *runtime.Instance,
+    source: runtime.USVString,
+    destination: *const anyopaque,
+) ImplError!dictionaries.TextEncoderEncodeIntoResult {
     _ = instance;
 
     // Extract destination buffer from opaque pointer

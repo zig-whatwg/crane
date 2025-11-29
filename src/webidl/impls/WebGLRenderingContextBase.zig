@@ -1,23 +1,4 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for WebGLRenderingContextBase interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for WebGLRenderingContextBase interface
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -26,7 +7,6 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const WebGLRenderingContextBase = interfaces.WebGLRenderingContextBase;
 
 pub const State = WebGLRenderingContextBase.State;
@@ -151,7 +131,7 @@ pub fn call_vertexAttribPointer(instance: *runtime.Instance, index: typedefs.GLu
 }
 
 /// Operation: uniform4f
-pub fn call_uniform4f(instance: *runtime.Instance, location: ?*runtime.Instance, x: typedefs.GLfloat, y: typedefs.GLfloat, z: typedefs.GLfloat, w: typedefs.GLfloat) ImplError!void {
+pub fn call_uniform4f(instance: *runtime.Instance, location: *runtime.Instance, x: typedefs.GLfloat, y: typedefs.GLfloat, z: typedefs.GLfloat, w: typedefs.GLfloat) ImplError!void {
     _ = instance;
     _ = location;
     _ = x;
@@ -231,7 +211,7 @@ pub fn call_getContextAttributes(instance: *runtime.Instance) ImplError!?diction
 }
 
 /// Operation: isRenderbuffer
-pub fn call_isRenderbuffer(instance: *runtime.Instance, renderbuffer: ?*runtime.Instance) ImplError!typedefs.GLboolean {
+pub fn call_isRenderbuffer(instance: *runtime.Instance, renderbuffer: *runtime.Instance) ImplError!typedefs.GLboolean {
     _ = instance;
     _ = renderbuffer;
     return error.NotImplemented;
@@ -254,7 +234,7 @@ pub fn call_clear(instance: *runtime.Instance, mask: typedefs.GLbitfield) ImplEr
 }
 
 /// Operation: deleteTexture
-pub fn call_deleteTexture(instance: *runtime.Instance, texture: ?*runtime.Instance) ImplError!void {
+pub fn call_deleteTexture(instance: *runtime.Instance, texture: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = texture;
     return error.NotImplemented;
@@ -323,7 +303,7 @@ pub fn call_drawElements(instance: *runtime.Instance, mode: typedefs.GLenum, cou
 }
 
 /// Operation: bindBuffer
-pub fn call_bindBuffer(instance: *runtime.Instance, target: typedefs.GLenum, buffer: ?*runtime.Instance) ImplError!void {
+pub fn call_bindBuffer(instance: *runtime.Instance, target: typedefs.GLenum, buffer: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = target;
     _ = buffer;
@@ -331,7 +311,7 @@ pub fn call_bindBuffer(instance: *runtime.Instance, target: typedefs.GLenum, buf
 }
 
 /// Operation: isShader
-pub fn call_isShader(instance: *runtime.Instance, shader: ?*runtime.Instance) ImplError!typedefs.GLboolean {
+pub fn call_isShader(instance: *runtime.Instance, shader: *runtime.Instance) ImplError!typedefs.GLboolean {
     _ = instance;
     _ = shader;
     return error.NotImplemented;
@@ -447,7 +427,7 @@ pub fn call_getError(instance: *runtime.Instance) ImplError!typedefs.GLenum {
 }
 
 /// Operation: deleteRenderbuffer
-pub fn call_deleteRenderbuffer(instance: *runtime.Instance, renderbuffer: ?*runtime.Instance) ImplError!void {
+pub fn call_deleteRenderbuffer(instance: *runtime.Instance, renderbuffer: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = renderbuffer;
     return error.NotImplemented;
@@ -478,7 +458,7 @@ pub fn call_stencilFunc(instance: *runtime.Instance, func: typedefs.GLenum, ref:
 }
 
 /// Operation: framebufferTexture2D
-pub fn call_framebufferTexture2D(instance: *runtime.Instance, target: typedefs.GLenum, attachment: typedefs.GLenum, textarget: typedefs.GLenum, texture: ?*runtime.Instance, level: typedefs.GLint) ImplError!void {
+pub fn call_framebufferTexture2D(instance: *runtime.Instance, target: typedefs.GLenum, attachment: typedefs.GLenum, textarget: typedefs.GLenum, texture: *runtime.Instance, level: typedefs.GLint) ImplError!void {
     _ = instance;
     _ = target;
     _ = attachment;
@@ -509,14 +489,14 @@ pub fn call_createShader(instance: *runtime.Instance, @"type": typedefs.GLenum) 
 }
 
 /// Operation: deleteProgram
-pub fn call_deleteProgram(instance: *runtime.Instance, program: ?*runtime.Instance) ImplError!void {
+pub fn call_deleteProgram(instance: *runtime.Instance, program: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = program;
     return error.NotImplemented;
 }
 
 /// Operation: useProgram
-pub fn call_useProgram(instance: *runtime.Instance, program: ?*runtime.Instance) ImplError!void {
+pub fn call_useProgram(instance: *runtime.Instance, program: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = program;
     return error.NotImplemented;
@@ -548,14 +528,14 @@ pub fn call_frontFace(instance: *runtime.Instance, mode: typedefs.GLenum) ImplEr
 }
 
 /// Operation: isBuffer
-pub fn call_isBuffer(instance: *runtime.Instance, buffer: ?*runtime.Instance) ImplError!typedefs.GLboolean {
+pub fn call_isBuffer(instance: *runtime.Instance, buffer: *runtime.Instance) ImplError!typedefs.GLboolean {
     _ = instance;
     _ = buffer;
     return error.NotImplemented;
 }
 
 /// Operation: bindTexture
-pub fn call_bindTexture(instance: *runtime.Instance, target: typedefs.GLenum, texture: ?*runtime.Instance) ImplError!void {
+pub fn call_bindTexture(instance: *runtime.Instance, target: typedefs.GLenum, texture: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = target;
     _ = texture;
@@ -563,7 +543,7 @@ pub fn call_bindTexture(instance: *runtime.Instance, target: typedefs.GLenum, te
 }
 
 /// Operation: uniform3f
-pub fn call_uniform3f(instance: *runtime.Instance, location: ?*runtime.Instance, x: typedefs.GLfloat, y: typedefs.GLfloat, z: typedefs.GLfloat) ImplError!void {
+pub fn call_uniform3f(instance: *runtime.Instance, location: *runtime.Instance, x: typedefs.GLfloat, y: typedefs.GLfloat, z: typedefs.GLfloat) ImplError!void {
     _ = instance;
     _ = location;
     _ = x;
@@ -587,7 +567,7 @@ pub fn call_enableVertexAttribArray(instance: *runtime.Instance, index: typedefs
 }
 
 /// Operation: bindFramebuffer
-pub fn call_bindFramebuffer(instance: *runtime.Instance, target: typedefs.GLenum, framebuffer: ?*runtime.Instance) ImplError!void {
+pub fn call_bindFramebuffer(instance: *runtime.Instance, target: typedefs.GLenum, framebuffer: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = target;
     _ = framebuffer;
@@ -605,7 +585,7 @@ pub fn call_stencilFuncSeparate(instance: *runtime.Instance, face: typedefs.GLen
 }
 
 /// Operation: isFramebuffer
-pub fn call_isFramebuffer(instance: *runtime.Instance, framebuffer: ?*runtime.Instance) ImplError!typedefs.GLboolean {
+pub fn call_isFramebuffer(instance: *runtime.Instance, framebuffer: *runtime.Instance) ImplError!typedefs.GLboolean {
     _ = instance;
     _ = framebuffer;
     return error.NotImplemented;
@@ -633,7 +613,7 @@ pub fn call_getRenderbufferParameter(instance: *runtime.Instance, target: typede
 }
 
 /// Operation: isTexture
-pub fn call_isTexture(instance: *runtime.Instance, texture: ?*runtime.Instance) ImplError!typedefs.GLboolean {
+pub fn call_isTexture(instance: *runtime.Instance, texture: *runtime.Instance) ImplError!typedefs.GLboolean {
     _ = instance;
     _ = texture;
     return error.NotImplemented;
@@ -655,7 +635,7 @@ pub fn call_pixelStorei(instance: *runtime.Instance, pname: typedefs.GLenum, par
 }
 
 /// Operation: framebufferRenderbuffer
-pub fn call_framebufferRenderbuffer(instance: *runtime.Instance, target: typedefs.GLenum, attachment: typedefs.GLenum, renderbuffertarget: typedefs.GLenum, renderbuffer: ?*runtime.Instance) ImplError!void {
+pub fn call_framebufferRenderbuffer(instance: *runtime.Instance, target: typedefs.GLenum, attachment: typedefs.GLenum, renderbuffertarget: typedefs.GLenum, renderbuffer: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = target;
     _ = attachment;
@@ -712,7 +692,7 @@ pub fn call_isContextLost(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Operation: deleteFramebuffer
-pub fn call_deleteFramebuffer(instance: *runtime.Instance, framebuffer: ?*runtime.Instance) ImplError!void {
+pub fn call_deleteFramebuffer(instance: *runtime.Instance, framebuffer: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = framebuffer;
     return error.NotImplemented;
@@ -739,7 +719,7 @@ pub fn call_viewport(instance: *runtime.Instance, x: typedefs.GLint, y: typedefs
 }
 
 /// Operation: bindRenderbuffer
-pub fn call_bindRenderbuffer(instance: *runtime.Instance, target: typedefs.GLenum, renderbuffer: ?*runtime.Instance) ImplError!void {
+pub fn call_bindRenderbuffer(instance: *runtime.Instance, target: typedefs.GLenum, renderbuffer: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = target;
     _ = renderbuffer;
@@ -779,7 +759,7 @@ pub fn call_getUniformLocation(instance: *runtime.Instance, program: *runtime.In
 }
 
 /// Operation: uniform1f
-pub fn call_uniform1f(instance: *runtime.Instance, location: ?*runtime.Instance, x: typedefs.GLfloat) ImplError!void {
+pub fn call_uniform1f(instance: *runtime.Instance, location: *runtime.Instance, x: typedefs.GLfloat) ImplError!void {
     _ = instance;
     _ = location;
     _ = x;
@@ -811,7 +791,7 @@ pub fn call_cullFace(instance: *runtime.Instance, mode: typedefs.GLenum) ImplErr
 }
 
 /// Operation: deleteShader
-pub fn call_deleteShader(instance: *runtime.Instance, shader: ?*runtime.Instance) ImplError!void {
+pub fn call_deleteShader(instance: *runtime.Instance, shader: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = shader;
     return error.NotImplemented;
@@ -863,7 +843,7 @@ pub fn call_vertexAttrib2fv(instance: *runtime.Instance, index: typedefs.GLuint,
 }
 
 /// Operation: uniform3i
-pub fn call_uniform3i(instance: *runtime.Instance, location: ?*runtime.Instance, x: typedefs.GLint, y: typedefs.GLint, z: typedefs.GLint) ImplError!void {
+pub fn call_uniform3i(instance: *runtime.Instance, location: *runtime.Instance, x: typedefs.GLint, y: typedefs.GLint, z: typedefs.GLint) ImplError!void {
     _ = instance;
     _ = location;
     _ = x;
@@ -873,7 +853,7 @@ pub fn call_uniform3i(instance: *runtime.Instance, location: ?*runtime.Instance,
 }
 
 /// Operation: uniform2f
-pub fn call_uniform2f(instance: *runtime.Instance, location: ?*runtime.Instance, x: typedefs.GLfloat, y: typedefs.GLfloat) ImplError!void {
+pub fn call_uniform2f(instance: *runtime.Instance, location: *runtime.Instance, x: typedefs.GLfloat, y: typedefs.GLfloat) ImplError!void {
     _ = instance;
     _ = location;
     _ = x;
@@ -898,7 +878,7 @@ pub fn call_validateProgram(instance: *runtime.Instance, program: *runtime.Insta
 }
 
 /// Operation: uniform2i
-pub fn call_uniform2i(instance: *runtime.Instance, location: ?*runtime.Instance, x: typedefs.GLint, y: typedefs.GLint) ImplError!void {
+pub fn call_uniform2i(instance: *runtime.Instance, location: *runtime.Instance, x: typedefs.GLint, y: typedefs.GLint) ImplError!void {
     _ = instance;
     _ = location;
     _ = x;
@@ -947,7 +927,7 @@ pub fn call_getShaderParameter(instance: *runtime.Instance, shader: *runtime.Ins
 }
 
 /// Operation: uniform4i
-pub fn call_uniform4i(instance: *runtime.Instance, location: ?*runtime.Instance, x: typedefs.GLint, y: typedefs.GLint, z: typedefs.GLint, w: typedefs.GLint) ImplError!void {
+pub fn call_uniform4i(instance: *runtime.Instance, location: *runtime.Instance, x: typedefs.GLint, y: typedefs.GLint, z: typedefs.GLint, w: typedefs.GLint) ImplError!void {
     _ = instance;
     _ = location;
     _ = x;
@@ -958,14 +938,14 @@ pub fn call_uniform4i(instance: *runtime.Instance, location: ?*runtime.Instance,
 }
 
 /// Operation: isProgram
-pub fn call_isProgram(instance: *runtime.Instance, program: ?*runtime.Instance) ImplError!typedefs.GLboolean {
+pub fn call_isProgram(instance: *runtime.Instance, program: *runtime.Instance) ImplError!typedefs.GLboolean {
     _ = instance;
     _ = program;
     return error.NotImplemented;
 }
 
 /// Operation: deleteBuffer
-pub fn call_deleteBuffer(instance: *runtime.Instance, buffer: ?*runtime.Instance) ImplError!void {
+pub fn call_deleteBuffer(instance: *runtime.Instance, buffer: *runtime.Instance) ImplError!void {
     _ = instance;
     _ = buffer;
     return error.NotImplemented;
@@ -986,7 +966,7 @@ pub fn call_stencilMask(instance: *runtime.Instance, mask: typedefs.GLuint) Impl
 }
 
 /// Operation: uniform1i
-pub fn call_uniform1i(instance: *runtime.Instance, location: ?*runtime.Instance, x: typedefs.GLint) ImplError!void {
+pub fn call_uniform1i(instance: *runtime.Instance, location: *runtime.Instance, x: typedefs.GLint) ImplError!void {
     _ = instance;
     _ = location;
     _ = x;

@@ -32,8 +32,6 @@ pub const ImplError = error{
     InvalidStateError,
     OutOfMemory,
     SyntaxError,
-    HierarchyRequestError,
-    NotFoundError,
 };
 
 /// Internal state for DocumentFragment implementation
@@ -58,57 +56,28 @@ pub const InternalState = struct {
 
 /// Get the internal state from an instance
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    return getInternalFromRegistry(instance);
+    const state = instance.getState(State);
+    return state.own._internal;
 }
 
 /// Initialize instance (creates the instance)
-/// Chains to parent class initialization: Node -> EventTarget
-///
-/// IMPORTANT: Due to state hierarchy complexity, internal state is stored
-/// in a global registry rather than in the State struct.
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    // Chain to parent class (Node) which chains to EventTarget
-    const instance = try NodeImpl.init(allocator, StateType, vtable, ctx);
-    errdefer NodeImpl.deinit(instance);
+    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    errdefer runtime.Instance.deinit(instance);
 
-    // Initialize DocumentFragment internal state in global registry
+    // Initialize DocumentFragment internal state
+    const state = instance.getState(StateType);
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
-    try setInternalInRegistry(instance, internal);
+    state.own._internal = internal;
 
     return instance;
-}
-
-/// Global registry for DocumentFragment internal state
-var docfrag_registry: std.AutoHashMap(usize, *InternalState) = undefined;
-var docfrag_registry_initialized: bool = false;
-
-fn ensureDocFragRegistry() void {
-    if (!docfrag_registry_initialized) {
-        docfrag_registry = std.AutoHashMap(usize, *InternalState).init(std.heap.page_allocator);
-        docfrag_registry_initialized = true;
-    }
-}
-
-fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) !void {
-    ensureDocFragRegistry();
-    try docfrag_registry.put(@intFromPtr(instance), internal);
-}
-
-fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
-    ensureDocFragRegistry();
-    return docfrag_registry.get(@intFromPtr(instance));
-}
-
-/// Get DocumentFragment's internal state from the registry
-pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
-    return getInternalFromRegistry(instance);
 }
 
 /// Deinitialize instance
@@ -138,7 +107,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 
 /// Getter for children (from ParentNode mixin)
 /// Returns a live HTMLCollection of element children
-pub fn get_children(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_children(instance: *runtime.Instance) !*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return ParentNode.children(internal.allocator, instance, instance.ctx) catch |err| {
         return switch (err) {
@@ -150,19 +119,19 @@ pub fn get_children(instance: *runtime.Instance) ImplError!*runtime.Instance {
 
 /// Getter for firstElementChild (from ParentNode mixin)
 /// Returns the first child that is an element, or null if none.
-pub fn get_firstElementChild(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_firstElementChild(instance: *runtime.Instance) !?*runtime.Instance {
     return ParentNode.firstElementChild(instance);
 }
 
 /// Getter for lastElementChild (from ParentNode mixin)
 /// Returns the last child that is an element, or null if none.
-pub fn get_lastElementChild(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_lastElementChild(instance: *runtime.Instance) !?*runtime.Instance {
     return ParentNode.lastElementChild(instance);
 }
 
 /// Getter for childElementCount (from ParentNode mixin)
 /// Returns the number of child elements
-pub fn get_childElementCount(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_childElementCount(instance: *runtime.Instance) !u32 {
     return ParentNode.childElementCount(instance);
 }
 
@@ -173,7 +142,7 @@ pub fn get_childElementCount(instance: *runtime.Instance) ImplError!u32 {
 /// Operation: prepend (from ParentNode mixin)
 /// Inserts nodes before the first child of this document fragment
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-prepend
-pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) ImplError!void {
+pub fn call_prepend(instance: *runtime.Instance, nodes: *const anyopaque) !void {
     _ = nodes;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     _ = internal;
@@ -198,7 +167,7 @@ pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNod
 /// Operation: append (from ParentNode mixin)
 /// Inserts nodes after the last child of this document fragment
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-append
-pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) ImplError!void {
+pub fn call_append(instance: *runtime.Instance, nodes: *const anyopaque) !void {
     _ = nodes;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     _ = internal;
@@ -212,7 +181,7 @@ pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode
 /// Operation: replaceChildren (from ParentNode mixin)
 /// Replaces all children of this document fragment with nodes
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-replacechildren
-pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) ImplError!void {
+pub fn call_replaceChildren(instance: *runtime.Instance, nodes: *const anyopaque) !void {
     _ = nodes;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
@@ -236,19 +205,17 @@ pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.P
 /// Operation: moveBefore (from ParentNode mixin)
 /// Moves node to before child within this document fragment
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-movebefore
-pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) ImplError!void {
+pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     _ = internal;
 
-    if (child) |c| {
-        // Step 1: If child's parent is not this, throw NotFoundError
-        if (NodeImpl.getParent(c) != instance) {
-            return error.InvalidStateError; // NotFoundError
-        }
-
-        // Step 2: If node is the same as child, return
-        if (node == c) return;
+    // Step 1: If child's parent is not this, throw NotFoundError
+    if (NodeImpl.getParent(child) != instance) {
+        return error.InvalidStateError; // NotFoundError
     }
+
+    // Step 2: If node is the same as child, return
+    if (node == child) return;
 
     // Step 3: Remove node from its current position (if it has a parent)
     if (NodeImpl.getParent(node)) |oldParent| {

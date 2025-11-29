@@ -1,23 +1,4 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for AudioBufferSourceNode interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for AudioBufferSourceNode interface
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -26,8 +7,6 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
-const webidl = @import("webidl");
 const AudioBufferSourceNode = interfaces.AudioBufferSourceNode;
 
 pub const State = AudioBufferSourceNode.State;
@@ -62,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: webidl.Opt(dictionaries.AudioBufferSourceOptions)) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: dictionaries.AudioBufferSourceOptions) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &AudioBufferSourceNode.vtable, ctx);
     errdefer deinit(instance);
@@ -139,7 +118,7 @@ pub fn set_loopEnd(instance: *runtime.Instance, value: f64) ImplError!void {
 }
 
 /// Operation: start
-pub fn call_start(instance: *runtime.Instance, when: webidl.Opt(f64), offset: webidl.Opt(f64), duration: webidl.Opt(f64)) ImplError!void {
+pub fn call_start(instance: *runtime.Instance, when: f64, offset: f64, duration: f64) ImplError!void {
     _ = instance;
     _ = when;
     _ = offset;

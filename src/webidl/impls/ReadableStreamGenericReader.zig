@@ -10,7 +10,6 @@
 //! This mixin provides the interface contract that both readers implement.
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -94,7 +93,7 @@ pub fn get_closed(instance: *runtime.Instance) ImplError!*const anyopaque {
 /// Cancels the stream with the given reason.
 ///
 /// Note: This delegates to the concrete reader implementation.
-pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) ImplError!*const anyopaque {
+pub fn call_cancel(instance: *runtime.Instance, reason: *const anyopaque) ImplError!*const anyopaque {
     // Determine which reader type this is and delegate
     // Try DefaultReader first
     if (instance.vtable == &interfaces.ReadableStreamDefaultReader.vtable) {

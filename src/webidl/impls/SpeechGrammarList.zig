@@ -1,33 +1,12 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for SpeechGrammarList interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for SpeechGrammarList interface
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const SpeechGrammarList = interfaces.SpeechGrammarList;
 
 pub const State = SpeechGrammarList.State;
@@ -86,7 +65,7 @@ pub fn call_item(instance: *runtime.Instance, index: u32) ImplError!*runtime.Ins
 }
 
 /// Operation: addFromURI
-pub fn call_addFromURI(instance: *runtime.Instance, src: runtime.DOMString, weight: webidl.Opt(f32)) ImplError!void {
+pub fn call_addFromURI(instance: *runtime.Instance, src: runtime.DOMString, weight: f32) ImplError!void {
     _ = instance;
     _ = src;
     _ = weight;
@@ -94,7 +73,7 @@ pub fn call_addFromURI(instance: *runtime.Instance, src: runtime.DOMString, weig
 }
 
 /// Operation: addFromString
-pub fn call_addFromString(instance: *runtime.Instance, string: runtime.DOMString, weight: webidl.Opt(f32)) ImplError!void {
+pub fn call_addFromString(instance: *runtime.Instance, string: runtime.DOMString, weight: f32) ImplError!void {
     _ = instance;
     _ = string;
     _ = weight;

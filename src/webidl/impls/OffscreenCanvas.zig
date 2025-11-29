@@ -1,33 +1,12 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for OffscreenCanvas interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for OffscreenCanvas interface
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const OffscreenCanvas = interfaces.OffscreenCanvas;
 
 pub const State = OffscreenCanvas.State;
@@ -127,7 +106,7 @@ pub fn set_oncontextrestored(instance: *runtime.Instance, value: typedefs.EventH
 }
 
 /// Operation: getContext
-pub fn call_getContext(instance: *runtime.Instance, contextId: enums.OffscreenRenderingContextId, options: webidl.Opt(*const anyopaque)) ImplError!?typedefs.OffscreenRenderingContext {
+pub fn call_getContext(instance: *runtime.Instance, contextId: enums.OffscreenRenderingContextId, options: *const anyopaque) ImplError!?typedefs.OffscreenRenderingContext {
     _ = instance;
     _ = contextId;
     _ = options;
@@ -135,7 +114,7 @@ pub fn call_getContext(instance: *runtime.Instance, contextId: enums.OffscreenRe
 }
 
 /// Operation: convertToBlob
-pub fn call_convertToBlob(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ImageEncodeOptions)) ImplError!*const anyopaque {
+pub fn call_convertToBlob(instance: *runtime.Instance, options: dictionaries.ImageEncodeOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

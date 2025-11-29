@@ -9,7 +9,6 @@
 //! Migrated from: webidl/src/dom/ShadowRoot.zig
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -21,10 +20,7 @@ const ShadowRoot = interfaces.ShadowRoot;
 pub const State = ShadowRoot.State;
 
 pub const ImplError = error{
-    /// InvalidStateError DOMException - operation not valid in current state
-    InvalidState,
-    /// NotSupportedError DOMException - feature not yet implemented
-    NotSupported,
+    NotImplemented,
     OutOfMemory,
 };
 
@@ -121,30 +117,22 @@ fn getInternal(instance: *runtime.Instance) *InternalState {
 }
 
 /// Initialize instance (creates the instance)
-/// Chains to DocumentFragment -> Node -> EventTarget for proper inheritance
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    // Chain to DocumentFragment which chains to Node for proper Node registry setup
-    const DocumentFragmentImpl = @import("DocumentFragment.zig");
-    const instance = try DocumentFragmentImpl.init(allocator, StateType, vtable, ctx);
-    errdefer DocumentFragmentImpl.deinit(instance);
+    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    errdefer runtime.Instance.deinit(instance);
 
-    // Initialize ShadowRoot-specific internal state
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const internal = try ArenaAllocator.get().create(InternalState);
+    // Initialize internal state
+    const internal = try allocator.create(InternalState);
     internal.* = InternalState.init(allocator);
 
     // Store internal state in instance
     const state = instance.getState(State);
     state.own._internal = internal;
-
-    // Set node type to DOCUMENT_FRAGMENT_NODE for proper DOM tree operations
-    const NodeImpl = @import("Node.zig");
-    try NodeImpl.setNodeType(instance, NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE);
 
     return instance;
 }
@@ -155,11 +143,9 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (state.own._internal) |internal_ptr| {
         const internal: *InternalState = @ptrCast(@alignCast(internal_ptr));
         internal.deinit();
-        // Note: internal is arena allocated, no need to destroy
+        internal.allocator.destroy(internal);
     }
-    // Chain to DocumentFragment deinit
-    const DocumentFragmentImpl = @import("DocumentFragment.zig");
-    DocumentFragmentImpl.deinit(instance);
+    runtime.Instance.deinit(instance);
 }
 
 // ============================================================================
@@ -233,11 +219,9 @@ pub fn get_serializable(instance: *runtime.Instance) ImplError!bool {
 
 /// DOM §4.8.1 - ShadowRoot.host
 /// Returns the element that hosts this shadow root.
-/// Per spec, host is always set when a ShadowRoot is created via attachShadow().
 pub fn get_host(instance: *runtime.Instance) ImplError!*runtime.Instance {
     const internal = getInternal(instance);
-    // Host should always be set - this is an invariant violation if null
-    return internal.host orelse return error.InvalidState;
+    return internal.host orelse return error.NotImplemented;
 }
 
 // ============================================================================
@@ -268,21 +252,20 @@ pub fn set_onslotchange(instance: *runtime.Instance, value: typedefs.EventHandle
 // ============================================================================
 
 /// InnerHTML.innerHTML getter
-pub fn get_innerHTML(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_innerHTML(instance: *runtime.Instance) ImplError!*const anyopaque {
     // TODO: Implement HTML serialization
     _ = instance;
-    // Return empty string
-    return runtime.DOMString.initEmpty();
+    // Return empty string as opaque pointer
+    const empty: []const u8 = "";
+    return @ptrCast(empty.ptr);
 }
 
 /// InnerHTML.innerHTML setter
-/// Spec: https://w3c.github.io/DOM-Parsing/#dom-innerhtml-innerhtml
-pub fn set_innerHTML(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_innerHTML(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
     // TODO: Implement HTML parsing and fragment replacement
-    // For now, throw NotSupportedError per WebIDL for unimplemented features
     _ = instance;
     _ = value;
-    return error.NotSupported;
+    return error.NotImplemented;
 }
 
 // ============================================================================
@@ -362,7 +345,7 @@ pub fn get_activeElement(instance: *runtime.Instance) ImplError!?*runtime.Instan
 // ============================================================================
 
 /// getHTML(options) - Serialize shadow tree to HTML
-pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GetHTMLOptions)) ImplError!runtime.DOMString {
+pub fn call_getHTML(instance: *runtime.Instance, options: dictionaries.GetHTMLOptions) ImplError!runtime.DOMString {
     // TODO: Implement HTML serialization with options
     _ = instance;
     _ = options;
@@ -370,13 +353,11 @@ pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(dictionarie
 }
 
 /// setHTMLUnsafe(html) - Parse and replace shadow tree contents
-/// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-element-sethtmlunsafe
-pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: runtime.DOMString) ImplError!void {
+pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: *const anyopaque) ImplError!void {
     // TODO: Implement unsafe HTML parsing
-    // For now, throw NotSupportedError per WebIDL for unimplemented features
     _ = instance;
     _ = html;
-    return error.NotSupported;
+    return error.NotImplemented;
 }
 
 /// getAnimations() - Get all animations in shadow tree

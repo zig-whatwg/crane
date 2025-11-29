@@ -1,33 +1,12 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for SharedStorage interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for SharedStorage interface
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const SharedStorage = interfaces.SharedStorage;
 
 pub const State = SharedStorage.State;
@@ -67,7 +46,7 @@ pub fn get_worklet(instance: *runtime.Instance) ImplError!*runtime.Instance {
 }
 
 /// Operation: delete
-pub fn call_delete(instance: *runtime.Instance, key: runtime.DOMString, options: webidl.Opt(dictionaries.SharedStorageModifierMethodOptions)) ImplError!*const anyopaque {
+pub fn call_delete(instance: *runtime.Instance, key: runtime.DOMString, options: dictionaries.SharedStorageModifierMethodOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = key;
     _ = options;
@@ -75,7 +54,7 @@ pub fn call_delete(instance: *runtime.Instance, key: runtime.DOMString, options:
 }
 
 /// Operation: append
-pub fn call_append(instance: *runtime.Instance, key: runtime.DOMString, value: runtime.DOMString, options: webidl.Opt(dictionaries.SharedStorageModifierMethodOptions)) ImplError!*const anyopaque {
+pub fn call_append(instance: *runtime.Instance, key: runtime.DOMString, value: runtime.DOMString, options: dictionaries.SharedStorageModifierMethodOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = key;
     _ = value;
@@ -84,7 +63,7 @@ pub fn call_append(instance: *runtime.Instance, key: runtime.DOMString, value: r
 }
 
 /// Operation: batchUpdate
-pub fn call_batchUpdate(instance: *runtime.Instance, methods: *const anyopaque, options: webidl.Opt(dictionaries.SharedStorageModifierMethodOptions)) ImplError!*const anyopaque {
+pub fn call_batchUpdate(instance: *runtime.Instance, methods: *const anyopaque, options: dictionaries.SharedStorageModifierMethodOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = methods;
     _ = options;
@@ -92,7 +71,7 @@ pub fn call_batchUpdate(instance: *runtime.Instance, methods: *const anyopaque, 
 }
 
 /// Operation: run
-pub fn call_run(instance: *runtime.Instance, name: runtime.DOMString, options: webidl.Opt(dictionaries.SharedStorageRunOperationMethodOptions)) ImplError!*const anyopaque {
+pub fn call_run(instance: *runtime.Instance, name: runtime.DOMString, options: dictionaries.SharedStorageRunOperationMethodOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = name;
     _ = options;
@@ -100,7 +79,7 @@ pub fn call_run(instance: *runtime.Instance, name: runtime.DOMString, options: w
 }
 
 /// Operation: createWorklet
-pub fn call_createWorklet(instance: *runtime.Instance, moduleURL: runtime.USVString, options: webidl.Opt(dictionaries.SharedStorageWorkletOptions)) ImplError!*const anyopaque {
+pub fn call_createWorklet(instance: *runtime.Instance, moduleURL: runtime.USVString, options: dictionaries.SharedStorageWorkletOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = moduleURL;
     _ = options;
@@ -108,7 +87,7 @@ pub fn call_createWorklet(instance: *runtime.Instance, moduleURL: runtime.USVStr
 }
 
 /// Operation: set
-pub fn call_set(instance: *runtime.Instance, key: runtime.DOMString, value: runtime.DOMString, options: webidl.Opt(dictionaries.SharedStorageSetMethodOptions)) ImplError!*const anyopaque {
+pub fn call_set(instance: *runtime.Instance, key: runtime.DOMString, value: runtime.DOMString, options: dictionaries.SharedStorageSetMethodOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = key;
     _ = value;
@@ -136,14 +115,14 @@ pub fn call_get(instance: *runtime.Instance, key: runtime.DOMString) ImplError!*
 }
 
 /// Operation: clear
-pub fn call_clear(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SharedStorageModifierMethodOptions)) ImplError!*const anyopaque {
+pub fn call_clear(instance: *runtime.Instance, options: dictionaries.SharedStorageModifierMethodOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: selectURL
-pub fn call_selectURL(instance: *runtime.Instance, name: runtime.DOMString, urls: *const anyopaque, options: webidl.Opt(dictionaries.SharedStorageRunOperationMethodOptions)) ImplError!*const anyopaque {
+pub fn call_selectURL(instance: *runtime.Instance, name: runtime.DOMString, urls: *const anyopaque, options: dictionaries.SharedStorageRunOperationMethodOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = name;
     _ = urls;
@@ -151,15 +130,13 @@ pub fn call_selectURL(instance: *runtime.Instance, name: runtime.DOMString, urls
     return error.NotImplemented;
 }
 
-/// Async iterator: values
-/// Returns an async iterator over storage values
+/// Operation: values (iterable)
 pub fn call_values(instance: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
-/// Async iterator: getAsyncIterator
-/// Returns an async iterator over storage entries
+/// Operation: getAsyncIterator (iterable)
 pub fn call_getAsyncIterator(instance: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     return error.NotImplemented;

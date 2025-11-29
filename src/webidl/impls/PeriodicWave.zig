@@ -7,7 +7,6 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const webidl = @import("webidl");
 const PeriodicWave = interfaces.PeriodicWave;
 
 pub const State = PeriodicWave.State;
@@ -42,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: webidl.Opt(dictionaries.PeriodicWaveOptions)) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: dictionaries.PeriodicWaveOptions) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &PeriodicWave.vtable, ctx);
     errdefer deinit(instance);

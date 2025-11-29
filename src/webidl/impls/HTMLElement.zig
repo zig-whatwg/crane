@@ -1,33 +1,12 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for HTMLElement interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for HTMLElement interface
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const HTMLElement = interfaces.HTMLElement;
 
 pub const State = HTMLElement.State;
@@ -97,9 +76,9 @@ pub fn get_dir(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for hidden
-pub fn get_hidden(instance: *runtime.Instance) ImplError!?*const anyopaque {
+pub fn get_hidden(instance: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
-    return null;
+    return error.NotImplemented;
 }
 
 /// Getter for inert
@@ -1829,7 +1808,7 @@ pub fn set_tabIndex(instance: *runtime.Instance, value: i32) ImplError!void {
 }
 
 /// Operation: togglePopover
-pub fn call_togglePopover(instance: *runtime.Instance, options: webidl.Opt(*const anyopaque)) ImplError!bool {
+pub fn call_togglePopover(instance: *runtime.Instance, options: *const anyopaque) ImplError!bool {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -1848,7 +1827,7 @@ pub fn call_click(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: showPopover
-pub fn call_showPopover(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ShowPopoverOptions)) ImplError!void {
+pub fn call_showPopover(instance: *runtime.Instance, options: dictionaries.ShowPopoverOptions) ImplError!void {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -1861,7 +1840,7 @@ pub fn call_hidePopover(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: focus
-pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(dictionaries.FocusOptions)) ImplError!void {
+pub fn call_focus(instance: *runtime.Instance, options: dictionaries.FocusOptions) ImplError!void {
     _ = instance;
     _ = options;
     return error.NotImplemented;

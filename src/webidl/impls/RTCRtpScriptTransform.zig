@@ -7,7 +7,6 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const webidl = @import("webidl");
 const RTCRtpScriptTransform = interfaces.RTCRtpScriptTransform;
 
 pub const State = RTCRtpScriptTransform.State;
@@ -42,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, worker: *runtime.Instance, options: webidl.Opt(*const anyopaque), transfer: webidl.Opt(*const anyopaque)) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, worker: *runtime.Instance, options: *const anyopaque, transfer: *const anyopaque) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &RTCRtpScriptTransform.vtable, ctx);
     errdefer deinit(instance);

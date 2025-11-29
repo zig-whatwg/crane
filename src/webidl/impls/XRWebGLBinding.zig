@@ -1,33 +1,12 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for XRWebGLBinding interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for XRWebGLBinding interface
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const XRWebGLBinding = interfaces.XRWebGLBinding;
 
 pub const State = XRWebGLBinding.State;
@@ -94,28 +73,28 @@ pub fn call_getCameraImage(instance: *runtime.Instance, camera: *runtime.Instanc
 }
 
 /// Operation: createCylinderLayer
-pub fn call_createCylinderLayer(instance: *runtime.Instance, init_data: webidl.Opt(dictionaries.XRCylinderLayerInit)) ImplError!*runtime.Instance {
+pub fn call_createCylinderLayer(instance: *runtime.Instance, init_data: dictionaries.XRCylinderLayerInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = init_data;
     return error.NotImplemented;
 }
 
 /// Operation: createCubeLayer
-pub fn call_createCubeLayer(instance: *runtime.Instance, init_data: webidl.Opt(dictionaries.XRCubeLayerInit)) ImplError!*runtime.Instance {
+pub fn call_createCubeLayer(instance: *runtime.Instance, init_data: dictionaries.XRCubeLayerInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = init_data;
     return error.NotImplemented;
 }
 
 /// Operation: createQuadLayer
-pub fn call_createQuadLayer(instance: *runtime.Instance, init_data: webidl.Opt(dictionaries.XRQuadLayerInit)) ImplError!*runtime.Instance {
+pub fn call_createQuadLayer(instance: *runtime.Instance, init_data: dictionaries.XRQuadLayerInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = init_data;
     return error.NotImplemented;
 }
 
 /// Operation: getSubImage
-pub fn call_getSubImage(instance: *runtime.Instance, layer: *runtime.Instance, frame: *runtime.Instance, eye: webidl.Opt(enums.XREye)) ImplError!*runtime.Instance {
+pub fn call_getSubImage(instance: *runtime.Instance, layer: *runtime.Instance, frame: *runtime.Instance, eye: enums.XREye) ImplError!*runtime.Instance {
     _ = instance;
     _ = layer;
     _ = frame;
@@ -139,14 +118,14 @@ pub fn call_getReflectionCubeMap(instance: *runtime.Instance, lightProbe: *runti
 }
 
 /// Operation: createProjectionLayer
-pub fn call_createProjectionLayer(instance: *runtime.Instance, init_data: webidl.Opt(dictionaries.XRProjectionLayerInit)) ImplError!*runtime.Instance {
+pub fn call_createProjectionLayer(instance: *runtime.Instance, init_data: dictionaries.XRProjectionLayerInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = init_data;
     return error.NotImplemented;
 }
 
 /// Operation: createEquirectLayer
-pub fn call_createEquirectLayer(instance: *runtime.Instance, init_data: webidl.Opt(dictionaries.XREquirectLayerInit)) ImplError!*runtime.Instance {
+pub fn call_createEquirectLayer(instance: *runtime.Instance, init_data: dictionaries.XREquirectLayerInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = init_data;
     return error.NotImplemented;

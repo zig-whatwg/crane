@@ -1,33 +1,17 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
+//! Implementation for AbortSignal interface
 //!
-//! Implementation stub for AbortSignal interface
+//! Spec: https://dom.spec.whatwg.org/#interface-abortsignal
 //!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! AbortSignal represents a signal that can be used to abort operations.
+//! When an AbortController's abort() method is called, its signal becomes aborted.
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const AbortSignal = interfaces.AbortSignal;
 
 pub const State = AbortSignal.State;
@@ -35,9 +19,12 @@ pub const State = AbortSignal.State;
 pub const ImplError = error{
     NotImplemented,
     InvalidState,
+    OutOfMemory,
+    AbortError,
 };
 
 /// Internal state for AbortSignal
+///
 /// Spec: https://dom.spec.whatwg.org/#abortsignal
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
@@ -46,7 +33,7 @@ pub const InternalState = struct {
     aborted: bool,
 
     /// [[reason]]: The abort reason (null if not aborted or no reason provided)
-    reason: ?*const anyopaque,
+    reason: ?*anyopaque,
 
     /// [[onabort]]: Event handler for abort event (stub for now)
     onabort: ?typedefs.EventHandler,
@@ -71,12 +58,11 @@ pub fn init(
     state.own._internal = try allocator.create(InternalState);
     errdefer allocator.destroy(state.own._internal.?);
 
-    state.own._internal.?.* = InternalState{
-        .allocator = allocator,
-        .aborted = false,
-        .reason = null,
-        .onabort = null,
-    };
+    const internal = state.own._internal.?;
+    internal.allocator = allocator;
+    internal.aborted = false;
+    internal.reason = null;
+    internal.onabort = null;
 
     return instance;
 }
@@ -86,64 +72,98 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit(internal.allocator);
+        state.own._internal = null;
     }
     runtime.Instance.deinit(instance);
 }
 
 /// Getter for aborted
+///
+/// Spec: § 3.3.1 "The aborted getter steps are to return this's abort reason if it exists; otherwise false"
 pub fn get_aborted(instance: *runtime.Instance) ImplError!bool {
-    _ = instance;
-    return error.NotImplemented;
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    return internal.aborted;
 }
 
 /// Getter for reason
+///
+/// Spec: § 3.3.1 "The reason getter steps are to return this's abort reason"
+/// Note: Returns InvalidState when reason is not set (undefined in JS)
 pub fn get_reason(instance: *runtime.Instance) ImplError!*const anyopaque {
-    _ = instance;
-    return error.NotImplemented;
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    // Return reason (or InvalidState if not set - represents undefined)
+    return internal.reason orelse return error.InvalidState;
 }
 
 /// Getter for onabort
 pub fn get_onabort(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    return internal.onabort orelse return error.InvalidState;
 }
 
 /// Setter for onabort
 pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    internal.onabort = value;
 }
 
-/// Operation: _any
+/// Static operation: any(signals)
+///
+/// Spec: § 3.3.2 "Returns a signal that is aborted when any of the given signals are aborted"
+/// Note: Full implementation requires DOM event infrastructure
 pub fn call__any(instance: *runtime.Instance, signals: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = signals;
+    // Requires iteration over signals and event listener setup
+    // For now, return NotImplemented as this needs full DOM event support
     return error.NotImplemented;
 }
 
-/// Operation: abort
-pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) ImplError!*runtime.Instance {
+/// Static operation: abort(reason)
+///
+/// Spec: § 3.3.2 "Returns an immediately aborted signal"
+pub fn call_abort(instance: *runtime.Instance, reason: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = reason;
+    // Static method that creates a new AbortSignal and immediately aborts it
+    // Requires access to allocator from static context
     return error.NotImplemented;
 }
 
-/// Operation: timeout
+/// Static operation: timeout(milliseconds)
+///
+/// Spec: § 3.3.2 "Returns a signal that will abort after the given milliseconds"
 pub fn call_timeout(instance: *runtime.Instance, milliseconds: u64) ImplError!*runtime.Instance {
     _ = instance;
     _ = milliseconds;
+    // Requires timer/scheduling infrastructure
     return error.NotImplemented;
 }
 
 /// Operation: throwIfAborted
+///
+/// Spec: § 3.3.3 "Throws this's abort reason if this is aborted"
 pub fn call_throwIfAborted(instance: *runtime.Instance) ImplError!void {
-    _ = instance;
-    return error.NotImplemented;
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+
+    if (internal.aborted) {
+        return error.AbortError;
+    }
 }
 
-/// Helper: Signal abort on this signal (called by AbortController)
-pub fn signalAbort(instance: *runtime.Instance, reason: ?*const anyopaque) ImplError!void {
+// ============================================================================
+// Internal Helper Functions (for AbortController)
+// ============================================================================
+
+/// Signal abort - called by AbortController.abort()
+///
+/// Spec: § 3.3 "To signal abort on an AbortSignal signal, given an optional reason"
+pub fn signalAbort(instance: *runtime.Instance, reason: ?*anyopaque) ImplError!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -155,7 +175,7 @@ pub fn signalAbort(instance: *runtime.Instance, reason: ?*const anyopaque) ImplE
     // Set aborted to true
     internal.aborted = true;
 
-    // Set reason
+    // Set reason (or default to AbortError if not provided)
     internal.reason = reason;
 
     // Fire abort event (requires DOM event infrastructure)

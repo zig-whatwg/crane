@@ -1,23 +1,4 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for TrustedTypePolicy interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for TrustedTypePolicy interface
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -26,7 +7,6 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const TrustedTypePolicy = interfaces.TrustedTypePolicy;
 
 pub const State = TrustedTypePolicy.State;
@@ -66,7 +46,7 @@ pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Operation: createScriptURL
-pub fn call_createScriptURL(instance: *runtime.Instance, input: runtime.DOMString, arguments: []const *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_createScriptURL(instance: *runtime.Instance, input: runtime.DOMString, arguments: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = arguments;
@@ -74,7 +54,7 @@ pub fn call_createScriptURL(instance: *runtime.Instance, input: runtime.DOMStrin
 }
 
 /// Operation: createHTML
-pub fn call_createHTML(instance: *runtime.Instance, input: runtime.DOMString, arguments: []const *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_createHTML(instance: *runtime.Instance, input: runtime.DOMString, arguments: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = arguments;
@@ -82,7 +62,7 @@ pub fn call_createHTML(instance: *runtime.Instance, input: runtime.DOMString, ar
 }
 
 /// Operation: createScript
-pub fn call_createScript(instance: *runtime.Instance, input: runtime.DOMString, arguments: []const *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_createScript(instance: *runtime.Instance, input: runtime.DOMString, arguments: *const anyopaque) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = arguments;

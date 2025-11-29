@@ -1,33 +1,12 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for BaseAudioContext interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for BaseAudioContext interface
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const BaseAudioContext = interfaces.BaseAudioContext;
 
 pub const State = BaseAudioContext.State;
@@ -122,7 +101,7 @@ pub fn call_createPanner(instance: *runtime.Instance) ImplError!*runtime.Instanc
 }
 
 /// Operation: createChannelMerger
-pub fn call_createChannelMerger(instance: *runtime.Instance, numberOfInputs: webidl.Opt(u32)) ImplError!*runtime.Instance {
+pub fn call_createChannelMerger(instance: *runtime.Instance, numberOfInputs: u32) ImplError!*runtime.Instance {
     _ = instance;
     _ = numberOfInputs;
     return error.NotImplemented;
@@ -135,7 +114,7 @@ pub fn call_createDynamicsCompressor(instance: *runtime.Instance) ImplError!*run
 }
 
 /// Operation: createPeriodicWave
-pub fn call_createPeriodicWave(instance: *runtime.Instance, real: *const anyopaque, imag: *const anyopaque, constraints: webidl.Opt(dictionaries.PeriodicWaveConstraints)) ImplError!*runtime.Instance {
+pub fn call_createPeriodicWave(instance: *runtime.Instance, real: *const anyopaque, imag: *const anyopaque, constraints: dictionaries.PeriodicWaveConstraints) ImplError!*runtime.Instance {
     _ = instance;
     _ = real;
     _ = imag;
@@ -215,7 +194,7 @@ pub fn call_createBuffer(instance: *runtime.Instance, numberOfChannels: u32, len
 }
 
 /// Operation: createScriptProcessor
-pub fn call_createScriptProcessor(instance: *runtime.Instance, bufferSize: webidl.Opt(u32), numberOfInputChannels: webidl.Opt(u32), numberOfOutputChannels: webidl.Opt(u32)) ImplError!*runtime.Instance {
+pub fn call_createScriptProcessor(instance: *runtime.Instance, bufferSize: u32, numberOfInputChannels: u32, numberOfOutputChannels: u32) ImplError!*runtime.Instance {
     _ = instance;
     _ = bufferSize;
     _ = numberOfInputChannels;
@@ -224,21 +203,21 @@ pub fn call_createScriptProcessor(instance: *runtime.Instance, bufferSize: webid
 }
 
 /// Operation: createDelay
-pub fn call_createDelay(instance: *runtime.Instance, maxDelayTime: webidl.Opt(f64)) ImplError!*runtime.Instance {
+pub fn call_createDelay(instance: *runtime.Instance, maxDelayTime: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = maxDelayTime;
     return error.NotImplemented;
 }
 
 /// Operation: createChannelSplitter
-pub fn call_createChannelSplitter(instance: *runtime.Instance, numberOfOutputs: webidl.Opt(u32)) ImplError!*runtime.Instance {
+pub fn call_createChannelSplitter(instance: *runtime.Instance, numberOfOutputs: u32) ImplError!*runtime.Instance {
     _ = instance;
     _ = numberOfOutputs;
     return error.NotImplemented;
 }
 
 /// Operation: decodeAudioData
-pub fn call_decodeAudioData(instance: *runtime.Instance, audioData: *const anyopaque, successCallback: webidl.Opt(?callbacks.DecodeSuccessCallback), errorCallback: webidl.Opt(?callbacks.DecodeErrorCallback)) ImplError!*const anyopaque {
+pub fn call_decodeAudioData(instance: *runtime.Instance, audioData: *const anyopaque, successCallback: callbacks.DecodeSuccessCallback, errorCallback: callbacks.DecodeErrorCallback) ImplError!*const anyopaque {
     _ = instance;
     _ = audioData;
     _ = successCallback;

@@ -1,33 +1,12 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for HTMLInputElement interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for HTMLInputElement interface
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const HTMLInputElement = interfaces.HTMLInputElement;
 
 pub const State = HTMLInputElement.State;
@@ -726,7 +705,7 @@ pub fn call_select(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: stepUp
-pub fn call_stepUp(instance: *runtime.Instance, n: webidl.Opt(i32)) ImplError!void {
+pub fn call_stepUp(instance: *runtime.Instance, n: i32) ImplError!void {
     _ = instance;
     _ = n;
     return error.NotImplemented;
@@ -739,7 +718,7 @@ pub fn call_checkValidity(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Operation: setSelectionRange
-pub fn call_setSelectionRange(instance: *runtime.Instance, start: u32, end: u32, direction: webidl.Opt(runtime.DOMString)) ImplError!void {
+pub fn call_setSelectionRange(instance: *runtime.Instance, start: u32, end: u32, direction: runtime.DOMString) ImplError!void {
     _ = instance;
     _ = start;
     _ = end;
@@ -754,7 +733,7 @@ pub fn call_reportValidity(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Operation: stepDown
-pub fn call_stepDown(instance: *runtime.Instance, n: webidl.Opt(i32)) ImplError!void {
+pub fn call_stepDown(instance: *runtime.Instance, n: i32) ImplError!void {
     _ = instance;
     _ = n;
     return error.NotImplemented;

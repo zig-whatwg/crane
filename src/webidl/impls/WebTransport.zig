@@ -1,23 +1,4 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for WebTransport interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for WebTransport interface
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -26,8 +7,6 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
-const webidl = @import("webidl");
 const WebTransport = interfaces.WebTransport;
 
 pub const State = WebTransport.State;
@@ -62,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url: runtime.USVString, options: webidl.Opt(dictionaries.WebTransportOptions)) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url: runtime.USVString, options: dictionaries.WebTransportOptions) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &WebTransport.vtable, ctx);
     errdefer deinit(instance);
@@ -173,7 +152,7 @@ pub fn call_getStats(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Operation: exportKeyingMaterial
-pub fn call_exportKeyingMaterial(instance: *runtime.Instance, label: typedefs.BufferSource, context: webidl.Opt(typedefs.BufferSource)) ImplError!*const anyopaque {
+pub fn call_exportKeyingMaterial(instance: *runtime.Instance, label: typedefs.BufferSource, context: typedefs.BufferSource) ImplError!*const anyopaque {
     _ = instance;
     _ = label;
     _ = context;
@@ -181,21 +160,21 @@ pub fn call_exportKeyingMaterial(instance: *runtime.Instance, label: typedefs.Bu
 }
 
 /// Operation: close
-pub fn call_close(instance: *runtime.Instance, closeInfo: webidl.Opt(dictionaries.WebTransportCloseInfo)) ImplError!void {
+pub fn call_close(instance: *runtime.Instance, closeInfo: dictionaries.WebTransportCloseInfo) ImplError!void {
     _ = instance;
     _ = closeInfo;
     return error.NotImplemented;
 }
 
 /// Operation: createBidirectionalStream
-pub fn call_createBidirectionalStream(instance: *runtime.Instance, options: webidl.Opt(dictionaries.WebTransportSendStreamOptions)) ImplError!*const anyopaque {
+pub fn call_createBidirectionalStream(instance: *runtime.Instance, options: dictionaries.WebTransportSendStreamOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: createUnidirectionalStream
-pub fn call_createUnidirectionalStream(instance: *runtime.Instance, options: webidl.Opt(dictionaries.WebTransportSendStreamOptions)) ImplError!*const anyopaque {
+pub fn call_createUnidirectionalStream(instance: *runtime.Instance, options: dictionaries.WebTransportSendStreamOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

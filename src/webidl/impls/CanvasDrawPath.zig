@@ -1,33 +1,12 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for CanvasDrawPath interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for CanvasDrawPath interface
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const CanvasDrawPath = interfaces.CanvasDrawPath;
 
 pub const State = CanvasDrawPath.State;
@@ -61,14 +40,14 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: clip
-pub fn call_clip(instance: *runtime.Instance, fillRule: webidl.Opt(enums.CanvasFillRule)) ImplError!void {
+pub fn call_clip(instance: *runtime.Instance, fillRule: enums.CanvasFillRule) ImplError!void {
     _ = instance;
     _ = fillRule;
     return error.NotImplemented;
 }
 
 /// Operation: isPointInPath
-pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule: webidl.Opt(enums.CanvasFillRule)) ImplError!bool {
+pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule: enums.CanvasFillRule) ImplError!bool {
     _ = instance;
     _ = x;
     _ = y;
@@ -91,7 +70,7 @@ pub fn call_beginPath(instance: *runtime.Instance) ImplError!void {
 }
 
 /// Operation: fill
-pub fn call_fill(instance: *runtime.Instance, fillRule: webidl.Opt(enums.CanvasFillRule)) ImplError!void {
+pub fn call_fill(instance: *runtime.Instance, fillRule: enums.CanvasFillRule) ImplError!void {
     _ = instance;
     _ = fillRule;
     return error.NotImplemented;

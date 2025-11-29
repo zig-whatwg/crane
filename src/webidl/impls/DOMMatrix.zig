@@ -1,23 +1,4 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for DOMMatrix interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for DOMMatrix interface
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -26,8 +7,6 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
-const webidl = @import("webidl");
 const DOMMatrix = interfaces.DOMMatrix;
 
 pub const State = DOMMatrix.State;
@@ -62,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: webidl.Opt(*const anyopaque)) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: *const anyopaque) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &DOMMatrix.vtable, ctx);
     errdefer deinit(instance);
@@ -206,7 +185,7 @@ pub fn get_m44(instance: *runtime.Instance) ImplError!f64 {
 }
 
 /// Operation: scaleSelf
-pub fn call_scaleSelf(instance: *runtime.Instance, scaleX: webidl.Opt(f64), scaleY: webidl.Opt(f64), scaleZ: webidl.Opt(f64), originX: webidl.Opt(f64), originY: webidl.Opt(f64), originZ: webidl.Opt(f64)) ImplError!*runtime.Instance {
+pub fn call_scaleSelf(instance: *runtime.Instance, scaleX: f64, scaleY: f64, scaleZ: f64, originX: f64, originY: f64, originZ: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = scaleX;
     _ = scaleY;
@@ -225,7 +204,7 @@ pub fn call_fromFloat32Array(instance: *runtime.Instance, array32: *const anyopa
 }
 
 /// Operation: rotateFromVectorSelf
-pub fn call_rotateFromVectorSelf(instance: *runtime.Instance, x: webidl.Opt(f64), y: webidl.Opt(f64)) ImplError!*runtime.Instance {
+pub fn call_rotateFromVectorSelf(instance: *runtime.Instance, x: f64, y: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = x;
     _ = y;
@@ -240,7 +219,7 @@ pub fn call_fromFloat64Array(instance: *runtime.Instance, array64: *const anyopa
 }
 
 /// Operation: fromMatrix
-pub fn call_fromMatrix(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMMatrixInit)) ImplError!*runtime.Instance {
+pub fn call_fromMatrix(instance: *runtime.Instance, other: dictionaries.DOMMatrixInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = other;
     return error.NotImplemented;
@@ -254,7 +233,7 @@ pub fn call_setMatrixValue(instance: *runtime.Instance, transformList: runtime.D
 }
 
 /// Operation: rotateAxisAngleSelf
-pub fn call_rotateAxisAngleSelf(instance: *runtime.Instance, x: webidl.Opt(f64), y: webidl.Opt(f64), z: webidl.Opt(f64), angle: webidl.Opt(f64)) ImplError!*runtime.Instance {
+pub fn call_rotateAxisAngleSelf(instance: *runtime.Instance, x: f64, y: f64, z: f64, angle: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = x;
     _ = y;
@@ -264,7 +243,7 @@ pub fn call_rotateAxisAngleSelf(instance: *runtime.Instance, x: webidl.Opt(f64),
 }
 
 /// Operation: scale3dSelf
-pub fn call_scale3dSelf(instance: *runtime.Instance, scale: webidl.Opt(f64), originX: webidl.Opt(f64), originY: webidl.Opt(f64), originZ: webidl.Opt(f64)) ImplError!*runtime.Instance {
+pub fn call_scale3dSelf(instance: *runtime.Instance, scale: f64, originX: f64, originY: f64, originZ: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = scale;
     _ = originX;
@@ -274,7 +253,7 @@ pub fn call_scale3dSelf(instance: *runtime.Instance, scale: webidl.Opt(f64), ori
 }
 
 /// Operation: rotateSelf
-pub fn call_rotateSelf(instance: *runtime.Instance, rotX: webidl.Opt(f64), rotY: webidl.Opt(f64), rotZ: webidl.Opt(f64)) ImplError!*runtime.Instance {
+pub fn call_rotateSelf(instance: *runtime.Instance, rotX: f64, rotY: f64, rotZ: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = rotX;
     _ = rotY;
@@ -283,7 +262,7 @@ pub fn call_rotateSelf(instance: *runtime.Instance, rotX: webidl.Opt(f64), rotY:
 }
 
 /// Operation: translateSelf
-pub fn call_translateSelf(instance: *runtime.Instance, tx: webidl.Opt(f64), ty: webidl.Opt(f64), tz: webidl.Opt(f64)) ImplError!*runtime.Instance {
+pub fn call_translateSelf(instance: *runtime.Instance, tx: f64, ty: f64, tz: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = tx;
     _ = ty;
@@ -292,21 +271,21 @@ pub fn call_translateSelf(instance: *runtime.Instance, tx: webidl.Opt(f64), ty: 
 }
 
 /// Operation: multiplySelf
-pub fn call_multiplySelf(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMMatrixInit)) ImplError!*runtime.Instance {
+pub fn call_multiplySelf(instance: *runtime.Instance, other: dictionaries.DOMMatrixInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = other;
     return error.NotImplemented;
 }
 
 /// Operation: skewXSelf
-pub fn call_skewXSelf(instance: *runtime.Instance, sx: webidl.Opt(f64)) ImplError!*runtime.Instance {
+pub fn call_skewXSelf(instance: *runtime.Instance, sx: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = sx;
     return error.NotImplemented;
 }
 
 /// Operation: skewYSelf
-pub fn call_skewYSelf(instance: *runtime.Instance, sy: webidl.Opt(f64)) ImplError!*runtime.Instance {
+pub fn call_skewYSelf(instance: *runtime.Instance, sy: f64) ImplError!*runtime.Instance {
     _ = instance;
     _ = sy;
     return error.NotImplemented;
@@ -319,7 +298,7 @@ pub fn call_invertSelf(instance: *runtime.Instance) ImplError!*runtime.Instance 
 }
 
 /// Operation: preMultiplySelf
-pub fn call_preMultiplySelf(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMMatrixInit)) ImplError!*runtime.Instance {
+pub fn call_preMultiplySelf(instance: *runtime.Instance, other: dictionaries.DOMMatrixInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = other;
     return error.NotImplemented;

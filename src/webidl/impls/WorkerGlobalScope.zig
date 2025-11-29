@@ -1,33 +1,12 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for WorkerGlobalScope interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for WorkerGlobalScope interface
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const WorkerGlobalScope = interfaces.WorkerGlobalScope;
 
 pub const State = WorkerGlobalScope.State;
@@ -238,7 +217,7 @@ pub fn call_btoa(instance: *runtime.Instance, data: runtime.DOMString) ImplError
 }
 
 /// Operation: setInterval
-pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const *const anyopaque) ImplError!i32 {
+pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: i32, arguments: *const anyopaque) ImplError!i32 {
     _ = instance;
     _ = handler;
     _ = timeout;
@@ -247,7 +226,7 @@ pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHand
 }
 
 /// Operation: createImageBitmap
-pub fn call_createImageBitmap(instance: *runtime.Instance, image: typedefs.ImageBitmapSource, options: webidl.Opt(dictionaries.ImageBitmapOptions)) ImplError!*const anyopaque {
+pub fn call_createImageBitmap(instance: *runtime.Instance, image: typedefs.ImageBitmapSource, options: dictionaries.ImageBitmapOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = image;
     _ = options;
@@ -255,7 +234,7 @@ pub fn call_createImageBitmap(instance: *runtime.Instance, image: typedefs.Image
 }
 
 /// Operation: clearInterval
-pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) ImplError!void {
+pub fn call_clearInterval(instance: *runtime.Instance, id: i32) ImplError!void {
     _ = instance;
     _ = id;
     return error.NotImplemented;
@@ -269,7 +248,7 @@ pub fn call_queueMicrotask(instance: *runtime.Instance, callback: callbacks.Void
 }
 
 /// Operation: structuredClone
-pub fn call_structuredClone(instance: *runtime.Instance, value: *const anyopaque, options: webidl.Opt(dictionaries.StructuredSerializeOptions)) ImplError!*const anyopaque {
+pub fn call_structuredClone(instance: *runtime.Instance, value: *const anyopaque, options: dictionaries.StructuredSerializeOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = value;
     _ = options;
@@ -277,21 +256,21 @@ pub fn call_structuredClone(instance: *runtime.Instance, value: *const anyopaque
 }
 
 /// Operation: importScripts
-pub fn call_importScripts(instance: *runtime.Instance, urls: []const runtime.DOMString) ImplError!void {
+pub fn call_importScripts(instance: *runtime.Instance, urls: *const anyopaque) ImplError!void {
     _ = instance;
     _ = urls;
     return error.NotImplemented;
 }
 
 /// Operation: clearTimeout
-pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) ImplError!void {
+pub fn call_clearTimeout(instance: *runtime.Instance, id: i32) ImplError!void {
     _ = instance;
     _ = id;
     return error.NotImplemented;
 }
 
 /// Operation: setTimeout
-pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const *const anyopaque) ImplError!i32 {
+pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: i32, arguments: *const anyopaque) ImplError!i32 {
     _ = instance;
     _ = handler;
     _ = timeout;
@@ -300,7 +279,7 @@ pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandl
 }
 
 /// Operation: fetch
-pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) ImplError!*const anyopaque {
+pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: dictionaries.RequestInit) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = init_data;

@@ -1,23 +1,4 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for DOMPointReadOnly interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for DOMPointReadOnly interface
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -26,8 +7,6 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
-const webidl = @import("webidl");
 const DOMPointReadOnly = interfaces.DOMPointReadOnly;
 
 pub const State = DOMPointReadOnly.State;
@@ -62,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: webidl.Opt(f64), y: webidl.Opt(f64), z: webidl.Opt(f64), w: webidl.Opt(f64)) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: f64, y: f64, z: f64, w: f64) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &DOMPointReadOnly.vtable, ctx);
     errdefer deinit(instance);
@@ -107,14 +86,14 @@ pub fn call_toJSON(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Operation: matrixTransform
-pub fn call_matrixTransform(instance: *runtime.Instance, matrix: webidl.Opt(dictionaries.DOMMatrixInit)) ImplError!*runtime.Instance {
+pub fn call_matrixTransform(instance: *runtime.Instance, matrix: dictionaries.DOMMatrixInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = matrix;
     return error.NotImplemented;
 }
 
 /// Operation: fromPoint
-pub fn call_fromPoint(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMPointInit)) ImplError!*runtime.Instance {
+pub fn call_fromPoint(instance: *runtime.Instance, other: dictionaries.DOMPointInit) ImplError!*runtime.Instance {
     _ = instance;
     _ = other;
     return error.NotImplemented;

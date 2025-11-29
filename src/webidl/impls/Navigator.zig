@@ -1,33 +1,12 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for Navigator interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for Navigator interface
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const Navigator = interfaces.Navigator;
 
 pub const State = Navigator.State;
@@ -427,7 +406,7 @@ pub fn get_userAgentData(instance: *runtime.Instance) ImplError!*runtime.Instanc
 }
 
 /// Operation: requestMIDIAccess
-pub fn call_requestMIDIAccess(instance: *runtime.Instance, options: webidl.Opt(dictionaries.MIDIOptions)) ImplError!*const anyopaque {
+pub fn call_requestMIDIAccess(instance: *runtime.Instance, options: dictionaries.MIDIOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -462,7 +441,7 @@ pub fn call_createHandwritingRecognizer(instance: *runtime.Instance, constraint:
 }
 
 /// Operation: leaveAdInterestGroup
-pub fn call_leaveAdInterestGroup(instance: *runtime.Instance, group: webidl.Opt(dictionaries.AuctionAdInterestGroupKey)) ImplError!*const anyopaque {
+pub fn call_leaveAdInterestGroup(instance: *runtime.Instance, group: dictionaries.AuctionAdInterestGroupKey) ImplError!*const anyopaque {
     _ = instance;
     _ = group;
     return error.NotImplemented;
@@ -493,7 +472,7 @@ pub fn call_taintEnabled(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Operation: setAppBadge
-pub fn call_setAppBadge(instance: *runtime.Instance, contents: webidl.Opt(u64)) ImplError!*const anyopaque {
+pub fn call_setAppBadge(instance: *runtime.Instance, contents: u64) ImplError!*const anyopaque {
     _ = instance;
     _ = contents;
     return error.NotImplemented;
@@ -512,7 +491,7 @@ pub fn call_createAuctionNonce(instance: *runtime.Instance) ImplError!*const any
 }
 
 /// Operation: sendBeacon
-pub fn call_sendBeacon(instance: *runtime.Instance, url: runtime.USVString, data: webidl.Opt(?typedefs.BodyInit)) ImplError!bool {
+pub fn call_sendBeacon(instance: *runtime.Instance, url: runtime.USVString, data: typedefs.BodyInit) ImplError!bool {
     _ = instance;
     _ = url;
     _ = data;
@@ -541,7 +520,7 @@ pub fn call_clearAppBadge(instance: *runtime.Instance) ImplError!*const anyopaqu
 }
 
 /// Operation: share
-pub fn call_share(instance: *runtime.Instance, data: webidl.Opt(dictionaries.ShareData)) ImplError!*const anyopaque {
+pub fn call_share(instance: *runtime.Instance, data: dictionaries.ShareData) ImplError!*const anyopaque {
     _ = instance;
     _ = data;
     return error.NotImplemented;
@@ -582,14 +561,14 @@ pub fn call_getInstalledRelatedApps(instance: *runtime.Instance) ImplError!*cons
 }
 
 /// Operation: canShare
-pub fn call_canShare(instance: *runtime.Instance, data: webidl.Opt(dictionaries.ShareData)) ImplError!bool {
+pub fn call_canShare(instance: *runtime.Instance, data: dictionaries.ShareData) ImplError!bool {
     _ = instance;
     _ = data;
     return error.NotImplemented;
 }
 
 /// Operation: clearOriginJoinedAdInterestGroups
-pub fn call_clearOriginJoinedAdInterestGroups(instance: *runtime.Instance, owner: runtime.USVString, interestGroupsToKeep: webidl.Opt(*const anyopaque)) ImplError!*const anyopaque {
+pub fn call_clearOriginJoinedAdInterestGroups(instance: *runtime.Instance, owner: runtime.USVString, interestGroupsToKeep: *const anyopaque) ImplError!*const anyopaque {
     _ = instance;
     _ = owner;
     _ = interestGroupsToKeep;
@@ -597,7 +576,7 @@ pub fn call_clearOriginJoinedAdInterestGroups(instance: *runtime.Instance, owner
 }
 
 /// Operation: getInterestGroupAdAuctionData
-pub fn call_getInterestGroupAdAuctionData(instance: *runtime.Instance, config: webidl.Opt(dictionaries.AdAuctionDataConfig)) ImplError!*const anyopaque {
+pub fn call_getInterestGroupAdAuctionData(instance: *runtime.Instance, config: dictionaries.AdAuctionDataConfig) ImplError!*const anyopaque {
     _ = instance;
     _ = config;
     return error.NotImplemented;
@@ -612,7 +591,7 @@ pub fn call_requestMediaKeySystemAccess(instance: *runtime.Instance, keySystem: 
 }
 
 /// Operation: deprecatedURNtoURL
-pub fn call_deprecatedURNtoURL(instance: *runtime.Instance, urnOrConfig: typedefs.UrnOrConfig, send_reports: webidl.Opt(bool)) ImplError!*const anyopaque {
+pub fn call_deprecatedURNtoURL(instance: *runtime.Instance, urnOrConfig: typedefs.UrnOrConfig, send_reports: bool) ImplError!*const anyopaque {
     _ = instance;
     _ = urnOrConfig;
     _ = send_reports;

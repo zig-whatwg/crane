@@ -1,23 +1,4 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for BrowserCaptureMediaStreamTrack interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for BrowserCaptureMediaStreamTrack interface
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -26,7 +7,6 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const BrowserCaptureMediaStreamTrack = interfaces.BrowserCaptureMediaStreamTrack;
 
 pub const State = BrowserCaptureMediaStreamTrack.State;
@@ -66,14 +46,14 @@ pub fn call_clone(instance: *runtime.Instance) ImplError!*runtime.Instance {
 }
 
 /// Operation: cropTo
-pub fn call_cropTo(instance: *runtime.Instance, cropTarget: ?*runtime.Instance) ImplError!*const anyopaque {
+pub fn call_cropTo(instance: *runtime.Instance, cropTarget: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     _ = cropTarget;
     return error.NotImplemented;
 }
 
 /// Operation: restrictTo
-pub fn call_restrictTo(instance: *runtime.Instance, RestrictionTarget: ?*runtime.Instance) ImplError!*const anyopaque {
+pub fn call_restrictTo(instance: *runtime.Instance, RestrictionTarget: *runtime.Instance) ImplError!*const anyopaque {
     _ = instance;
     _ = RestrictionTarget;
     return error.NotImplemented;

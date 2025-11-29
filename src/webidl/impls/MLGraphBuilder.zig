@@ -1,33 +1,12 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for MLGraphBuilder interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for MLGraphBuilder interface
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const MLGraphBuilder = interfaces.MLGraphBuilder;
 
 pub const State = MLGraphBuilder.State;
@@ -74,7 +53,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, cont
 }
 
 /// Operation: reduceL2
-pub fn call_reduceL2(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLReduceOptions)) ImplError!*runtime.Instance {
+pub fn call_reduceL2(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLReduceOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -82,7 +61,7 @@ pub fn call_reduceL2(instance: *runtime.Instance, input: *runtime.Instance, opti
 }
 
 /// Operation: reverse
-pub fn call_reverse(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLReverseOptions)) ImplError!*runtime.Instance {
+pub fn call_reverse(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLReverseOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -90,7 +69,7 @@ pub fn call_reverse(instance: *runtime.Instance, input: *runtime.Instance, optio
 }
 
 /// Operation: lesserOrEqual
-pub fn call_lesserOrEqual(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_lesserOrEqual(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -99,7 +78,7 @@ pub fn call_lesserOrEqual(instance: *runtime.Instance, a: *runtime.Instance, b: 
 }
 
 /// Operation: reduceSumSquare
-pub fn call_reduceSumSquare(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLReduceOptions)) ImplError!*runtime.Instance {
+pub fn call_reduceSumSquare(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLReduceOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -107,7 +86,7 @@ pub fn call_reduceSumSquare(instance: *runtime.Instance, input: *runtime.Instanc
 }
 
 /// Operation: instanceNormalization
-pub fn call_instanceNormalization(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLInstanceNormalizationOptions)) ImplError!*runtime.Instance {
+pub fn call_instanceNormalization(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLInstanceNormalizationOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -115,7 +94,7 @@ pub fn call_instanceNormalization(instance: *runtime.Instance, input: *runtime.I
 }
 
 /// Operation: ceil
-pub fn call_ceil(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_ceil(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -123,7 +102,7 @@ pub fn call_ceil(instance: *runtime.Instance, input: *runtime.Instance, options:
 }
 
 /// Operation: greater
-pub fn call_greater(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_greater(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -132,7 +111,7 @@ pub fn call_greater(instance: *runtime.Instance, a: *runtime.Instance, b: *runti
 }
 
 /// Operation: exp
-pub fn call_exp(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_exp(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -140,7 +119,7 @@ pub fn call_exp(instance: *runtime.Instance, input: *runtime.Instance, options: 
 }
 
 /// Operation: reduceLogSum
-pub fn call_reduceLogSum(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLReduceOptions)) ImplError!*runtime.Instance {
+pub fn call_reduceLogSum(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLReduceOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -148,7 +127,7 @@ pub fn call_reduceLogSum(instance: *runtime.Instance, input: *runtime.Instance, 
 }
 
 /// Operation: gatherElements
-pub fn call_gatherElements(instance: *runtime.Instance, input: *runtime.Instance, indices: *runtime.Instance, options: webidl.Opt(dictionaries.MLGatherOptions)) ImplError!*runtime.Instance {
+pub fn call_gatherElements(instance: *runtime.Instance, input: *runtime.Instance, indices: *runtime.Instance, options: dictionaries.MLGatherOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = indices;
@@ -157,7 +136,7 @@ pub fn call_gatherElements(instance: *runtime.Instance, input: *runtime.Instance
 }
 
 /// Operation: convTranspose2d
-pub fn call_convTranspose2d(instance: *runtime.Instance, input: *runtime.Instance, filter: *runtime.Instance, options: webidl.Opt(dictionaries.MLConvTranspose2dOptions)) ImplError!*runtime.Instance {
+pub fn call_convTranspose2d(instance: *runtime.Instance, input: *runtime.Instance, filter: *runtime.Instance, options: dictionaries.MLConvTranspose2dOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = filter;
@@ -166,7 +145,7 @@ pub fn call_convTranspose2d(instance: *runtime.Instance, input: *runtime.Instanc
 }
 
 /// Operation: relu
-pub fn call_relu(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_relu(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -174,7 +153,7 @@ pub fn call_relu(instance: *runtime.Instance, input: *runtime.Instance, options:
 }
 
 /// Operation: where
-pub fn call_where(instance: *runtime.Instance, condition: *runtime.Instance, trueValue: *runtime.Instance, falseValue: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_where(instance: *runtime.Instance, condition: *runtime.Instance, trueValue: *runtime.Instance, falseValue: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = condition;
     _ = trueValue;
@@ -191,7 +170,7 @@ pub fn call_build(instance: *runtime.Instance, outputs: typedefs.MLNamedOperands
 }
 
 /// Operation: sub
-pub fn call_sub(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_sub(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -200,7 +179,7 @@ pub fn call_sub(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.I
 }
 
 /// Operation: isInfinite
-pub fn call_isInfinite(instance: *runtime.Instance, a: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_isInfinite(instance: *runtime.Instance, a: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = options;
@@ -208,7 +187,7 @@ pub fn call_isInfinite(instance: *runtime.Instance, a: *runtime.Instance, option
 }
 
 /// Operation: reduceLogSumExp
-pub fn call_reduceLogSumExp(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLReduceOptions)) ImplError!*runtime.Instance {
+pub fn call_reduceLogSumExp(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLReduceOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -216,7 +195,7 @@ pub fn call_reduceLogSumExp(instance: *runtime.Instance, input: *runtime.Instanc
 }
 
 /// Operation: transpose
-pub fn call_transpose(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLTransposeOptions)) ImplError!*runtime.Instance {
+pub fn call_transpose(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLTransposeOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -224,7 +203,7 @@ pub fn call_transpose(instance: *runtime.Instance, input: *runtime.Instance, opt
 }
 
 /// Operation: gru
-pub fn call_gru(instance: *runtime.Instance, input: *runtime.Instance, weight: *runtime.Instance, recurrentWeight: *runtime.Instance, steps: u32, hiddenSize: u32, options: webidl.Opt(dictionaries.MLGruOptions)) ImplError!*const anyopaque {
+pub fn call_gru(instance: *runtime.Instance, input: *runtime.Instance, weight: *runtime.Instance, recurrentWeight: *runtime.Instance, steps: u32, hiddenSize: u32, options: dictionaries.MLGruOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = weight;
@@ -236,7 +215,7 @@ pub fn call_gru(instance: *runtime.Instance, input: *runtime.Instance, weight: *
 }
 
 /// Operation: conv2d
-pub fn call_conv2d(instance: *runtime.Instance, input: *runtime.Instance, filter: *runtime.Instance, options: webidl.Opt(dictionaries.MLConv2dOptions)) ImplError!*runtime.Instance {
+pub fn call_conv2d(instance: *runtime.Instance, input: *runtime.Instance, filter: *runtime.Instance, options: dictionaries.MLConv2dOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = filter;
@@ -245,7 +224,7 @@ pub fn call_conv2d(instance: *runtime.Instance, input: *runtime.Instance, filter
 }
 
 /// Operation: cos
-pub fn call_cos(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_cos(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -253,7 +232,7 @@ pub fn call_cos(instance: *runtime.Instance, input: *runtime.Instance, options: 
 }
 
 /// Operation: quantizeLinear
-pub fn call_quantizeLinear(instance: *runtime.Instance, input: *runtime.Instance, scale: *runtime.Instance, zeroPoint: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_quantizeLinear(instance: *runtime.Instance, input: *runtime.Instance, scale: *runtime.Instance, zeroPoint: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = scale;
@@ -263,7 +242,7 @@ pub fn call_quantizeLinear(instance: *runtime.Instance, input: *runtime.Instance
 }
 
 /// Operation: elu
-pub fn call_elu(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLEluOptions)) ImplError!*runtime.Instance {
+pub fn call_elu(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLEluOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -271,7 +250,7 @@ pub fn call_elu(instance: *runtime.Instance, input: *runtime.Instance, options: 
 }
 
 /// Operation: gather
-pub fn call_gather(instance: *runtime.Instance, input: *runtime.Instance, indices: *runtime.Instance, options: webidl.Opt(dictionaries.MLGatherOptions)) ImplError!*runtime.Instance {
+pub fn call_gather(instance: *runtime.Instance, input: *runtime.Instance, indices: *runtime.Instance, options: dictionaries.MLGatherOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = indices;
@@ -280,7 +259,7 @@ pub fn call_gather(instance: *runtime.Instance, input: *runtime.Instance, indice
 }
 
 /// Operation: greaterOrEqual
-pub fn call_greaterOrEqual(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_greaterOrEqual(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -289,7 +268,7 @@ pub fn call_greaterOrEqual(instance: *runtime.Instance, a: *runtime.Instance, b:
 }
 
 /// Operation: gatherND
-pub fn call_gatherND(instance: *runtime.Instance, input: *runtime.Instance, indices: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_gatherND(instance: *runtime.Instance, input: *runtime.Instance, indices: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = indices;
@@ -298,7 +277,7 @@ pub fn call_gatherND(instance: *runtime.Instance, input: *runtime.Instance, indi
 }
 
 /// Operation: l2Pool2d
-pub fn call_l2Pool2d(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLPool2dOptions)) ImplError!*runtime.Instance {
+pub fn call_l2Pool2d(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLPool2dOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -306,7 +285,7 @@ pub fn call_l2Pool2d(instance: *runtime.Instance, input: *runtime.Instance, opti
 }
 
 /// Operation: erf
-pub fn call_erf(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_erf(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -314,7 +293,7 @@ pub fn call_erf(instance: *runtime.Instance, input: *runtime.Instance, options: 
 }
 
 /// Operation: add
-pub fn call_add(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_add(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -323,7 +302,7 @@ pub fn call_add(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.I
 }
 
 /// Operation: layerNormalization
-pub fn call_layerNormalization(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLLayerNormalizationOptions)) ImplError!*runtime.Instance {
+pub fn call_layerNormalization(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLLayerNormalizationOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -331,7 +310,7 @@ pub fn call_layerNormalization(instance: *runtime.Instance, input: *runtime.Inst
 }
 
 /// Operation: pad
-pub fn call_pad(instance: *runtime.Instance, input: *runtime.Instance, beginningPadding: *const anyopaque, endingPadding: *const anyopaque, options: webidl.Opt(dictionaries.MLPadOptions)) ImplError!*runtime.Instance {
+pub fn call_pad(instance: *runtime.Instance, input: *runtime.Instance, beginningPadding: *const anyopaque, endingPadding: *const anyopaque, options: dictionaries.MLPadOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = beginningPadding;
@@ -341,7 +320,7 @@ pub fn call_pad(instance: *runtime.Instance, input: *runtime.Instance, beginning
 }
 
 /// Operation: notEqual
-pub fn call_notEqual(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_notEqual(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -350,7 +329,7 @@ pub fn call_notEqual(instance: *runtime.Instance, a: *runtime.Instance, b: *runt
 }
 
 /// Operation: log
-pub fn call_log(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_log(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -358,7 +337,7 @@ pub fn call_log(instance: *runtime.Instance, input: *runtime.Instance, options: 
 }
 
 /// Operation: dequantizeLinear
-pub fn call_dequantizeLinear(instance: *runtime.Instance, input: *runtime.Instance, scale: *runtime.Instance, zeroPoint: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_dequantizeLinear(instance: *runtime.Instance, input: *runtime.Instance, scale: *runtime.Instance, zeroPoint: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = scale;
@@ -368,7 +347,7 @@ pub fn call_dequantizeLinear(instance: *runtime.Instance, input: *runtime.Instan
 }
 
 /// Operation: maxPool2d
-pub fn call_maxPool2d(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLPool2dOptions)) ImplError!*runtime.Instance {
+pub fn call_maxPool2d(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLPool2dOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -376,7 +355,7 @@ pub fn call_maxPool2d(instance: *runtime.Instance, input: *runtime.Instance, opt
 }
 
 /// Operation: reduceL1
-pub fn call_reduceL1(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLReduceOptions)) ImplError!*runtime.Instance {
+pub fn call_reduceL1(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLReduceOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -384,7 +363,7 @@ pub fn call_reduceL1(instance: *runtime.Instance, input: *runtime.Instance, opti
 }
 
 /// Operation: floor
-pub fn call_floor(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_floor(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -392,7 +371,7 @@ pub fn call_floor(instance: *runtime.Instance, input: *runtime.Instance, options
 }
 
 /// Operation: linear
-pub fn call_linear(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLLinearOptions)) ImplError!*runtime.Instance {
+pub fn call_linear(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLLinearOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -400,7 +379,7 @@ pub fn call_linear(instance: *runtime.Instance, input: *runtime.Instance, option
 }
 
 /// Operation: reduceMax
-pub fn call_reduceMax(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLReduceOptions)) ImplError!*runtime.Instance {
+pub fn call_reduceMax(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLReduceOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -408,7 +387,7 @@ pub fn call_reduceMax(instance: *runtime.Instance, input: *runtime.Instance, opt
 }
 
 /// Operation: resample2d
-pub fn call_resample2d(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLResample2dOptions)) ImplError!*runtime.Instance {
+pub fn call_resample2d(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLResample2dOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -416,7 +395,7 @@ pub fn call_resample2d(instance: *runtime.Instance, input: *runtime.Instance, op
 }
 
 /// Operation: softmax
-pub fn call_softmax(instance: *runtime.Instance, input: *runtime.Instance, axis: u32, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_softmax(instance: *runtime.Instance, input: *runtime.Instance, axis: u32, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = axis;
@@ -425,7 +404,7 @@ pub fn call_softmax(instance: *runtime.Instance, input: *runtime.Instance, axis:
 }
 
 /// Operation: min
-pub fn call_min(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_min(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -434,7 +413,7 @@ pub fn call_min(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.I
 }
 
 /// Operation: lesser
-pub fn call_lesser(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_lesser(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -443,7 +422,7 @@ pub fn call_lesser(instance: *runtime.Instance, a: *runtime.Instance, b: *runtim
 }
 
 /// Operation: isNaN
-pub fn call_isNaN(instance: *runtime.Instance, a: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_isNaN(instance: *runtime.Instance, a: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = options;
@@ -451,7 +430,7 @@ pub fn call_isNaN(instance: *runtime.Instance, a: *runtime.Instance, options: we
 }
 
 /// Operation: gemm
-pub fn call_gemm(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(dictionaries.MLGemmOptions)) ImplError!*runtime.Instance {
+pub fn call_gemm(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLGemmOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -460,7 +439,7 @@ pub fn call_gemm(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.
 }
 
 /// Operation: cast
-pub fn call_cast(instance: *runtime.Instance, input: *runtime.Instance, dataType: enums.MLOperandDataType, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_cast(instance: *runtime.Instance, input: *runtime.Instance, dataType: enums.MLOperandDataType, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = dataType;
@@ -469,7 +448,7 @@ pub fn call_cast(instance: *runtime.Instance, input: *runtime.Instance, dataType
 }
 
 /// Operation: hardSwish
-pub fn call_hardSwish(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_hardSwish(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -477,7 +456,7 @@ pub fn call_hardSwish(instance: *runtime.Instance, input: *runtime.Instance, opt
 }
 
 /// Operation: reduceSum
-pub fn call_reduceSum(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLReduceOptions)) ImplError!*runtime.Instance {
+pub fn call_reduceSum(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLReduceOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -485,7 +464,7 @@ pub fn call_reduceSum(instance: *runtime.Instance, input: *runtime.Instance, opt
 }
 
 /// Operation: roundEven
-pub fn call_roundEven(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_roundEven(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -493,7 +472,7 @@ pub fn call_roundEven(instance: *runtime.Instance, input: *runtime.Instance, opt
 }
 
 /// Operation: sqrt
-pub fn call_sqrt(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_sqrt(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -501,7 +480,7 @@ pub fn call_sqrt(instance: *runtime.Instance, input: *runtime.Instance, options:
 }
 
 /// Operation: averagePool2d
-pub fn call_averagePool2d(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLPool2dOptions)) ImplError!*runtime.Instance {
+pub fn call_averagePool2d(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLPool2dOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -509,7 +488,7 @@ pub fn call_averagePool2d(instance: *runtime.Instance, input: *runtime.Instance,
 }
 
 /// Operation: equal
-pub fn call_equal(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_equal(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -518,7 +497,7 @@ pub fn call_equal(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime
 }
 
 /// Operation: slice
-pub fn call_slice(instance: *runtime.Instance, input: *runtime.Instance, starts: *const anyopaque, sizes: *const anyopaque, options: webidl.Opt(dictionaries.MLSliceOptions)) ImplError!*runtime.Instance {
+pub fn call_slice(instance: *runtime.Instance, input: *runtime.Instance, starts: *const anyopaque, sizes: *const anyopaque, options: dictionaries.MLSliceOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = starts;
@@ -528,7 +507,7 @@ pub fn call_slice(instance: *runtime.Instance, input: *runtime.Instance, starts:
 }
 
 /// Operation: logicalNot
-pub fn call_logicalNot(instance: *runtime.Instance, a: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_logicalNot(instance: *runtime.Instance, a: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = options;
@@ -536,7 +515,7 @@ pub fn call_logicalNot(instance: *runtime.Instance, a: *runtime.Instance, option
 }
 
 /// Operation: mul
-pub fn call_mul(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_mul(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -545,7 +524,7 @@ pub fn call_mul(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.I
 }
 
 /// Operation: sin
-pub fn call_sin(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_sin(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -561,7 +540,7 @@ pub fn call_constant(instance: *runtime.Instance, descriptor: dictionaries.MLOpe
 }
 
 /// Operation: gruCell
-pub fn call_gruCell(instance: *runtime.Instance, input: *runtime.Instance, weight: *runtime.Instance, recurrentWeight: *runtime.Instance, hiddenState: *runtime.Instance, hiddenSize: u32, options: webidl.Opt(dictionaries.MLGruCellOptions)) ImplError!*runtime.Instance {
+pub fn call_gruCell(instance: *runtime.Instance, input: *runtime.Instance, weight: *runtime.Instance, recurrentWeight: *runtime.Instance, hiddenState: *runtime.Instance, hiddenSize: u32, options: dictionaries.MLGruCellOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = weight;
@@ -573,7 +552,7 @@ pub fn call_gruCell(instance: *runtime.Instance, input: *runtime.Instance, weigh
 }
 
 /// Operation: split
-pub fn call_split(instance: *runtime.Instance, input: *runtime.Instance, splits: *const anyopaque, options: webidl.Opt(dictionaries.MLSplitOptions)) ImplError!*const anyopaque {
+pub fn call_split(instance: *runtime.Instance, input: *runtime.Instance, splits: *const anyopaque, options: dictionaries.MLSplitOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = splits;
@@ -582,7 +561,7 @@ pub fn call_split(instance: *runtime.Instance, input: *runtime.Instance, splits:
 }
 
 /// Operation: tanh
-pub fn call_tanh(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_tanh(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -590,7 +569,7 @@ pub fn call_tanh(instance: *runtime.Instance, input: *runtime.Instance, options:
 }
 
 /// Operation: reshape
-pub fn call_reshape(instance: *runtime.Instance, input: *runtime.Instance, newShape: *const anyopaque, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_reshape(instance: *runtime.Instance, input: *runtime.Instance, newShape: *const anyopaque, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = newShape;
@@ -599,7 +578,7 @@ pub fn call_reshape(instance: *runtime.Instance, input: *runtime.Instance, newSh
 }
 
 /// Operation: hardSigmoid
-pub fn call_hardSigmoid(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLHardSigmoidOptions)) ImplError!*runtime.Instance {
+pub fn call_hardSigmoid(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLHardSigmoidOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -607,7 +586,7 @@ pub fn call_hardSigmoid(instance: *runtime.Instance, input: *runtime.Instance, o
 }
 
 /// Operation: reciprocal
-pub fn call_reciprocal(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_reciprocal(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -615,7 +594,7 @@ pub fn call_reciprocal(instance: *runtime.Instance, input: *runtime.Instance, op
 }
 
 /// Operation: expand
-pub fn call_expand(instance: *runtime.Instance, input: *runtime.Instance, newShape: *const anyopaque, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_expand(instance: *runtime.Instance, input: *runtime.Instance, newShape: *const anyopaque, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = newShape;
@@ -624,7 +603,7 @@ pub fn call_expand(instance: *runtime.Instance, input: *runtime.Instance, newSha
 }
 
 /// Operation: identity
-pub fn call_identity(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_identity(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -632,7 +611,7 @@ pub fn call_identity(instance: *runtime.Instance, input: *runtime.Instance, opti
 }
 
 /// Operation: leakyRelu
-pub fn call_leakyRelu(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLLeakyReluOptions)) ImplError!*runtime.Instance {
+pub fn call_leakyRelu(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLLeakyReluOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -640,7 +619,7 @@ pub fn call_leakyRelu(instance: *runtime.Instance, input: *runtime.Instance, opt
 }
 
 /// Operation: clamp
-pub fn call_clamp(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLClampOptions)) ImplError!*runtime.Instance {
+pub fn call_clamp(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLClampOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -648,7 +627,7 @@ pub fn call_clamp(instance: *runtime.Instance, input: *runtime.Instance, options
 }
 
 /// Operation: lstmCell
-pub fn call_lstmCell(instance: *runtime.Instance, input: *runtime.Instance, weight: *runtime.Instance, recurrentWeight: *runtime.Instance, hiddenState: *runtime.Instance, cellState: *runtime.Instance, hiddenSize: u32, options: webidl.Opt(dictionaries.MLLstmCellOptions)) ImplError!*const anyopaque {
+pub fn call_lstmCell(instance: *runtime.Instance, input: *runtime.Instance, weight: *runtime.Instance, recurrentWeight: *runtime.Instance, hiddenState: *runtime.Instance, cellState: *runtime.Instance, hiddenSize: u32, options: dictionaries.MLLstmCellOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = weight;
@@ -661,7 +640,7 @@ pub fn call_lstmCell(instance: *runtime.Instance, input: *runtime.Instance, weig
 }
 
 /// Operation: prelu
-pub fn call_prelu(instance: *runtime.Instance, input: *runtime.Instance, slope: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_prelu(instance: *runtime.Instance, input: *runtime.Instance, slope: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = slope;
@@ -670,7 +649,7 @@ pub fn call_prelu(instance: *runtime.Instance, input: *runtime.Instance, slope: 
 }
 
 /// Operation: logicalXor
-pub fn call_logicalXor(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_logicalXor(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -679,7 +658,7 @@ pub fn call_logicalXor(instance: *runtime.Instance, a: *runtime.Instance, b: *ru
 }
 
 /// Operation: scatterElements
-pub fn call_scatterElements(instance: *runtime.Instance, input: *runtime.Instance, indices: *runtime.Instance, updates: *runtime.Instance, options: webidl.Opt(dictionaries.MLScatterOptions)) ImplError!*runtime.Instance {
+pub fn call_scatterElements(instance: *runtime.Instance, input: *runtime.Instance, indices: *runtime.Instance, updates: *runtime.Instance, options: dictionaries.MLScatterOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = indices;
@@ -689,7 +668,7 @@ pub fn call_scatterElements(instance: *runtime.Instance, input: *runtime.Instanc
 }
 
 /// Operation: abs
-pub fn call_abs(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_abs(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -705,7 +684,7 @@ pub fn call_input(instance: *runtime.Instance, name: runtime.USVString, descript
 }
 
 /// Operation: tan
-pub fn call_tan(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_tan(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -713,7 +692,7 @@ pub fn call_tan(instance: *runtime.Instance, input: *runtime.Instance, options: 
 }
 
 /// Operation: logicalAnd
-pub fn call_logicalAnd(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_logicalAnd(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -722,7 +701,7 @@ pub fn call_logicalAnd(instance: *runtime.Instance, a: *runtime.Instance, b: *ru
 }
 
 /// Operation: softsign
-pub fn call_softsign(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_softsign(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -730,7 +709,7 @@ pub fn call_softsign(instance: *runtime.Instance, input: *runtime.Instance, opti
 }
 
 /// Operation: triangular
-pub fn call_triangular(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLTriangularOptions)) ImplError!*runtime.Instance {
+pub fn call_triangular(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLTriangularOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -738,7 +717,7 @@ pub fn call_triangular(instance: *runtime.Instance, input: *runtime.Instance, op
 }
 
 /// Operation: max
-pub fn call_max(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_max(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -747,7 +726,7 @@ pub fn call_max(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.I
 }
 
 /// Operation: sign
-pub fn call_sign(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_sign(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -755,7 +734,7 @@ pub fn call_sign(instance: *runtime.Instance, input: *runtime.Instance, options:
 }
 
 /// Operation: logicalOr
-pub fn call_logicalOr(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_logicalOr(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -764,7 +743,7 @@ pub fn call_logicalOr(instance: *runtime.Instance, a: *runtime.Instance, b: *run
 }
 
 /// Operation: neg
-pub fn call_neg(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_neg(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -772,7 +751,7 @@ pub fn call_neg(instance: *runtime.Instance, input: *runtime.Instance, options: 
 }
 
 /// Operation: lstm
-pub fn call_lstm(instance: *runtime.Instance, input: *runtime.Instance, weight: *runtime.Instance, recurrentWeight: *runtime.Instance, steps: u32, hiddenSize: u32, options: webidl.Opt(dictionaries.MLLstmOptions)) ImplError!*const anyopaque {
+pub fn call_lstm(instance: *runtime.Instance, input: *runtime.Instance, weight: *runtime.Instance, recurrentWeight: *runtime.Instance, steps: u32, hiddenSize: u32, options: dictionaries.MLLstmOptions) ImplError!*const anyopaque {
     _ = instance;
     _ = input;
     _ = weight;
@@ -784,7 +763,7 @@ pub fn call_lstm(instance: *runtime.Instance, input: *runtime.Instance, weight: 
 }
 
 /// Operation: concat
-pub fn call_concat(instance: *runtime.Instance, inputs: *const anyopaque, axis: u32, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_concat(instance: *runtime.Instance, inputs: *const anyopaque, axis: u32, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = inputs;
     _ = axis;
@@ -793,7 +772,7 @@ pub fn call_concat(instance: *runtime.Instance, inputs: *const anyopaque, axis: 
 }
 
 /// Operation: pow
-pub fn call_pow(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_pow(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -802,7 +781,7 @@ pub fn call_pow(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.I
 }
 
 /// Operation: argMax
-pub fn call_argMax(instance: *runtime.Instance, input: *runtime.Instance, axis: u32, options: webidl.Opt(dictionaries.MLArgMinMaxOptions)) ImplError!*runtime.Instance {
+pub fn call_argMax(instance: *runtime.Instance, input: *runtime.Instance, axis: u32, options: dictionaries.MLArgMinMaxOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = axis;
@@ -811,7 +790,7 @@ pub fn call_argMax(instance: *runtime.Instance, input: *runtime.Instance, axis: 
 }
 
 /// Operation: reduceMean
-pub fn call_reduceMean(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLReduceOptions)) ImplError!*runtime.Instance {
+pub fn call_reduceMean(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLReduceOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -819,7 +798,7 @@ pub fn call_reduceMean(instance: *runtime.Instance, input: *runtime.Instance, op
 }
 
 /// Operation: softplus
-pub fn call_softplus(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_softplus(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -827,7 +806,7 @@ pub fn call_softplus(instance: *runtime.Instance, input: *runtime.Instance, opti
 }
 
 /// Operation: gelu
-pub fn call_gelu(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_gelu(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -835,7 +814,7 @@ pub fn call_gelu(instance: *runtime.Instance, input: *runtime.Instance, options:
 }
 
 /// Operation: reduceMin
-pub fn call_reduceMin(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLReduceOptions)) ImplError!*runtime.Instance {
+pub fn call_reduceMin(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLReduceOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -843,7 +822,7 @@ pub fn call_reduceMin(instance: *runtime.Instance, input: *runtime.Instance, opt
 }
 
 /// Operation: argMin
-pub fn call_argMin(instance: *runtime.Instance, input: *runtime.Instance, axis: u32, options: webidl.Opt(dictionaries.MLArgMinMaxOptions)) ImplError!*runtime.Instance {
+pub fn call_argMin(instance: *runtime.Instance, input: *runtime.Instance, axis: u32, options: dictionaries.MLArgMinMaxOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = axis;
@@ -852,7 +831,7 @@ pub fn call_argMin(instance: *runtime.Instance, input: *runtime.Instance, axis: 
 }
 
 /// Operation: batchNormalization
-pub fn call_batchNormalization(instance: *runtime.Instance, input: *runtime.Instance, mean: *runtime.Instance, variance: *runtime.Instance, options: webidl.Opt(dictionaries.MLBatchNormalizationOptions)) ImplError!*runtime.Instance {
+pub fn call_batchNormalization(instance: *runtime.Instance, input: *runtime.Instance, mean: *runtime.Instance, variance: *runtime.Instance, options: dictionaries.MLBatchNormalizationOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = mean;
@@ -862,7 +841,7 @@ pub fn call_batchNormalization(instance: *runtime.Instance, input: *runtime.Inst
 }
 
 /// Operation: cumulativeSum
-pub fn call_cumulativeSum(instance: *runtime.Instance, input: *runtime.Instance, axis: u32, options: webidl.Opt(dictionaries.MLCumulativeSumOptions)) ImplError!*runtime.Instance {
+pub fn call_cumulativeSum(instance: *runtime.Instance, input: *runtime.Instance, axis: u32, options: dictionaries.MLCumulativeSumOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = axis;
@@ -871,7 +850,7 @@ pub fn call_cumulativeSum(instance: *runtime.Instance, input: *runtime.Instance,
 }
 
 /// Operation: matmul
-pub fn call_matmul(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_matmul(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;
@@ -880,7 +859,7 @@ pub fn call_matmul(instance: *runtime.Instance, a: *runtime.Instance, b: *runtim
 }
 
 /// Operation: scatterND
-pub fn call_scatterND(instance: *runtime.Instance, input: *runtime.Instance, indices: *runtime.Instance, updates: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_scatterND(instance: *runtime.Instance, input: *runtime.Instance, indices: *runtime.Instance, updates: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = indices;
@@ -890,7 +869,7 @@ pub fn call_scatterND(instance: *runtime.Instance, input: *runtime.Instance, ind
 }
 
 /// Operation: reduceProduct
-pub fn call_reduceProduct(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLReduceOptions)) ImplError!*runtime.Instance {
+pub fn call_reduceProduct(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLReduceOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -898,7 +877,7 @@ pub fn call_reduceProduct(instance: *runtime.Instance, input: *runtime.Instance,
 }
 
 /// Operation: sigmoid
-pub fn call_sigmoid(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_sigmoid(instance: *runtime.Instance, input: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -906,7 +885,7 @@ pub fn call_sigmoid(instance: *runtime.Instance, input: *runtime.Instance, optio
 }
 
 /// Operation: tile
-pub fn call_tile(instance: *runtime.Instance, input: *runtime.Instance, repetitions: *const anyopaque, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_tile(instance: *runtime.Instance, input: *runtime.Instance, repetitions: *const anyopaque, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = repetitions;
@@ -915,7 +894,7 @@ pub fn call_tile(instance: *runtime.Instance, input: *runtime.Instance, repetiti
 }
 
 /// Operation: div
-pub fn call_div(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(dictionaries.MLOperatorOptions)) ImplError!*runtime.Instance {
+pub fn call_div(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: dictionaries.MLOperatorOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = a;
     _ = b;

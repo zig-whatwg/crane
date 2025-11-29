@@ -1,33 +1,12 @@
-//! ============================================================================
-//! DO NOT COMPILE THIS FILE - REFERENCE STUB ONLY
-//! ============================================================================
-//!
-//! Implementation stub for SVGGraphicsElement interface
-//!
-//! This file is AUTO-GENERATED into impls_tmp/ directory.
-//! The impls_tmp/ directory is gitignored and NOT part of the build.
-//!
-//! TO USE THIS STUB:
-//!   1. Copy this file to src/webidl/impls/
-//!   2. Remove this header comment block
-//!   3. Add your implementation logic
-//!   4. The impls/ directory is the canonical location for implementations
-//!
-//! If updating an existing implementation:
-//!   1. Diff this stub against the existing file in impls/
-//!   2. Manually merge new signatures while preserving custom code
-//!
-//! ============================================================================
+//! Implementation for SVGGraphicsElement interface
 
 const std = @import("std");
-const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const mixins = @import("mixins");
 const SVGGraphicsElement = interfaces.SVGGraphicsElement;
 
 pub const State = SVGGraphicsElement.State;
@@ -91,7 +70,7 @@ pub fn call_getCTM(instance: *runtime.Instance) ImplError!?*runtime.Instance {
 }
 
 /// Operation: getBBox
-pub fn call_getBBox(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SVGBoundingBoxOptions)) ImplError!*runtime.Instance {
+pub fn call_getBBox(instance: *runtime.Instance, options: dictionaries.SVGBoundingBoxOptions) ImplError!*runtime.Instance {
     _ = instance;
     _ = options;
     return error.NotImplemented;

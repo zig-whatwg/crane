@@ -31,12 +31,11 @@ pub const ImplError = error{
     TypeError,
     InvalidState,
     OutOfMemory,
+    NotImplemented,
     RangeError,
     NullValue,
     BufferDetached, // From ReadableByteStreamController.pullInto
     NoEventLoop,
-    IndexOutOfBounds,
-    EmptyQueue,
 };
 
 /// Type alias for read-into requests list
@@ -113,7 +112,11 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Constructor implementation
 ///
 /// Spec: § 4.5.2 "new ReadableStreamBYOBReader(stream)"
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, stream: *runtime.Instance) !*runtime.Instance {
+pub fn call_constructor(
+    allocator: std.mem.Allocator,
+    ctx: runtime.Context,
+    stream: *runtime.Instance,
+) !*runtime.Instance {
     // Note: Event loop is now obtained from context inside init()
     _ = stream.getState(interfaces.ReadableStream.State);
 
@@ -144,19 +147,23 @@ pub fn get_closed(instance: *runtime.Instance) ImplError!*const anyopaque {
 /// Operation: read
 ///
 /// Spec: § 4.5.3 "The read(view, options) method steps are:"
-pub fn call_read(instance: *runtime.Instance, view: typedefs.ArrayBufferView, options: webidl.Opt(dictionaries.ReadableStreamBYOBReaderReadOptions)) ImplError!*const anyopaque {
+pub fn call_read(
+    instance: *runtime.Instance,
+    view: typedefs.ArrayBufferView,
+    options: dictionaries.ReadableStreamBYOBReaderReadOptions,
+) ImplError!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
     // Step 1: If view.[[ByteLength]] is 0, reject with TypeError
-    const view_byte_length = view.getByteLength();
+    const view_byte_length = arraybuffer_view.getViewByteLength(view);
     if (view_byte_length == 0) {
         return error.TypeError;
     }
 
     // Step 2: If buffer byte length is 0, reject with TypeError
     // Step 3: If buffer is detached, reject with TypeError
-    if (view.isDetached()) {
+    if (arraybuffer_view.isViewDetached(view)) {
         return error.TypeError;
     }
 
@@ -165,8 +172,8 @@ pub fn call_read(instance: *runtime.Instance, view: typedefs.ArrayBufferView, op
         return error.TypeError;
     }
 
-    // Step 5: Parse options (default min = 1) - unwrap Opt
-    const min = if (options.wasPassed()) options.value.min orelse 1 else 1;
+    // Step 5: Parse options (default min = 1)
+    const min = options.min orelse 1;
 
     // Step 6: Return ReadableStreamBYOBReaderRead(this, view, min)
     return try readInternal(instance, view, min);
@@ -191,7 +198,7 @@ pub fn call_releaseLock(instance: *runtime.Instance) ImplError!void {
 /// Operation: cancel
 ///
 /// Spec: § 4.5.3 "The cancel(reason) method steps are:"
-pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) ImplError!*const anyopaque {
+pub fn call_cancel(instance: *runtime.Instance, reason: *const anyopaque) ImplError!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -200,10 +207,8 @@ pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(*const anyopa
         return error.TypeError;
     }
 
-    // Step 2: Return ! ReadableStreamReaderGenericCancel(this, reason) - unwrap Opt
-    var dummy_reason: u8 = 0;
-    const reason_ptr = if (reason.wasPassed()) reason.value else @as(*const anyopaque, @ptrCast(&dummy_reason));
-    return readableStreamReaderGenericCancel(internal, reason_ptr);
+    // Step 2: Return ! ReadableStreamReaderGenericCancel(this, reason)
+    return readableStreamReaderGenericCancel(internal, reason);
 }
 
 // ============================================================================
