@@ -99,16 +99,52 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor
 pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: webidl.Opt(typedefs.HeadersInit)) !*runtime.Instance {
-    const instance = try init(allocator, State, &Headers.vtable, ctx);
+    const instance = try initHeaders(allocator, State, &Headers.vtable, ctx);
     errdefer deinit(instance);
 
-    // Populate from init data
-    // HeadersInit is a union in the typedef
-    // For now, we handle empty initialization
-    // Full init handling would require parsing the init_data union
-    _ = init_data;
+    // Handle init_data based on its variant
+    if (init_data.wasPassed()) {
+        const headers_init = init_data.getValue();
+        switch (headers_init) {
+            .pairs => |pairs| {
+                // Array of [name, value] pairs
+                for (pairs) |pair| {
+                    try call_append(instance, pair[0], pair[1]);
+                }
+            },
+            .record => |entries| {
+                // Object with header entries
+                for (entries) |entry| {
+                    try call_append(instance, entry.name, entry.value);
+                }
+            },
+            .headers_ptr => |ptr| {
+                // Existing Headers object - copy its entries
+                const other_instance: *runtime.Instance = @ptrCast(@alignCast(@constCast(ptr)));
+                if (getEntriesInternal(other_instance)) |entries| {
+                    for (entries) |entry| {
+                        try call_append(instance, entry.name, entry.value);
+                    }
+                }
+            },
+            .v8_value => {
+                // V8 value fallback - this should be handled by V8 layer
+                // If we get here, we can't parse it
+            },
+        }
+    }
 
     return instance;
+}
+
+/// Internal init function (renamed to avoid shadowing)
+fn initHeaders(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+    ctx: runtime.Context,
+) !*runtime.Instance {
+    return init(allocator, StateType, vtable, ctx);
 }
 
 /// append(name, value)

@@ -413,6 +413,8 @@ pub fn build(b: *std.Build) void {
     v8_mod.addImport("dictionaries", dictionaries_mod);
     // V8 module needs webidl for error types (Exception)
     v8_mod.addImport("webidl", webidl_mod);
+    // V8 module needs typedefs for HeadersInit conversion
+    v8_mod.addImport("typedefs", typedefs_mod);
 
     // DOM module
     const dom_mod = b.addModule("dom", .{

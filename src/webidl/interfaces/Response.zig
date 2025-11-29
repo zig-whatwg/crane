@@ -1,5 +1,5 @@
 //! Generated from: fetch.idl
-//! Generated at: 2025-11-29T05:01:34Z
+//! Generated at: 2025-11-29T11:15:57Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -32,13 +32,13 @@ pub const Response = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "type", "get_type", null },
@@ -51,7 +51,7 @@ pub const Response = struct {
             .{ "body", "get_body", null },
             .{ "bodyUsed", "get_bodyUsed", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "clone", "call_clone", 0 },
@@ -62,14 +62,14 @@ pub const Response = struct {
             .{ "json", "call_json", 0 },
             .{ "text", "call_text", 0 },
         };
-        
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "error", "call_error", 0 },
             .{ "redirect", "call_redirect", 1 },
-            .{ "json", "call_json", 1 },
+            .{ "json", "call_json_static", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "error",
@@ -83,11 +83,10 @@ pub const Response = struct {
             "json",
             "text",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "type", "get_type", null },
@@ -100,11 +99,10 @@ pub const Response = struct {
             .{ "body", "get_body", null },
             .{ "bodyUsed", "get_bodyUsed", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -112,7 +110,7 @@ pub const Response = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": ResponseType = undefined,
+            type: ResponseType = undefined,
             url: runtime.USVString = undefined,
             redirected: bool = undefined,
             status: u16 = undefined,
@@ -127,7 +125,6 @@ pub const Response = struct {
     );
 
     const delegates = .{
-
         .get_body = &get_body,
         .get_bodyUsed = &get_bodyUsed,
         .get_headers = &get_headers,
@@ -142,10 +139,8 @@ pub const Response = struct {
         .call_blob = &call_blob,
         .call_bytes = &call_bytes,
         .call_clone = &call_clone,
-        .call_error = &call_error,
         .call_formData = &call_formData,
         .call_json = &call_json,
-        .call_redirect = &call_redirect,
         .call_text = &call_text,
     };
     pub const vtable = runtime.buildVTable(&delegates);
@@ -249,15 +244,22 @@ pub const Response = struct {
     /// Extended attributes: [NewObject]
     pub fn call_redirect(instance: *runtime.Instance, url: runtime.USVString, status: webidl.Opt(u16)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try ResponseImpl.call_redirect(instance, url, status);
     }
 
+    /// Instance method: json() from Body mixin
     /// Extended attributes: [NewObject]
-    pub fn call_json(instance: *runtime.Instance, data: *const anyopaque, init_data: webidl.Opt(ResponseInit)) anyerror!*runtime.Instance {
+    pub fn call_json(instance: *runtime.Instance) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
-        
-        return try ResponseImpl.call_json(instance, data, init_data);
+        return try ResponseImpl.call_json(instance);
+    }
+
+    /// Static method: Response.json(data, init)
+    /// Extended attributes: [NewObject]
+    pub fn call_json_static(instance: *runtime.Instance, data: *const anyopaque, init_data: webidl.Opt(ResponseInit)) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+        return try ResponseImpl.call_json_static(instance, data, init_data);
     }
 
     /// Extended attributes: [NewObject]
@@ -265,5 +267,4 @@ pub const Response = struct {
         // [NewObject] - Caller owns the returned object
         return try ResponseImpl.call_bytes(instance);
     }
-
 };

@@ -148,7 +148,10 @@ pub fn call_redirect(instance: *runtime.Instance, url: runtime.USVString, status
     return redirect_instance;
 }
 
-pub fn call_json(instance: *runtime.Instance, data: *const anyopaque, init_data: webidl.Opt(dictionaries.ResponseInit)) ImplError!*runtime.Instance {
+/// Response.json(data, init) - static method
+/// Creates a Response from JSON-serialized data
+/// Named call_json_static to avoid collision with instance method call_json
+pub fn call_json_static(instance: *runtime.Instance, data: *const anyopaque, init_data: webidl.Opt(dictionaries.ResponseInit)) ImplError!*runtime.Instance {
     _ = data;
 
     // Static method - use context directly, not instance state
@@ -649,8 +652,9 @@ pub fn call_formData(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// json() - Returns promise fulfilled with body parsed as JSON
+/// This is the instance method from the Body mixin
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-json
-pub fn call_json_read(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_json(instance: *runtime.Instance) ImplError!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 

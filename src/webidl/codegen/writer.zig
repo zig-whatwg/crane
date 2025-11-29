@@ -445,6 +445,18 @@ pub fn writeMetadata(
 
     try writer.writeAll("        };\n");
 
+    // Collect instance method names for collision detection
+    const allocator = std.heap.page_allocator;
+    var instance_method_names = std.StringHashMap(void).init(allocator);
+    defer instance_method_names.deinit();
+    for (own_operations) |op| {
+        if (!op.static) {
+            if (op.name) |name| {
+                try instance_method_names.put(name, {});
+            }
+        }
+    }
+
     // Generate static methods hints
     var has_static_methods = false;
     for (own_operations) |op| {
@@ -469,9 +481,16 @@ pub fn writeMetadata(
                         }
                     }
 
+                    // Check if this static method name collides with an instance method
+                    const has_collision = instance_method_names.contains(name);
+
                     try writer.print("            .{{ \"{s}\", \"call_", .{name});
                     try writeSanitizedName(writer, name);
-                    try writer.print("\", {d} }},\n", .{arity});
+                    if (has_collision) {
+                        try writer.print("_static\", {d} }},\n", .{arity});
+                    } else {
+                        try writer.print("\", {d} }},\n", .{arity});
+                    }
                 }
             }
         }
@@ -1604,6 +1623,9 @@ pub fn writeVTable(
     for (overload_sets) |set| {
         // Each overload set has one operation name
         if (set.operations.len > 0) {
+            // Skip static operations - they are bound to the constructor, not vtable
+            if (set.operations[0].static) continue;
+
             if (set.operations[0].name) |name| {
                 const sanitized_name = try sanitizeFunctionName(allocator, name);
                 const name_was_sanitized = !std.mem.eql(u8, sanitized_name, name);
@@ -2101,8 +2123,12 @@ fn writeSingleOperation(
     impl_name: []const u8,
     op: types.Operation,
     type_registry: ?*const @import("ir.zig").TypeRegistry,
+    has_static_collision: bool,
 ) !void {
     const name = op.name orelse return; // Skip unnamed operations
+
+    // If this is a static method with a name collision, use _static suffix
+    const suffix: []const u8 = if (has_static_collision) "_static" else "";
 
     // Check if return type is an interface - if so, use *runtime.Instance
     // Callback interfaces use ?*runtime.CallbackWrapper
@@ -2134,7 +2160,7 @@ fn writeSingleOperation(
     // Write extended attributes as comment
     try writeExtendedAttributesComment(writer, op.extAttrs);
 
-    try writer.print("    pub fn call_{s}(instance: *runtime.Instance", .{name});
+    try writer.print("    pub fn call_{s}{s}(instance: *runtime.Instance", .{ name, suffix });
 
     // Write parameters
     for (op.arguments) |arg| {
@@ -2267,7 +2293,7 @@ fn writeSingleOperation(
         try writer.writeAll("        \n");
     }
 
-    try writer.print("        return try {s}.call_{s}(instance", .{ impl_name, name });
+    try writer.print("        return try {s}.call_{s}{s}(instance", .{ impl_name, name, suffix });
 
     // Pass arguments
     // Note: webidl.Opt() parameters are passed directly (not unwrapped)
@@ -2497,6 +2523,17 @@ pub fn writeDelegateFunctions(
 ) !void {
     const allocator = std.heap.page_allocator;
 
+    // Collect instance method names for collision detection with static methods
+    var instance_method_names = std.StringHashMap(void).init(allocator);
+    defer instance_method_names.deinit();
+    for (own_operations) |op| {
+        if (!op.static) {
+            if (op.name) |name| {
+                try instance_method_names.put(name, {});
+            }
+        }
+    }
+
     // Write attribute getters - ONLY for own attributes (not inherited)
     for (own_attributes) |attr| {
         // Check if this is an interface type - if so, use *runtime.Instance
@@ -2596,7 +2633,9 @@ pub fn writeDelegateFunctions(
         } else {
             // Single operation - generate normal function
             const op = set.operations[0];
-            try writeSingleOperation(writer, impl_name, op, type_registry);
+            // Check for static/instance method name collision
+            const has_collision = op.static and instance_method_names.contains(op.name orelse "");
+            try writeSingleOperation(writer, impl_name, op, type_registry, has_collision);
         }
     }
 }

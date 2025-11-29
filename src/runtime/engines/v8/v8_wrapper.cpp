@@ -476,6 +476,13 @@ void v8_Object_SetAlignedPointerInInternalField(Global<Object>* obj, int index, 
     local_obj->SetAlignedPointerInInternalField(index, value);
 }
 
+int v8_Object_InternalFieldCount(Global<Object>* obj) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Object> local_obj = obj->Get(isolate);
+    return local_obj->InternalFieldCount();
+}
+
 void* v8_Object_GetAlignedPointerFromInternalField(Global<Object>* obj, int index) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);

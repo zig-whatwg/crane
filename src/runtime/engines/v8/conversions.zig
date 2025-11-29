@@ -26,6 +26,7 @@ const namespace = @import("namespace.zig");
 const interface_mod = @import("interface.zig");
 const dom_type_info = @import("dom_type_info.zig");
 const callback_wrapper = @import("callback_wrapper.zig");
+const typedefs = @import("typedefs");
 
 /// Conversion errors that can occur during type conversion
 pub const ConversionError = error{
@@ -240,6 +241,151 @@ pub fn fromV8Record(
     return rec;
 }
 
+/// Convert V8 value to HeadersInit union
+/// Handles: sequence<sequence<ByteString>>, record<ByteString, ByteString>, Headers
+fn convertHeadersInit(
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    value: *v8.Value,
+) ConversionError!typedefs.HeadersInit {
+    _ = isolate; // Used only for potential future error reporting
+    // Check if it's an array (sequence<sequence<ByteString>>)
+    if (v8.v8_Value_IsArray(value)) {
+        const array = @as(*v8.Array, @ptrCast(value));
+        const length = v8.v8_Array_Length(array);
+
+        // Allocate array for pairs
+        const pairs = try allocator.alloc([2][]const u8, length);
+        errdefer allocator.free(pairs);
+
+        for (0..length) |i| {
+            const elem = v8.v8_Array_Get(context, array, @intCast(i)) orelse continue;
+
+            // Each element should be an array of [key, value]
+            if (!v8.v8_Value_IsArray(elem)) {
+                // Not a valid pair, skip
+                pairs[i] = .{ "", "" };
+                continue;
+            }
+
+            const pair_array = @as(*v8.Array, @ptrCast(elem));
+            const pair_len = v8.v8_Array_Length(pair_array);
+            if (pair_len < 2) {
+                pairs[i] = .{ "", "" };
+                continue;
+            }
+
+            // Get key and value
+            const key_val = v8.v8_Array_Get(context, pair_array, 0);
+            const val_val = v8.v8_Array_Get(context, pair_array, 1);
+
+            var key_str: []const u8 = "";
+            var val_str: []const u8 = "";
+
+            if (key_val) |kv| {
+                if (v8.v8_Value_IsString(kv)) {
+                    const str = v8.v8_Value_ToString(kv, context);
+                    if (str) |s| {
+                        const len = v8.v8_String_Utf8Length(s);
+                        if (len > 0) {
+                            const buf = try allocator.alloc(u8, @intCast(len));
+                            _ = v8.v8_String_WriteUtf8(s, buf.ptr, @intCast(len));
+                            key_str = buf;
+                        }
+                    }
+                }
+            }
+
+            if (val_val) |vv| {
+                if (v8.v8_Value_IsString(vv)) {
+                    const str = v8.v8_Value_ToString(vv, context);
+                    if (str) |s| {
+                        const len = v8.v8_String_Utf8Length(s);
+                        if (len > 0) {
+                            const buf = try allocator.alloc(u8, @intCast(len));
+                            _ = v8.v8_String_WriteUtf8(s, buf.ptr, @intCast(len));
+                            val_str = buf;
+                        }
+                    }
+                }
+            }
+
+            pairs[i] = .{ key_str, val_str };
+        }
+
+        return .{ .pairs = pairs };
+    }
+
+    // Check if it's an object (record<ByteString, ByteString> or Headers)
+    if (v8.v8_Value_IsObject(value)) {
+        const obj = @as(*v8.Object, @ptrCast(value));
+
+        // Check if it's a Headers object (has internal fields with instance)
+        // Plain JS objects have 0 internal fields, wrapped Zig objects have 2
+        const field_count = v8.v8_Object_InternalFieldCount(obj);
+        if (field_count >= 1) {
+            const internal_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(obj, 0);
+            if (internal_ptr != null) {
+                // This might be a Headers object - pass as headers_ptr
+                return .{ .headers_ptr = @ptrCast(internal_ptr) };
+            }
+        }
+
+        // It's a plain object - get property names and values
+        const prop_names = v8.v8_Object_GetPropertyNames(context, obj) orelse {
+            // Empty object
+            return .{ .record = &.{} };
+        };
+
+        const prop_count = v8.v8_Array_Length(prop_names);
+        // Use the actual HeaderEntry type from typedefs
+        const entries = try allocator.alloc(typedefs.HeaderEntry, prop_count);
+        errdefer allocator.free(entries);
+
+        var valid_count: usize = 0;
+        for (0..prop_count) |i| {
+            const prop_name_val = v8.v8_Array_Get(context, prop_names, @intCast(i)) orelse continue;
+
+            // Get property name as string
+            const prop_name_str = v8.v8_Value_ToString(prop_name_val, context) orelse continue;
+            const name_len = v8.v8_String_Utf8Length(prop_name_str);
+            if (name_len <= 0) continue;
+
+            const name_buf = try allocator.alloc(u8, @intCast(name_len));
+            errdefer allocator.free(name_buf);
+            _ = v8.v8_String_WriteUtf8(prop_name_str, name_buf.ptr, @intCast(name_len));
+
+            // Get property value
+            const prop_val = v8.v8_Object_Get(obj, context, @ptrCast(prop_name_val)) orelse continue;
+
+            var val_str: []const u8 = "";
+            if (v8.v8_Value_IsString(prop_val)) {
+                const str = v8.v8_Value_ToString(prop_val, context);
+                if (str) |s| {
+                    const len = v8.v8_String_Utf8Length(s);
+                    if (len > 0) {
+                        const buf = try allocator.alloc(u8, @intCast(len));
+                        _ = v8.v8_String_WriteUtf8(s, buf.ptr, @intCast(len));
+                        val_str = buf;
+                    }
+                }
+            }
+
+            entries[valid_count] = .{
+                .name = name_buf,
+                .value = val_str,
+            };
+            valid_count += 1;
+        }
+
+        return .{ .record = entries[0..valid_count] };
+    }
+
+    // Fallback - pass V8 value as opaque
+    return .{ .v8_value = @ptrCast(value) };
+}
+
 /// Generic V8 Value to Zig type conversion
 ///
 /// Dispatches to the appropriate conversion function based on target type.
@@ -301,6 +447,11 @@ pub fn fromV8Value(
         }
         const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
         return try fromV8String(allocator, isolate, context, string);
+    }
+
+    // Handle HeadersInit specially - parse V8 value to appropriate variant
+    if (T == @import("typedefs").HeadersInit) {
+        return try convertHeadersInit(allocator, isolate, context, value);
     }
 
     // Handle unions (for constructor overloading and type unions)
