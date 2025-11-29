@@ -1,26 +1,54 @@
 //! Implementation for IDBObjectStore interface
+//!
+//! Connects WebIDL interface to IndexedDB backend at src/storage/indexeddb/object_store.zig
+//!
+//! Spec: https://w3c.github.io/IndexedDB/#idbobjectstore
+//!
+//! IDBObjectStore represents an object store in a database. It provides CRUD operations.
 
 const std = @import("std");
+const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const webidl = @import("webidl");
-const IDBObjectStore = interfaces.IDBObjectStore;
+const IDBObjectStoreInterface = interfaces.IDBObjectStore;
 
-pub const State = IDBObjectStore.State;
+// Backend imports
+const storage = @import("storage");
+const BackendObjectStore = storage.indexeddb.object_store.IDBObjectStore;
+const BackendKeyRange = storage.indexeddb.IDBKeyRange;
+const BackendCursorDirection = storage.indexeddb.cursor.IDBCursorDirection;
+
+pub const State = IDBObjectStoreInterface.State;
 
 pub const ImplError = error{
-    NotImplemented,
+    InvalidState,
+    OutOfMemory,
+    NotFound,
+    DataError,
+    ReadOnlyError,
+    TransactionInactiveError,
+    ConstraintError,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Internal state for IDBObjectStore
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+
+    /// Backend object store (borrowed, owned by transaction/database)
+    store: ?*BackendObjectStore,
+
+    /// Parent transaction instance
+    transaction: ?*runtime.Instance,
+
+    pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
+        // Don't destroy backend store - it's owned by the database
+        allocator.destroy(self);
+    }
+};
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -30,162 +58,431 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    errdefer runtime.Instance.deinit(instance);
+
+    const state = instance.getState(StateType);
+
+    state.own._internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(state.own._internal.?);
+
+    const internal = state.own._internal.?;
+    internal.allocator = allocator;
+    internal.store = null;
+    internal.transaction = null;
+
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.deinit(internal.allocator);
+        state.own._internal = null;
+    }
     runtime.Instance.deinit(instance);
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    const store = internal.store orelse return error.InvalidState;
+    return runtime.DOMString.initInterned(store.name);
 }
 
 /// Getter for keyPath
-pub fn get_keyPath(instance: *runtime.Instance) anyerror!*const anyopaque {
-    _ = instance;
-    return error.NotImplemented;
+pub fn get_keyPath(instance: *runtime.Instance) ImplError!*const anyopaque {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    const store = internal.store orelse return error.InvalidState;
+
+    // Get key path from backend
+    if (store.getKeyPathString()) |_| {
+        // TODO: Convert to JS value
+        return error.InvalidState;
+    }
+    // Return null/undefined for no key path
+    return error.InvalidState;
 }
 
 /// Getter for indexNames
-pub fn get_indexNames(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+pub fn get_indexNames(instance: *runtime.Instance) ImplError!*runtime.Instance {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    const store = internal.store orelse return error.InvalidState;
+
+    _ = store.indexNames() catch return error.OutOfMemory;
+    // TODO: Create DOMStringList from names
+    return error.InvalidState;
 }
 
 /// Getter for transaction
-pub fn get_transaction(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+pub fn get_transaction(instance: *runtime.Instance) ImplError!*runtime.Instance {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    return internal.transaction orelse error.InvalidState;
 }
 
 /// Getter for autoIncrement
-pub fn get_autoIncrement(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+pub fn get_autoIncrement(instance: *runtime.Instance) ImplError!bool {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    const store = internal.store orelse return error.InvalidState;
+    return store.auto_increment;
 }
 
 /// Setter for name
-pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
+pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    const store = internal.store orelse return error.InvalidState;
+
+    // Renaming object stores is only allowed during versionchange transactions
+    _ = store;
     _ = value;
-    return error.NotImplemented;
-}
-
-/// Operation: delete
-pub fn call_delete(instance: *runtime.Instance, query: *const anyopaque) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = query;
-    return error.NotImplemented;
-}
-
-/// Operation: deleteIndex
-pub fn call_deleteIndex(instance: *runtime.Instance, name: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = name;
-    return error.NotImplemented;
-}
-
-/// Operation: getAll
-pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: webidl.Opt(*const anyopaque), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = queryOrOptions;
-    _ = count;
-    return error.NotImplemented;
-}
-
-/// Operation: openKeyCursor
-pub fn call_openKeyCursor(instance: *runtime.Instance, query: webidl.Opt(*const anyopaque), direction: webidl.Opt(enums.IDBCursorDirection)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = query;
-    _ = direction;
-    return error.NotImplemented;
-}
-
-/// Operation: index
-pub fn call_index(instance: *runtime.Instance, name: runtime.DOMString) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = name;
-    return error.NotImplemented;
-}
-
-/// Operation: count
-pub fn call_count(instance: *runtime.Instance, query: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = query;
-    return error.NotImplemented;
-}
-
-/// Operation: add
-pub fn call_add(instance: *runtime.Instance, value: *const anyopaque, key: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = value;
-    _ = key;
-    return error.NotImplemented;
-}
-
-/// Operation: clear
-pub fn call_clear(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: openCursor
-pub fn call_openCursor(instance: *runtime.Instance, query: webidl.Opt(*const anyopaque), direction: webidl.Opt(enums.IDBCursorDirection)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = query;
-    _ = direction;
-    return error.NotImplemented;
-}
-
-/// Operation: getAllKeys
-pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: webidl.Opt(*const anyopaque), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = queryOrOptions;
-    _ = count;
-    return error.NotImplemented;
+    return error.InvalidState; // TODO: Implement rename
 }
 
 /// Operation: put
-pub fn call_put(instance: *runtime.Instance, value: *const anyopaque, key: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
-    _ = instance;
+pub fn call_put(instance: *runtime.Instance, value: *const anyopaque, key: webidl.Opt(*const anyopaque)) ImplError!*runtime.Instance {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    const store = internal.store orelse return error.InvalidState;
+
+    // TODO: Convert JS value to serialized bytes
+    // TODO: Convert JS key to IDBKey
     _ = value;
     _ = key;
-    return error.NotImplemented;
+
+    const request = store.put(&.{}, null) catch |err| {
+        return switch (err) {
+            error.ReadOnlyError => error.ReadOnlyError,
+            error.TransactionInactiveError => error.TransactionInactiveError,
+            error.DataError => error.DataError,
+            error.ConstraintError => error.ConstraintError,
+            else => error.InvalidState,
+        };
+    };
+
+    // Create WebIDL IDBRequest wrapper
+    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
+        return error.OutOfMemory;
+    };
+
+    _ = request;
+    return req_instance;
 }
 
-/// Operation: getAllRecords
-pub fn call_getAllRecords(instance: *runtime.Instance, options: webidl.Opt(dictionaries.IDBGetAllOptions)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = options;
-    return error.NotImplemented;
+/// Operation: add
+pub fn call_add(instance: *runtime.Instance, value: *const anyopaque, key: webidl.Opt(*const anyopaque)) ImplError!*runtime.Instance {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    const store = internal.store orelse return error.InvalidState;
+
+    _ = value;
+    _ = key;
+
+    const request = store.add(&.{}, null) catch |err| {
+        return switch (err) {
+            error.ReadOnlyError => error.ReadOnlyError,
+            error.TransactionInactiveError => error.TransactionInactiveError,
+            error.DataError => error.DataError,
+            error.ConstraintError => error.ConstraintError,
+            else => error.InvalidState,
+        };
+    };
+
+    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
+        return error.OutOfMemory;
+    };
+
+    _ = request;
+    return req_instance;
 }
 
-/// Operation: getKey
-pub fn call_getKey(instance: *runtime.Instance, query: *const anyopaque) anyerror!*runtime.Instance {
-    _ = instance;
+/// Operation: delete
+pub fn call_delete(instance: *runtime.Instance, query: *const anyopaque) ImplError!*runtime.Instance {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    const store = internal.store orelse return error.InvalidState;
+
     _ = query;
-    return error.NotImplemented;
+
+    const request = store.delete(BackendKeyRange.unbounded()) catch |err| {
+        return switch (err) {
+            error.ReadOnlyError => error.ReadOnlyError,
+            error.TransactionInactiveError => error.TransactionInactiveError,
+            else => error.InvalidState,
+        };
+    };
+
+    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
+        return error.OutOfMemory;
+    };
+
+    _ = request;
+    return req_instance;
+}
+
+/// Operation: clear
+pub fn call_clear(instance: *runtime.Instance) ImplError!*runtime.Instance {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    const store = internal.store orelse return error.InvalidState;
+
+    const request = store.clear() catch |err| {
+        return switch (err) {
+            error.ReadOnlyError => error.ReadOnlyError,
+            error.TransactionInactiveError => error.TransactionInactiveError,
+            else => error.InvalidState,
+        };
+    };
+
+    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
+        return error.OutOfMemory;
+    };
+
+    _ = request;
+    return req_instance;
 }
 
 /// Operation: get
-pub fn call_get(instance: *runtime.Instance, query: *const anyopaque) anyerror!*runtime.Instance {
-    _ = instance;
+pub fn call_get(instance: *runtime.Instance, query: *const anyopaque) ImplError!*runtime.Instance {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    const store = internal.store orelse return error.InvalidState;
+
     _ = query;
-    return error.NotImplemented;
+
+    const request = store.get(BackendKeyRange.unbounded()) catch |err| {
+        return switch (err) {
+            error.TransactionInactiveError => error.TransactionInactiveError,
+            else => error.InvalidState,
+        };
+    };
+
+    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
+        return error.OutOfMemory;
+    };
+
+    _ = request;
+    return req_instance;
+}
+
+/// Operation: getKey
+pub fn call_getKey(instance: *runtime.Instance, query: *const anyopaque) ImplError!*runtime.Instance {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    const store = internal.store orelse return error.InvalidState;
+
+    _ = query;
+
+    const request = store.getKey(BackendKeyRange.unbounded()) catch |err| {
+        return switch (err) {
+            error.TransactionInactiveError => error.TransactionInactiveError,
+            else => error.InvalidState,
+        };
+    };
+
+    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
+        return error.OutOfMemory;
+    };
+
+    _ = request;
+    return req_instance;
+}
+
+/// Operation: getAll
+pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: webidl.Opt(*const anyopaque), count: webidl.Opt(u32)) ImplError!*runtime.Instance {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    _ = internal.store orelse return error.InvalidState;
+
+    _ = queryOrOptions;
+    _ = count;
+
+    // TODO: Implement getAll with proper query conversion
+    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
+        return error.OutOfMemory;
+    };
+
+    return req_instance;
+}
+
+/// Operation: getAllKeys
+pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: webidl.Opt(*const anyopaque), count: webidl.Opt(u32)) ImplError!*runtime.Instance {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    _ = internal.store orelse return error.InvalidState;
+
+    _ = queryOrOptions;
+    _ = count;
+
+    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
+        return error.OutOfMemory;
+    };
+
+    return req_instance;
+}
+
+/// Operation: getAllRecords
+pub fn call_getAllRecords(instance: *runtime.Instance, options: webidl.Opt(dictionaries.IDBGetAllOptions)) ImplError!*runtime.Instance {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    _ = internal.store orelse return error.InvalidState;
+
+    _ = options;
+
+    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
+        return error.OutOfMemory;
+    };
+
+    return req_instance;
+}
+
+/// Operation: count
+pub fn call_count(instance: *runtime.Instance, query: webidl.Opt(*const anyopaque)) ImplError!*runtime.Instance {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    const store = internal.store orelse return error.InvalidState;
+
+    _ = query;
+
+    const request = store.count(null) catch |err| {
+        return switch (err) {
+            error.TransactionInactiveError => error.TransactionInactiveError,
+            else => error.InvalidState,
+        };
+    };
+
+    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
+        return error.OutOfMemory;
+    };
+
+    _ = request;
+    return req_instance;
+}
+
+/// Operation: openCursor
+pub fn call_openCursor(instance: *runtime.Instance, query: webidl.Opt(*const anyopaque), direction: webidl.Opt(enums.IDBCursorDirection)) ImplError!*runtime.Instance {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    const store = internal.store orelse return error.InvalidState;
+
+    _ = query;
+
+    // Unwrap Opt for direction (default to "next")
+    const direction_val = if (direction.wasPassed()) direction.value else ._next_;
+    const backend_direction = switch (direction_val) {
+        ._next_ => BackendCursorDirection.next,
+        ._nextunique_ => BackendCursorDirection.nextunique,
+        ._prev_ => BackendCursorDirection.prev,
+        ._prevunique_ => BackendCursorDirection.prevunique,
+    };
+
+    const request = store.openCursor(BackendKeyRange.unbounded(), backend_direction) catch |err| {
+        return switch (err) {
+            error.TransactionInactiveError => error.TransactionInactiveError,
+            else => error.InvalidState,
+        };
+    };
+
+    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
+        return error.OutOfMemory;
+    };
+
+    _ = request;
+    return req_instance;
+}
+
+/// Operation: openKeyCursor
+pub fn call_openKeyCursor(instance: *runtime.Instance, query: webidl.Opt(*const anyopaque), direction: webidl.Opt(enums.IDBCursorDirection)) ImplError!*runtime.Instance {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    _ = internal.store orelse return error.InvalidState;
+
+    _ = query;
+    _ = direction;
+
+    // TODO: Implement openKeyCursor
+    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
+        return error.OutOfMemory;
+    };
+
+    return req_instance;
+}
+
+/// Operation: index
+pub fn call_index(instance: *runtime.Instance, name: runtime.DOMString) ImplError!*runtime.Instance {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    const store = internal.store orelse return error.InvalidState;
+
+    const name_slice = name.asSlice();
+
+    const index = store.index(name_slice) catch |err| {
+        return switch (err) {
+            error.NotFoundError => error.NotFound,
+            error.InvalidStateError => error.InvalidState,
+            else => error.InvalidState,
+        };
+    };
+
+    const index_instance = interfaces.IDBIndex.init(internal.allocator, instance.ctx) catch {
+        return error.OutOfMemory;
+    };
+
+    _ = index;
+    return index_instance;
 }
 
 /// Operation: createIndex
-pub fn call_createIndex(instance: *runtime.Instance, name: runtime.DOMString, keyPath: *const anyopaque, options: webidl.Opt(dictionaries.IDBIndexParameters)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = name;
+pub fn call_createIndex(instance: *runtime.Instance, name: runtime.DOMString, keyPath: *const anyopaque, options: webidl.Opt(dictionaries.IDBIndexParameters)) ImplError!*runtime.Instance {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    const store = internal.store orelse return error.InvalidState;
+
+    const name_slice = name.asSlice();
     _ = keyPath;
-    _ = options;
-    return error.NotImplemented;
+
+    // Unwrap Opt for options
+    const backend_options = storage.indexeddb.object_store.IDBIndexParameters{
+        .unique = if (options.wasPassed()) options.value.unique orelse false else false,
+        .multi_entry = if (options.wasPassed()) options.value.multiEntry orelse false else false,
+    };
+
+    const index = store.createIndex(name_slice, "", backend_options) catch |err| {
+        return switch (err) {
+            error.ConstraintError => error.ConstraintError,
+            error.InvalidStateError => error.InvalidState,
+            error.TransactionInactiveError => error.TransactionInactiveError,
+            else => error.InvalidState,
+        };
+    };
+
+    const index_instance = interfaces.IDBIndex.init(internal.allocator, instance.ctx) catch {
+        return error.OutOfMemory;
+    };
+
+    _ = index;
+    return index_instance;
 }
 
+/// Operation: deleteIndex
+pub fn call_deleteIndex(instance: *runtime.Instance, name: runtime.DOMString) ImplError!void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    const store = internal.store orelse return error.InvalidState;
+
+    const name_slice = name.asSlice();
+
+    store.deleteIndex(name_slice) catch |err| {
+        return switch (err) {
+            error.NotFoundError => error.NotFound,
+            error.InvalidStateError => error.InvalidState,
+            error.TransactionInactiveError => error.TransactionInactiveError,
+            else => error.InvalidState,
+        };
+    };
+}

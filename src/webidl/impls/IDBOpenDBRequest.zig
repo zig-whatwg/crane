@@ -1,4 +1,6 @@
 //! Implementation for IDBOpenDBRequest interface
+//!
+//! Extends IDBRequest with events for database open/upgrade operations.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -7,21 +9,35 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const IDBOpenDBRequest = interfaces.IDBOpenDBRequest;
+const storage = @import("storage");
+const IDBOpenDBRequestInterface = interfaces.IDBOpenDBRequest;
 
-pub const State = IDBOpenDBRequest.State;
+// Backend types
+const BackendOpenDBRequest = storage.indexeddb.IDBOpenDBRequest;
+
+pub const State = IDBOpenDBRequestInterface.State;
 
 pub const ImplError = error{
     NotImplemented,
+    InvalidState,
+    OutOfMemory,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Internal state wrapping storage.indexeddb.IDBOpenDBRequest
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+    open_request: ?*BackendOpenDBRequest,
 
-/// Initialize instance (creates the instance)
+    // Event handlers specific to open requests
+    onblocked_handler: ?typedefs.EventHandler,
+    onupgradeneeded_handler: ?typedefs.EventHandler,
+
+    pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
+    }
+};
+
+/// Initialize instance
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
@@ -29,39 +45,56 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    errdefer runtime.Instance.deinit(instance);
+
+    const state = instance.getState(StateType);
+
+    state.own._internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(state.own._internal.?);
+
+    const internal = state.own._internal.?;
+    internal.allocator = allocator;
+    internal.open_request = null;
+    internal.onblocked_handler = null;
+    internal.onupgradeneeded_handler = null;
+
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.deinit(internal.allocator);
+        state.own._internal = null;
+    }
     runtime.Instance.deinit(instance);
 }
 
-/// Getter for onblocked
-pub fn get_onblocked(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+/// Getter for onblocked event handler
+pub fn get_onblocked(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    return internal.onblocked_handler orelse return error.InvalidState;
 }
 
-/// Getter for onupgradeneeded
-pub fn get_onupgradeneeded(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+/// Getter for onupgradeneeded event handler
+pub fn get_onupgradeneeded(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    return internal.onupgradeneeded_handler orelse return error.InvalidState;
 }
 
-/// Setter for onblocked
-pub fn set_onblocked(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+/// Setter for onblocked event handler
+pub fn set_onblocked(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    internal.onblocked_handler = value;
 }
 
-/// Setter for onupgradeneeded
-pub fn set_onupgradeneeded(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+/// Setter for onupgradeneeded event handler
+pub fn set_onupgradeneeded(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    internal.onupgradeneeded_handler = value;
 }
-
