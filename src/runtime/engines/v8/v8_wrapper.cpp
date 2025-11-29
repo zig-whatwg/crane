@@ -293,6 +293,13 @@ bool v8_Value_IsArray(Global<Value>* value) {
     return val->IsArray();
 }
 
+bool v8_Value_IsPromise(Global<Value>* value) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    return val->IsPromise();
+}
+
 bool v8_Value_IsNullOrUndefined(Global<Value>* value) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);

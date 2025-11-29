@@ -365,6 +365,7 @@ pub extern fn v8_Symbol_Dispose(symbol: *Symbol) void;
 pub extern fn v8_Value_IsObject(value: *Value) bool;
 pub extern fn v8_Value_IsFunction(value: *Value) bool;
 pub extern fn v8_Value_IsArray(value: *Value) bool;
+pub extern fn v8_Value_IsPromise(value: *Value) bool;
 pub extern fn v8_Value_BooleanValue(value: *Value, isolate: *Isolate) bool;
 pub extern fn v8_Value_NumberValue(value: *Value, context: *Context) f64;
 pub extern fn v8_Value_Int32Value(value: *Value, context: *Context) i32;

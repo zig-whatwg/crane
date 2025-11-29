@@ -899,6 +899,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "runtime", .module = runtime_mod },
             .{ .name = "callbacks", .module = callbacks_mod },
             .{ .name = "async_promise", .module = streams_async_promise_mod },
+            .{ .name = "webidl", .module = webidl_mod },
         },
     });
 

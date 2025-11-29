@@ -13,6 +13,7 @@ const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
 const callbacks = @import("callbacks");
 const AsyncPromise = @import("async_promise").AsyncPromise;
+const webidl = @import("webidl");
 
 /// Algorithm - Represents a stream operation (start/pull/cancel/etc.)
 ///
@@ -99,25 +100,87 @@ fn jsCallbackInvoke(
     controller: *runtime.Instance,
     context: ?*anyopaque,
 ) !*AsyncPromise(void) {
-    _ = context;
-    // TODO: Implement proper V8 callback invocation
-    //
-    // The callback stored in context is a V8 Global<Value>* (not a Zig function pointer).
-    // Invoking V8 callbacks requires access to V8 FFI which isn't available in this
-    // engine-agnostic module.
-    //
-    // For now, we return a resolved promise. This means:
-    // - pull() callbacks won't be invoked (stream won't auto-fill)
-    // - cancel() callbacks won't be invoked
-    //
-    // Streams with start() that enqueue all data upfront will still work.
-    // Streams relying on pull() for lazy data loading won't work yet.
-    //
-    // Proper fix: Add callback invocation support to runtime.Context interface
-    // so algorithms can invoke callbacks through an engine-agnostic API.
-
     const allocator = controller.ctx.getAllocator();
     const event_loop = try controller.ctx.getEventLoop();
+
+    // Get engine interface for invoking JavaScript callbacks
+    const engine = controller.ctx.getEngine() orelse {
+        // No engine - return resolved promise (fallback for testing)
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.fulfill({});
+        return promise;
+    };
+
+    // Check if engine supports stream callback invocation
+    const invoke_fn = engine.invokeStreamCallback orelse {
+        // Engine doesn't support stream callbacks - return resolved promise
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.fulfill({});
+        return promise;
+    };
+
+    // Get the engine context (V8 Context)
+    const engine_ctx = controller.ctx.getEngineContext() orelse {
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.fulfill({});
+        return promise;
+    };
+
+    // Get the controller's V8 wrapper from cache
+    // The wrapper cache is stored in the context data
+    const controller_v8: ?*anyopaque = blk: {
+        if (controller.ctx.getV8WrapperCacheStorage()) |cache_storage| {
+            // Import WrapperCache type - we need to use comptime import trick
+            // since we can't import V8-specific code directly
+            const WrapperCachePtr = *anyopaque;
+            const cache: WrapperCachePtr = cache_storage;
+
+            // The wrapper cache has a get() method that takes *runtime.Instance
+            // We need to call it through the generic cache interface
+            // For now, we'll pass null for controller and let the callback handle it
+            // TODO: Add getWrapperForInstance to EngineInterface or Context
+            _ = cache;
+            break :blk null;
+        }
+        break :blk null;
+    };
+
+    // Invoke the JavaScript callback through the engine
+    const js_callback = context orelse {
+        // No callback stored - return resolved promise
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.fulfill({});
+        return promise;
+    };
+
+    const result = invoke_fn(
+        engine_ctx,
+        js_callback,
+        controller_v8,
+        null, // No additional argument for pull
+    ) catch {
+        // Invocation failed - return rejected promise
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.reject(webidl.errors.Exception{ .simple = .{
+            .type = .TypeError,
+            .message = "Stream callback invocation failed",
+        } });
+        return promise;
+    };
+
+    // If invocation returned null, callback threw - return rejected promise
+    if (result == null) {
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.reject(webidl.errors.Exception{ .simple = .{
+            .type = .TypeError,
+            .message = "Stream callback threw an exception",
+        } });
+        return promise;
+    }
+
+    // The result is a V8 Promise - we need to wrap it in an AsyncPromise
+    // For now, return a resolved promise since we can't chain V8 promises easily
+    // TODO: Bridge V8 Promise to AsyncPromise via then() callbacks
     const promise = try AsyncPromise(void).init(allocator, event_loop);
     promise.fulfill({});
     return promise;
@@ -128,10 +191,71 @@ fn jsCallbackInvokeWithArg(
     context: ?*anyopaque,
     arg: *const anyopaque,
 ) !*AsyncPromise(void) {
-    // TODO: Pass arg to callback when cancel algorithm is implemented
-    _ = arg;
-    // Similar to jsCallbackInvoke but with argument
-    return jsCallbackInvoke(controller, context);
+    const allocator = controller.ctx.getAllocator();
+    const event_loop = try controller.ctx.getEventLoop();
+
+    // Get engine interface for invoking JavaScript callbacks
+    const engine = controller.ctx.getEngine() orelse {
+        // No engine - return resolved promise (fallback for testing)
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.fulfill({});
+        return promise;
+    };
+
+    // Check if engine supports stream callback invocation
+    const invoke_fn = engine.invokeStreamCallback orelse {
+        // Engine doesn't support stream callbacks - return resolved promise
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.fulfill({});
+        return promise;
+    };
+
+    // Get the engine context (V8 Context)
+    const engine_ctx = controller.ctx.getEngineContext() orelse {
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.fulfill({});
+        return promise;
+    };
+
+    // Invoke the JavaScript callback through the engine with argument
+    const js_callback = context orelse {
+        // No callback stored - return resolved promise
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.fulfill({});
+        return promise;
+    };
+
+    const result = invoke_fn(
+        engine_ctx,
+        js_callback,
+        null, // Controller not needed for cancel
+        arg, // Pass the cancel reason
+    ) catch {
+        // Invocation failed - return rejected promise
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.reject(webidl.errors.Exception{ .simple = .{
+            .type = .TypeError,
+            .message = "Stream cancel callback invocation failed",
+        } });
+        return promise;
+    };
+
+    // If invocation returned null, callback threw - return rejected promise
+    if (result == null) {
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.reject(webidl.errors.Exception{ .simple = .{
+            .type = .TypeError,
+            .message = "Stream cancel callback threw an exception",
+        } });
+        return promise;
+    }
+
+    // The result is a V8 Promise - we need to wrap it in an AsyncPromise
+    // For now, return a resolved promise since we can't chain V8 promises easily
+    // TODO: Bridge V8 Promise to AsyncPromise via then() callbacks
+    const promise = try AsyncPromise(void).init(allocator, event_loop);
+    promise.fulfill({});
+    return promise;
 }
 
 fn jsCallbackDestroy(context: ?*anyopaque, allocator: Allocator) void {

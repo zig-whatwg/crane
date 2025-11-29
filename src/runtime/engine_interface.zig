@@ -293,6 +293,33 @@ pub const EngineInterface = struct {
         user_data: *anyopaque,
     ) EngineError!void,
 
+    // ========================================================================
+    // Stream Algorithm Callback Support
+    // ========================================================================
+
+    /// Invoke a JavaScript callback function for stream algorithms
+    ///
+    /// Used by WHATWG Streams to invoke pull(), cancel(), start() callbacks.
+    /// The callback is a JS function stored as an opaque pointer (V8 Global<Value>*).
+    ///
+    /// Arguments:
+    ///   - engine_ctx: Engine-specific context (V8 Context, JSC VM, etc.)
+    ///   - js_callback: Opaque pointer to JS function (V8 Global<Value>*)
+    ///   - controller_v8: Opaque pointer to V8 wrapper of controller (or null)
+    ///   - arg: Optional argument (e.g., reason for cancel)
+    ///
+    /// Returns:
+    ///   - Opaque pointer to resulting Promise, or null on failure
+    ///
+    /// Note: The returned Promise should be awaited or the result handled by
+    /// the stream machinery. The caller is responsible for any cleanup.
+    invokeStreamCallback: ?*const fn (
+        engine_ctx: *anyopaque,
+        js_callback: *const anyopaque,
+        controller_v8: ?*anyopaque,
+        arg: ?*const anyopaque,
+    ) EngineError!?*anyopaque,
+
     /// Engine name for debugging/logging
     name: []const u8,
 
@@ -317,6 +344,7 @@ pub const stub_engine: EngineInterface = .{
     .destroyCallbackWrapper = null,
     .requestGarbageCollection = stubRequestGarbageCollection,
     .scheduleOnMainThread = stubScheduleOnMainThread,
+    .invokeStreamCallback = stubInvokeStreamCallback,
     .name = "stub",
     .version = "0.0.0",
 };
@@ -356,6 +384,16 @@ fn stubScheduleOnMainThread(
     // Stub: Execute callback immediately (for testing without real engine)
     // In real engines, this would post to the event loop
     callback(user_data);
+}
+
+fn stubInvokeStreamCallback(
+    _: *anyopaque,
+    _: *const anyopaque,
+    _: ?*anyopaque,
+    _: ?*const anyopaque,
+) EngineError!?*anyopaque {
+    // Stub: No JS engine available, can't invoke callback
+    return EngineError.NoEngine;
 }
 
 // ============================================================================

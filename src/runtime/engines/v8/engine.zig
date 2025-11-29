@@ -43,6 +43,7 @@ pub const v8_engine_interface: EngineInterface = .{
     .destroyCallbackWrapper = v8DestroyCallbackWrapper,
     .requestGarbageCollection = v8RequestGarbageCollection,
     .scheduleOnMainThread = v8ScheduleOnMainThread,
+    .invokeStreamCallback = v8InvokeStreamCallback,
     .name = "V8",
     .version = "12.x", // TODO: Get actual version from V8
 };
@@ -313,6 +314,95 @@ fn v8ScheduleOnMainThread(
     // For now, execute immediately (assumes we're on main thread)
     // TODO: Use V8 platform task runner for true async scheduling
     callback(user_data);
+}
+
+// ============================================================================
+// Stream Algorithm Callback Support
+// ============================================================================
+
+/// Invoke a JavaScript callback function for stream algorithms (pull, cancel, etc.)
+///
+/// This invokes a JS function that was stored during stream construction.
+/// The function receives the controller as first argument and optional arg as second.
+///
+/// Arguments:
+///   - engine_ctx: V8 Context pointer
+///   - js_callback: V8 Global<Value>* pointing to the JS function
+///   - controller_v8: V8 Object* for the controller wrapper (or null)
+///   - arg: Optional V8 Value* for additional argument (e.g., cancel reason)
+///
+/// Returns:
+///   - V8 Promise* from calling the function, or null on failure
+fn v8InvokeStreamCallback(
+    engine_ctx: *anyopaque,
+    js_callback: *const anyopaque,
+    controller_v8: ?*anyopaque,
+    arg: ?*const anyopaque,
+) EngineError!?*anyopaque {
+    const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse
+        return EngineError.OperationFailed;
+
+    // Get the JS function value from the Global handle
+    // The callback is stored as a V8 Global<Value>* which we need to dereference
+    const callback_value: *ffi.Value = @ptrCast(@alignCast(@constCast(js_callback)));
+
+    // Check if it's actually a function
+    if (!ffi.v8_Value_IsFunction(callback_value)) {
+        return EngineError.TypeError;
+    }
+
+    const callback_fn: *ffi.Function = @ptrCast(callback_value);
+
+    // Build arguments array
+    var args: [2]*ffi.Value = undefined;
+    var arg_count: usize = 0;
+
+    // First argument: controller (if provided)
+    if (controller_v8) |ctrl| {
+        args[arg_count] = @ptrCast(@alignCast(ctrl));
+        arg_count += 1;
+    }
+
+    // Second argument: additional arg (if provided)
+    if (arg) |a| {
+        args[arg_count] = @ptrCast(@alignCast(@constCast(a)));
+        arg_count += 1;
+    }
+
+    // Get 'this' value (undefined for stream callbacks)
+    const this_val = ffi.v8_Undefined(isolate) orelse
+        return EngineError.OperationFailed;
+
+    // Call the function
+    const args_ptr: [*]*ffi.Value = &args;
+    const result = ffi.v8_Function_Call(
+        callback_fn,
+        context,
+        this_val,
+        @intCast(arg_count),
+        if (arg_count > 0) args_ptr else args_ptr,
+    );
+
+    if (result) |r| {
+        // If result is a Promise, return it directly
+        if (ffi.v8_Value_IsPromise(r)) {
+            return @ptrCast(r);
+        }
+
+        // If result is not a Promise, wrap it in a resolved Promise
+        // Per spec, stream callbacks can return undefined or a Promise
+        const resolver = ffi.v8_PromiseResolver_New(context) orelse
+            return EngineError.PromiseError;
+        _ = ffi.v8_PromiseResolver_Resolve(resolver, context, r);
+        const promise = ffi.v8_PromiseResolver_GetPromise(resolver) orelse
+            return EngineError.PromiseError;
+        return @ptrCast(promise);
+    }
+
+    // Call failed - this likely means an exception was thrown
+    // Return null to signal error
+    return null;
 }
 
 // ============================================================================
