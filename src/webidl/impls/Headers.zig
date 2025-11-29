@@ -34,6 +34,8 @@ pub const InternalState = struct {
     allocator: std.mem.Allocator,
     header_list: HeaderList,
     guard: HeaderGuard,
+    /// Cached sorted HeaderList for iteration (per Fetch spec, Headers iterate in sorted order)
+    sorted_list: ?HeaderList = null,
 };
 
 /// Initialize instance
@@ -95,6 +97,10 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         const allocator = internal.allocator;
+        // Free cached sorted list if any
+        if (internal.sorted_list) |*sorted| {
+            sorted.deinit();
+        }
         internal.header_list.deinit();
         allocator.destroy(internal);
     }
@@ -278,12 +284,25 @@ pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) Imp
 }
 
 /// Internal method to get all entries for pair iterable support
-/// Returns the raw entries slice from the HeaderList
+/// Per Fetch spec, Headers iteration returns entries sorted alphabetically by name
 /// This is used by V8Interface for entries(), keys(), values() iteration
 pub fn getEntriesInternal(instance: *runtime.Instance) ?[]const IterableEntry {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return null;
-    return internal.header_list.entries.items;
+
+    // Free previous cached sorted list if any
+    if (internal.sorted_list) |*old_list| {
+        old_list.deinit();
+        internal.sorted_list = null;
+    }
+
+    // Get sorted entries (per Fetch spec, Headers iterate in sorted order)
+    const sorted_list = internal.header_list.sortAndCombine(internal.allocator) catch return null;
+
+    // Cache the sorted list (it owns the strings)
+    internal.sorted_list = sorted_list;
+
+    return internal.sorted_list.?.entries.items;
 }
 
 // === Helper Functions ===
