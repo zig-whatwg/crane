@@ -319,6 +319,60 @@ pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
         return "EventTarget";
     }
 
+    // IndexedDB types
+    if (inst_vtable == &interfaces.IDBKeyRange.vtable) {
+        return "IDBKeyRange";
+    }
+
+    if (inst_vtable == &interfaces.IDBFactory.vtable) {
+        return "IDBFactory";
+    }
+
+    if (inst_vtable == &interfaces.IDBDatabase.vtable) {
+        return "IDBDatabase";
+    }
+
+    if (inst_vtable == &interfaces.IDBObjectStore.vtable) {
+        return "IDBObjectStore";
+    }
+
+    if (inst_vtable == &interfaces.IDBIndex.vtable) {
+        return "IDBIndex";
+    }
+
+    if (inst_vtable == &interfaces.IDBRequest.vtable) {
+        return "IDBRequest";
+    }
+
+    if (inst_vtable == &interfaces.IDBOpenDBRequest.vtable) {
+        return "IDBOpenDBRequest";
+    }
+
+    if (inst_vtable == &interfaces.IDBTransaction.vtable) {
+        return "IDBTransaction";
+    }
+
+    if (inst_vtable == &interfaces.IDBCursor.vtable) {
+        return "IDBCursor";
+    }
+
+    if (inst_vtable == &interfaces.IDBCursorWithValue.vtable) {
+        return "IDBCursorWithValue";
+    }
+
+    // Fetch types
+    if (inst_vtable == &interfaces.Headers.vtable) {
+        return "Headers";
+    }
+
+    if (inst_vtable == &interfaces.Request.vtable) {
+        return "Request";
+    }
+
+    if (inst_vtable == &interfaces.Response.vtable) {
+        return "Response";
+    }
+
     // Default to "Element" for unknown types (backwards compat)
     return "Element";
 }

@@ -929,6 +929,45 @@ pub fn V8Interface(comptime Interface: type) type {
                         }
                     };
                     break :blk try method_fn(instance, arg1, arg2, arg3);
+                } else if (webidl_param_count == 4) {
+                    const Param1Type = params[1].type.?;
+                    const Param2Type = params[2].type.?;
+                    const Param3Type = params[3].type.?;
+                    const Param4Type = params[4].type.?;
+
+                    if (js_arg_count < 2) return error.NotEnoughArguments;
+
+                    const v8_arg1 = info.get(0);
+                    const v8_arg2 = info.get(1);
+                    const arg1 = try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                    const arg2 = try conv.fromV8Value(Param2Type, allocator, isolate, v8_context, v8_arg2);
+
+                    const arg3 = if (js_arg_count >= 3) arg_blk: {
+                        const v8_arg3 = info.get(2);
+                        break :arg_blk try conv.fromV8Value(Param3Type, allocator, isolate, v8_context, v8_arg3);
+                    } else arg_blk: {
+                        if (comptime getDefaultArgValue(Param3Type)) |default_val| {
+                            break :arg_blk default_val;
+                        } else if (comptime canUseUndefined(Param3Type)) {
+                            break :arg_blk undefined;
+                        } else {
+                            return error.NotEnoughArguments;
+                        }
+                    };
+
+                    const arg4 = if (js_arg_count >= 4) arg_blk: {
+                        const v8_arg4 = info.get(3);
+                        break :arg_blk try conv.fromV8Value(Param4Type, allocator, isolate, v8_context, v8_arg4);
+                    } else arg_blk: {
+                        if (comptime getDefaultArgValue(Param4Type)) |default_val| {
+                            break :arg_blk default_val;
+                        } else if (comptime canUseUndefined(Param4Type)) {
+                            break :arg_blk undefined;
+                        } else {
+                            return error.NotEnoughArguments;
+                        }
+                    };
+                    break :blk try method_fn(instance, arg1, arg2, arg3, arg4);
                 } else {
                     // Fallback for methods with more params - use placeholder behavior
                     return error.NotImplemented;
